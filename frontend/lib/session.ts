@@ -1,0 +1,104 @@
+import type { ModulePermission } from "./permission-modules";
+
+export type AuthUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  companyId: string | null;
+  companyName: string | null;
+  firstAccess: boolean;
+  /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */
+  permissions?: ModulePermission[];
+};
+
+/** Legado: token em localStorage (Bearer). Novo fluxo usa cookie httpOnly. */
+export const TOKEN_KEY = "alleone.token";
+export const USER_KEY = "alleone.user";
+
+function readUserRaw(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return (
+    window.sessionStorage.getItem(USER_KEY) ??
+    window.localStorage.getItem(USER_KEY)
+  );
+}
+
+export function getStoredToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function getStoredUser(): AuthUser | null {
+  const raw = readUserRaw();
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    clearSessionSync();
+    return null;
+  }
+}
+
+/** Persiste só o perfil no browser (JWT fica no cookie httpOnly definido pela API). */
+export function setStoredUser(user: AuthUser) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.setItem(USER_KEY, JSON.stringify(user));
+  try {
+    window.localStorage.removeItem(USER_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * @param token Opcional: legado Bearer; preferir omitir para usar apenas cookie.
+ */
+export function setSession(token: string | null | undefined, user: AuthUser) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (token) {
+    try {
+      window.localStorage.setItem(TOKEN_KEY, token);
+    } catch {
+      /* ignore */
+    }
+  } else {
+    try {
+      window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+  setStoredUser(user);
+}
+
+function clearSessionSync() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.sessionStorage.removeItem(USER_KEY);
+  window.localStorage.removeItem(USER_KEY);
+  window.localStorage.removeItem(TOKEN_KEY);
+}
+
+export function clearSession() {
+  clearSessionSync();
+  if (typeof window === "undefined") {
+    return;
+  }
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+  void fetch(`${API_URL}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+  });
+}

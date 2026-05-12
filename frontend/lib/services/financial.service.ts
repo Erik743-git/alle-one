@@ -1,0 +1,70 @@
+import { apiRequest } from "@/lib/api";
+import { authFetch } from "@/lib/auth-fetch";
+
+export type FinancialOverviewContract = {
+  id: string;
+  title: string;
+  status: "ACTIVE" | "INACTIVE" | "EXPIRED";
+  monthlyHours: number;
+  extraHourPrice: number;
+  startDate: string;
+  endDate: string | null;
+  documentsCount: number;
+  contractFile: null | {
+    fileId: string;
+    originalName: string;
+  };
+  latestBilling: null | {
+    id: string;
+    monthReference: string;
+    contractedHours: number;
+    usedHours: number;
+    extraHours: number;
+    extraAmount: number;
+  };
+};
+
+export type FinancialOverviewResponse = {
+  company: { id: string; name: string };
+  totals: {
+    contractedHours: number;
+    usedHours: number;
+    extraHours: number;
+    extraAmount: number;
+  };
+  contracts: FinancialOverviewContract[];
+};
+
+export const financialService = {
+  async overview(params: { companyId?: string }) {
+    const search = new URLSearchParams();
+    if (params.companyId) search.set("companyId", params.companyId);
+    const qs = search.toString();
+    return apiRequest<FinancialOverviewResponse>(`/financial/overview${qs ? `?${qs}` : ""}`);
+  },
+
+  async downloadContractFile(params: { contractId: string; companyId?: string; inline?: boolean }) {
+    const search = new URLSearchParams();
+    if (params.companyId) search.set("companyId", params.companyId);
+    if (params.inline) search.set("inline", "true");
+    const qs = search.toString();
+    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+    const url = `${API_URL}/financial/contracts/${params.contractId}/file${qs ? `?${qs}` : ""}`;
+
+    const res = await authFetch(url, {
+      method: "GET",
+    });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(msg || `Erro ao baixar arquivo (${res.status}).`);
+    }
+
+    const blob = await res.blob();
+    const cd = res.headers.get("content-disposition") ?? "";
+    const fallbackName = "contrato.pdf";
+    const nameMatch = cd.match(/filename=\"?([^\";]+)\"?/i);
+    const filename = nameMatch?.[1] ? decodeURIComponent(nameMatch[1]) : fallbackName;
+    return { blob, filename };
+  },
+};
+

@@ -1,0 +1,677 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { companiesService, type Company } from "@/lib/services/companies.service";
+import { getStoredUser } from "@/lib/session";
+import {
+  gmudsService,
+  type CreateGmudPayload,
+  type Gmud,
+  type GmudUser,
+} from "@/lib/services/gmuds.service";
+import { UserSearchDialog } from "./user-search-dialog";
+import { GmudStepper } from "./gmud-stepper";
+import { GmudStatusBadge } from "./gmud-status-badge";
+
+type SelectedUser = GmudUser;
+
+type ActivityDraft = {
+  scheduledAt: string;
+  durationMinutes: number;
+  executorUserId: string;
+  description: string;
+};
+
+function toDatetimeLocalValue(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value: string) {
+  if (!value) return undefined;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString();
+}
+
+export function GmudForm({
+  initial,
+  mode,
+}: {
+  initial?: Gmud;
+  mode: "create" | "edit" | "view";
+}) {
+  const router = useRouter();
+  const authUser = getStoredUser();
+  const isClient = authUser?.role === "CLIENT";
+
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [companyId, setCompanyId] = useState(
+    isClient ? authUser?.companyId ?? "" : initial?.companyId ?? ""
+  );
+  const [downtime, setDowntime] = useState<boolean>(initial?.downtime ?? false);
+  const [downtimeStart, setDowntimeStart] = useState(
+    toDatetimeLocalValue(initial?.downtimeStart)
+  );
+  const [downtimeEnd, setDowntimeEnd] = useState(
+    toDatetimeLocalValue(initial?.downtimeEnd)
+  );
+
+  const [responsible, setResponsible] = useState<SelectedUser | null>(
+    initial?.responsible ?? null
+  );
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [reason, setReason] = useState(initial?.reason ?? "");
+  const [impact, setImpact] = useState(initial?.impact ?? "");
+  const [rollback, setRollback] = useState(initial?.rollback ?? "");
+
+  const [executors, setExecutors] = useState<SelectedUser[]>(
+    initial?.executors?.map((e) => e.user) ?? []
+  );
+  const [approvers, setApprovers] = useState<SelectedUser[]>(
+    initial?.approvers?.map((a) => a.user) ?? []
+  );
+
+  const [activities, setActivities] = useState<ActivityDraft[]>(
+    initial?.activities?.map((a) => ({
+      scheduledAt: toDatetimeLocalValue(a.scheduledAt),
+      durationMinutes: a.durationMinutes,
+      executorUserId: a.executorUserId,
+      description: a.description,
+    })) ?? []
+  );
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerTarget, setPickerTarget] = useState<
+    "responsible" | "executor" | "approver"
+  >("executor");
+
+  const readonly = mode === "view";
+  const canEdit =
+    mode !== "view" &&
+    (!initial ||
+      initial.status === "DRAFT" ||
+      initial.status === "PENDING_APPROVAL");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      if (isClient) return;
+      setLoadingCompanies(true);
+      try {
+        const data = await companiesService.list();
+        if (!cancelled) setCompanies(data);
+      } catch {
+        // manter silencioso, a tela ainda pode funcionar com companyId preenchido
+      } finally {
+        if (!cancelled) setLoadingCompanies(false);
+      }
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [isClient]);
+
+  const companyLocked = isClient;
+
+  const executorOptions = useMemo(() => executors, [executors]);
+
+  function addUnique(list: SelectedUser[], user: SelectedUser) {
+    if (list.some((u) => u.id === user.id)) return list;
+    return [...list, user];
+  }
+
+  async function handleSave(submitForApproval: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      if (!companyId) throw new Error("Selecione a empresa.");
+      if (!title.trim()) throw new Error("Informe o título.");
+      if (executors.length < 1) throw new Error("Informe ao menos 1 executor.");
+      if (approvers.length < 2) throw new Error("Informe ao menos 2 aprovadores.");
+
+      const payload: CreateGmudPayload = {
+        title: title.trim(),
+        companyId,
+        downtime,
+        ...(downtime
+          ? {
+              downtimeStart: fromDatetimeLocalValue(downtimeStart),
+              downtimeEnd: fromDatetimeLocalValue(downtimeEnd),
+            }
+          : {}),
+        ...(responsible?.id ? { responsibleId: responsible.id } : {}),
+        description: description.trim() || undefined,
+        reason: reason.trim() || undefined,
+        impact: impact.trim() || undefined,
+        rollback: rollback.trim() || undefined,
+        executors: executors.map((u) => ({ userId: u.id })),
+        approvers: approvers.map((u) => ({ userId: u.id })),
+        activities: activities.length
+          ? activities.map((a) => ({
+              scheduledAt: fromDatetimeLocalValue(a.scheduledAt) ?? new Date().toISOString(),
+              durationMinutes: Number(a.durationMinutes),
+              executorUserId: a.executorUserId,
+              description: a.description,
+            }))
+          : undefined,
+        submitForApproval,
+      };
+
+      if (initial?.id) {
+        const updated = await gmudsService.update(initial.id, payload);
+        router.replace(`/gmud/${updated.id}`);
+        router.refresh();
+      } else {
+        const created = await gmudsService.create(payload);
+        router.replace(`/gmud/${created.id}`);
+        router.refresh();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar GMUD");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      {initial ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="text-sm text-muted-foreground">GMUD</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-xl font-bold text-foreground">
+                #{initial.code} — {initial.title}
+              </div>
+              <GmudStatusBadge status={initial.status} />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <GmudStepper status={initial?.status ?? "DRAFT"} />
+
+      {error ? (
+        <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
+          {error}
+        </div>
+      ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm text-muted-foreground">
+            Campos principais
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Título / Nome da mudança <span className="text-red-300">*</span>
+              </div>
+            </div>
+            <Input
+              value={title}
+              disabled={readonly || !canEdit}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-12 text-base"
+              placeholder="Ex.: Atualização do firewall da borda"
+            />
+            <div className="text-xs text-muted-foreground">
+              Use um título objetivo para facilitar aprovação e rastreabilidade.
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm text-muted-foreground">
+              Empresa <span className="text-red-300">*</span>
+            </div>
+            {companyLocked ? (
+              <Input
+                value={authUser?.companyName ?? ""}
+                disabled
+                className=""
+              />
+            ) : (
+              <div className="flex gap-2">
+                <select
+                  value={companyId}
+                  disabled={readonly || !canEdit || loadingCompanies}
+                  onChange={(e) => setCompanyId(e.target.value)}
+                  className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                >
+                  <option value="">Selecione...</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={readonly || !canEdit || loadingCompanies}
+                  onClick={async () => {
+                    setLoadingCompanies(true);
+                    try {
+                      const data = await companiesService.list();
+                      setCompanies(data);
+                    } finally {
+                      setLoadingCompanies(false);
+                    }
+                  }}
+                  className="h-11"
+                >
+                  Atualizar
+                </Button>
+              </div>
+            )}
+            {!companyLocked ? (
+              <div className="text-xs text-muted-foreground">
+                Selecione a empresa para habilitar busca de usuários.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="space-y-2">
+            <div className="text-sm text-muted-foreground">Responsável</div>
+            <div className="flex gap-2">
+              <Input
+                value={responsible ? `${responsible.name} (${responsible.email})` : ""}
+                disabled
+                className=""
+                placeholder="Selecione um usuário"
+              />
+              <Button
+                type="button"
+                disabled={readonly || !canEdit || !companyId}
+                onClick={() => {
+                  setPickerTarget("responsible");
+                  setPickerOpen(true);
+                }}
+                variant="secondary"
+              >
+                Buscar
+              </Button>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Opcional. Ajuda a identificar quem responde pela mudança.
+            </div>
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">Downtime</div>
+              <label className="inline-flex items-center gap-3 text-sm text-muted-foreground">
+                <span className="text-muted-foreground">Não</span>
+                <button
+                  type="button"
+                  disabled={readonly || !canEdit}
+                  onClick={() => setDowntime((v) => !v)}
+                  className={[
+                    "relative inline-flex h-7 w-12 items-center rounded-full border transition",
+                    downtime
+                      ? "border-primary/40 bg-primary/20"
+                      : "border-border bg-muted/40",
+                    readonly || !canEdit
+                      ? "cursor-not-allowed opacity-60"
+                      : "hover:bg-muted/60",
+                  ].join(" ")}
+                  aria-pressed={downtime}
+                  aria-label="Downtime"
+                >
+                  <span
+                    className={[
+                      "inline-block h-5 w-5 rounded-full transition",
+                      downtime ? "translate-x-6 bg-primary" : "translate-x-1 bg-muted-foreground",
+                    ].join(" ")}
+                  />
+                </button>
+                <span className="text-muted-foreground">Sim</span>
+              </label>
+            </div>
+            {downtime ? (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Início do downtime</div>
+                  <Input
+                    type="datetime-local"
+                    value={downtimeStart}
+                    disabled={readonly || !canEdit}
+                    onChange={(e) => setDowntimeStart(e.target.value)}
+                    className=""
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Fim do downtime</div>
+                  <Input
+                    type="datetime-local"
+                    value={downtimeEnd}
+                    disabled={readonly || !canEdit}
+                    onChange={(e) => setDowntimeEnd(e.target.value)}
+                    className=""
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-sm text-muted-foreground">Executor(es)</CardTitle>
+          <Button
+            type="button"
+            disabled={readonly || !canEdit || !companyId}
+            onClick={() => {
+              setPickerTarget("executor");
+              setPickerOpen(true);
+            }}
+            variant="secondary"
+          >
+            + Adicionar
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {executors.length === 0 ? (
+            <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              Nenhum executor selecionado. <span className="text-red-300">*</span>
+            </div>
+          ) : null}
+          {executors.map((u) => (
+            <div
+              key={u.id}
+              className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="text-sm">
+                <div className="font-semibold">{u.name}</div>
+                <div className="text-xs text-muted-foreground">{u.email}</div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={readonly || !canEdit}
+                className=""
+                onClick={() => setExecutors((prev) => prev.filter((x) => x.id !== u.id))}
+              >
+                Remover
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-sm text-muted-foreground">Aprovador(es)</CardTitle>
+          <Button
+            type="button"
+            disabled={readonly || !canEdit || !companyId}
+            onClick={() => {
+              setPickerTarget("approver");
+              setPickerOpen(true);
+            }}
+            variant="secondary"
+          >
+            + Adicionar
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {approvers.length === 0 ? (
+            <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              Nenhum aprovador selecionado. <span className="text-red-300">*</span>
+            </div>
+          ) : null}
+          {approvers.map((u) => (
+            <div
+              key={u.id}
+              className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="text-sm">
+                <div className="font-semibold">{u.name}</div>
+                <div className="text-xs text-muted-foreground">{u.email}</div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={readonly || !canEdit}
+                className=""
+                onClick={() => setApprovers((prev) => prev.filter((x) => x.id !== u.id))}
+              >
+                Remover
+              </Button>
+            </div>
+          ))}
+          <div className="text-xs text-muted-foreground">Mínimo: 2 aprovadores.</div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm text-muted-foreground">Conteúdo</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <div className="text-sm text-muted-foreground">Descrição</div>
+            <Textarea
+              value={description}
+              disabled={readonly || !canEdit}
+              onChange={(e) => setDescription(e.target.value)}
+              className="min-h-[120px]"
+              placeholder="Descreva a mudança em detalhes"
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="text-sm text-muted-foreground">Motivo</div>
+            <Textarea
+              value={reason}
+              disabled={readonly || !canEdit}
+              onChange={(e) => setReason(e.target.value)}
+              className="min-h-[120px]"
+            />
+          </div>
+          <div className="space-y-2">
+            <div className="text-sm text-muted-foreground">Impacto</div>
+            <Textarea
+              value={impact}
+              disabled={readonly || !canEdit}
+              onChange={(e) => setImpact(e.target.value)}
+              className="min-h-[120px]"
+            />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <div className="text-sm text-muted-foreground">Rollback</div>
+            <Textarea
+              value={rollback}
+              disabled={readonly || !canEdit}
+              onChange={(e) => setRollback(e.target.value)}
+              className="min-h-[120px]"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-sm text-muted-foreground">Atividades</CardTitle>
+          <Button
+            type="button"
+            disabled={readonly || !canEdit}
+            onClick={() =>
+              setActivities((prev) => [
+                ...prev,
+                { scheduledAt: "", durationMinutes: 30, executorUserId: "", description: "" },
+              ])
+            }
+            variant="secondary"
+          >
+            + Adicionar
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {activities.length === 0 ? (
+            <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              Nenhuma atividade cadastrada.
+            </div>
+          ) : null}
+
+          {activities.map((a, idx) => (
+            <div key={idx} className="rounded-xl border border-border bg-muted/40 p-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="space-y-2 md:col-span-2">
+                  <div className="text-sm text-muted-foreground">Data e hora</div>
+                  <Input
+                    type="datetime-local"
+                    value={a.scheduledAt}
+                    disabled={readonly || !canEdit}
+                    onChange={(e) =>
+                      setActivities((prev) =>
+                        prev.map((x, i) => (i === idx ? { ...x, scheduledAt: e.target.value } : x))
+                      )
+                    }
+                    className=""
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Duração (min)</div>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={a.durationMinutes}
+                    disabled={readonly || !canEdit}
+                    onChange={(e) =>
+                      setActivities((prev) =>
+                        prev.map((x, i) =>
+                          i === idx ? { ...x, durationMinutes: Number(e.target.value) } : x
+                        )
+                      )
+                    }
+                    className=""
+                  />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Executor</div>
+                  <select
+                    value={a.executorUserId}
+                    disabled={readonly || !canEdit}
+                    onChange={(e) =>
+                      setActivities((prev) =>
+                        prev.map((x, i) =>
+                          i === idx ? { ...x, executorUserId: e.target.value } : x
+                        )
+                      )
+                    }
+                    className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                  >
+                    <option value="">Selecione...</option>
+                    {executorOptions.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2 md:col-span-4">
+                  <div className="text-sm text-muted-foreground">Descrição da atividade</div>
+                  <Input
+                    value={a.description}
+                    disabled={readonly || !canEdit}
+                    onChange={(e) =>
+                      setActivities((prev) =>
+                        prev.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x))
+                      )
+                    }
+                    className=""
+                    placeholder="Ex.: Aplicar regra X no firewall"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={readonly || !canEdit}
+                  className=""
+                  onClick={() => setActivities((prev) => prev.filter((_, i) => i !== idx))}
+                >
+                  Remover atividade
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          <div className="text-xs text-muted-foreground">
+            Regra: o executor da atividade deve ser um dos executores cadastrados na GMUD.
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+        {mode !== "view" ? (
+          <>
+            <Button
+              type="button"
+              disabled={saving || readonly || !canEdit}
+              variant="outline"
+              className="h-11"
+              onClick={() => handleSave(false)}
+            >
+              Salvar rascunho
+            </Button>
+            <Button
+              type="button"
+              disabled={saving || readonly || !canEdit}
+              className="h-11"
+              onClick={() => handleSave(true)}
+            >
+              Salvar e enviar para aprovação
+            </Button>
+          </>
+        ) : null}
+      </div>
+
+      <UserSearchDialog
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        companyId={companyId || undefined}
+        title={
+          pickerTarget === "responsible"
+            ? "Selecionar responsável"
+            : pickerTarget === "executor"
+              ? "Selecionar executor"
+              : "Selecionar aprovador"
+        }
+        onSelect={(u) => {
+          if (pickerTarget === "responsible") {
+            setResponsible(u);
+            return;
+          }
+          if (pickerTarget === "executor") {
+            setExecutors((prev) => addUnique(prev, u));
+            return;
+          }
+          setApprovers((prev) => addUnique(prev, u));
+        }}
+      />
+    </div>
+  );
+}
+

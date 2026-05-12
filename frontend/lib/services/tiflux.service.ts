@@ -1,0 +1,30 @@
+import { apiRequest } from "@/lib/api";
+
+export type TifluxClient = {
+  id: number;
+  name?: string;
+  social_name?: string;
+  active?: boolean;
+};
+
+export function getTifluxClients(params?: {
+  active?: boolean;
+  name?: string;
+}) {
+  const search = new URLSearchParams();
+
+  // Sempre buscar tudo (paginado pelo backend)
+  search.set("all", "1");
+
+  if (params?.active !== undefined) {
+    search.set("active", params.active ? "true" : "false");
+  }
+
+  if (params?.name) {
+    search.set("name", params.name);
+  }
+
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return apiRequest<TifluxClient[]>(`/tiflux/clients${suffix}`);
+}
+

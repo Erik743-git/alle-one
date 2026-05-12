@@ -1,0 +1,445 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  COLLABORATOR
+  CLIENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ContractStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+enum PermissionModule {
+  DASHBOARD
+  FINANCIAL
+  GMUD
+  REPORTS
+  ADMIN
+  COMPANIES
+  USERS
+  PERMISSIONS
+  CONTRACTS
+  MONITORING
+  TICKETS
+  DOCUMENTATION
+  PROJECTS
+  SLA
+  BILLING
+}
+
+enum ContractFileType {
+  CONTRACT
+  SLA
+  ATTACHMENT
+}
+
+enum GmudStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  IN_EXECUTION
+  EXECUTED
+  REJECTED
+  CANCELED
+}
+
+enum GmudApproverStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  name                String
+  email               String               @unique
+  passwordHash        String?              @map("password_hash")
+  role                UserRole
+  status              UserStatus           @default(ACTIVE)
+  firstAccess         Boolean              @default(true) @map("first_access")
+  companyId           String?              @map("company_id")
+  googleId            String?              @unique @map("google_id")
+  provider            String?
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  deletedAt           DateTime?            @map("deleted_at")
+
+  company             Company?             @relation(fields: [companyId], references: [id])
+  permissions         Permission[]
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  uploadedFiles       File[]               @relation("UserUploadedFiles")
+  createdGmuds        Gmud[]               @relation("UserCreatedGmuds")
+  responsibleGmuds    Gmud[]               @relation("UserResponsibleGmuds")
+  gmudExecutions      GmudExecutor[]
+  gmudApprovals       GmudApprover[]
+  gmudActivityExecutions GmudActivity[]    @relation("GmudActivityExecutor")
+  gmudAttachmentUploads GmudAttachment[]   @relation("GmudAttachmentUploader")
+  auditLogs           AuditLog[]
+
+  @@index([companyId])
+  @@map("users")
+}
+
+model Company {
+  id                   String                    @id @default(uuid())
+  name                 String
+  responsibleName      String                    @map("responsible_name")
+  email                String
+  status               Boolean                   @default(true)
+
+  zabbixGroupName      String?                   @map("zabbix_group_name")
+  tifluxClientId       Int?                      @map("tiflux_client_id")
+  tifluxClientName String?                       @map("tiflux_client_name")
+
+  logoFileId           String?                   @unique @map("logo_file_id")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+  deletedAt            DateTime?                 @map("deleted_at")
+
+  logoFile             File?                     @relation("CompanyLogo", fields: [logoFileId], references: [id])
+  users                User[]
+  contracts            Contract[]
+  gmuds                Gmud[]
+  reports              Report[]
+  billingEntries       BillingEntry[]
+  zabbixHosts          IntegrationZabbixHost[]
+  tifluxAccounts       IntegrationTiFluxAccount[]
+  usageAlertRules      UsageAlertRule[]
+
+  @@map("companies")
+}
+
+model Permission {
+  id         String           @id @default(uuid())
+  userId     String           @map("user_id")
+  module     PermissionModule
+  canView    Boolean          @default(false) @map("can_view")
+  canCreate  Boolean          @default(false) @map("can_create")
+  canEdit    Boolean          @default(false) @map("can_edit")
+  canDelete  Boolean          @default(false) @map("can_delete")
+  canApprove Boolean          @default(false) @map("can_approve")
+
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, module])
+  @@index([userId])
+  @@map("permissions")
+}
+
+model Contract {
+  id              String           @id @default(uuid())
+  companyId       String           @map("company_id")
+  title           String
+  description     String?
+  status          ContractStatus
+  monthlyHours    Int              @map("monthly_hours")
+  extraHourPrice  Decimal          @db.Decimal(10, 2) @map("extra_hour_price")
+  startDate       DateTime         @map("start_date")
+  endDate         DateTime?        @map("end_date")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contractFiles   ContractFile[]
+  billingEntries  BillingEntry[]
+
+  @@index([companyId])
+  @@map("contracts")
+}
+
+model ContractFile {
+  id         String           @id @default(uuid())
+  contractId String           @map("contract_id")
+  fileId     String           @map("file_id")
+  type       ContractFileType
+
+  contract   Contract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  file       File             @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([fileId])
+  @@map("contract_files")
+}
+
+model File {
+  id                 String         @id @default(uuid())
+  originalName       String         @map("original_name")
+  mimeType           String         @map("mime_type")
+  path               String
+  size               Int
+  uploadedBy         String         @map("uploaded_by")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  deletedAt          DateTime?      @map("deleted_at")
+
+  uploadedByUser     User           @relation("UserUploadedFiles", fields: [uploadedBy], references: [id])
+  companyLogoFor     Company?       @relation("CompanyLogo")
+  contractFiles      ContractFile[]
+  reports            Report[]
+  gmudAttachments    GmudAttachment[]
+
+  @@index([uploadedBy])
+  @@map("files")
+}
+
+model PasswordResetToken {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  token      String    @unique
+  expiresAt  DateTime  @map("expires_at")
+  usedAt     DateTime? @map("used_at")
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model Gmud {
+  id                 String         @id @default(uuid())
+  code               Int            @unique @default(autoincrement())
+  companyId          String         @map("company_id")
+  title              String
+  downtime           Boolean        @default(false)
+  downtimeStart      DateTime?      @map("downtime_start")
+  downtimeEnd        DateTime?      @map("downtime_end")
+  responsibleId      String?        @map("responsible_id")
+  summary            String?
+  description        String?
+  reason             String?
+  impact             String?
+  rollback           String?
+  status             GmudStatus     @default(DRAFT)
+  createdBy          String         @map("created_by")
+  approvedAt         DateTime?      @map("approved_at")
+  executionStartedAt DateTime?      @map("execution_started_at")
+  executedAt         DateTime?      @map("executed_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  deletedAt          DateTime?      @map("deleted_at")
+
+  company            Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator            User           @relation("UserCreatedGmuds", fields: [createdBy], references: [id])
+  responsible        User?          @relation("UserResponsibleGmuds", fields: [responsibleId], references: [id])
+  executors          GmudExecutor[]
+  approvers          GmudApprover[]
+  activities         GmudActivity[]
+  attachments        GmudAttachment[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([createdBy])
+  @@index([responsibleId])
+  @@map("gmud")
+}
+
+model GmudExecutor {
+  id        String   @id @default(uuid())
+  gmudId    String   @map("gmud_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  gmud      Gmud     @relation(fields: [gmudId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gmudId, userId])
+  @@index([gmudId])
+  @@index([userId])
+  @@map("gmud_executors")
+}
+
+model GmudApprover {
+  id             String              @id @default(uuid())
+  gmudId         String              @map("gmud_id")
+  userId         String              @map("user_id")
+  status         GmudApproverStatus  @default(PENDING)
+  decidedAt      DateTime?           @map("decided_at")
+  decisionNote   String?             @map("decision_note")
+
+  gmud           Gmud                @relation(fields: [gmudId], references: [id], onDelete: Cascade)
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([gmudId, userId])
+  @@index([gmudId])
+  @@index([userId])
+  @@map("gmud_approvers")
+}
+
+model GmudActivity {
+  id                String    @id @default(uuid())
+  gmudId            String    @map("gmud_id")
+  scheduledAt       DateTime  @map("scheduled_at")
+  durationMinutes   Int       @map("duration_minutes")
+  executorUserId    String    @map("executor_user_id")
+  description       String
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  gmud              Gmud      @relation(fields: [gmudId], references: [id], onDelete: Cascade)
+  executorUser      User      @relation("GmudActivityExecutor", fields: [executorUserId], references: [id], onDelete: Restrict)
+
+  @@index([gmudId])
+  @@index([executorUserId])
+  @@map("gmud_activities")
+}
+
+model GmudAttachment {
+  id          String   @id @default(uuid())
+  gmudId      String   @map("gmud_id")
+  fileId      String   @map("file_id")
+  uploadedBy  String   @map("uploaded_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  gmud        Gmud     @relation(fields: [gmudId], references: [id], onDelete: Cascade)
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  uploader    User     @relation("GmudAttachmentUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+
+  @@index([gmudId])
+  @@index([fileId])
+  @@index([uploadedBy])
+  @@map("gmud_attachments")
+}
+
+model Report {
+  id           String    @id @default(uuid())
+  companyId    String    @map("company_id")
+  type         String
+  format       String    @default("CSV")
+  status       String    @default("READY")
+  periodStart  DateTime  @map("period_start")
+  periodEnd    DateTime  @map("period_end")
+  filters      Json?     
+  errorMessage String?   @map("error_message")
+  generatedBy  String    @map("generated_by")
+  fileId       String    @map("file_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  file         File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([fileId])
+  @@map("reports")
+}
+
+model BillingEntry {
+  id               String    @id @default(uuid())
+  companyId        String    @map("company_id")
+  contractId       String    @map("contract_id")
+  monthReference   DateTime  @map("month_reference")
+  contractedHours  Decimal   @db.Decimal(10, 2) @map("contracted_hours")
+  usedHours        Decimal   @db.Decimal(10, 2) @map("used_hours")
+  extraHours       Decimal   @db.Decimal(10, 2) @map("extra_hours")
+  extraAmount      Decimal   @db.Decimal(10, 2) @map("extra_amount")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  contract         Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([contractId])
+  @@map("billing_entries")
+}
+
+model UsageAlertRule {
+  id              String   @id @default(uuid())
+  companyId       String   @map("company_id")
+  enabled         Boolean  @default(true)
+  // dia do mês para rodar (ex.: 15)
+  dayOfMonth      Int      @default(15) @map("day_of_month")
+  // percentuais (0..100)
+  lowThresholdPct Int?     @map("low_threshold_pct")
+  highThresholdPct Int?    @map("high_threshold_pct")
+  recipients      Json     // { to: string[], cc?: string[] }
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([enabled, dayOfMonth])
+  @@map("usage_alert_rules")
+}
+
+model IntegrationZabbixHost {
+  id            String   @id @default(uuid())
+  companyId     String   @map("company_id")
+  zabbixHostId  String   @map("zabbix_host_id")
+  hostName      String   @map("host_name")
+  enabled       Boolean  @default(true)
+
+  company       Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("integration_zabbix_hosts")
+}
+
+model IntegrationTiFluxAccount {
+  id               String   @id @default(uuid())
+  companyId        String   @map("company_id")
+  tifluxCompanyId  String   @map("tiflux_company_id")
+  enabled          Boolean  @default(true)
+
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("integration_tiflux_accounts")
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  userId     String?   @map("user_id")
+  action     String
+  entity     String
+  entityId   String?   @map("entity_id")
+  payload    Json?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+model ExternalApiCache {
+  id        String   @id @default(uuid())
+  provider  String
+  cacheKey  String   @unique @map("cache_key")
+  payload   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([provider])
+  @@index([expiresAt])
+  @@map("external_api_cache")
+}

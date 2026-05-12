@@ -1,0 +1,632 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { ContractFileType, ContractStatus } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateCompanyDto } from './dto/create-company.dto';
+import { UpdateCompanyDto } from './dto/update-company.dto';
+import {
+  CreateCompanyContractDto,
+  UpdateCompanyContractDto,
+} from './dto/company-contract.dto';
+import { randomUUID } from 'crypto';
+import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
+import { StreamableFile } from '@nestjs/common';
+
+@Injectable()
+export class CompaniesService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private normalizeString(value?: string | null) {
+    const normalized = value?.trim() ?? '';
+    return normalized.length ? normalized : null;
+  }
+
+  private async validateUniqueEmail(email: string, ignoreId?: string) {
+    const existing = await this.prisma.company.findFirst({
+      where: {
+        email,
+        deletedAt: null,
+        ...(ignoreId
+          ? {
+              id: {
+                not: ignoreId,
+              },
+            }
+          : {}),
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Já existe uma empresa com este e-mail');
+    }
+  }
+
+  private async validateUniqueZabbixGroup(
+    zabbixGroupName: string | null,
+    ignoreId?: string,
+  ) {
+    if (!zabbixGroupName) {
+      return;
+    }
+
+    const existing = await this.prisma.company.findFirst({
+      where: {
+        zabbixGroupName,
+        deletedAt: null,
+        ...(ignoreId
+          ? {
+              id: {
+                not: ignoreId,
+              },
+            }
+          : {}),
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        'Este grupo do Zabbix já está vinculado a outra empresa',
+      );
+    }
+  }
+
+  private async validateUniqueTifluxClient(
+    tifluxClientId: number | null,
+    ignoreId?: string,
+  ) {
+    if (tifluxClientId === null || tifluxClientId === undefined) {
+      return;
+    }
+
+    const existing = await this.prisma.company.findFirst({
+      where: {
+        tifluxClientId,
+        deletedAt: null,
+        ...(ignoreId
+          ? {
+              id: {
+                not: ignoreId,
+              },
+            }
+          : {}),
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        'Este cliente do TiFlux já está vinculado a outra empresa',
+      );
+    }
+  }
+
+  async findAll() {
+    const companies = await this.prisma.company.findMany({
+      where: {
+        deletedAt: null,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Contadores:
+    // - contratos: contracts (deletedAt null)
+    // - documentos: contract_files vinculados aos contracts (deletedAt null)
+    const contracts = await this.prisma.contract.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        companyId: true,
+        _count: { select: { contractFiles: true } },
+      },
+    });
+
+    const byCompany = new Map<
+      string,
+      { contracts: number; documents: number }
+    >();
+    for (const c of contracts) {
+      const prev = byCompany.get(c.companyId) ?? { contracts: 0, documents: 0 };
+      byCompany.set(c.companyId, {
+        contracts: prev.contracts + 1,
+        documents: prev.documents + (c._count?.contractFiles ?? 0),
+      });
+    }
+
+    return companies.map((c) => {
+      const counts = byCompany.get(c.id) ?? { contracts: 0, documents: 0 };
+      return {
+        ...c,
+        contractsCount: counts.contracts,
+        documentsCount: counts.documents,
+      };
+    });
+  }
+
+  async findOne(id: string) {
+    const company = await this.prisma.company.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+    });
+
+    if (!company) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+
+    return company;
+  }
+
+  async create(data: CreateCompanyDto) {
+    const name = data.name.trim();
+    const responsibleName = data.responsibleName.trim();
+    const email = data.email.trim().toLowerCase();
+    const zabbixGroupName = this.normalizeString(data.zabbixGroupName);
+    const tifluxClientId = data.tifluxClientId ?? null;
+    const tifluxClientName = this.normalizeString(data.tifluxClientName);
+
+    await this.validateUniqueEmail(email);
+    await this.validateUniqueZabbixGroup(zabbixGroupName);
+    await this.validateUniqueTifluxClient(tifluxClientId);
+
+    return this.prisma.company.create({
+      data: {
+        name,
+        responsibleName,
+        email,
+        zabbixGroupName,
+        tifluxClientId,
+        tifluxClientName,
+        status: data.status ?? true,
+      },
+    });
+  }
+
+  async update(id: string, data: UpdateCompanyDto) {
+    const existingCompany = await this.prisma.company.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+    });
+
+    if (!existingCompany) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+
+    const email =
+      data.email !== undefined
+        ? data.email.trim().toLowerCase()
+        : existingCompany.email;
+
+    const zabbixGroupName =
+      data.zabbixGroupName !== undefined
+        ? this.normalizeString(data.zabbixGroupName)
+        : existingCompany.zabbixGroupName;
+
+    const tifluxClientId =
+      data.tifluxClientId !== undefined
+        ? data.tifluxClientId
+        : existingCompany.tifluxClientId;
+
+    const tifluxClientName =
+      data.tifluxClientName !== undefined
+        ? this.normalizeString(data.tifluxClientName)
+        : existingCompany.tifluxClientName;
+
+    if (email !== existingCompany.email) {
+      await this.validateUniqueEmail(email, id);
+    }
+
+    if (zabbixGroupName !== existingCompany.zabbixGroupName) {
+      await this.validateUniqueZabbixGroup(zabbixGroupName, id);
+    }
+
+    if (tifluxClientId !== existingCompany.tifluxClientId) {
+      await this.validateUniqueTifluxClient(tifluxClientId, id);
+    }
+
+    return this.prisma.company.update({
+      where: {
+        id,
+      },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.responsibleName !== undefined && {
+          responsibleName: data.responsibleName.trim(),
+        }),
+        ...(data.email !== undefined && { email }),
+        ...(data.zabbixGroupName !== undefined && { zabbixGroupName }),
+        ...(data.tifluxClientId !== undefined && { tifluxClientId }),
+        ...(data.tifluxClientName !== undefined && { tifluxClientName }),
+        ...(data.status !== undefined && { status: data.status }),
+      },
+    });
+  }
+
+  async remove(id: string) {
+    const existingCompany = await this.prisma.company.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+      },
+    });
+
+    if (!existingCompany) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+
+    return this.prisma.company.update({
+      where: {
+        id,
+      },
+      data: {
+        deletedAt: new Date(),
+        status: false,
+      },
+    });
+  }
+
+  async listContracts(companyId: string) {
+    const company = await this.findOne(companyId);
+
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        companyId: company.id,
+        deletedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        contractFiles: {
+          include: {
+            file: {
+              select: {
+                id: true,
+                originalName: true,
+                mimeType: true,
+                size: true,
+                createdAt: true,
+              },
+            },
+          },
+          orderBy: { id: 'desc' },
+        },
+      },
+    });
+
+    const now = new Date();
+    const normalized = contracts.map((c) => {
+      const effectiveStatus =
+        c.endDate && c.endDate.getTime() < now.getTime()
+          ? ContractStatus.EXPIRED
+          : c.status;
+      return { ...c, status: effectiveStatus };
+    });
+
+    return {
+      company: { id: company.id, name: company.name },
+      contracts: normalized,
+    };
+  }
+
+  async createContract(companyId: string, dto: CreateCompanyContractDto) {
+    const company = await this.findOne(companyId);
+
+    const startDate = new Date(dto.startDate);
+    if (Number.isNaN(startDate.getTime())) {
+      throw new BadRequestException('Data de início inválida');
+    }
+
+    const endDate = dto.endDate ? new Date(dto.endDate) : null;
+    if (dto.endDate && endDate && Number.isNaN(endDate.getTime())) {
+      throw new BadRequestException('Data de término inválida');
+    }
+
+    if (endDate && endDate <= startDate) {
+      throw new BadRequestException(
+        'Data de término deve ser maior que a data de início',
+      );
+    }
+
+    const title = dto.title.trim();
+    if (!title) throw new BadRequestException('Título é obrigatório');
+
+    return this.prisma.contract.create({
+      data: {
+        companyId: company.id,
+        title,
+        description: dto.description?.trim() || null,
+        status: dto.status ?? ContractStatus.ACTIVE,
+        monthlyHours: dto.monthlyHours,
+        extraHourPrice: dto.extraHourPrice,
+        startDate,
+        endDate,
+      },
+      include: {
+        contractFiles: {
+          include: {
+            file: {
+              select: {
+                id: true,
+                originalName: true,
+                mimeType: true,
+                size: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async updateContract(
+    companyId: string,
+    contractId: string,
+    dto: UpdateCompanyContractDto,
+  ) {
+    const company = await this.findOne(companyId);
+
+    const existing = await this.prisma.contract.findFirst({
+      where: { id: contractId, companyId: company.id, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Contrato não encontrado');
+
+    const startDate =
+      dto.startDate !== undefined
+        ? new Date(dto.startDate)
+        : existing.startDate;
+    if (dto.startDate !== undefined && Number.isNaN(startDate.getTime())) {
+      throw new BadRequestException('Data de início inválida');
+    }
+
+    const endDate =
+      dto.endDate !== undefined
+        ? dto.endDate
+          ? new Date(dto.endDate)
+          : null
+        : existing.endDate;
+    if (
+      dto.endDate !== undefined &&
+      dto.endDate &&
+      endDate &&
+      Number.isNaN(endDate.getTime())
+    ) {
+      throw new BadRequestException('Data de término inválida');
+    }
+
+    if (endDate && endDate <= startDate) {
+      throw new BadRequestException(
+        'Data de término deve ser maior que a data de início',
+      );
+    }
+
+    return this.prisma.contract.update({
+      where: { id: existing.id },
+      data: {
+        ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description?.trim() || null }
+          : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.monthlyHours !== undefined
+          ? { monthlyHours: dto.monthlyHours }
+          : {}),
+        ...(dto.extraHourPrice !== undefined
+          ? { extraHourPrice: dto.extraHourPrice }
+          : {}),
+        ...(dto.startDate !== undefined ? { startDate } : {}),
+        ...(dto.endDate !== undefined ? { endDate } : {}),
+      },
+      include: {
+        contractFiles: {
+          include: {
+            file: {
+              select: {
+                id: true,
+                originalName: true,
+                mimeType: true,
+                size: true,
+                createdAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async deleteContract(companyId: string, contractId: string) {
+    const company = await this.findOne(companyId);
+    const existing = await this.prisma.contract.findFirst({
+      where: { id: contractId, companyId: company.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!existing) throw new NotFoundException('Contrato não encontrado');
+
+    return this.prisma.contract.update({
+      where: { id: existing.id },
+      data: { deletedAt: new Date(), status: ContractStatus.INACTIVE },
+    });
+  }
+
+  async uploadContractFile(
+    user: AuthenticatedRequestUser,
+    companyId: string,
+    contractId: string,
+    file?: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Arquivo não enviado');
+    }
+
+    const company = await this.findOne(companyId);
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, companyId: company.id, deletedAt: null },
+    });
+    if (!contract) {
+      throw new NotFoundException('Contrato não encontrado');
+    }
+
+    const maxBytes = 15 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException('Arquivo excede o limite de 15MB');
+    }
+
+    const uploadsDir = join(process.cwd(), 'uploads', 'contracts', contract.id);
+    mkdirSync(uploadsDir, { recursive: true });
+
+    const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_');
+    const targetName = `${randomUUID()}-${safeName}`;
+    const targetPath = join(uploadsDir, targetName);
+    writeFileSync(targetPath, file.buffer);
+
+    const created = await this.prisma.file.create({
+      data: {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        path: targetPath,
+        size: file.size,
+        uploadedBy: user.userId,
+      },
+    });
+
+    // mantemos 1 arquivo do tipo CONTRACT (substitui se já existir)
+    const existingFile = await this.prisma.contractFile.findFirst({
+      where: { contractId: contract.id, type: ContractFileType.CONTRACT },
+      select: { id: true },
+    });
+
+    if (existingFile) {
+      await this.prisma.contractFile.delete({ where: { id: existingFile.id } });
+    }
+
+    return this.prisma.contractFile.create({
+      data: {
+        contractId: contract.id,
+        fileId: created.id,
+        type: ContractFileType.CONTRACT,
+      },
+      include: {
+        file: {
+          select: {
+            id: true,
+            originalName: true,
+            mimeType: true,
+            size: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+  }
+
+  async uploadLogo(
+    user: AuthenticatedRequestUser,
+    companyId: string,
+    file?: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('Arquivo não enviado');
+    const company = await this.findOne(companyId);
+
+    const maxBytes = 5 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new BadRequestException('Logo excede o limite de 5MB');
+    }
+
+    const uploadsDir = join(
+      process.cwd(),
+      'uploads',
+      'companies',
+      company.id,
+      'logo',
+    );
+    mkdirSync(uploadsDir, { recursive: true });
+
+    const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_');
+    const targetName = `${randomUUID()}-${safeName}`;
+    const targetPath = join(uploadsDir, targetName);
+    writeFileSync(targetPath, file.buffer);
+
+    const created = await this.prisma.file.create({
+      data: {
+        originalName: file.originalname,
+        mimeType: file.mimetype,
+        path: targetPath,
+        size: file.size,
+        uploadedBy: user.userId,
+      },
+      select: {
+        id: true,
+        originalName: true,
+        mimeType: true,
+        size: true,
+        createdAt: true,
+      },
+    });
+
+    await this.prisma.company.update({
+      where: { id: company.id },
+      data: { logoFileId: created.id },
+    });
+
+    return { companyId: company.id, logoFileId: created.id, file: created };
+  }
+
+  async downloadLogo(user: AuthenticatedRequestUser, companyId: string) {
+    // ADMIN-only controller already, but keep minimal guard for future use
+    if (
+      user.role === 'CLIENT' &&
+      user.companyId &&
+      user.companyId !== companyId
+    ) {
+      throw new ForbiddenException('Sem acesso à empresa informada');
+    }
+
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: {
+        id: true,
+        logoFileId: true,
+        logoFile: {
+          select: { originalName: true, mimeType: true, path: true },
+        },
+      },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+    if (!company.logoFile || !company.logoFileId)
+      throw new NotFoundException('Logo não cadastrada');
+    if (!existsSync(company.logoFile.path))
+      throw new NotFoundException('Arquivo não encontrado no servidor');
+
+    return {
+      file: new StreamableFile(createReadStream(company.logoFile.path)),
+      meta: {
+        originalName: company.logoFile.originalName,
+        mimeType: company.logoFile.mimeType,
+      },
+    };
+  }
+
+  async removeLogo(companyId: string) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+
+    await this.prisma.company.update({
+      where: { id: company.id },
+      data: { logoFileId: null },
+    });
+
+    return { companyId: company.id, logoFileId: null };
+  }
+}
