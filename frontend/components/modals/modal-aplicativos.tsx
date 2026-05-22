@@ -25,7 +25,7 @@ const aplicativos = [
     nome: "Zabbix",
     descricao:
       "Monitoramento de hosts, triggers, disponibilidade e eventos.",
-    href: "https://support.zabbix.com/servicedesk/customer/user/login?destination=portals",
+    href: "https://zabbix-prd.alletecnologia.com/index.php",
     icon: Activity,
   },
   {

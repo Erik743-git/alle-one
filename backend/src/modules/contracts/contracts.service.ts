@@ -58,7 +58,7 @@ export class ContractsService {
     const values = raw
       .split(',')
       .map((s) => s.trim())
-      .filter(Boolean) as string[];
+      .filter(Boolean);
 
     const allowed: TifluxContractStatus[] = ['actives', 'readjust', 'expired'];
     const filtered = values.filter((v) =>
@@ -117,7 +117,7 @@ export class ContractsService {
         limit,
         totalItems,
       },
-      items: contracts as TifluxContract[],
+      items: contracts,
     };
   }
 }

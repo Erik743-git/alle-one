@@ -11,8 +11,9 @@ import {
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { getStoredUser } from "@/lib/session";
 import {
   companiesService,
@@ -22,11 +23,14 @@ import {
   getCompleteDashboard,
   refreshCompleteDashboard,
   type DashboardAlertasMes,
+  type DashboardAlertasSemana,
   type DashboardChamadosMes,
   type DashboardCompleteResponse,
   type DashboardHorasMes,
   type DashboardTopHostsMes,
   type DashboardTopTrigger,
+  type WorkHoursTifluxLine,
+  type WorkHoursTifluxSummary,
 } from "@/lib/services/dashboard.service";
 import {
   AlertCircle,
@@ -172,6 +176,54 @@ function buildEmptyHoursRows(
   return rows;
 }
 
+function normalizeWorkHoursSummary(raw: unknown): WorkHoursTifluxSummary | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const o = raw as Record<string, unknown>;
+  const buckets = new Set(["externo", "remoto", "interno", "sem"]);
+  const linhasRaw = Array.isArray(o.linhas) ? o.linhas : [];
+  const linhas: WorkHoursTifluxLine[] = linhasRaw.map((line) => {
+    const l = line as Record<string, unknown>;
+    const b = String(l.assistenciaBucket ?? "sem");
+    return {
+      data: String(l.data ?? ""),
+      horaInicio: String(l.horaInicio ?? ""),
+      horaFim: String(l.horaFim ?? ""),
+      duracaoFormatada: String(l.duracaoFormatada ?? ""),
+      assistencia: String(l.assistencia ?? ""),
+      assistenciaBucket: buckets.has(b)
+        ? (b as WorkHoursTifluxLine["assistenciaBucket"])
+        : "sem",
+      ticketNumber: Number(l.ticketNumber ?? 0),
+      titulo: String(l.titulo ?? ""),
+      atendente: String(l.atendente ?? ""),
+    };
+  });
+
+  return {
+    totalTicketsDistintos: Number(o.totalTicketsDistintos ?? 0),
+    totalMinutos: Number(o.totalMinutos ?? 0),
+    totalHorasFormatadas: String(o.totalHorasFormatadas ?? "00:00"),
+    semAssistenciaMinutos: Number(o.semAssistenciaMinutos ?? 0),
+    semAssistenciaFormatado: String(o.semAssistenciaFormatado ?? "00:00"),
+    externoMinutos: Number(o.externoMinutos ?? 0),
+    externoFormatado: String(o.externoFormatado ?? "00:00"),
+    remotoMinutos: Number(o.remotoMinutos ?? 0),
+    remotoFormatado: String(o.remotoFormatado ?? "00:00"),
+    internoMinutos: Number(o.internoMinutos ?? 0),
+    internoFormatado: String(o.internoFormatado ?? "00:00"),
+    totalApontamentosNoPeriodo: Number.isFinite(Number(o.totalApontamentosNoPeriodo))
+      ? Number(o.totalApontamentosNoPeriodo)
+      : linhas.length,
+    limiteLinhas: Number.isFinite(Number(o.limiteLinhas))
+      ? Number(o.limiteLinhas)
+      : linhas.length,
+    linhas,
+    linhasTruncadas: Boolean(o.linhasTruncadas),
+  };
+}
+
 function normalizeDashboardResponse(
   raw: DashboardCompleteResponse,
 ): DashboardCompleteResponse {
@@ -202,6 +254,15 @@ function normalizeDashboardResponse(
     chamadosPorMes: Array.isArray(raw?.chamadosPorMes) ? raw.chamadosPorMes : [],
     horasPorMes: Array.isArray(raw?.horasPorMes) ? raw.horasPorMes : [],
     alertasPorMes: Array.isArray(raw?.alertasPorMes) ? raw.alertasPorMes : [],
+    alertasPorSemana: Array.isArray(raw?.alertasPorSemana)
+      ? raw.alertasPorSemana.map((item) => ({
+          weekKey: item?.weekKey ?? "",
+          weekLabel: item?.weekLabel ?? "",
+          High: Number(item?.High ?? 0),
+          Disaster: Number(item?.Disaster ?? 0),
+          Total: Number(item?.Total ?? 0),
+        }))
+      : [],
     principaisHostsPorMes: Array.isArray(raw?.principaisHostsPorMes)
       ? raw.principaisHostsPorMes.map((item) => ({
           monthKey: item?.monthKey ?? "",
@@ -214,6 +275,9 @@ function normalizeDashboardResponse(
     hostsDetalhados: Array.isArray(raw?.hostsDetalhados) ? raw.hostsDetalhados : [],
     templates: Array.isArray(raw?.templates) ? raw.templates : [],
     eventosRecentes: Array.isArray(raw?.eventosRecentes) ? raw.eventosRecentes : [],
+    resumoHorasTrabalhadas: normalizeWorkHoursSummary(
+      (raw as { resumoHorasTrabalhadas?: unknown }).resumoHorasTrabalhadas,
+    ),
   };
 }
 
@@ -431,7 +495,14 @@ export default function DashboardPage() {
             Number(normalized.summary.totalHoras ?? 0) === 0 &&
             Number(previous.summary.totalHoras ?? 0) > 0;
 
-          if (!shouldPreserveHours) {
+          const prevResumo = previous.resumoHorasTrabalhadas;
+          const normResumo = normalized.resumoHorasTrabalhadas;
+          const shouldPreserveResumo =
+            sameCompany &&
+            (!normResumo || normResumo.linhas.length === 0) &&
+            (prevResumo?.linhas?.length ?? 0) > 0;
+
+          if (!shouldPreserveHours && !shouldPreserveResumo) {
             return normalized;
           }
 
@@ -439,13 +510,22 @@ export default function DashboardPage() {
             ...normalized,
             summary: {
               ...normalized.summary,
-              totalHoras: previous.summary.totalHoras,
-              totalHorasFormatadas: previous.summary.totalHorasFormatadas,
+              totalHoras: shouldPreserveHours
+                ? previous.summary.totalHoras
+                : normalized.summary.totalHoras,
+              totalHorasFormatadas: shouldPreserveHours
+                ? previous.summary.totalHorasFormatadas
+                : normalized.summary.totalHorasFormatadas,
             },
             horasPorMes:
-              Array.isArray(previous.horasPorMes) && previous.horasPorMes.length
+              shouldPreserveHours &&
+              Array.isArray(previous.horasPorMes) &&
+              previous.horasPorMes.length
                 ? previous.horasPorMes
                 : normalized.horasPorMes,
+            resumoHorasTrabalhadas: shouldPreserveResumo
+              ? previous.resumoHorasTrabalhadas
+              : normalized.resumoHorasTrabalhadas,
           };
         });
       } catch (err) {
@@ -500,6 +580,20 @@ export default function DashboardPage() {
 
   const alertasChartData = useMemo<DashboardAlertasMes[]>(() => {
     return dashboard?.alertasPorMes ?? [];
+  }, [dashboard]);
+
+  const alertasChartWeeklyData = useMemo<DashboardAlertasSemana[]>(() => {
+    const weekly = dashboard?.alertasPorSemana;
+    if (weekly && weekly.length > 0) {
+      return weekly;
+    }
+    return (dashboard?.alertasPorMes ?? []).map((row) => ({
+      weekKey: row.monthKey,
+      weekLabel: row.monthLabel,
+      High: row.High,
+      Disaster: row.Disaster,
+      Total: row.Total,
+    }));
   }, [dashboard]);
 
   const hostsPorMes = useMemo<DashboardTopHostsMes[]>(() => {
@@ -562,11 +656,10 @@ export default function DashboardPage() {
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Data inicial
                 </p>
-                <input
-                  type="date"
+                <DatePickerField
                   value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none ring-1 ring-transparent transition focus:ring-ring/50"
+                  onChange={setStartDate}
+                  max={endDate || undefined}
                 />
               </div>
 
@@ -574,11 +667,10 @@ export default function DashboardPage() {
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Data final
                 </p>
-                <input
-                  type="date"
+                <DatePickerField
                   value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none ring-1 ring-transparent transition focus:ring-ring/50"
+                  onChange={setEndDate}
+                  min={startDate || undefined}
                 />
               </div>
             </div>
@@ -624,7 +716,13 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-6">
             <MetricCard
               title="Total de tickets"
-              value={initialLoading ? "--" : dashboard?.summary.totalTickets ?? 0}
+              value={
+                initialLoading
+                  ? "--"
+                  : dashboard?.resumoHorasTrabalhadas != null
+                    ? dashboard.resumoHorasTrabalhadas.totalTicketsDistintos
+                    : (dashboard?.summary.totalTickets ?? 0)
+              }
               icon={<Ticket size={18} className="text-primary" />}
             />
             <MetricCard
@@ -637,9 +735,11 @@ export default function DashboardPage() {
               value={
                 initialLoading
                   ? "--"
-                  : (dashboard?.summary.totalHorasFormatadas ??
-                    dashboard?.summary.totalHoras ??
-                    0)
+                  : dashboard?.resumoHorasTrabalhadas != null
+                    ? dashboard.resumoHorasTrabalhadas.totalHorasFormatadas
+                    : (dashboard?.summary.totalHorasFormatadas ??
+                      dashboard?.summary.totalHoras ??
+                      0)
               }
               icon={<Clock3 size={18} className="text-primary" />}
             />
@@ -663,6 +763,10 @@ export default function DashboardPage() {
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
               <CardTitle>Chamados por mês</CardTitle>
+              <CardDescription>
+                Gráfico por criação do ticket. Abaixo: apontamentos no período do filtro (totais
+                alinhados aos cartões de tickets/horas quando existirem dados de apontamento).
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="overflow-x-auto rounded-2xl border border-border">
@@ -726,6 +830,78 @@ export default function DashboardPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+
+              {dashboard?.resumoHorasTrabalhadas ? (
+                <div className="space-y-4 border-t border-border pt-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Apontamentos no período
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Resumo agregado (totais no período filtrado).
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2 text-center">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Tickets (apont.)
+                      </p>
+                      <p className="text-lg font-bold">
+                        {dashboard.resumoHorasTrabalhadas.totalTicketsDistintos}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2 text-center">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Total horas
+                      </p>
+                      <p className="text-lg font-bold">
+                        {dashboard.resumoHorasTrabalhadas.totalHorasFormatadas}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2 text-center">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Sem assist.
+                      </p>
+                      <p className="text-lg font-bold">
+                        {dashboard.resumoHorasTrabalhadas.semAssistenciaFormatado}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2 text-center">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Externo
+                      </p>
+                      <p className="text-lg font-bold">
+                        {dashboard.resumoHorasTrabalhadas.externoFormatado}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2 text-center">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Remoto
+                      </p>
+                      <p className="text-lg font-bold">
+                        {dashboard.resumoHorasTrabalhadas.remotoFormatado}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/25 px-3 py-2 text-center">
+                      <p className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Interno
+                      </p>
+                      <p className="text-lg font-bold">
+                        {dashboard.resumoHorasTrabalhadas.internoFormatado}
+                      </p>
+                    </div>
+                  </div>
+
+                  {dashboard.resumoHorasTrabalhadas.linhasTruncadas ? (
+                    <p className="text-xs text-amber-500/90">
+                      O resumo considerou no máximo {dashboard.resumoHorasTrabalhadas.limiteLinhas}{" "}
+                      apontamentos na soma. Ajuste TIFLUX_RESUMO_MAX_LINHAS no backend se precisar do
+                      total completo.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 
@@ -830,14 +1006,20 @@ export default function DashboardPage() {
 
               <div className="h-[360px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={alertasChartData}>
+                  <LineChart data={alertasChartWeeklyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                     <XAxis
-                      dataKey="monthLabel"
+                      dataKey="weekLabel"
                       stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick }}
+                      tick={{ fill: chartTheme.tick, fontSize: 11 }}
                       tickLine={{ stroke: chartTheme.tick }}
                       axisLine={{ stroke: chartTheme.grid }}
+                      interval={0}
+                      angle={alertasChartWeeklyData.length > 4 ? -25 : 0}
+                      textAnchor={
+                        alertasChartWeeklyData.length > 4 ? "end" : "middle"
+                      }
+                      height={alertasChartWeeklyData.length > 4 ? 56 : 30}
                     />
                     <YAxis
                       stroke={chartTheme.tick}
@@ -856,13 +1038,17 @@ export default function DashboardPage() {
                       type="monotone"
                       dataKey="High"
                       stroke="#4f8bd6"
-                      strokeWidth={3}
+                      strokeWidth={2}
+                      dot={{ r: 5, strokeWidth: 2, fill: "#4f8bd6" }}
+                      activeDot={{ r: 6 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="Disaster"
                       stroke="#d85c57"
-                      strokeWidth={3}
+                      strokeWidth={2}
+                      dot={{ r: 5, strokeWidth: 2, fill: "#d85c57" }}
+                      activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>

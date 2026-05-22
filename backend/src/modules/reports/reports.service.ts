@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -59,6 +60,8 @@ function safeFilenamePart(value: string) {
 
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tiflux: TifluxService,
@@ -67,6 +70,7 @@ export class ReportsService {
 
   private async fetchChartPng(params: {
     chart: unknown;
+    plugins?: string[];
     width?: number;
     height?: number;
     backgroundColor?: string;
@@ -74,27 +78,37 @@ export class ReportsService {
     // ExcelJS não cria gráficos nativos; geramos o gráfico como imagem via QuickChart.
     // Se o ambiente bloquear saída HTTP, só omitimos o gráfico (o XLSX ainda sai com as tabelas).
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+    const timeout = setTimeout(() => controller.abort(), 35_000);
     try {
       const res = await fetch('https://quickchart.io/chart', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          width: params.width ?? 1100,
-          height: params.height ?? 380,
+          width: params.width ?? 900,
+          height: params.height ?? 320,
+          devicePixelRatio: 1,
           backgroundColor: params.backgroundColor ?? 'white',
           format: 'png',
+          // Padrão do QuickChart é Chart.js v2; nossos scales/plugins são v3+.
+          version: '3.9.1',
           chart: params.chart,
+          ...(params.plugins?.length ? { plugins: params.plugins } : {}),
         }),
         signal: controller.signal,
       });
       if (!res.ok) {
+        this.logger.warn(
+          `QuickChart retornou HTTP ${res.status}; gráfico omitido do XLSX.`,
+        );
         return null;
       }
       const arr = await res.arrayBuffer();
       // Node 22 tipa Buffer como Buffer<ArrayBufferLike>; ExcelJS espera Buffer "clássico".
       return Buffer.from(arr) as unknown as Buffer;
-    } catch {
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao gerar gráfico QuickChart: ${err instanceof Error ? err.message : err}`,
+      );
       return null;
     } finally {
       clearTimeout(timeout);
@@ -129,8 +143,593 @@ export class ReportsService {
     row.height = 20;
   }
 
-  private styleTotalRow(row: ExcelJS.Row) {
-    row.font = { bold: true, color: { argb: 'FFB91C1C' } }; // vermelho
+  /** Paleta e layout do relatório Tipo 4 (modelo Alle WhatsApp). */
+  private readonly tipo4Theme = {
+    titleBand: 'FF9DC3E6',
+    tableTitle: 'FF1F3864',
+    colHeader: 'FF4472C4',
+    rowAlt: 'FFD9E2F3',
+    border: 'FFB4C6E7',
+    infra: '#4472C4',
+    noc: '#C00000',
+    sistemas: '#548235',
+    rotinas: '#7030A0',
+    totalCyan: '#00B0F0',
+    high: '#4472C4',
+    disaster: '#C00000',
+  };
+
+  private splitTipo4MonthRows<T extends { monthLabel: string }>(rows: T[]) {
+    const months = rows.filter((r) => r.monthLabel !== 'Total');
+    const total = rows.find((r) => r.monthLabel === 'Total') ?? null;
+    return { months, total };
+  }
+
+  private formatTipo4PeriodLabel(start: Date, end: Date) {
+    const fmt = (d: Date) =>
+      d.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      });
+    return `${fmt(start)} — ${fmt(end)}`;
+  }
+
+  private sumTipo4Keys(
+    rows: Array<Record<string, unknown>>,
+    keys: string[],
+  ): Record<string, number> {
+    const total: Record<string, number> = { monthLabel: 'Total' } as any;
+    for (const k of keys) {
+      total[k] = rows.reduce((acc, r) => acc + (Number(r[k]) || 0), 0);
+    }
+    return total;
+  }
+
+  private styleTipo4TitleBand(sheet: ExcelJS.Worksheet, title: string, colSpan: number) {
+    const lastCol = String.fromCharCode(64 + colSpan);
+    sheet.mergeCells(`A1:${lastCol}1`);
+    const cell = sheet.getCell('A1');
+    cell.value = title;
+    cell.font = { bold: true, size: 22, color: { argb: 'FF000000' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: this.tipo4Theme.titleBand },
+    };
+    cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    sheet.getRow(1).height = 40;
+  }
+
+  private styleTipo4TableTitleRow(
+    sheet: ExcelJS.Worksheet,
+    title: string,
+    colSpan: number,
+    rowNumber = 3,
+  ) {
+    const lastCol = String.fromCharCode(64 + colSpan);
+    const rowRef = `A${rowNumber}:${lastCol}${rowNumber}`;
+    sheet.mergeCells(rowRef);
+    const cell = sheet.getCell(`A${rowNumber}`);
+    cell.value = title;
+    cell.font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: this.tipo4Theme.tableTitle },
+    };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    sheet.getRow(rowNumber).height = 22;
+  }
+
+  private styleTipo4ColumnHeaderRow(row: ExcelJS.Row, colCount: number) {
+    row.height = 20;
+    for (let c = 1; c <= colCount; c += 1) {
+      const cell = row.getCell(c);
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: this.tipo4Theme.colHeader },
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        bottom: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        left: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        right: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+      };
+    }
+  }
+
+  private styleTipo4DataRow(
+    row: ExcelJS.Row,
+    rowIndex: number,
+    colCount: number,
+    options?: { minHeight?: number },
+  ) {
+    const fillArgb =
+      rowIndex % 2 === 0 ? 'FFFFFFFF' : this.tipo4Theme.rowAlt;
+    row.alignment = { vertical: 'middle', horizontal: 'center' };
+    row.height = options?.minHeight ?? 18;
+    for (let c = 1; c <= colCount; c += 1) {
+      const cell = row.getCell(c);
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: fillArgb },
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        bottom: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        left: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        right: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+      };
+    }
+  }
+
+  private tipo4SeverityFont(severity: string): Partial<ExcelJS.Font> {
+    return {
+      bold: true,
+      color: {
+        argb: severity === 'Disaster' ? 'FFC00000' : 'FF806000',
+      },
+    };
+  }
+
+  private writeTipo4TopTriggersSheet(params: {
+    sheet: ExcelJS.Worksheet;
+    companyName: string;
+    group: string;
+    periodLabel: string;
+    dashSummary: Record<string, unknown> | undefined;
+    topTriggers: Array<{
+      host: string;
+      trigger: string;
+      severity: string;
+      count: number;
+    }>;
+    principaisHosts: Array<{
+      monthLabel: string;
+      High: Array<{ host: string; quantity: number }>;
+      Disaster: Array<{ host: string; quantity: number }>;
+    }>;
+    addCompanyLogo: (sheet: ExcelJS.Worksheet) => void;
+  }) {
+    const {
+      sheet,
+      companyName,
+      group,
+      periodLabel,
+      dashSummary,
+      topTriggers,
+      principaisHosts,
+      addCompanyLogo,
+    } = params;
+
+    const colCount = 5;
+    const lastCol = String.fromCharCode(64 + colCount);
+
+    const totalHosts = Number(dashSummary?.totalHosts) || 0;
+    const totalHigh = Number(dashSummary?.totalHigh) || 0;
+    const totalDisaster = Number(dashSummary?.totalDisaster) || 0;
+    const totalAlerts = totalHigh + totalDisaster;
+    const uniqueTriggers =
+      Number(dashSummary?.totalTriggersDistintos) || topTriggers.length;
+    const top10 = topTriggers.slice(0, 10);
+
+    this.styleTipo4TitleBand(
+      sheet,
+      `Top Triggers — ${companyName}`,
+      colCount,
+    );
+    addCompanyLogo(sheet);
+
+    sheet.mergeCells(`A2:${lastCol}2`);
+    const sub = sheet.getCell('A2');
+    sub.value = `Grupo Zabbix: ${group}  •  Período: ${periodLabel}`;
+    sub.font = { size: 11, italic: true, color: { argb: 'FF333333' } };
+    sub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    sheet.getRow(2).height = 22;
+
+    this.styleTipo4TableTitleRow(sheet, 'Resumo do período', colCount, 3);
+
+    const kpiHeader = sheet.getRow(4);
+    kpiHeader.values = [
+      'Hosts no grupo',
+      'Triggers distintos',
+      'Total alertas',
+      'High',
+      'Disaster',
+    ];
+    this.styleTipo4ColumnHeaderRow(kpiHeader, colCount);
+
+    const kpiValues = sheet.getRow(5);
+    kpiValues.values = [
+      totalHosts,
+      uniqueTriggers,
+      totalAlerts,
+      totalHigh,
+      totalDisaster,
+    ];
+    kpiValues.height = 30;
+    for (let c = 1; c <= colCount; c += 1) {
+      const cell = kpiValues.getCell(c);
+      cell.font = { bold: true, size: 16, color: { argb: 'FF1F3864' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE8F0FA' },
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        bottom: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        left: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        right: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+      };
+    }
+
+    let rowIdx = 7;
+    this.styleTipo4TableTitleRow(sheet, 'Top 10 triggers', colCount, rowIdx);
+    rowIdx += 1;
+
+    const trigHeader = sheet.getRow(rowIdx);
+    trigHeader.values = ['#', 'Host', 'Trigger', 'Severidade', 'Alertas'];
+    this.styleTipo4ColumnHeaderRow(trigHeader, colCount);
+    rowIdx += 1;
+
+    for (let i = 0; i < top10.length; i += 1) {
+      const t = top10[i];
+      const row = sheet.getRow(rowIdx);
+      row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
+      this.styleTipo4DataRow(row, i, colCount, { minHeight: 22 });
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+      row.getCell(3).font = { size: 9 };
+      row.getCell(3).alignment = {
+        horizontal: 'left',
+        vertical: 'middle',
+        wrapText: true,
+      };
+      row.getCell(4).font = this.tipo4SeverityFont(t.severity);
+      row.getCell(4).alignment = { horizontal: 'center' };
+      row.getCell(5).font = { bold: true };
+      row.getCell(5).alignment = { horizontal: 'center' };
+      rowIdx += 1;
+    }
+
+    if (principaisHosts.length > 0) {
+      rowIdx += 1;
+      this.styleTipo4TableTitleRow(
+        sheet,
+        'Principais hosts por mês (top 3 por severidade)',
+        colCount,
+        rowIdx,
+      );
+      rowIdx += 1;
+
+      const hostsHeader = sheet.getRow(rowIdx);
+      hostsHeader.values = ['Mês', 'Host', 'Severidade', '#', 'Alertas'];
+      this.styleTipo4ColumnHeaderRow(hostsHeader, colCount);
+      rowIdx += 1;
+
+      let zebra = 0;
+      for (const m of principaisHosts) {
+        const entries: Array<{
+          pos: number;
+          severity: string;
+          host: string;
+          qty: number;
+        }> = [];
+        (m.High ?? []).slice(0, 3).forEach((h, idx) => {
+          entries.push({
+            pos: idx + 1,
+            severity: 'High',
+            host: h.host,
+            qty: h.quantity,
+          });
+        });
+        (m.Disaster ?? []).slice(0, 3).forEach((h, idx) => {
+          entries.push({
+            pos: idx + 1,
+            severity: 'Disaster',
+            host: h.host,
+            qty: h.quantity,
+          });
+        });
+
+        if (entries.length === 0) {
+          const row = sheet.getRow(rowIdx);
+          row.values = [m.monthLabel, '—', '—', '—', '—'];
+          this.styleTipo4DataRow(row, zebra, colCount);
+          row.getCell(1).alignment = { horizontal: 'left', indent: 1 };
+          row.getCell(2).alignment = { horizontal: 'left', indent: 1 };
+          zebra += 1;
+          rowIdx += 1;
+          continue;
+        }
+
+        const blockStart = rowIdx;
+        for (let j = 0; j < entries.length; j += 1) {
+          const e = entries[j];
+          const row = sheet.getRow(rowIdx);
+          row.values = [
+            j === 0 ? m.monthLabel : '',
+            e.host,
+            e.severity,
+            e.pos,
+            e.qty,
+          ];
+          this.styleTipo4DataRow(row, zebra, colCount);
+          row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+          row.getCell(3).font = this.tipo4SeverityFont(e.severity);
+          row.getCell(3).alignment = { horizontal: 'center' };
+          row.getCell(4).alignment = { horizontal: 'center' };
+          row.getCell(5).alignment = { horizontal: 'center' };
+          row.getCell(5).font = { bold: true };
+          zebra += 1;
+          rowIdx += 1;
+        }
+
+        if (entries.length > 1) {
+          sheet.mergeCells(`A${blockStart}:A${rowIdx - 1}`);
+          sheet.getCell(`A${blockStart}`).alignment = {
+            vertical: 'middle',
+            horizontal: 'left',
+            wrapText: false,
+            indent: 1,
+          };
+        }
+      }
+    }
+
+    sheet.getColumn(1).width = 22;
+    sheet.getColumn(2).width = 34;
+    sheet.getColumn(3).width = 42;
+    sheet.getColumn(4).width = 14;
+    sheet.getColumn(5).width = 10;
+
+    sheet.views = [{ state: 'frozen', ySplit: 3, activeCell: 'A4' }];
+  }
+
+  private writeTipo4AllTriggersSheet(params: {
+    sheet: ExcelJS.Worksheet;
+    companyName: string;
+    group: string;
+    periodLabel: string;
+    rows: Array<{
+      host: string;
+      trigger: string;
+      severity: string;
+      count: number;
+    }>;
+    addCompanyLogo: (sheet: ExcelJS.Worksheet) => void;
+  }) {
+    const { sheet, companyName, group, periodLabel, rows, addCompanyLogo } =
+      params;
+    const colCount = 5;
+    const lastCol = String.fromCharCode(64 + colCount);
+
+    this.styleTipo4TitleBand(
+      sheet,
+      `Triggers do período — ${companyName}`,
+      colCount,
+    );
+    addCompanyLogo(sheet);
+
+    sheet.mergeCells(`A2:${lastCol}2`);
+    const sub = sheet.getCell('A2');
+    sub.value = `Grupo Zabbix: ${group}  •  Período: ${periodLabel}  •  ${rows.length} linha(s)`;
+    sub.font = { size: 11, italic: true, color: { argb: 'FF333333' } };
+    sub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    sheet.getRow(2).height = 22;
+
+    const headerRow = sheet.getRow(4);
+    headerRow.values = ['#', 'Host', 'Trigger', 'Severidade', 'Alertas'];
+    this.styleTipo4ColumnHeaderRow(headerRow, colCount);
+
+    let rowIdx = 5;
+    for (let i = 0; i < rows.length; i += 1) {
+      const t = rows[i];
+      const row = sheet.getRow(rowIdx);
+      row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
+      this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+      row.getCell(3).font = { size: 9 };
+      row.getCell(3).alignment = {
+        horizontal: 'left',
+        vertical: 'middle',
+        wrapText: true,
+      };
+      row.getCell(4).font = this.tipo4SeverityFont(t.severity);
+      row.getCell(4).alignment = { horizontal: 'center' };
+      row.getCell(5).alignment = { horizontal: 'center' };
+      row.getCell(5).font = { bold: true };
+      rowIdx += 1;
+    }
+
+    sheet.getColumn(1).width = 8;
+    sheet.getColumn(2).width = 34;
+    sheet.getColumn(3).width = 48;
+    sheet.getColumn(4).width = 12;
+    sheet.getColumn(5).width = 10;
+    sheet.views = [{ state: 'frozen', ySplit: 4, activeCell: 'A5' }];
+  }
+
+  private tipo4ChartPlugins() {
+    return ['chartjs-plugin-datalabels'];
+  }
+
+  private tipo4DatalabelsPlugin() {
+    return {
+      datalabels: {
+        anchor: 'end',
+        align: 'top',
+        offset: 4,
+        clip: false,
+        color: '#333333',
+        font: { size: 11, weight: 'bold' },
+        formatter: (value: number) => (value > 0 ? String(value) : ''),
+      },
+    };
+  }
+
+  /** Teto do eixo Y com folga para o rótulo acima da barra mais alta. */
+  private tipo4BarYAxisMax(peak: number): number {
+    if (peak <= 0) return 5;
+    const withHeadroom = peak + Math.max(5, Math.ceil(peak * 0.18));
+    return Math.max(5, Math.ceil(withHeadroom / 5) * 5);
+  }
+
+  private buildTipo4GroupedBarChart(params: {
+    title: string;
+    labels: string[];
+    datasets: Array<{ label: string; data: number[]; backgroundColor: string }>;
+    yMax?: number;
+  }) {
+    const peak = Math.max(
+      0,
+      ...params.datasets.flatMap((d) => d.data.map((n) => Number(n) || 0)),
+    );
+    const autoMax = this.tipo4BarYAxisMax(peak);
+    const yMax = params.yMax != null ? Math.max(params.yMax, autoMax) : autoMax;
+
+    return {
+      type: 'bar',
+      data: {
+        labels: params.labels,
+        datasets: params.datasets.map((d) => ({
+          ...d,
+          borderWidth: 0,
+          maxBarThickness: 48,
+        })),
+      },
+      options: {
+        layout: { padding: { top: 28, bottom: 8, left: 4, right: 4 } },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            align: 'center',
+            labels: { boxWidth: 14, padding: 14 },
+          },
+          title: {
+            display: true,
+            text: params.title,
+            position: 'bottom',
+            font: { size: 12 },
+            padding: { top: 12 },
+          },
+          ...this.tipo4DatalabelsPlugin(),
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+          },
+          y: {
+            beginAtZero: true,
+            max: yMax,
+            grid: { color: 'rgba(0,0,0,0.08)' },
+          },
+        },
+      },
+    };
+  }
+
+  private buildTipo4LineChart(params: {
+    title: string;
+    labels: string[];
+    datasets: Array<{
+      label: string;
+      data: number[];
+      borderColor: string;
+    }>;
+    rotateLabels?: boolean;
+  }) {
+    const peak = Math.max(
+      0,
+      ...params.datasets.flatMap((d) => d.data.map((n) => Number(n) || 0)),
+    );
+    const yMax = this.tipo4BarYAxisMax(peak);
+
+    return {
+      type: 'line',
+      data: {
+        labels: params.labels,
+        datasets: params.datasets.map((d) => ({
+          label: d.label,
+          data: d.data,
+          borderColor: d.borderColor,
+          backgroundColor: 'transparent',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: d.borderColor,
+          tension: 0.15,
+          fill: false,
+        })),
+      },
+      options: {
+        layout: { padding: { top: 28, bottom: 8 } },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'bottom',
+            align: 'center',
+            labels: { boxWidth: 14, padding: 12 },
+          },
+          title: {
+            display: true,
+            text: params.title,
+            position: 'bottom',
+            font: { size: 12 },
+            padding: { top: 10 },
+          },
+          ...this.tipo4DatalabelsPlugin(),
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: params.rotateLabels
+              ? { maxRotation: 40, minRotation: 25, autoSkip: false }
+              : undefined,
+          },
+          y: {
+            beginAtZero: true,
+            max: yMax,
+            grid: { color: 'rgba(0,0,0,0.08)' },
+          },
+        },
+      },
+    };
+  }
+
+  private async embedTipo4Chart(
+    workbook: ExcelJS.Workbook,
+    sheet: ExcelJS.Worksheet,
+    rowAfterTable: number,
+    chartConfig: unknown,
+  ) {
+    const chart = await this.fetchChartPng({
+      width: 880,
+      height: 300,
+      backgroundColor: 'white',
+      chart: chartConfig,
+      plugins: this.tipo4ChartPlugins(),
+    });
+    if (!chart) return;
+    const imageId = workbook.addImage({ buffer: chart as any, extension: 'png' });
+    const chartRow = rowAfterTable + 0.2;
+    sheet.addImage(imageId, {
+      tl: { col: 0.1, row: chartRow },
+      ext: { width: 720, height: 240 },
+    });
+    const rowsNeeded = Math.ceil(240 / 18);
+    for (let r = 0; r < rowsNeeded; r += 1) {
+      sheet.getRow(Math.floor(chartRow) + r + 1).height = 18;
+    }
   }
 
   private async generateTipo4Xlsx(params: {
@@ -173,37 +772,66 @@ export class ReportsService {
       : [];
     const horas = Array.isArray(dash.horasPorMes) ? dash.horasPorMes : [];
     const alertas = Array.isArray(dash.alertasPorMes) ? dash.alertasPorMes : [];
+    const alertasSemanaRaw = Array.isArray(
+      (dash as { alertasPorSemana?: unknown[] }).alertasPorSemana,
+    )
+      ? ((dash as {
+          alertasPorSemana: Array<{
+            weekLabel: string;
+            High: number;
+            Disaster: number;
+          }>;
+        }).alertasPorSemana ?? [])
+      : [];
 
-    const withTotalRow = <T extends { monthLabel: string; [k: string]: any }>(
-      rows: T[],
-      keys: string[],
-    ) => {
-      const total: any = { monthLabel: 'Total', monthKey: 'TOTAL' };
-      for (const k of keys) {
-        total[k] = rows.reduce((acc, r) => acc + (Number(r[k]) || 0), 0);
-      }
-      return [...rows, total] as T[];
-    };
-
-    const chamadosRows = withTotalRow(chamados as any, [
-      'Infraestrutura',
-      'NOC',
-      'Sistema',
-      'Rotinas',
-      'Total',
-    ]);
-    const horasRows = withTotalRow(horas as any, [
-      'Infraestrutura',
-      'NOC',
-      'Sistema',
-      'Rotinas',
-      'Total',
-    ]);
-    const alertasRows = withTotalRow(alertas as any, [
-      'High',
-      'Disaster',
-      'Total',
-    ]);
+    const chamadosMonths = this.splitTipo4MonthRows(chamados as any).months;
+    const horasMonths = this.splitTipo4MonthRows(horas as any).months;
+    const alertasMonths = this.splitTipo4MonthRows(alertas as any).months;
+    const alertasWeeks =
+      alertasSemanaRaw.length > 0
+        ? alertasSemanaRaw
+        : (alertasMonths as Array<{
+            monthLabel: string;
+            High: number;
+            Disaster: number;
+          }>).map((row) => ({
+            weekLabel: row.monthLabel,
+            High: Number(row.High) || 0,
+            Disaster: Number(row.Disaster) || 0,
+          }));
+    const dashSummary = (dash as { summary?: Record<string, unknown> })
+      .summary;
+    const topTriggers = Array.isArray(
+      (dash as { topTriggers?: unknown[] }).topTriggers,
+    )
+      ? ((dash as { topTriggers: Array<{
+          host: string;
+          trigger: string;
+          severity: string;
+          count: number;
+        }> }).topTriggers)
+      : [];
+    const allTriggersInPeriod = Array.isArray(
+      (dash as { allTriggersInPeriod?: unknown[] }).allTriggersInPeriod,
+    )
+      ? ((dash as { allTriggersInPeriod: Array<{
+          host: string;
+          trigger: string;
+          severity: string;
+          count: number;
+        }> }).allTriggersInPeriod)
+      : topTriggers;
+    const principaisHosts = Array.isArray(
+      (dash as { principaisHostsPorMes?: unknown[] }).principaisHostsPorMes,
+    )
+      ? ((dash as {
+          principaisHostsPorMes: Array<{
+            monthLabel: string;
+            High: Array<{ host: string; quantity: number }>;
+            Disaster: Array<{ host: string; quantity: number }>;
+          }>;
+        }).principaisHostsPorMes)
+      : [];
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Alle One';
@@ -226,149 +854,101 @@ export class ReportsService {
       });
     };
 
-    // Aba 1: Chamados por mês
+    // Aba 1: Chamados por mês (modelo Alle)
     {
       const sheet = workbook.addWorksheet('Chamados por mês', {
-        views: [{ state: 'frozen', ySplit: 6 }],
+        views: [{ state: 'frozen', ySplit: 5 }],
       });
+      const colCount = 6;
       sheet.columns = [
-        { key: 'monthLabel', width: 18 },
-        { key: 'Infraestrutura', width: 16 },
-        { key: 'NOC', width: 10 },
-        { key: 'Sistema', width: 12 },
-        { key: 'Rotinas', width: 12 },
-        { key: 'Total', width: 10 },
+        { width: 16 },
+        { width: 14 },
+        { width: 10 },
+        { width: 10 },
+        { width: 12 },
+        { width: 10 },
       ];
-      this.styleHeaderBand(sheet, 'Chamados Por Mês');
+      this.styleTipo4TitleBand(sheet, 'Chamados Por Mês', colCount);
       addCompanyLogo(sheet);
-
-      sheet.mergeCells('A3:F3');
-      sheet.getCell('A3').value = 'Total de Chamados';
-      sheet.getCell('A3').fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF0A2540' },
-      };
-      sheet.getCell('A3').font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      sheet.getCell('A3').alignment = {
-        horizontal: 'center',
-        vertical: 'middle',
-      };
-      sheet.getRow(3).height = 20;
+      this.styleTipo4TableTitleRow(sheet, 'Total de Tickets', colCount);
 
       const headerRow = sheet.getRow(4);
       headerRow.values = [
         'Mês',
         'Infraestrutura',
         'NOC',
-        'Sistemas',
         'Rotinas',
+        'Sistemas',
         'Total',
       ];
-      this.styleTableHeader(headerRow);
+      this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
       let rowIdx = 5;
-      for (const r of chamadosRows as any[]) {
+      for (const r of chamadosMonths as any[]) {
         const row = sheet.getRow(rowIdx);
+        const infra = Number(r.Infraestrutura) || 0;
         row.values = [
           r.monthLabel,
-          Number(r.Infraestrutura) || 0,
+          infra > 0 ? infra : null,
           Number(r.NOC) || 0,
-          Number(r.Sistema) || 0,
           Number(r.Rotinas) || 0,
+          Number(r.Sistema) || 0,
           Number(r.Total) || 0,
         ];
-        row.alignment = { vertical: 'middle', horizontal: 'center' };
-        if (r.monthLabel === 'Total') this.styleTotalRow(row);
+        this.styleTipo4DataRow(row, rowIdx - 5, colCount);
         rowIdx += 1;
       }
 
-      const chart = await this.fetchChartPng({
-        width: 1100,
-        height: 420,
-        backgroundColor: 'white',
-        chart: {
-          type: 'bar',
-          data: {
-            labels: (chamadosRows as any[]).map((r) => r.monthLabel),
-            datasets: [
-              {
-                label: 'Infraestrutura',
-                data: (chamadosRows as any[]).map((r) => r.Infraestrutura),
-                backgroundColor: '#4f8bd6',
-              },
-              {
-                label: 'NOC',
-                data: (chamadosRows as any[]).map((r) => r.NOC),
-                backgroundColor: '#8c6fd1',
-              },
-              {
-                label: 'Sistemas',
-                data: (chamadosRows as any[]).map((r) => r.Sistema),
-                backgroundColor: '#d85c57',
-              },
-              {
-                label: 'Rotinas',
-                data: (chamadosRows as any[]).map((r) => r.Rotinas),
-                backgroundColor: '#9bc45b',
-              },
-              {
-                label: 'Total',
-                data: (chamadosRows as any[]).map((r) => r.Total),
-                backgroundColor: '#57c1d9',
-              },
-            ],
-          },
-          options: {
-            plugins: {
-              legend: { position: 'top' },
-              title: { display: true, text: 'TICKETS POR MÊS' },
+      await this.embedTipo4Chart(
+        workbook,
+        sheet,
+        rowIdx + 1,
+        this.buildTipo4GroupedBarChart({
+          title: 'Tickets por Mês',
+          labels: (chamadosMonths as any[]).map((r) => r.monthLabel),
+          datasets: [
+            {
+              label: 'Infraestrutura',
+              data: (chamadosMonths as any[]).map((r) => r.Infraestrutura),
+              backgroundColor: this.tipo4Theme.infra,
             },
-            scales: { y: { beginAtZero: true } },
-          },
-        },
-      });
-      if (chart) {
-        const imageId = workbook.addImage({
-          buffer: chart as any,
-          extension: 'png',
-        });
-        sheet.addImage(imageId, {
-          tl: { col: 0, row: rowIdx + 1 },
-          ext: { width: 920, height: 350 },
-        });
-      }
+            {
+              label: 'NOC',
+              data: (chamadosMonths as any[]).map((r) => r.NOC),
+              backgroundColor: this.tipo4Theme.noc,
+            },
+            {
+              label: 'Sistemas',
+              data: (chamadosMonths as any[]).map((r) => r.Sistema),
+              backgroundColor: this.tipo4Theme.sistemas,
+            },
+            {
+              label: 'Rotinas',
+              data: (chamadosMonths as any[]).map((r) => r.Rotinas),
+              backgroundColor: this.tipo4Theme.rotinas,
+            },
+          ],
+        }),
+      );
     }
 
-    // Aba 2: Apontamento de Horas
+    // Aba 2: Apontamento de Horas (modelo Alle)
     {
       const sheet = workbook.addWorksheet('Apontamento de Horas', {
-        views: [{ state: 'frozen', ySplit: 6 }],
+        views: [{ state: 'frozen', ySplit: 5 }],
       });
+      const colCount = 6;
       sheet.columns = [
-        { key: 'monthLabel', width: 18 },
-        { key: 'Infraestrutura', width: 16 },
-        { key: 'NOC', width: 10 },
-        { key: 'Sistema', width: 12 },
-        { key: 'Rotinas', width: 12 },
-        { key: 'Total', width: 10 },
+        { width: 16 },
+        { width: 14 },
+        { width: 10 },
+        { width: 12 },
+        { width: 10 },
+        { width: 10 },
       ];
-      this.styleHeaderBand(sheet, 'Apontamento de Horas');
+      this.styleTipo4TitleBand(sheet, 'Apontamento de Horas', colCount);
       addCompanyLogo(sheet);
-
-      sheet.mergeCells('A3:F3');
-      sheet.getCell('A3').value = 'Total de Horas Apontadas';
-      sheet.getCell('A3').fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF0A2540' },
-      };
-      sheet.getCell('A3').font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      sheet.getCell('A3').alignment = {
-        horizontal: 'center',
-        vertical: 'middle',
-      };
-      sheet.getRow(3).height = 20;
+      this.styleTipo4TableTitleRow(sheet, 'Total de Horas Apontadas', colCount);
 
       const headerRow = sheet.getRow(4);
       headerRow.values = [
@@ -379,178 +959,145 @@ export class ReportsService {
         'Rotinas',
         'Total',
       ];
-      this.styleTableHeader(headerRow);
+      this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
+      const hourFmt = '#,##0.00';
       let rowIdx = 5;
-      for (const r of horasRows as any[]) {
+      for (const r of horasMonths as any[]) {
         const row = sheet.getRow(rowIdx);
+        const infra = Number(r.Infraestrutura) || 0;
         row.values = [
           r.monthLabel,
-          Number(r.Infraestrutura) || 0,
+          infra > 0 ? infra : null,
           Number(r.NOC) || 0,
           Number(r.Sistema) || 0,
           Number(r.Rotinas) || 0,
           Number(r.Total) || 0,
         ];
-        row.alignment = { vertical: 'middle', horizontal: 'center' };
-        row.getCell(2).numFmt = '0.00';
-        row.getCell(3).numFmt = '0.00';
-        row.getCell(4).numFmt = '0.00';
-        row.getCell(5).numFmt = '0.00';
-        row.getCell(6).numFmt = '0.00';
-        if (r.monthLabel === 'Total') this.styleTotalRow(row);
+        this.styleTipo4DataRow(row, rowIdx - 5, colCount);
+        for (let c = 2; c <= colCount; c += 1) {
+          row.getCell(c).numFmt = hourFmt;
+        }
         rowIdx += 1;
       }
 
-      const chart = await this.fetchChartPng({
-        width: 1100,
-        height: 420,
-        backgroundColor: 'white',
-        chart: {
-          type: 'bar',
-          data: {
-            labels: (horasRows as any[]).map((r) => r.monthLabel),
-            datasets: [
-              {
-                label: 'Infraestrutura',
-                data: (horasRows as any[]).map((r) => r.Infraestrutura),
-                backgroundColor: '#4f8bd6',
-              },
-              {
-                label: 'NOC',
-                data: (horasRows as any[]).map((r) => r.NOC),
-                backgroundColor: '#8c6fd1',
-              },
-              {
-                label: 'Sistemas',
-                data: (horasRows as any[]).map((r) => r.Sistema),
-                backgroundColor: '#d85c57',
-              },
-              {
-                label: 'Rotinas',
-                data: (horasRows as any[]).map((r) => r.Rotinas),
-                backgroundColor: '#9bc45b',
-              },
-              {
-                label: 'Total',
-                data: (horasRows as any[]).map((r) => r.Total),
-                backgroundColor: '#57c1d9',
-              },
-            ],
-          },
-          options: {
-            plugins: {
-              legend: { position: 'top' },
-              title: { display: true, text: 'TICKETS POR MÊS' },
+      await this.embedTipo4Chart(
+        workbook,
+        sheet,
+        rowIdx + 1,
+        this.buildTipo4GroupedBarChart({
+          title: 'Total de Horas Apontadas',
+          labels: (horasMonths as any[]).map((r) => r.monthLabel),
+          datasets: [
+            {
+              label: 'Infraestrutura',
+              data: (horasMonths as any[]).map((r) => r.Infraestrutura),
+              backgroundColor: this.tipo4Theme.infra,
             },
-            scales: { y: { beginAtZero: true } },
-          },
-        },
-      });
-      if (chart) {
-        const imageId = workbook.addImage({
-          buffer: chart as any,
-          extension: 'png',
-        });
-        sheet.addImage(imageId, {
-          tl: { col: 0, row: rowIdx + 1 },
-          ext: { width: 920, height: 350 },
-        });
-      }
+            {
+              label: 'NOC',
+              data: (horasMonths as any[]).map((r) => r.NOC),
+              backgroundColor: this.tipo4Theme.noc,
+            },
+            {
+              label: 'Sistemas',
+              data: (horasMonths as any[]).map((r) => r.Sistema),
+              backgroundColor: this.tipo4Theme.sistemas,
+            },
+            {
+              label: 'Rotinas',
+              data: (horasMonths as any[]).map((r) => r.Rotinas),
+              backgroundColor: this.tipo4Theme.rotinas,
+            },
+            {
+              label: 'Total',
+              data: (horasMonths as any[]).map((r) => r.Total),
+              backgroundColor: this.tipo4Theme.totalCyan,
+            },
+          ],
+          yMax: 50,
+        }),
+      );
     }
 
-    // Aba 3: Monitoramento
+    // Aba 3: Monitoramento (modelo Alle)
     {
       const sheet = workbook.addWorksheet('Monitoramento', {
-        views: [{ state: 'frozen', ySplit: 6 }],
+        views: [{ state: 'frozen', ySplit: 5 }],
       });
-      sheet.columns = [
-        { key: 'monthLabel', width: 18 },
-        { key: 'High', width: 12 },
-        { key: 'Disaster', width: 12 },
-        { key: 'Total', width: 12 },
-      ];
-      this.styleHeaderBand(sheet, 'Monitoramento');
+      const colCount = 3;
+      sheet.columns = [{ width: 18 }, { width: 12 }, { width: 12 }];
+      this.styleTipo4TitleBand(sheet, 'Monitoramento', colCount);
       addCompanyLogo(sheet);
-
-      sheet.mergeCells('A3:D3');
-      sheet.getCell('A3').value = 'Total de Alertas por Mês';
-      sheet.getCell('A3').fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF0A2540' },
-      };
-      sheet.getCell('A3').font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      sheet.getCell('A3').alignment = {
-        horizontal: 'center',
-        vertical: 'middle',
-      };
-      sheet.getRow(3).height = 20;
+      this.styleTipo4TableTitleRow(sheet, 'Total de Alertas por Mês', colCount);
 
       const headerRow = sheet.getRow(4);
-      headerRow.values = ['Mês', 'High', 'Disaster', 'Total'];
-      this.styleTableHeader(headerRow);
+      headerRow.values = ['Mês', 'High', 'Disaster'];
+      this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
       let rowIdx = 5;
-      for (const r of alertasRows as any[]) {
+      for (const r of alertasMonths as any[]) {
         const row = sheet.getRow(rowIdx);
         row.values = [
           r.monthLabel,
           Number(r.High) || 0,
           Number(r.Disaster) || 0,
-          Number(r.Total) || 0,
         ];
-        row.alignment = { vertical: 'middle', horizontal: 'center' };
-        if (r.monthLabel === 'Total') this.styleTotalRow(row);
+        this.styleTipo4DataRow(row, rowIdx - 5, colCount);
         rowIdx += 1;
       }
 
-      const chart = await this.fetchChartPng({
-        width: 1100,
-        height: 420,
-        backgroundColor: 'white',
-        chart: {
-          type: 'line',
-          data: {
-            labels: (alertasRows as any[]).map((r) => r.monthLabel),
-            datasets: [
-              {
-                label: 'High',
-                data: (alertasRows as any[]).map((r) => r.High),
-                borderColor: '#4f8bd6',
-                backgroundColor: 'rgba(79,139,214,0.15)',
-                tension: 0.25,
-                fill: false,
-              },
-              {
-                label: 'Disaster',
-                data: (alertasRows as any[]).map((r) => r.Disaster),
-                borderColor: '#d85c57',
-                backgroundColor: 'rgba(216,92,87,0.15)',
-                tension: 0.25,
-                fill: false,
-              },
-            ],
-          },
-          options: {
-            plugins: {
-              legend: { position: 'bottom' },
-              title: { display: true, text: 'Alertas por Mês' },
+      const chartLabels = alertasWeeks.map((r) => r.weekLabel);
+      await this.embedTipo4Chart(
+        workbook,
+        sheet,
+        rowIdx + 1,
+        this.buildTipo4LineChart({
+          title: 'Alertas por Semana',
+          labels: chartLabels,
+          rotateLabels: chartLabels.length > 4,
+          datasets: [
+            {
+              label: 'High',
+              data: alertasWeeks.map((r) => Number(r.High) || 0),
+              borderColor: this.tipo4Theme.high,
             },
-            scales: { y: { beginAtZero: true } },
-          },
-        },
+            {
+              label: 'Disaster',
+              data: alertasWeeks.map((r) => Number(r.Disaster) || 0),
+              borderColor: this.tipo4Theme.disaster,
+            },
+          ],
+        }),
+      );
+    }
+
+    // Aba 4: Top Triggers e totais do período (grp Zabbix da empresa)
+    {
+      const sheet = workbook.addWorksheet('Top Triggers');
+      this.writeTipo4TopTriggersSheet({
+        sheet,
+        companyName: company.name,
+        group,
+        periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+        dashSummary,
+        topTriggers,
+        principaisHosts,
+        addCompanyLogo,
       });
-      if (chart) {
-        const imageId = workbook.addImage({
-          buffer: chart as any,
-          extension: 'png',
-        });
-        sheet.addImage(imageId, {
-          tl: { col: 0, row: rowIdx + 1 },
-          ext: { width: 920, height: 350 },
-        });
-      }
+    }
+
+    // Aba 5: todas as triggers do período (linha a linha)
+    {
+      const sheet = workbook.addWorksheet('Triggers período');
+      this.writeTipo4AllTriggersSheet({
+        sheet,
+        companyName: company.name,
+        group,
+        periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+        rows: allTriggersInPeriod,
+        addCompanyLogo,
+      });
     }
 
     // Metadados

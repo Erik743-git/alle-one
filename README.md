@@ -165,6 +165,43 @@ O `AppModule` importa, entre outros:
 - **Integrações**: Zabbix, TiFlux
 - **ScheduleModule**: rotinas agendadas
 
+## Versão estável (backup — maio/2026)
+
+Checkpoint funcional do portal após evolução de dashboard, relatórios e UX. **Os totais de negócio (alertas, chamados, horas) mantêm a mesma lógica**; mudanças visuais são principalmente gráficos e formulários.
+
+### Dashboard e monitoramento (Zabbix)
+
+- Agregação de alertas **High/Disaster** com eventos de problema Zabbix (`value=1`), paginação e filtros por período.
+- Tabela de monitoramento **por mês**; gráfico de linha **por semana** (`alertasPorSemana`).
+- Cache em memória do dashboard completo (TTL configurável), refresh manual com cooldown e auto-refresh no front.
+- Abas de hosts, top triggers e lista completa de triggers no período.
+- Endpoint `GET /dashboard/debug-dump` restrito (produção bloqueada; homolog só com `ENABLE_DEBUG_DUMP=true`).
+
+### Relatório gerencial Tipo 4 (Excel)
+
+- Abas: Chamados, Horas, Monitoramento, **Top Triggers**, **Triggers período** (todas as combinações host+trigger+severidade).
+- Gráficos via QuickChart (Chart.js 3.9.1), datalabels e timeouts ajustados.
+- Aba Monitoramento: tabela mensal + gráfico **Alertas por Semana** (sem coluna “Total” no eixo, evita linha plana enganosa).
+
+### Frontend
+
+- **Date picker** customizado (`DatePickerField` + `AlleCalendarPanel`): tema claro/escuro, seletores de mês/ano sem `<select>` nativo, dias **Dom–Sáb**.
+- Uso em Dashboard e Gerador de relatórios.
+- Login e fluxos de senha revisados; `clearSession` não polui o console se a API estiver offline.
+
+### Scripts e utilitários
+
+- `backend/scripts/compare-zbx-csv.mjs` — comparação auxiliar export CSV Zabbix vs agregados do portal.
+
+### Variáveis novas/relevantes (`backend/.env.example`)
+
+- `ENABLE_DEBUG_DUMP`, `DASHBOARD_COMPLETE_CACHE_MS`, integrações TiFlux/Zabbix (ver arquivo completo).
+
+### Acesso em rede local (dev)
+
+- API e Next com `0.0.0.0` / `NEXT_PUBLIC_API_URL` apontando para o IP da máquina (não `localhost` no PC do colega).
+- `CORS_ORIGINS` e `FRONTEND_URL` alinhados ao host usado no navegador.
+
 ## Qualidade e scripts
 
 ### Backend
@@ -189,8 +226,8 @@ npm run build
 - **Segredos em `.env` local**: trate como **comprometidos** se já foram compartilhados. Rotacione tokens/senhas e migre para um fluxo com `.env.example` + secret manager no deploy.
 - **Fallback inseguro de JWT**: removido; **`JWT_SECRET` é obrigatório** para subir a API.
 - **Seed com senha padrão fraca**: em **produção** o seed exige `ADMIN_SEED_PASSWORD` (mín. 12 caracteres). Em desenvolvimento, sem a variável ainda usa `123456` com aviso no console — prefira definir `ADMIN_SEED_PASSWORD` localmente.
-- **CI/CD**: não há pipeline no workspace. Para produção, o mínimo recomendado:
-  - lint (sem `--fix`), test, build (backend+frontend), e migrations controladas.
+- **CI/CD**: existe workflow em `.github/workflows/ci.yml` (build backend+frontend). Ainda falta rodar **testes** e **lint do backend** no pipeline de forma estável.
+- **Uploads**: arquivos em `backend/uploads/` são locais e **não entram no Git** (ver `backend/.gitignore`).
 
 ## Previsões futuras (roadmap realista)
 

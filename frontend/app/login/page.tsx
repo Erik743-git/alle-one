@@ -5,10 +5,30 @@ import type { FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  Clock,
+  Eye,
+  EyeOff,
+  Loader2,
+  Mail,
+  MapPin,
+  Phone,
+  Send,
+} from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { getStoredUser, setStoredUser } from "@/lib/session";
 import type { ModulePermission } from "@/lib/permission-modules";
 
@@ -34,6 +54,7 @@ type ErrorResponse = {
 };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const SUPPORT_EMAIL = "contato@alletecnologia.com";
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
@@ -41,6 +62,12 @@ export default function LoginPage() {
   const [senha, setSenha] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const [supportForm, setSupportForm] = useState({
+    nome: "",
+    empresa: "",
+    email: "",
+    mensagem: "",
+  });
 
   const router = useRouter();
 
@@ -100,6 +127,25 @@ export default function LoginPage() {
     } finally {
       setCarregando(false);
     }
+  }
+
+  function handleSupportSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    const body = [
+      `Nome: ${supportForm.nome}`,
+      `Empresa: ${supportForm.empresa}`,
+      `E-mail: ${supportForm.email}`,
+      "",
+      "Comentario ou mensagem:",
+      supportForm.mensagem,
+    ].join("\n");
+
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
+      "Solicitacao de suporte - Alle One"
+    )}&body=${encodeURIComponent(body)}`;
+
+    window.location.href = mailtoUrl;
   }
 
   return (
@@ -246,15 +292,190 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
-              Precisa de ajuda?{" "}
-              <a
-                href="#"
-                className="font-bold text-[#12b5d9] transition hover:text-[#5fd5ee]"
+            <Dialog>
+              <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
+                Precisa de ajuda?{" "}
+                <DialogTrigger asChild>
+                  <button
+                    type="button"
+                    className="font-bold text-[#12b5d9] transition hover:text-[#5fd5ee]"
+                  >
+                    Fale com o suporte
+                  </button>
+                </DialogTrigger>
+              </p>
+
+              <DialogContent
+                className="
+                  font-sans
+                  max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] overflow-hidden
+                  border border-white/10 bg-[#08182f] p-0 text-white
+                  shadow-[0_24px_90px_rgba(0,0,0,0.48)]
+                  sm:max-w-[920px]
+                "
               >
-                Fale com o suporte
-              </a>
-            </p>
+                <div className="border-b border-white/10 px-5 py-5 sm:px-6">
+                  <DialogHeader className="space-y-3 text-left">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#12b5d9]/15 text-[#12b5d9]">
+                      <Mail size={22} />
+                    </div>
+
+                    <div className="space-y-1">
+                      <DialogTitle className="font-sans text-xl font-extrabold text-white sm:text-2xl">
+                        Fale com o suporte
+                      </DialogTitle>
+
+                      <DialogDescription className="font-sans text-sm font-medium text-slate-300">
+                        Envie sua mensagem para a equipe da Alle Tecnologia.
+                      </DialogDescription>
+                    </div>
+                  </DialogHeader>
+                </div>
+
+                <div className="grid max-h-[calc(100vh-10rem)] overflow-y-auto md:grid-cols-[1fr_0.9fr]">
+                  <form
+                    onSubmit={handleSupportSubmit}
+                    className="space-y-4 p-5 sm:p-6"
+                  >
+                    <div className="space-y-2">
+                      <Label className="font-sans text-sm font-bold text-slate-200">
+                        Nome
+                      </Label>
+                      <Input
+                        value={supportForm.nome}
+                        onChange={(e) =>
+                        setSupportForm((current) => ({
+                          ...current,
+                          nome: e.target.value,
+                        }))
+                        }
+                        placeholder="Nome"
+                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="font-sans text-sm font-bold text-slate-200">
+                        Empresa
+                      </Label>
+                      <Input
+                        value={supportForm.empresa}
+                        onChange={(e) =>
+                          setSupportForm((current) => ({
+                            ...current,
+                            empresa: e.target.value,
+                          }))
+                        }
+                        placeholder="Empresa"
+                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="font-sans text-sm font-bold text-slate-200">
+                        E-mail
+                      </Label>
+                      <Input
+                        type="email"
+                        value={supportForm.email}
+                        onChange={(e) =>
+                          setSupportForm((current) => ({
+                            ...current,
+                            email: e.target.value,
+                          }))
+                        }
+                        placeholder="seu.email@empresa.com"
+                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="font-sans text-sm font-bold text-slate-200">
+                        Mensagem
+                      </Label>
+                      <Textarea
+                        value={supportForm.mensagem}
+                        onChange={(e) =>
+                          setSupportForm((current) => ({
+                            ...current,
+                            mensagem: e.target.value,
+                          }))
+                        }
+                        placeholder="Como podemos ajudar?"
+                        className="font-sans min-h-32 resize-y rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                      />
+                    </div>
+
+                    <div className="pt-1">
+                      <Button
+                        type="submit"
+                        className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
+                      >
+                        <Send className="mr-2 h-4 w-4" />
+                        Fale conosco!
+                      </Button>
+                    </div>
+                  </form>
+
+                  <aside className="border-t border-white/10 bg-[#020b1b]/50 p-5 sm:p-6 md:border-l md:border-t-0">
+                    <section className="space-y-5">
+                      <h2 className="font-sans text-lg font-extrabold text-[#12b5d9]">
+                        Contato
+                      </h2>
+
+                      <div className="space-y-5 text-sm text-slate-300">
+                        <div className="grid grid-cols-[24px_1fr] gap-4">
+                          <MapPin className="mt-0.5 h-5 w-5 text-[#12b5d9]" />
+                          <p>
+                            <strong className="text-white">Localizacao:</strong>{" "}
+                            Rua Henrique Mayer 152, 2o Andar, Joinville - SC.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-[24px_1fr] gap-4">
+                          <Phone className="mt-0.5 h-5 w-5 text-[#12b5d9]" />
+                          <p>
+                            <strong className="text-white">Telefone:</strong>{" "}
+                            <a
+                              href="tel:+5547991705609"
+                              className="transition hover:text-[#5fd5ee]"
+                            >
+                              (47) 99170-5609
+                            </a>
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-[24px_1fr] gap-4">
+                          <Mail className="mt-0.5 h-5 w-5 text-[#12b5d9]" />
+                          <p>
+                            <strong className="text-white">Email:</strong>{" "}
+                            <a
+                              href={`mailto:${SUPPORT_EMAIL}`}
+                              className="transition hover:text-[#5fd5ee]"
+                            >
+                              {SUPPORT_EMAIL}
+                            </a>
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+
+                    <div className="my-6 h-px bg-white/10" />
+
+                    <section className="space-y-5">
+                      <h2 className="font-sans text-lg font-extrabold text-[#12b5d9]">
+                        Horarios
+                      </h2>
+
+                      <div className="grid grid-cols-[24px_1fr] gap-4 text-sm text-slate-300">
+                        <Clock className="mt-0.5 h-5 w-5 text-[#12b5d9]" />
+                        <p>Segunda - Sexta das 08h ate 18h</p>
+                      </div>
+                    </section>
+                  </aside>
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
       </div>

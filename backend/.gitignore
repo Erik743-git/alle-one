@@ -56,3 +56,9 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /generated/prisma
+
+# Uploads gerados em runtime (relatórios, logos, GMUD)
+/uploads/
+
+# Artefatos locais de teste
+chart-test.png

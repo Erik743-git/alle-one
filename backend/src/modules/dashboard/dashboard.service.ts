@@ -39,6 +39,14 @@ type MonthlyAlertsRow = {
   Total: number;
 };
 
+type WeeklyAlertsRow = {
+  weekKey: string;
+  weekLabel: string;
+  High: number;
+  Disaster: number;
+  Total: number;
+};
+
 type TopHostsByMonthRow = {
   monthKey: string;
   monthLabel: string;
@@ -79,9 +87,45 @@ type DashboardSummary = {
   totalHorasFormatadas?: string;
   totalHigh: number;
   totalDisaster: number;
+  /** Combinações distintas host + trigger + severidade (High/Disaster) no período. */
+  totalTriggersDistintos: number;
   totalHosts: number;
   hostsAtivos: number;
   hostsInativos: number;
+};
+
+type WorkHoursTifluxAssistanceBucket = 'externo' | 'remoto' | 'interno' | 'sem';
+
+type WorkHoursTifluxLine = {
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+  duracaoFormatada: string;
+  assistencia: string;
+  assistenciaBucket: WorkHoursTifluxAssistanceBucket;
+  ticketNumber: number;
+  titulo: string;
+  atendente: string;
+};
+
+type WorkHoursTifluxSummary = {
+  totalTicketsDistintos: number;
+  totalMinutos: number;
+  totalHorasFormatadas: string;
+  semAssistenciaMinutos: number;
+  semAssistenciaFormatado: string;
+  externoMinutos: number;
+  externoFormatado: string;
+  remotoMinutos: number;
+  remotoFormatado: string;
+  internoMinutos: number;
+  internoFormatado: string;
+  /** Quantidade de apontamentos no período (após filtros do resumo). */
+  totalApontamentosNoPeriodo: number;
+  /** Limite de linhas enviadas na tabela (env TIFLUX_RESUMO_MAX_LINHAS). */
+  limiteLinhas: number;
+  linhas: WorkHoursTifluxLine[];
+  linhasTruncadas: boolean;
 };
 
 type DashboardResponse = {
@@ -95,9 +139,15 @@ type DashboardResponse = {
   chamadosPorMes: MonthlyTicketRow[];
   chamadosPorMesa: Array<{ deskName: string; totalTickets: number }>;
   horasPorMes: MonthlyHoursRow[];
+  /** Resumo estilo relatório TiFlux (apontamentos no período, assistência, tickets distintos). */
+  resumoHorasTrabalhadas: WorkHoursTifluxSummary | null;
   alertasPorMes: MonthlyAlertsRow[];
+  /** Mesma lógica de alertasPorMes, bucket por semana (seg–dom) para gráficos. */
+  alertasPorSemana: WeeklyAlertsRow[];
   principaisHostsPorMes: TopHostsByMonthRow[];
   topTriggers: TopTriggerRow[];
+  /** Todas as combinações host+trigger+severidade no período (ordenadas por volume). */
+  allTriggersInPeriod: TopTriggerRow[];
   hostsDetalhados: unknown[];
   templates: unknown[];
   eventosRecentes: unknown[];
@@ -121,6 +171,7 @@ type DashboardHoursResponse = {
     totalMinutes: number;
     totalHorasFormatadas: string;
   }>;
+  resumoHorasTrabalhadas: WorkHoursTifluxSummary | null;
 };
 
 type ResolvedCompanyIntegration = {
@@ -168,12 +219,53 @@ export class DashboardService {
    */
   private readonly hoursAppointmentDateOnly =
     process.env.TIFLUX_DASHBOARD_HOURS_APPOINTMENT_DATE_ONLY !== 'false';
+  /**
+   * Quando true: dashboard de horas usa só o contrato “nu” da API TiFlux v2 —
+   * uma listagem GET /tickets com date_type + start_datetime + end_datetime (sem união created/updated),
+   * sem cache SQL local, sem pós-filtro de garantia/range/review_date nas horas (agregação por appointment.date).
+   * Env: TIFLUX_DASHBOARD_RAW_API=true
+   */
+  private readonly tifluxDashboardRawApi =
+    process.env.TIFLUX_DASHBOARD_RAW_API === 'true';
   // Mantemos apenas um guard de páginas para evitar loop infinito.
   private readonly hoursMaxPages = 100;
+  /**
+   * Ao montar horas pela API TiFlux (sem dados em `tiflux.ticket_appointments`), a listagem
+   * de tickets usa created_at / updated_at. Tickets criados há mais tempo mas com apontamento
+   * no período (como no extrato CSV) ficariam de fora. Recuamos N dias a partir do início do
+   * filtro para incluir esses tickets; os apontamentos continuam filtrados pela data do
+   * apontamento no intervalo do dashboard.
+   * Env: TIFLUX_HOURS_TICKET_LOOKBACK_DAYS (0–3650; omissão = 730).
+   */
+  private readonly hoursTicketLookbackDays = (() => {
+    const n = Number(process.env.TIFLUX_HOURS_TICKET_LOOKBACK_DAYS);
+    if (Number.isFinite(n) && n >= 0) {
+      return Math.min(Math.trunc(n), 3650);
+    }
+    return 730;
+  })();
+  /**
+   * Se true, horas só usam SQL quando max(appointment_date) no cliente cobre o fim do filtro.
+   * Com false (padrão), basta haver apontamentos no intervalo — evita listar milhares de tickets na API
+   * quando o sync está 1–2 dias atrás (ex.: NG com filtro até fim do mês).
+   */
+  private readonly dbCacheRequireFullEndCoverage =
+    process.env.TIFLUX_DB_CACHE_REQUIRE_FULL_COVERAGE === 'true';
   private readonly chartTicketsLimit = 200;
   private readonly tifluxAppointmentsPageSize = 200;
   private readonly tifluxAppointmentsMaxPages = 20;
   private loggedAppointmentSample = false;
+  /**
+   * Máximo de linhas na tabela do resumo TiFlux no dashboard.
+   * Env: TIFLUX_RESUMO_MAX_LINHAS (1–100000). Por omissão 50000 para exibir praticamente tudo no período.
+   */
+  private readonly workSummaryMaxLinhas = (() => {
+    const n = Number(process.env.TIFLUX_RESUMO_MAX_LINHAS);
+    if (Number.isFinite(n) && n >= 1) {
+      return Math.min(Math.trunc(n), 100_000);
+    }
+    return 50_000;
+  })();
 
   private readonly responseCache = new Map<
     string,
@@ -216,7 +308,7 @@ export class DashboardService {
   }
 
   private buildHoursCacheKey(params: DashboardFilters) {
-    return `hours:${this.buildCacheKey(params)}`;
+    return `hours:${this.buildCacheKey(params)}|raw:${this.tifluxDashboardRawApi ? '1' : '0'}|rl:${this.workSummaryMaxLinhas}|lb:${this.hoursTicketLookbackDays}`;
   }
 
   /** Chave do cache do /dashboard/complete — inclui includeHours para não misturar payload com/sem horas. */
@@ -402,7 +494,11 @@ export class DashboardService {
     };
   }
 
-  /** Janela de tickets para o fluxo de horas: estritamente start/end do filtro. */
+  /**
+   * Janela de tickets para o fluxo de horas na API: recuo em dias no início para alinhar ao
+   * extrato TiFlux (apontamentos no período em tickets mais antigos). O filtro real dos
+   * apontamentos continua em `filterAppointmentsByDashboardRange` / data do apontamento.
+   */
   private buildTicketFetchWindowForHours(
     userStartDate: Date,
     userEndDate: Date,
@@ -411,7 +507,10 @@ export class DashboardService {
       userStartDate,
       userEndDate,
     );
-    return { ticketStart: startDate, ticketEnd: endDate };
+    const ticketStart = new Date(startDate);
+    ticketStart.setDate(ticketStart.getDate() - this.hoursTicketLookbackDays);
+    ticketStart.setHours(0, 0, 0, 0);
+    return { ticketStart, ticketEnd: endDate };
   }
 
   private toDateOnlyISO(date: Date) {
@@ -580,6 +679,52 @@ export class DashboardService {
       month: 'long',
       year: 'numeric',
     });
+  }
+
+  /** Segunda-feira da semana do dia (horário local). */
+  private getWeekStart(date: Date) {
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const daysFromMonday = (d.getDay() + 6) % 7;
+    d.setDate(d.getDate() - daysFromMonday);
+    return d;
+  }
+
+  private getWeekKey(date: Date) {
+    const start = this.getWeekStart(date);
+    const year = start.getFullYear();
+    const month = String(start.getMonth() + 1).padStart(2, '0');
+    const day = String(start.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private getWeekLabel(weekStart: Date) {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+
+    const dayFmt = (d: Date) =>
+      d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+
+    const startStr = dayFmt(weekStart);
+    const endStr =
+      weekEnd.getMonth() === weekStart.getMonth() &&
+      weekEnd.getFullYear() === weekStart.getFullYear()
+        ? weekEnd.toLocaleDateString('pt-BR', { day: '2-digit' })
+        : dayFmt(weekEnd);
+
+    return `${startStr} – ${endStr}`;
+  }
+
+  private buildWeekMap(startDate: Date, endDate: Date) {
+    const result = new Map<string, string>();
+    const cursor = this.getWeekStart(startDate);
+    const limit = this.getWeekStart(endDate);
+
+    while (cursor <= limit) {
+      result.set(this.getWeekKey(cursor), this.getWeekLabel(cursor));
+      cursor.setDate(cursor.getDate() + 7);
+    }
+
+    return result;
   }
 
   private buildMonthMap(startDate: Date, endDate: Date) {
@@ -752,42 +897,196 @@ export class DashboardService {
     return Array.from(rows.values());
   }
 
-  private getAppointmentMinutes(appointment: AppointmentLike) {
-    if (!appointment.init_time || !appointment.end_time) {
-      return 0;
+  private getAppointmentMinutes(appointment: AppointmentLike): number {
+    const a = appointment as Record<string, unknown>;
+    const vRaw = a.valorization;
+    let v: Record<string, unknown> | undefined;
+    if (vRaw && typeof vRaw === 'object' && !Array.isArray(vRaw)) {
+      v = vRaw as Record<string, unknown>;
+    }
+    if (typeof vRaw === 'string' && vRaw.trim()) {
+      try {
+        const parsed = JSON.parse(vRaw) as unknown;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          v = parsed as Record<string, unknown>;
+        }
+      } catch {
+        /* ignora */
+      }
     }
 
+    const initRaw = String(a.init_time ?? '').trim();
+    const endRaw = String(a.end_time ?? '').trim();
+
     const parseTime = (value: string) => {
-      const parts = value.split(':').map((item) => Number(item));
+      const base = value.split('.')[0]?.trim() ?? '';
+      const parts = base.split(':').map((item) => Number(item.trim()));
       const [h, m, s] = [parts[0], parts[1], parts[2] ?? 0];
       return { h, m, s };
     };
 
-    const start = parseTime(appointment.init_time);
-    const end = parseTime(appointment.end_time);
+    const clockDiffMinutes = (): number | null => {
+      if (!initRaw || !endRaw) {
+        return null;
+      }
+      if (initRaw.includes('T') || endRaw.includes('T')) {
+        return null;
+      }
+      const start = parseTime(initRaw);
+      const end = parseTime(endRaw);
+      if (
+        [start.h, start.m, start.s, end.h, end.m, end.s].some((value) =>
+          Number.isNaN(value),
+        )
+      ) {
+        return null;
+      }
+      const startTotalSeconds = start.h * 3600 + start.m * 60 + start.s;
+      const endTotalSeconds = end.h * 3600 + end.m * 60 + end.s;
+      let diffSeconds = endTotalSeconds - startTotalSeconds;
+      if (diffSeconds < 0) {
+        diffSeconds += 24 * 3600;
+      }
+      if (diffSeconds <= 0) {
+        return null;
+      }
+      return Math.floor(diffSeconds / 60);
+    };
 
-    if (
-      [start.h, start.m, start.s, end.h, end.m, end.s].some((value) =>
-        Number.isNaN(value),
-      )
-    ) {
-      return 0;
+    const isoDiffMinutes = (): number | null => {
+      if (!initRaw || !endRaw) {
+        return null;
+      }
+      if (!initRaw.includes('T') || !endRaw.includes('T')) {
+        return null;
+      }
+      const d1 = new Date(initRaw);
+      const d2 = new Date(endRaw);
+      if (Number.isNaN(d1.getTime()) || Number.isNaN(d2.getTime())) {
+        return null;
+      }
+      const ms = d2.getTime() - d1.getTime();
+      if (ms <= 0) {
+        return null;
+      }
+      return Math.floor(ms / 60000);
+    };
+
+    const clockMin = clockDiffMinutes();
+    const isoMin = isoDiffMinutes();
+    const refMin =
+      isoMin != null && isoMin > 0
+        ? isoMin
+        : clockMin != null && clockMin > 0
+          ? clockMin
+          : null;
+
+    const normalizeDurationNumber = (raw: number): number | null => {
+      if (!Number.isFinite(raw) || raw <= 0) {
+        return null;
+      }
+      if (!Number.isInteger(raw) && raw < 72) {
+        return Math.max(1, Math.round(raw * 60));
+      }
+      const n = Math.trunc(raw);
+      if (refMin != null) {
+        const asMinutes = n;
+        const asSecondsToMin = Math.floor(n / 60);
+        const errM = Math.abs(asMinutes - refMin);
+        const errS = Math.abs(asSecondsToMin - refMin);
+        if (errM <= 2 && errM <= errS) {
+          return asMinutes;
+        }
+        if (errS <= 2 && errS < errM) {
+          return asSecondsToMin;
+        }
+        if (errM <= errS) {
+          return asMinutes;
+        }
+        return asSecondsToMin;
+      }
+      if (n <= 720) {
+        return n;
+      }
+      if (n < 86_400 && n % 60 === 0) {
+        return Math.floor(n / 60);
+      }
+      return n;
+    };
+
+    const durTop = a.duration;
+    if (durTop != null && durTop !== '') {
+      const d = Number(durTop);
+      const m = normalizeDurationNumber(d);
+      if (m != null && m > 0) {
+        return m;
+      }
     }
 
-    const startTotalSeconds = start.h * 3600 + start.m * 60 + start.s;
-    const endTotalSeconds = end.h * 3600 + end.m * 60 + end.s;
-    let diffSeconds = endTotalSeconds - startTotalSeconds;
+    const minutesOnly = (val: unknown, max = 50_000): number | null => {
+      if (val == null) {
+        return null;
+      }
+      const n = Number(val);
+      if (!Number.isFinite(n) || n <= 0) {
+        return null;
+      }
+      if (!Number.isInteger(n)) {
+        return Math.max(1, Math.round(n));
+      }
+      if (n > max) {
+        return null;
+      }
+      return Math.trunc(n);
+    };
 
-    // Se cruzou meia-noite (ex.: 23:50 -> 00:10)
-    if (diffSeconds < 0) {
-      diffSeconds += 24 * 3600;
+    const explicitMinuteKeys = [
+      'duration_minutes',
+      'total_minutes',
+      'minutes',
+      'worked_minutes',
+      'time_in_minutes',
+      'duration_in_minutes',
+    ];
+    for (const key of explicitMinuteKeys) {
+      const m = minutesOnly(a[key]);
+      if (m != null) {
+        return m;
+      }
+      if (v) {
+        const m2 = minutesOnly(v[key]);
+        if (m2 != null) {
+          return m2;
+        }
+      }
     }
 
-    if (diffSeconds <= 0) {
-      return 0;
+    if (v) {
+      const nested = v.duration as Record<string, unknown> | undefined;
+      if (nested && typeof nested === 'object') {
+        const m3 = minutesOnly(nested.minutes ?? nested.total ?? nested.value);
+        if (m3 != null) {
+          return m3;
+        }
+      }
+      const vd = v.duration;
+      if (typeof vd === 'number') {
+        const m4 = normalizeDurationNumber(vd);
+        if (m4 != null && m4 > 0) {
+          return m4;
+        }
+      }
     }
 
-    return Math.floor(diffSeconds / 60);
+    if (isoMin != null && isoMin > 0) {
+      return isoMin;
+    }
+
+    if (clockMin != null && clockMin > 0) {
+      return clockMin;
+    }
+
+    return 0;
   }
 
   private formatMinutesToHHMM(totalMinutes: number) {
@@ -795,6 +1094,254 @@ export class DashboardService {
     const minutes = totalMinutes % 60;
 
     return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  /** Duração estilo relatório TiFlux (ex.: 4:00:00). */
+  private formatDuracaoRelatorioMinutos(totalMinutes: number): string {
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}:${String(m).padStart(2, '0')}:00`;
+  }
+
+  private formatDatePtBrFromAppointmentDate(
+    dateStr: string | undefined,
+  ): string {
+    const d = this.toDateOrNull(String(dateStr ?? ''));
+    if (!d) {
+      return '';
+    }
+    return d.toLocaleDateString('pt-BR');
+  }
+
+  private isAppointmentCalendarDateInRange(
+    appointment: AppointmentLike,
+    startDate: Date,
+    endDate: Date,
+  ): boolean {
+    const d = this.toDateOrNull(String(appointment.date ?? ''));
+    if (!d) {
+      return false;
+    }
+    return d >= startDate && d <= endDate;
+  }
+
+  private getAppointmentAttendantName(appointment: AppointmentLike): string {
+    const u = appointment.user as { name?: string } | undefined;
+    if (u?.name?.trim()) {
+      return u.name.trim();
+    }
+    const a = appointment as Record<string, unknown>;
+    const v = a.valorization as Record<string, unknown> | undefined;
+    if (v && typeof v === 'object') {
+      const user = v.user as { name?: unknown } | undefined;
+      const tech = v.technician as { name?: unknown } | undefined;
+      const att = v.attendant as { name?: unknown } | undefined;
+      for (const c of [user?.name, tech?.name, att?.name]) {
+        if (c != null && String(c).trim()) {
+          return String(c).trim();
+        }
+      }
+    }
+    return '—';
+  }
+
+  private stringifyValorizationForHaystack(valorization: unknown): string {
+    if (valorization == null) {
+      return '';
+    }
+    try {
+      return JSON.stringify(valorization).toLowerCase();
+    } catch {
+      return '';
+    }
+  }
+
+  private classifyAppointmentAssistance(appointment: AppointmentLike): {
+    bucket: WorkHoursTifluxAssistanceBucket;
+    label: string;
+  } {
+    const a = appointment as Record<string, unknown>;
+    const parts: string[] = [];
+    const push = (v: unknown) => {
+      if (v == null) return;
+      const s = String(v).trim();
+      if (s) parts.push(s);
+    };
+
+    push(a.assistance);
+    push(a.assistance_type);
+    push(a.attendance);
+    push(a.appointment_attendance);
+    push(a.attendance_type);
+    const apWayRoot = a.appointment_way as { name?: unknown } | undefined;
+    push(apWayRoot?.name);
+    const v = a.valorization as Record<string, unknown> | undefined;
+    if (v && typeof v === 'object') {
+      push(v.assistance);
+      push(v.assistance_type);
+      const way = v.way as { name?: unknown } | undefined;
+      const shift = v.shift as { name?: unknown } | undefined;
+      push(way?.name);
+      push(shift?.name);
+      const apWay = v.appointment_way as { name?: unknown } | undefined;
+      push(apWay?.name);
+    }
+
+    const joined = parts.join(' ').toLowerCase();
+    const desc = String(appointment.description ?? '').toLowerCase();
+    const jsonHay = this.stringifyValorizationForHaystack(a.valorization);
+    const hay = `${joined} ${desc} ${jsonHay}`;
+
+    if (
+      hay.includes('externo') ||
+      hay.includes('presencial') ||
+      hay.includes('on-site') ||
+      hay.includes('onsite')
+    ) {
+      return { bucket: 'externo', label: 'Externo' };
+    }
+    if (
+      hay.includes('remoto') ||
+      hay.includes('remote') ||
+      hay.includes('online')
+    ) {
+      return { bucket: 'remoto', label: 'Remoto' };
+    }
+    if (hay.includes('interno') || hay.includes('internal')) {
+      return { bucket: 'interno', label: 'Interno' };
+    }
+
+    if (parts[0]) {
+      return { bucket: 'sem', label: parts[0] };
+    }
+    return { bucket: 'sem', label: '—' };
+  }
+
+  private buildWorkHoursTifluxSummary(
+    appointmentsByTicket: Array<{
+      ticket: Record<string, unknown>;
+      appointments: AppointmentLike[];
+    }>,
+    startDate: Date,
+    endDate: Date,
+  ): WorkHoursTifluxSummary {
+    const maxLinhas = this.workSummaryMaxLinhas;
+
+    type AccRow = {
+      ticketNumber: number;
+      titulo: string;
+      dataSort: number;
+      dataLabel: string;
+      init: string;
+      end: string;
+      minutes: number;
+      bucket: WorkHoursTifluxAssistanceBucket;
+      assistenciaLabel: string;
+      atendente: string;
+    };
+
+    const acc: AccRow[] = [];
+
+    for (const item of appointmentsByTicket) {
+      const ticketNumber = Number(item.ticket.ticket_number ?? 0);
+      if (!Number.isFinite(ticketNumber) || ticketNumber <= 0) {
+        continue;
+      }
+      const titulo = String(item.ticket.title ?? '');
+
+      for (const appt of item.appointments) {
+        if (!this.isAppointmentCalendarDateInRange(appt, startDate, endDate)) {
+          continue;
+        }
+        if (!this.filterAppointmentsExcludeGuarantee([appt]).length) {
+          continue;
+        }
+        const minutes = this.getAppointmentMinutes(appt);
+        if (minutes <= 0) {
+          continue;
+        }
+        const { bucket, label } = this.classifyAppointmentAssistance(appt);
+        const dateRaw = String(appt.date ?? '');
+        const d = this.toDateOrNull(dateRaw);
+        const dataLabel = this.formatDatePtBrFromAppointmentDate(dateRaw);
+        const init = String(appt.init_time ?? '').trim();
+        const end = String(appt.end_time ?? '').trim();
+
+        acc.push({
+          ticketNumber,
+          titulo,
+          dataSort: d ? d.getTime() : 0,
+          dataLabel,
+          init,
+          end,
+          minutes,
+          bucket,
+          assistenciaLabel: label,
+          atendente: this.getAppointmentAttendantName(appt),
+        });
+      }
+    }
+
+    acc.sort((x, y) => {
+      if (x.dataSort !== y.dataSort) {
+        return x.dataSort - y.dataSort;
+      }
+      return x.init.localeCompare(y.init, 'pt-BR');
+    });
+
+    const ticketsComMinutos = new Set<number>();
+    let externoMinutos = 0;
+    let remotoMinutos = 0;
+    let internoMinutos = 0;
+    let semAssistenciaMinutos = 0;
+    let totalMinutos = 0;
+
+    for (const r of acc) {
+      totalMinutos += r.minutes;
+      ticketsComMinutos.add(r.ticketNumber);
+      if (r.bucket === 'externo') {
+        externoMinutos += r.minutes;
+      } else if (r.bucket === 'remoto') {
+        remotoMinutos += r.minutes;
+      } else if (r.bucket === 'interno') {
+        internoMinutos += r.minutes;
+      } else {
+        semAssistenciaMinutos += r.minutes;
+      }
+    }
+
+    const linhasTruncadas = acc.length > maxLinhas;
+    const linhasSlice = acc.slice(0, maxLinhas);
+
+    const linhas: WorkHoursTifluxLine[] = linhasSlice.map((r) => ({
+      data: r.dataLabel,
+      horaInicio: r.init,
+      horaFim: r.end,
+      duracaoFormatada: this.formatDuracaoRelatorioMinutos(r.minutes),
+      assistencia: r.assistenciaLabel,
+      assistenciaBucket: r.bucket,
+      ticketNumber: r.ticketNumber,
+      titulo: r.titulo,
+      atendente: r.atendente,
+    }));
+
+    return {
+      totalTicketsDistintos: ticketsComMinutos.size,
+      totalMinutos,
+      totalHorasFormatadas: this.formatMinutesToHHMM(totalMinutos),
+      semAssistenciaMinutos,
+      semAssistenciaFormatado: this.formatMinutesToHHMM(semAssistenciaMinutos),
+      externoMinutos,
+      externoFormatado: this.formatMinutesToHHMM(externoMinutos),
+      remotoMinutos,
+      remotoFormatado: this.formatMinutesToHHMM(remotoMinutos),
+      internoMinutos,
+      internoFormatado: this.formatMinutesToHHMM(internoMinutos),
+      totalApontamentosNoPeriodo: acc.length,
+      limiteLinhas: maxLinhas,
+      linhas,
+      linhasTruncadas,
+    };
   }
 
   private async resolveIntegrations(
@@ -926,6 +1473,49 @@ export class DashboardService {
 
     const pageSize = 200;
 
+    if (this.tifluxDashboardRawApi) {
+      this.devDebug('==================================================');
+      this.devDebug(
+        'getTicketsForHours (RAW: GET /tickets único — filter_by=all, client_ids, date_type=created_at, start_datetime, end_datetime, limit, offset; sem update_* nem segunda listagem)',
+      );
+      this.devDebug('clientId:', clientId);
+      this.devDebug('range tickets (API listagem):', { startISO, endISO });
+      this.devDebug(
+        'lookback dias (só listagem de tickets):',
+        this.hoursTicketLookbackDays,
+      );
+      this.devDebug('hoursMaxPages:', this.hoursMaxPages);
+      this.devDebug('==================================================');
+
+      const all: Array<{ ticket_number: number } & Record<string, unknown>> =
+        [];
+      let page = 1;
+      while (page <= this.hoursMaxPages) {
+        const pageTickets = await this.tifluxService.getTickets({
+          filter_by: 'all',
+          client_ids: [clientId],
+          date_type: 'created_at',
+          start_datetime: startISO,
+          end_datetime: endISO,
+          limit: pageSize,
+          offset: page,
+        });
+        const normalized = pageTickets as Array<
+          { ticket_number: number } & Record<string, unknown>
+        >;
+        if (!normalized.length) {
+          break;
+        }
+        all.push(...normalized);
+        if (normalized.length < pageSize) {
+          break;
+        }
+        page += 1;
+      }
+      this.devDebug('getTicketsForHours RAW total:', all.length);
+      return all;
+    }
+
     const fetchPaged = async (mode: 'created' | 'updated') => {
       let page = 1;
       const all: Array<{ ticket_number: number } & Record<string, unknown>> =
@@ -974,10 +1564,14 @@ export class DashboardService {
 
     this.devDebug('==================================================');
     this.devDebug(
-      'getTicketsForHours (UNIÃO: tickets criados + atualizados no range do front; abertos + fechados)',
+      'getTicketsForHours (UNIÃO: tickets criados + atualizados na janela alargada; apontamentos filtrados pelo período do dashboard)',
     );
     this.devDebug('clientId:', filters.tifluxClientId);
-    this.devDebug('range tickets (front):', { startISO, endISO });
+    this.devDebug('range tickets (API listagem):', { startISO, endISO });
+    this.devDebug(
+      'lookback dias (só listagem de tickets):',
+      this.hoursTicketLookbackDays,
+    );
     this.devDebug('filtro apontamentos (front):', {
       start: filters.appointmentRangeStart.toISOString(),
       end: filters.appointmentRangeEnd.toISOString(),
@@ -1173,9 +1767,29 @@ export class DashboardService {
       ticket: Record<string, unknown>;
       appointments: AppointmentLike[];
     }>;
+    cacheMaxAppointmentDate: Date | null;
+    coversRequestedEndDate: boolean;
   }> {
     const startDateOnly = params.startDate.toISOString().slice(0, 10);
     const endDateOnly = params.endDate.toISOString().slice(0, 10);
+
+    const cacheRangeRows =
+      (await this.prisma.$queryRaw<Array<{ max_date: Date | null }>>`
+      select max(a.appointment_date)::date as max_date
+      from tiflux.ticket_appointments a
+      where a.client_external_id = ${params.tifluxClientId}
+    `) ?? [];
+
+    const cacheMaxAppointmentDate = cacheRangeRows[0]?.max_date ?? null;
+    const requestedEndDateOnly = new Date(params.endDate);
+    requestedEndDateOnly.setHours(0, 0, 0, 0);
+    const cacheMaxDateOnly = cacheMaxAppointmentDate
+      ? new Date(cacheMaxAppointmentDate)
+      : null;
+    cacheMaxDateOnly?.setHours(0, 0, 0, 0);
+    const coversRequestedEndDate = Boolean(
+      cacheMaxDateOnly && cacheMaxDateOnly >= requestedEndDateOnly,
+    );
 
     const rows =
       (await this.prisma.$queryRaw<
@@ -1272,7 +1886,12 @@ export class DashboardService {
     const appointmentsByTicket = Array.from(map.values());
     const tickets = appointmentsByTicket.map((t) => t.ticket as any);
 
-    return { tickets, appointmentsByTicket };
+    return {
+      tickets,
+      appointmentsByTicket,
+      cacheMaxAppointmentDate,
+      coversRequestedEndDate,
+    };
   }
 
   /**
@@ -1358,7 +1977,12 @@ export class DashboardService {
     }>,
     startDate: Date,
     endDate: Date,
-    options: { preferReviewDate: boolean; requireReviewDateIfAny: boolean },
+    options: {
+      preferReviewDate: boolean;
+      requireReviewDateIfAny: boolean;
+      /** Confia nos filtros da API (start_date/end_date nos apontamentos); bucket por `appointment.date`. */
+      rawAggregation?: boolean;
+    },
   ): MonthlyHoursRow[] {
     const rows = new Map<string, MonthlyHoursRow>();
     const totalMinutesByMonth = new Map<
@@ -1387,6 +2011,22 @@ export class DashboardService {
       const category = this.categorizeTicket(item.ticket);
 
       for (const appointment of item.appointments) {
+        if (options.rawAggregation) {
+          const bucketDate = this.toDateOrNull(appointment.date);
+          if (!bucketDate) {
+            continue;
+          }
+          const monthKey = this.getMonthKey(bucketDate);
+          const minutesRow = totalMinutesByMonth.get(monthKey);
+          if (!minutesRow) {
+            continue;
+          }
+          const minutes = this.getAppointmentMinutes(appointment);
+          minutesRow[category] += minutes;
+          minutesRow.Total += minutes;
+          continue;
+        }
+
         const hasAnyReviewDate = item.appointments.some((a) =>
           this.getAppointmentReviewDate(a),
         );
@@ -1441,6 +2081,11 @@ export class DashboardService {
     return Array.from(rows.values());
   }
 
+  /** Evento de problema Zabbix (value=1); value=0 é recuperação e não entra em High/Disaster. */
+  private isZabbixProblemEvent(event: Record<string, unknown>): boolean {
+    return String(event.value ?? '') === '1';
+  }
+
   private buildAlertsRows(
     events: Array<Record<string, unknown>>,
     startDate: Date,
@@ -1462,6 +2107,10 @@ export class DashboardService {
     }
 
     for (const event of events) {
+      if (!this.isZabbixProblemEvent(event)) {
+        continue;
+      }
+
       const eventDate = this.toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
@@ -1473,6 +2122,61 @@ export class DashboardService {
       const severity = Number(event.severity ?? 0);
       const monthKey = this.getMonthKey(eventDate);
       const row = rows.get(monthKey);
+
+      if (!row) {
+        continue;
+      }
+
+      if (severity === 4) {
+        row.High += 1;
+        row.Total += 1;
+      }
+
+      if (severity === 5) {
+        row.Disaster += 1;
+        row.Total += 1;
+      }
+    }
+
+    return Array.from(rows.values());
+  }
+
+  private buildAlertsRowsByWeek(
+    events: Array<Record<string, unknown>>,
+    startDate: Date,
+    endDate: Date,
+  ): WeeklyAlertsRow[] {
+    const rows = new Map<string, WeeklyAlertsRow>();
+
+    for (const [weekKey, weekLabel] of this.buildWeekMap(
+      startDate,
+      endDate,
+    ).entries()) {
+      rows.set(weekKey, {
+        weekKey,
+        weekLabel,
+        High: 0,
+        Disaster: 0,
+        Total: 0,
+      });
+    }
+
+    for (const event of events) {
+      if (!this.isZabbixProblemEvent(event)) {
+        continue;
+      }
+
+      const eventDate = this.toDateOrNull(
+        new Date(Number(event.clock ?? 0) * 1000).toISOString(),
+      );
+
+      if (!eventDate || eventDate < startDate || eventDate > endDate) {
+        continue;
+      }
+
+      const severity = Number(event.severity ?? 0);
+      const weekKey = this.getWeekKey(eventDate);
+      const row = rows.get(weekKey);
 
       if (!row) {
         continue;
@@ -1518,6 +2222,10 @@ export class DashboardService {
     }
 
     for (const event of events) {
+      if (!this.isZabbixProblemEvent(event)) {
+        continue;
+      }
+
       const eventDate = this.toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
@@ -1566,10 +2274,20 @@ export class DashboardService {
     events: Array<Record<string, unknown>>,
     startDate: Date,
     endDate: Date,
-  ): TopTriggerRow[] {
+    limit = 20,
+  ): {
+    items: TopTriggerRow[];
+    allItems: TopTriggerRow[];
+    uniqueTriggers: number;
+    totalProblemEvents: number;
+  } {
     const triggerMap = new Map<string, TopTriggerRow>();
 
     for (const event of events) {
+      if (!this.isZabbixProblemEvent(event)) {
+        continue;
+      }
+
       const eventDate = this.toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
@@ -1608,9 +2326,17 @@ export class DashboardService {
       });
     }
 
-    return Array.from(triggerMap.values())
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
+    const sorted = Array.from(triggerMap.values()).sort(
+      (a, b) => b.count - a.count,
+    );
+    const totalProblemEvents = sorted.reduce((acc, row) => acc + row.count, 0);
+
+    return {
+      items: sorted.slice(0, limit),
+      allItems: sorted,
+      uniqueTriggers: sorted.length,
+      totalProblemEvents,
+    };
   }
 
   private getDaysFromRange(startDate: Date, endDate: Date) {
@@ -1778,7 +2504,7 @@ export class DashboardService {
               });
 
         const pageData = await this.tifluxService.requestResource(path);
-        const arr = Array.isArray(pageData) ? (pageData as any[]) : [];
+        const arr = Array.isArray(pageData) ? pageData : [];
         if (!arr.length) break;
         tickets.push(...arr);
         if (arr.length < limit) break;
@@ -1821,7 +2547,7 @@ export class DashboardService {
           offset += 1;
         }
 
-        out[String(n)] = all as unknown[];
+        out[String(n)] = all;
       }
 
       return out;
@@ -1832,7 +2558,7 @@ export class DashboardService {
         try {
           return await this.zabbixService.getDashboardDetailsByGroup(
             integrations.zabbixGroupName,
-            days,
+            { startDate, endDate },
           );
         } catch (error) {
           return {
@@ -1846,17 +2572,17 @@ export class DashboardService {
 
     const byNumber = new Map<number, any>();
     for (const t of tifluxCreated.tickets) {
-      const n = Number((t as any)?.ticket_number ?? 0);
+      const n = Number(t?.ticket_number ?? 0);
       if (n) byNumber.set(n, t);
     }
     for (const t of tifluxUpdated.tickets) {
-      const n = Number((t as any)?.ticket_number ?? 0);
+      const n = Number(t?.ticket_number ?? 0);
       if (n) byNumber.set(n, t);
     }
 
     const mergedTickets = Array.from(byNumber.values());
     const ticketNumbers = mergedTickets
-      .map((t) => Number((t as any)?.ticket_number ?? 0))
+      .map((t) => Number(t?.ticket_number ?? 0))
       .filter((n) => Number.isFinite(n) && n > 0);
 
     const appointmentsByTicket =
@@ -1894,9 +2620,7 @@ export class DashboardService {
           });
 
           const dateForRange =
-            effective.source === 'none'
-              ? null
-              : (effective.date as Date | null);
+            effective.source === 'none' ? null : effective.date;
 
           if (
             !dateForRange ||
@@ -2036,7 +2760,7 @@ export class DashboardService {
         try {
           return await this.zabbixService.getDashboardDetailsByGroup(
             integrations.zabbixGroupName,
-            days,
+            { startDate, endDate },
           );
         } catch (error) {
           console.error('Erro ao buscar dados do Zabbix:', error);
@@ -2234,22 +2958,29 @@ export class DashboardService {
       endDate,
     );
     const alertRows = this.buildAlertsRows(
-      zabbixData.events as Array<Record<string, unknown>>,
+      zabbixData.events,
+      startDate,
+      endDate,
+    );
+    const alertRowsByWeek = this.buildAlertsRowsByWeek(
+      zabbixData.events,
       startDate,
       endDate,
     );
 
     const topHostsByMonth = this.buildTopHostsByMonth(
-      zabbixData.events as Array<Record<string, unknown>>,
+      zabbixData.events,
       startDate,
       endDate,
     );
 
-    const topTriggers = this.buildTopTriggers(
-      zabbixData.events as Array<Record<string, unknown>>,
+    const topTriggersPack = this.buildTopTriggers(
+      zabbixData.events,
       startDate,
       endDate,
+      20,
     );
+    const topTriggers = topTriggersPack.items;
 
     const emptyHoursRows = this.buildEmptyHoursRows(startDate, endDate);
 
@@ -2262,17 +2993,20 @@ export class DashboardService {
     // Quando o complete é carregado sem horas (includeHours=false), retornamos placeholder
     // para o front não "piscar" 00:00 antes do /dashboard/hours completar.
     let totalHorasFormatadas = options.includeHours ? '00:00' : '--';
+    let resumoHorasTrabalhadas: WorkHoursTifluxSummary | null = null;
 
     if (options.includeHours) {
       const hoursPack = await this.loadOrReuseDashboardHours(params);
       hoursRows = hoursPack.horasPorMes ?? emptyHoursRows;
       totalHoras = hoursPack.summary.totalHoras ?? 0;
       totalHorasFormatadas = hoursPack.summary.totalHorasFormatadas ?? '00:00';
+      resumoHorasTrabalhadas = hoursPack.resumoHorasTrabalhadas ?? null;
       // Não sobrescrever o total de tickets do período no dashboard.
     }
 
     this.devDebug('ticketRows:', ticketRows);
     this.devDebug('alertRows:', alertRows);
+    this.devDebug('alertRowsByWeek:', alertRowsByWeek);
     this.devDebug('hoursRows usado no complete:', hoursRows);
     this.devDebug('summary final complete:', {
       totalChamados,
@@ -2302,6 +3036,7 @@ export class DashboardService {
         totalHorasFormatadas,
         totalHigh,
         totalDisaster,
+        totalTriggersDistintos: topTriggersPack.uniqueTriggers,
         totalHosts: zabbixData.overview.totalHosts,
         hostsAtivos: zabbixData.overview.hostsAtivos,
         hostsInativos: zabbixData.overview.hostsInativos,
@@ -2309,9 +3044,12 @@ export class DashboardService {
       chamadosPorMes: ticketRows,
       chamadosPorMesa: this.buildDeskSummaryFromTickets(rowsForChamados),
       horasPorMes: hoursRows,
+      resumoHorasTrabalhadas,
       alertasPorMes: alertRows,
+      alertasPorSemana: alertRowsByWeek,
       principaisHostsPorMes: topHostsByMonth,
       topTriggers,
+      allTriggersInPeriod: topTriggersPack.allItems,
       hostsDetalhados: zabbixData.hosts,
       templates: zabbixData.templates,
       eventosRecentes: zabbixData.events.slice(0, 20),
@@ -2343,26 +3081,66 @@ export class DashboardService {
       appointments: AppointmentLike[];
     }> = [];
 
+    let appointmentsParaResumo: Array<{
+      ticket: Record<string, unknown>;
+      appointments: AppointmentLike[];
+    }> = [];
+
     const hoursDateOpts = this.getDashboardHoursDateOptions();
 
     try {
       if (integrations.tifluxClientId !== null) {
-        const useDbCache = process.env.TIFLUX_USE_DB_CACHE !== 'false';
+        let usedDbForHours = false;
+        const useDbCache =
+          !this.tifluxDashboardRawApi &&
+          process.env.TIFLUX_USE_DB_CACHE !== 'false';
         if (useDbCache) {
           const fromDb = await this.getAppointmentsByClientFromDb({
             tifluxClientId: integrations.tifluxClientId,
             startDate,
             endDate,
           });
-          if (fromDb.appointmentsByTicket.length) {
-            this.devDebug(
-              'HOURS (DB CACHE) appointmentsByTicket:',
-              fromDb.appointmentsByTicket.length,
-            );
+          const hasAppointmentsInPeriod =
+            fromDb.appointmentsByTicket.length > 0;
+          const dbCoverageOk =
+            hasAppointmentsInPeriod &&
+            (!this.dbCacheRequireFullEndCoverage ||
+              fromDb.coversRequestedEndDate);
+
+          if (dbCoverageOk) {
+            if (
+              hasAppointmentsInPeriod &&
+              !fromDb.coversRequestedEndDate
+            ) {
+              this.devDebug(
+                'HOURS (DB CACHE): sync sem cobrir fim do filtro; usando SQL do período (evita API por ticket)',
+                {
+                  appointmentsByTicket: fromDb.appointmentsByTicket.length,
+                  cacheMaxAppointmentDate:
+                    fromDb.cacheMaxAppointmentDate?.toISOString() ?? null,
+                  requestedEndDate: endDate.toISOString(),
+                },
+              );
+            } else {
+              this.devDebug(
+                'HOURS (DB CACHE) appointmentsByTicket:',
+                fromDb.appointmentsByTicket.length,
+              );
+            }
             tickets = fromDb.tickets;
             appointmentsByTicket = fromDb.appointmentsByTicket;
+            usedDbForHours = true;
           } else {
-            this.devDebug('HOURS (DB CACHE) vazio; usando API TiFlux');
+            this.devDebug(
+              'HOURS (DB CACHE) sem apontamentos no período; usando API TiFlux',
+              {
+                appointmentsByTicket: fromDb.appointmentsByTicket.length,
+                cacheMaxAppointmentDate:
+                  fromDb.cacheMaxAppointmentDate?.toISOString() ?? null,
+                requestedEndDate: endDate.toISOString(),
+                requireFullEndCoverage: this.dbCacheRequireFullEndCoverage,
+              },
+            );
           }
         }
 
@@ -2390,7 +3168,39 @@ export class DashboardService {
           });
         }
 
-        if (this.hoursDropTicketsWithoutAppointmentsInPeriod) {
+        appointmentsParaResumo = appointmentsByTicket.map((item) => ({
+          ticket: item.ticket,
+          appointments: [...item.appointments],
+        }));
+
+        if (!usedDbForHours && process.env.TIFLUX_USE_DB_CACHE !== 'false') {
+          try {
+            const dbResumo = await this.getAppointmentsByClientFromDb({
+              tifluxClientId: integrations.tifluxClientId,
+              startDate,
+              endDate,
+            });
+            const resumoFromDbOk =
+              dbResumo.appointmentsByTicket.length > 0 &&
+              (!this.dbCacheRequireFullEndCoverage ||
+                dbResumo.coversRequestedEndDate);
+            if (resumoFromDbOk) {
+              appointmentsParaResumo = dbResumo.appointmentsByTicket.map(
+                (item) => ({
+                  ticket: item.ticket,
+                  appointments: [...item.appointments],
+                }),
+              );
+            }
+          } catch {
+            /* mantém listagem já carregada */
+          }
+        }
+
+        if (
+          !this.tifluxDashboardRawApi &&
+          this.hoursDropTicketsWithoutAppointmentsInPeriod
+        ) {
           appointmentsByTicket = appointmentsByTicket
             .map((item) => ({
               ticket: item.ticket,
@@ -2464,9 +3274,9 @@ export class DashboardService {
               if (minutes >= 120) {
                 largestAppointments.push({
                   ticket: ticketNumber,
-                  date: (appt.date as string | undefined) ?? null,
-                  init: (appt.init_time as string | undefined) ?? null,
-                  end: (appt.end_time as string | undefined) ?? null,
+                  date: appt.date ?? null,
+                  init: appt.init_time ?? null,
+                  end: appt.end_time ?? null,
                   service: label,
                   minutes,
                 });
@@ -2520,13 +3330,26 @@ export class DashboardService {
       console.error('Erro ao buscar horas do TiFlux:', error);
       tickets = [];
       appointmentsByTicket = [];
+      appointmentsParaResumo = [];
     }
+
+    const resumoHorasTrabalhadas =
+      integrations.tifluxClientId !== null
+        ? this.buildWorkHoursTifluxSummary(
+            appointmentsParaResumo,
+            startDate,
+            endDate,
+          )
+        : null;
 
     const hoursRows = this.buildHoursRows(
       appointmentsByTicket,
       startDate,
       endDate,
-      hoursDateOpts,
+      {
+        ...hoursDateOpts,
+        rawAggregation: this.tifluxDashboardRawApi,
+      },
     );
 
     const totalMinutes = appointmentsByTicket.reduce((acc, item) => {
@@ -2541,9 +3364,9 @@ export class DashboardService {
     const totalHoras = Number((totalMinutes / 60).toFixed(2));
     const totalHorasFormatadas = this.formatMinutesToHHMM(totalMinutes);
 
-    // "Tickets" do extrato: tickets que tiveram pelo menos 1 apontamento HORA NORMAL/HORA EXTRA (não-garantia) no período.
-    // Como appointmentsByTicket já chega filtrado (range + não-garantia + HN/HE), basta contar.
+    // Modo default: tickets com após filtros (range, não-garantia, etc.). Modo RAW: tickets com ≥1 apontamento devolvido pela API.
     const totalTicketsConsiderados = appointmentsByTicket
+      .filter((i) => i.appointments.length > 0)
       .map((i) => Number(i.ticket.ticket_number ?? 0))
       .filter((n) => Number.isFinite(n) && n > 0).length;
 
@@ -2568,6 +3391,7 @@ export class DashboardService {
       },
       horasPorMes: hoursRows,
       horasPorMesa: this.buildDeskSummaryFromAppointments(appointmentsByTicket),
+      resumoHorasTrabalhadas,
     };
   }
 }

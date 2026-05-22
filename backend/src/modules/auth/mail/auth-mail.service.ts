@@ -51,7 +51,7 @@ export class AuthMailService {
       await this.mail.sendMail({ to: payload.to, subject, text, html });
       this.logger.log(`E-mail de redefinição processado para ${payload.to}`);
     } catch (err) {
-      const anyErr = err as any;
+      const anyErr = err;
       if (process.env.NODE_ENV !== 'production') {
         this.logger.error(
           `[DEV] Detalhes do erro SMTP/OAuth: ` +

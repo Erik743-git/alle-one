@@ -47,9 +47,7 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
-    const entry = user.permissions.find(
-      (p) => p.module === (meta.module as PermissionModule),
-    );
+    const entry = user.permissions.find((p) => p.module === meta.module);
 
     if (!entry || !entry[meta.flag]) {
       throw new ForbiddenException('Sem permissão para este recurso');

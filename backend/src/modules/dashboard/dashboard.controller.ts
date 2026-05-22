@@ -3,6 +3,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  NotFoundException,
   Query,
   Req,
   Res,
@@ -105,6 +106,13 @@ export class DashboardController {
     @Query('end') end?: string,
     @Query('companyId') companyId?: string,
   ) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new NotFoundException();
+    }
+    if (process.env.ENABLE_DEBUG_DUMP !== 'true') {
+      throw new NotFoundException();
+    }
+
     if (req.user.role !== 'ADMIN') {
       throw new ForbiddenException(
         'Apenas administradores podem gerar o dump.',

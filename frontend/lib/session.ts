@@ -100,5 +100,7 @@ export function clearSession() {
   void fetch(`${API_URL}/auth/logout`, {
     method: "POST",
     credentials: "include",
+  }).catch(() => {
+    /* API pode estar offline ao limpar sessão local */
   });
 }

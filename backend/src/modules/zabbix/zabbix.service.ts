@@ -141,14 +141,111 @@ export class ZabbixService {
   private readonly url: string = process.env.ZABBIX_URL ?? '';
   private readonly token: string = process.env.ZABBIX_TOKEN ?? '';
 
-  /** Limite de eventos no período (reduz payload e tempo de resposta). Env: ZABBIX_DASHBOARD_EVENTS_LIMIT */
-  private getDashboardEventsLimit(): number {
+  /** Tamanho de página na paginação de event.get do dashboard. Env: ZABBIX_DASHBOARD_EVENTS_LIMIT */
+  private getDashboardEventsPageSize(): number {
     const raw = process.env.ZABBIX_DASHBOARD_EVENTS_LIMIT;
     const n = raw !== undefined ? Number(raw) : 2500;
     if (!Number.isFinite(n)) {
       return 2500;
     }
     return Math.min(Math.max(Math.trunc(n), 500), 20000);
+  }
+
+  /** Máximo de páginas ao buscar eventos do período (evita loop). Env: ZABBIX_DASHBOARD_EVENTS_MAX_PAGES */
+  private getDashboardEventsMaxPages(): number {
+    const raw = process.env.ZABBIX_DASHBOARD_EVENTS_MAX_PAGES;
+    const n = raw !== undefined ? Number(raw) : 40;
+    if (!Number.isFinite(n)) {
+      return 40;
+    }
+    return Math.min(Math.max(Math.trunc(n), 1), 200);
+  }
+
+  /**
+   * Busca todos os eventos do intervalo (paginação por eventid).
+   * Sem isso, só os 2.500 mais recentes entram no dashboard e High/Disaster ficam abaixo do Zabbix.
+   */
+  private async fetchAllDashboardEventsForGroup(
+    groupid: string,
+    range: { time_from: number; time_till: number },
+  ): Promise<ZabbixEvent[]> {
+    const pageSize = this.getDashboardEventsPageSize();
+    const maxPages = this.getDashboardEventsMaxPages();
+    const all: ZabbixEvent[] = [];
+    let eventidFrom: string | undefined;
+
+    for (let page = 0; page < maxPages; page++) {
+      const params: Record<string, unknown> = {
+        output: [
+          'eventid',
+          'objectid',
+          'clock',
+          'name',
+          'severity',
+          'value',
+          'acknowledged',
+        ],
+        groupids: [groupid],
+        source: 0,
+        object: 0,
+        selectHosts: ['hostid', 'host', 'name'],
+        sortfield: ['eventid'],
+        sortorder: 'ASC',
+        limit: pageSize,
+        time_from: range.time_from,
+        time_till: range.time_till,
+      };
+
+      if (eventidFrom) {
+        params.eventid_from = eventidFrom;
+      }
+
+      const batch = await this.request<ZabbixEvent[]>('event.get', params);
+
+      if (!batch.length) {
+        break;
+      }
+
+      all.push(...batch);
+
+      if (batch.length < pageSize) {
+        break;
+      }
+
+      const maxEventId = batch.reduce(
+        (max, event) => Math.max(max, Number(event.eventid)),
+        0,
+      );
+      eventidFrom = String(maxEventId + 1);
+    }
+
+    return all;
+  }
+
+  private applyHostDisplayNames(
+    events: ZabbixEvent[],
+    detailedHosts: ZabbixDetailedHost[],
+  ): ZabbixEvent[] {
+    const labelByHostId = new Map<string, string>();
+
+    for (const host of detailedHosts) {
+      const label = host.name?.trim() || host.host?.trim() || host.hostid;
+      labelByHostId.set(host.hostid, label);
+    }
+
+    for (const event of events) {
+      const ref = event.hosts?.[0];
+      if (!ref?.hostid) {
+        continue;
+      }
+
+      const label = labelByHostId.get(ref.hostid);
+      if (label) {
+        ref.name = label;
+      }
+    }
+
+    return events;
   }
 
   private async request<T>(
@@ -214,6 +311,35 @@ export class ZabbixService {
       time_from: from,
       time_till: now,
     };
+  }
+
+  /** Alinha a consulta ao intervalo do filtro do dashboard (ex.: mês passado), não “últimos N dias até agora”. */
+  private getTimeRangeFromDates(startDate: Date, endDate: Date) {
+    const from = Math.floor(startDate.getTime() / 1000);
+    const till = Math.floor(endDate.getTime() / 1000);
+
+    return {
+      time_from: Math.min(from, till),
+      time_till: Math.max(from, till),
+    };
+  }
+
+  private resolveDashboardPeriod(
+    period: number | { startDate: Date; endDate: Date },
+  ) {
+    if (typeof period === 'number') {
+      const range = this.getTimeRange(period);
+      return { range, days: period };
+    }
+
+    const range = this.getTimeRangeFromDates(
+      period.startDate,
+      period.endDate,
+    );
+    const diffMs = period.endDate.getTime() - period.startDate.getTime();
+    const days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+    return { range, days };
   }
 
   /** Nome exato do grupo no Zabbix (como cadastrado na empresa do portal). */
@@ -439,7 +565,7 @@ export class ZabbixService {
       selectHosts: ['hostid', 'name'],
       sortfield: ['clock'],
       sortorder: 'DESC',
-      limit: this.getDashboardEventsLimit(),
+      limit: this.getDashboardEventsPageSize(),
       ...range,
     });
   }
@@ -535,15 +661,17 @@ export class ZabbixService {
     };
   }
 
-  async getDashboardDetailsByGroup(groupName: string, days = 7) {
+  async getDashboardDetailsByGroup(
+    groupName: string,
+    period: number | { startDate: Date; endDate: Date } = 7,
+  ) {
+    const { range, days } = this.resolveDashboardPeriod(period);
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return this.emptyDashboardDetails(groupName, days);
     }
 
-    const range = this.getTimeRange(days);
-
-    const [detailedHosts, problems, events] = await Promise.all([
+    const [detailedHosts, problems, rawEvents] = await Promise.all([
       this.request<ZabbixDetailedHost[]>('host.get', {
         output: [
           'hostid',
@@ -576,26 +704,10 @@ export class ZabbixService {
         sortfield: ['eventid'],
         sortorder: 'DESC',
       }),
-      this.request<ZabbixEvent[]>('event.get', {
-        output: [
-          'eventid',
-          'objectid',
-          'clock',
-          'name',
-          'severity',
-          'value',
-          'acknowledged',
-        ],
-        groupids: [groupid],
-        source: 0,
-        object: 0,
-        selectHosts: ['hostid', 'name'],
-        sortfield: ['clock'],
-        sortorder: 'DESC',
-        limit: this.getDashboardEventsLimit(),
-        ...range,
-      }),
+      this.fetchAllDashboardEventsForGroup(groupid, range),
     ]);
+
+    const events = this.applyHostDisplayNames(rawEvents, detailedHosts);
 
     const overview: ZabbixOverview = {
       group: groupName,
@@ -639,8 +751,8 @@ export class ZabbixService {
       },
       periodo: {
         dias: days,
-        de: this.getUnixTimestamp(String(this.getTimeRange(days).time_from)),
-        ate: this.getUnixTimestamp(String(this.getTimeRange(days).time_till)),
+        de: this.getUnixTimestamp(String(range.time_from)),
+        ate: this.getUnixTimestamp(String(range.time_till)),
       },
     };
   }

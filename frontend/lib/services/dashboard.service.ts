@@ -9,6 +9,7 @@ export type DashboardSummary = {
   totalHorasFormatadas?: string;
   totalHigh: number;
   totalDisaster: number;
+  totalTriggersDistintos?: number;
   totalHosts: number;
   hostsAtivos: number;
   hostsInativos: number;
@@ -34,9 +35,47 @@ export type DashboardHorasMes = {
   Total: number;
 };
 
+export type WorkHoursTifluxLine = {
+  data: string;
+  horaInicio: string;
+  horaFim: string;
+  duracaoFormatada: string;
+  assistencia: string;
+  assistenciaBucket: "externo" | "remoto" | "interno" | "sem";
+  ticketNumber: number;
+  titulo: string;
+  atendente: string;
+};
+
+export type WorkHoursTifluxSummary = {
+  totalTicketsDistintos: number;
+  totalMinutos: number;
+  totalHorasFormatadas: string;
+  semAssistenciaMinutos: number;
+  semAssistenciaFormatado: string;
+  externoMinutos: number;
+  externoFormatado: string;
+  remotoMinutos: number;
+  remotoFormatado: string;
+  internoMinutos: number;
+  internoFormatado: string;
+  totalApontamentosNoPeriodo: number;
+  limiteLinhas: number;
+  linhas: WorkHoursTifluxLine[];
+  linhasTruncadas: boolean;
+};
+
 export type DashboardAlertasMes = {
   monthKey: string;
   monthLabel: string;
+  High: number;
+  Disaster: number;
+  Total: number;
+};
+
+export type DashboardAlertasSemana = {
+  weekKey: string;
+  weekLabel: string;
   High: number;
   Disaster: number;
   Total: number;
@@ -72,11 +111,15 @@ export type DashboardCompleteResponse = {
   chamadosPorMes: DashboardChamadosMes[];
   horasPorMes: DashboardHorasMes[];
   alertasPorMes: DashboardAlertasMes[];
+  alertasPorSemana?: DashboardAlertasSemana[];
   principaisHostsPorMes: DashboardTopHostsMes[];
   topTriggers: DashboardTopTrigger[];
+  allTriggersInPeriod?: DashboardTopTrigger[];
   hostsDetalhados: unknown[];
   templates: unknown[];
   eventosRecentes: unknown[];
+  /** Resumo estilo TiFlux (apontamentos no período). */
+  resumoHorasTrabalhadas?: WorkHoursTifluxSummary | null;
 };
 
 export type DashboardHoursResponse = {
@@ -92,6 +135,7 @@ export type DashboardHoursResponse = {
     totalTicketsConsiderados: number;
   };
   horasPorMes: DashboardHorasMes[];
+  resumoHorasTrabalhadas?: WorkHoursTifluxSummary | null;
 };
 
 export type DashboardRequestParams = {
@@ -141,6 +185,7 @@ export function refreshCompleteDashboard(params: DashboardRequestParams) {
   );
 }
 
+/** Somente desenvolvimento local com ENABLE_DEBUG_DUMP=true no backend. */
 export async function downloadDebugDump(params: {
   group?: string;
   companyId: string;

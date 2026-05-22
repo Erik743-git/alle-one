@@ -7,17 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Download, Loader2, RefreshCw } from "lucide-react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { Input } from "@/components/ui/input";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { getStoredUser } from "@/lib/session";
 import { reportsService } from "@/lib/services/reports.service";
 import type { ReportRow } from "@/lib/services/reports.service";
-import { downloadDebugDump } from "@/lib/services/dashboard.service";
 
 export default function GeradorRelatoriosPage() {
   const user = useMemo(() => getStoredUser(), []);
   const [carregando, setCarregando] = useState(true);
   const [gerando, setGerando] = useState(false);
-  const [baixandoDump, setBaixandoDump] = useState(false);
   const [erro, setErro] = useState("");
 
   const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>(
@@ -158,56 +156,6 @@ export default function GeradorRelatoriosPage() {
     }
   }
 
-  async function handleDownloadDebugDump() {
-    setErro("");
-
-    if (user?.role !== "ADMIN") {
-      setErro("Apenas administradores podem baixar o dump.");
-      return;
-    }
-
-    if (!companyId) {
-      setErro("Selecione a empresa.");
-      return;
-    }
-    if (!start || !end) {
-      setErro("Selecione data inicial e final.");
-      return;
-    }
-
-    const startDate = new Date(`${start}T00:00:00`);
-    const endDate = new Date(`${end}T23:59:59`);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      setErro("Data inválida. Verifique a data inicial e a data final.");
-      return;
-    }
-    if (endDate.getTime() < startDate.getTime()) {
-      setErro("Período inválido (data final menor que a data inicial).");
-      return;
-    }
-
-    try {
-      setBaixandoDump(true);
-      const { blob, filename } = await downloadDebugDump({
-        companyId,
-        start,
-        end,
-      });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao baixar dump.");
-    } finally {
-      setBaixandoDump(false);
-    }
-  }
-
   return (
     <ProtectedPage>
     <PermissionGate module="REPORTS">
@@ -253,11 +201,10 @@ export default function GeradorRelatoriosPage() {
                   <label className="text-xs font-semibold text-muted-foreground">
                     Data inicial
                   </label>
-                  <Input
-                    type="date"
+                  <DatePickerField
                     value={start}
-                    onChange={(e) => setStart(e.target.value)}
-                    className="h-11 rounded-xl"
+                    onChange={setStart}
+                    max={end || undefined}
                   />
                 </div>
 
@@ -265,11 +212,10 @@ export default function GeradorRelatoriosPage() {
                   <label className="text-xs font-semibold text-muted-foreground">
                     Data final
                   </label>
-                  <Input
-                    type="date"
+                  <DatePickerField
                     value={end}
-                    onChange={(e) => setEnd(e.target.value)}
-                    className="h-11 rounded-xl"
+                    onChange={setEnd}
+                    min={start || undefined}
                   />
                 </div>
 
@@ -336,29 +282,6 @@ export default function GeradorRelatoriosPage() {
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  {user?.role === "ADMIN" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void handleDownloadDebugDump()}
-                      disabled={carregando || gerando || baixandoDump}
-                      className="h-11"
-                      title="Baixa um TXT com dados brutos do TiFlux e do Zabbix para comparação."
-                    >
-                      {baixandoDump ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Baixando dump...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="mr-2 h-4 w-4" />
-                          Baixar dump (debug)
-                        </>
-                      )}
-                    </Button>
-                  ) : null}
-
                   <Button
                     onClick={() => void handleGenerate()}
                     disabled={carregando || gerando}
