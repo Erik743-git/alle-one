@@ -1,6 +1,11 @@
 # Alle One — Portal SaaS Corporativo
 
+[![Versão](https://img.shields.io/github/v/release/Erik743-git/alle-one?label=vers%C3%A3o)](https://github.com/Erik743-git/alle-one/releases)
+[![CI](https://github.com/Erik743-git/alle-one/actions/workflows/ci.yml/badge.svg)](https://github.com/Erik743-git/alle-one/actions/workflows/ci.yml)
+
 Portal corporativo (web) + API para gestão de clientes/empresas, acessos e permissões, GMUD, contratos, financeiro e integrações (ex.: Zabbix e TiFlux).
+
+**Versão atual:** ver [`VERSION`](VERSION) · **Histórico:** [`CHANGELOG.md`](CHANGELOG.md) · **Arquitetura:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · **Versionamento:** [`docs/VERSIONING.md`](docs/VERSIONING.md)
 
 > **Importante (segurança)**: este workspace contém arquivos `.env` locais com segredos/credenciais. **Não compartilhe** esses arquivos e **não suba** para repositórios. Para handover, use `.env.example`/variáveis de ambiente no ambiente de execução.
 
@@ -22,9 +27,25 @@ Há um **projeto separado** no seu workspace (`C:\SyncTiflux\alleone-tiflux-sync
 
 ```text
 alle-one/
-  backend/   # API (NestJS + Prisma)
-  frontend/  # Web (Next.js)
+  VERSION              # Versão do produto (SemVer)
+  CHANGELOG.md         # Releases
+  docs/                # Arquitetura e versionamento
+  backend/             # API (NestJS + Prisma)
+  frontend/            # Web (Next.js)
+  .github/workflows/   # CI + Release automática (tags v*)
 ```
+
+## Releases no GitHub
+
+Versões publicadas com tags anotadas `v0.x.y`. Ao enviar uma tag, o workflow [`release.yml`](.github/workflows/release.yml) abre a **GitHub Release** com notas do `CHANGELOG.md`.
+
+| Versão | Destaques |
+|--------|-----------|
+| **v0.3.0** | UX modo claro, GMUD data/hora, mesa Consult, selects Zabbix/TiFlux com busca |
+| **v0.2.0** | Dashboard Zabbix, relatório Tipo 4, date picker |
+| **v0.1.0** | Monorepo inicial, módulos base, CI |
+
+Detalhes: [`docs/VERSIONING.md`](docs/VERSIONING.md).
 
 ## GitHub (primeira publicação)
 
@@ -165,7 +186,7 @@ O `AppModule` importa, entre outros:
 - **Integrações**: Zabbix, TiFlux
 - **ScheduleModule**: rotinas agendadas
 
-## Versão estável (backup — maio/2026)
+## Notas da release v0.3.0 (maio/2026)
 
 Checkpoint funcional do portal após evolução de dashboard, relatórios e UX. **Os totais de negócio (alertas, chamados, horas) mantêm a mesma lógica**; mudanças visuais são principalmente gráficos e formulários.
 
