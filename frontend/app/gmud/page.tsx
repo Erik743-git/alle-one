@@ -284,7 +284,7 @@ export default function GmudPage() {
           </div>
 
           {error ? (
-            <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
+            <div className="alle-alert-error rounded-xl p-4 text-sm">
               {error}
             </div>
           ) : null}
@@ -421,7 +421,7 @@ export default function GmudPage() {
                                                 {s.rejected ? (
                                                   <>
                                                     {" • "}
-                                                    <span className="text-red-200">
+                                                    <span className="text-destructive font-medium">
                                                       {s.rejected} rejeit.
                                                     </span>
                                                   </>

@@ -16,6 +16,8 @@ import {
   getZabbixGroups,
   type ZabbixGroupOption,
 } from "@/lib/services/zabbix.service";
+import { ZabbixGroupSelectField } from "@/components/ui/zabbix-group-select-field";
+import { TifluxClientSelectField } from "@/components/ui/tiflux-client-select-field";
 import {
   getTifluxClients,
   type TifluxClient,
@@ -250,7 +252,7 @@ function EditarEmpresaModal({
               ) : null}
 
               {logoError ? (
-                <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-200">
+                <div className="alle-alert-error rounded-xl p-3 text-sm">
                   {logoError}
                 </div>
               ) : null}
@@ -261,26 +263,12 @@ function EditarEmpresaModal({
                 Grupo Zabbix
               </label>
 
-              <select
+              <ZabbixGroupSelectField
                 value={form.zabbixGroupName}
-                onChange={(e) => onChange("zabbixGroupName", e.target.value)}
-                className="font-sans h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none"
-              >
-                <option value="">
-                  {carregandoGrupos
-                    ? "Carregando grupos..."
-                    : "Selecione um grupo"}
-                </option>
-
-                {gruposZabbix.map((grupo) => (
-                  <option
-                    key={grupo.groupid}
-                    value={grupo.name}
-                  >
-                    {grupo.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(next) => onChange("zabbixGroupName", next)}
+                groups={gruposZabbix}
+                loading={carregandoGrupos}
+              />
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -288,46 +276,16 @@ function EditarEmpresaModal({
                 Cliente TiFlux
               </label>
 
-              <select
-                value={form.tifluxClientId === null ? "" : String(form.tifluxClientId)}
-                onChange={(e) => {
-                  const raw = e.target.value;
-
-                  if (!raw) {
-                    onChange("tifluxClientId", null);
-                    onChange("tifluxClientName", "");
-                    return;
-                  }
-
-                  const parsed = Number(raw);
-                  const selectedClient = tifluxClients.find(
-                    (client) => Number(client.id) === parsed,
-                  );
-
-                  onChange("tifluxClientId", Number.isNaN(parsed) ? null : parsed);
-                  onChange(
-                    "tifluxClientName",
-                    selectedClient?.name ||
-                      selectedClient?.social_name ||
-                      "",
-                  );
+              <TifluxClientSelectField
+                value={form.tifluxClientId}
+                selectedLabel={form.tifluxClientName}
+                onChange={(clientId, clientName) => {
+                  onChange("tifluxClientId", clientId);
+                  onChange("tifluxClientName", clientName);
                 }}
-                className="font-sans h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none"
-              >
-                <option value="">
-                  {carregandoTiflux
-                    ? "Carregando clientes..."
-                    : "Selecione um cliente"}
-                </option>
-                {tifluxClients.map((client) => (
-                  <option
-                    key={client.id}
-                    value={String(client.id)}
-                  >
-                    {client.name || client.social_name || `Cliente ${client.id}`}
-                  </option>
-                ))}
-              </select>
+                clients={tifluxClients}
+                loading={carregandoTiflux}
+              />
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -342,7 +300,7 @@ function EditarEmpresaModal({
             </div>
 
             <div className="space-y-3 md:col-span-2">
-              <label className="font-sans text-sm font-medium tracking-normal text-slate-300">
+              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
                 Status
               </label>
 
@@ -352,7 +310,7 @@ function EditarEmpresaModal({
                   onClick={() => onChange("status", true)}
                   className={`font-sans rounded-xl border px-4 py-2 text-sm font-medium tracking-normal transition ${
                     form.status
-                      ? "border-green-500/30 bg-green-500/15 text-green-400"
+                      ? "alle-badge-success font-semibold"
                       : "border-border bg-background text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                   }`}
                 >
@@ -364,7 +322,7 @@ function EditarEmpresaModal({
                   onClick={() => onChange("status", false)}
                   className={`font-sans rounded-xl border px-4 py-2 text-sm font-medium tracking-normal transition ${
                     !form.status
-                      ? "border-red-500/30 bg-red-500/15 text-red-400"
+                      ? "alle-badge-danger font-semibold"
                       : "border-border bg-background text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                   }`}
                 >
@@ -439,8 +397,8 @@ function InativarEmpresaModal({
         </div>
 
         <div className="px-6 py-6">
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
-            <p className="font-sans text-sm font-normal leading-6 tracking-normal text-red-100">
+          <div className="alle-alert-error rounded-2xl p-4">
+            <p className="font-sans text-sm font-normal leading-6 tracking-normal">
               Tem certeza que deseja inativar a empresa{" "}
               <span className="font-semibold">{empresa.nome}</span>?
             </p>
@@ -757,7 +715,7 @@ export default function AdminEmpresasPage() {
                   <p className="text-3xl font-bold">{totalEmpresasAtivas}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500/12 text-green-400">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600/15 text-emerald-700 dark:text-green-400">
                   <ShieldCheck size={28} />
                 </div>
               </CardContent>
@@ -826,7 +784,7 @@ export default function AdminEmpresasPage() {
                     Carregando empresas...
                   </div>
                 ) : erro ? (
-                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-200">
+                  <div className="alle-alert-error rounded-2xl p-6 text-sm">
                     {erro}
                   </div>
                 ) : empresasFiltradas.length === 0 ? (
@@ -906,8 +864,8 @@ export default function AdminEmpresasPage() {
                               <span
                                 className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${
                                   empresa.status === "Ativa"
-                                    ? "bg-green-500/15 text-green-400"
-                                    : "bg-red-500/15 text-red-400"
+                                    ? "alle-badge-success"
+                                    : "alle-badge-danger"
                                 }`}
                               >
                                 {empresa.status}
@@ -940,7 +898,7 @@ export default function AdminEmpresasPage() {
                                 <button
                                   onClick={() => handleAbrirInativacao(empresa)}
                                   disabled={deletandoId === empresa.id}
-                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                                   title="Inativar empresa"
                                 >
                                   <Trash2 size={16} />

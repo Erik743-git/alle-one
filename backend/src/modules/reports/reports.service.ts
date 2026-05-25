@@ -154,6 +154,7 @@ export class ReportsService {
     noc: '#C00000',
     sistemas: '#548235',
     rotinas: '#7030A0',
+    consult: '#ED7D31',
     totalCyan: '#00B0F0',
     high: '#4472C4',
     disaster: '#C00000',
@@ -859,10 +860,11 @@ export class ReportsService {
       const sheet = workbook.addWorksheet('Chamados por mês', {
         views: [{ state: 'frozen', ySplit: 5 }],
       });
-      const colCount = 6;
+      const colCount = 7;
       sheet.columns = [
         { width: 16 },
         { width: 14 },
+        { width: 10 },
         { width: 10 },
         { width: 10 },
         { width: 12 },
@@ -878,6 +880,7 @@ export class ReportsService {
         'Infraestrutura',
         'NOC',
         'Rotinas',
+        'Consult',
         'Sistemas',
         'Total',
       ];
@@ -892,6 +895,7 @@ export class ReportsService {
           infra > 0 ? infra : null,
           Number(r.NOC) || 0,
           Number(r.Rotinas) || 0,
+          Number(r.Consult) || 0,
           Number(r.Sistema) || 0,
           Number(r.Total) || 0,
         ];
@@ -918,14 +922,19 @@ export class ReportsService {
               backgroundColor: this.tipo4Theme.noc,
             },
             {
-              label: 'Sistemas',
-              data: (chamadosMonths as any[]).map((r) => r.Sistema),
-              backgroundColor: this.tipo4Theme.sistemas,
-            },
-            {
               label: 'Rotinas',
               data: (chamadosMonths as any[]).map((r) => r.Rotinas),
               backgroundColor: this.tipo4Theme.rotinas,
+            },
+            {
+              label: 'Consult',
+              data: (chamadosMonths as any[]).map((r) => r.Consult),
+              backgroundColor: this.tipo4Theme.consult,
+            },
+            {
+              label: 'Sistemas',
+              data: (chamadosMonths as any[]).map((r) => r.Sistema),
+              backgroundColor: this.tipo4Theme.sistemas,
             },
           ],
         }),
@@ -937,13 +946,14 @@ export class ReportsService {
       const sheet = workbook.addWorksheet('Apontamento de Horas', {
         views: [{ state: 'frozen', ySplit: 5 }],
       });
-      const colCount = 6;
+      const colCount = 7;
       sheet.columns = [
         { width: 16 },
         { width: 14 },
         { width: 10 },
-        { width: 12 },
         { width: 10 },
+        { width: 10 },
+        { width: 12 },
         { width: 10 },
       ];
       this.styleTipo4TitleBand(sheet, 'Apontamento de Horas', colCount);
@@ -955,8 +965,9 @@ export class ReportsService {
         'Mês',
         'Infraestrutura',
         'NOC',
-        'Sistemas',
         'Rotinas',
+        'Consult',
+        'Sistemas',
         'Total',
       ];
       this.styleTipo4ColumnHeaderRow(headerRow, colCount);
@@ -970,8 +981,9 @@ export class ReportsService {
           r.monthLabel,
           infra > 0 ? infra : null,
           Number(r.NOC) || 0,
-          Number(r.Sistema) || 0,
           Number(r.Rotinas) || 0,
+          Number(r.Consult) || 0,
+          Number(r.Sistema) || 0,
           Number(r.Total) || 0,
         ];
         this.styleTipo4DataRow(row, rowIdx - 5, colCount);
@@ -1000,14 +1012,19 @@ export class ReportsService {
               backgroundColor: this.tipo4Theme.noc,
             },
             {
-              label: 'Sistemas',
-              data: (horasMonths as any[]).map((r) => r.Sistema),
-              backgroundColor: this.tipo4Theme.sistemas,
-            },
-            {
               label: 'Rotinas',
               data: (horasMonths as any[]).map((r) => r.Rotinas),
               backgroundColor: this.tipo4Theme.rotinas,
+            },
+            {
+              label: 'Consult',
+              data: (horasMonths as any[]).map((r) => r.Consult),
+              backgroundColor: this.tipo4Theme.consult,
+            },
+            {
+              label: 'Sistemas',
+              data: (horasMonths as any[]).map((r) => r.Sistema),
+              backgroundColor: this.tipo4Theme.sistemas,
             },
             {
               label: 'Total',

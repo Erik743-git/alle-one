@@ -470,7 +470,7 @@ export default function AdminUsuariosPage() {
                   <p className="text-3xl font-bold">{totalAdmins}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500/12 text-green-400">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600/15 text-emerald-700 dark:text-green-400">
                   <ShieldCheck size={28} />
                 </div>
               </CardContent>
@@ -524,7 +524,7 @@ export default function AdminUsuariosPage() {
                     Carregando usuários...
                   </div>
                 ) : erro ? (
-                  <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-200">
+                  <div className="alle-alert-error rounded-2xl p-6 text-sm">
                     {erro}
                   </div>
                 ) : usuariosPorEmpresa.length === 0 ? (
@@ -586,8 +586,8 @@ export default function AdminUsuariosPage() {
                                 <span
                                   className={`inline-flex items-center whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold ${
                                     usuario.status === "Ativo"
-                                      ? "bg-green-500/15 text-green-400"
-                                      : "bg-red-500/15 text-red-400"
+                                      ? "alle-badge-success"
+                                      : "alle-badge-danger"
                                   }`}
                                 >
                                   {usuario.status}
@@ -621,7 +621,7 @@ export default function AdminUsuariosPage() {
 
                                 <button
                                   onClick={() => abrirDesativacao(usuario.id)}
-                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-400"
+                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
                                   title="Desativar usuário"
                                 >
                                   <Trash2 size={16} />
@@ -715,7 +715,7 @@ export default function AdminUsuariosPage() {
           <DialogContent
             className="
               font-sans
-              flex max-h-[92vh] w-[95vw] max-w-[680px] flex-col overflow-hidden
+              flex max-h-[92vh] w-[min(1200px,96vw)] max-w-none flex-col overflow-hidden
               border border-border bg-card p-0 text-card-foreground
             "
           >
@@ -854,7 +854,7 @@ export default function AdminUsuariosPage() {
               </div>
 
               {erroEdicao ? (
-                <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                <div className="alle-alert-error mt-5 rounded-xl px-3 py-2 text-sm">
                   {erroEdicao}
                 </div>
               ) : null}
@@ -897,7 +897,7 @@ export default function AdminUsuariosPage() {
           >
             <div className="shrink-0 border-b border-border px-6 py-6">
               <DialogHeader className="space-y-3 text-left">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/12 text-red-400">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-destructive/15 text-destructive">
                   <TriangleAlert size={22} />
                 </div>
 
@@ -922,7 +922,7 @@ export default function AdminUsuariosPage() {
               </div>
 
               {erroDesativacao ? (
-                <div className="mt-5 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                <div className="alle-alert-error mt-5 rounded-xl px-3 py-2 text-sm">
                   {erroDesativacao}
                 </div>
               ) : null}

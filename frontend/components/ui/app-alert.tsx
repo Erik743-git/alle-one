@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export type AppAlertVariant = "info" | "error" | "warning" | "success";
 
@@ -38,26 +39,26 @@ export function AppAlert({
         ? "bg-orange-600 hover:bg-orange-700 text-white"
         : variant === "success"
           ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-          : "bg-[#12b5d9] hover:bg-[#0ea5c6] text-white";
+          : "bg-primary hover:bg-primary/90 text-primary-foreground";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="font-sans max-w-[95vw] sm:max-w-md border border-white/10 bg-[#08182f] text-white">
+      <DialogContent className="font-sans max-w-[95vw] sm:max-w-md border-border bg-card text-card-foreground">
         <DialogHeader>
-          <DialogTitle className="font-sans text-white">{title}</DialogTitle>
+          <DialogTitle className="font-sans text-foreground">{title}</DialogTitle>
           {description ? (
-            <DialogDescription className="font-sans text-slate-400">
+            <DialogDescription className="font-sans text-muted-foreground">
               {description}
             </DialogDescription>
           ) : null}
         </DialogHeader>
 
-        <DialogFooter className="gap-2 border-white/10 bg-[#08182f]">
+        <DialogFooter className="gap-2">
           {cancelText ? (
             <Button
               type="button"
               variant="outline"
-              className="h-11 border-white/15 bg-white/5 text-white hover:bg-white/10"
+              className="h-11"
               onClick={() => onOpenChange(false)}
             >
               {cancelText}
@@ -65,7 +66,7 @@ export function AppAlert({
           ) : null}
           <Button
             type="button"
-            className={`h-11 ${confirmClass}`}
+            className={cn("h-11", confirmClass)}
             onClick={() => {
               onConfirm?.();
               onOpenChange(false);
@@ -78,4 +79,3 @@ export function AppAlert({
     </Dialog>
   );
 }
-

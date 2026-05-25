@@ -112,7 +112,7 @@ export default function AdminPage() {
                   <p className="text-3xl font-bold">{usersActive}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-green-500/12 text-green-400">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600/15 text-emerald-700 dark:text-green-400">
                   <Users size={28} />
                 </div>
               </CardContent>

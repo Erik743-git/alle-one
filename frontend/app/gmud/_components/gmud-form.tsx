@@ -14,6 +14,7 @@ import {
   type Gmud,
   type GmudUser,
 } from "@/lib/services/gmuds.service";
+import { DateTimePickerField } from "@/components/ui/datetime-picker-field";
 import { UserSearchDialog } from "./user-search-dialog";
 import { GmudStepper } from "./gmud-stepper";
 import { GmudStatusBadge } from "./gmud-status-badge";
@@ -42,6 +43,23 @@ function fromDatetimeLocalValue(value: string) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return undefined;
   return d.toISOString();
+}
+
+function formatDurationLabel(minutes: number) {
+  if (!minutes || minutes < 1) return "—";
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h}h ${m}min` : `${h}h`;
+}
+
+function hoursFromMinutes(minutes: number) {
+  return Math.round((minutes / 60) * 100) / 100;
+}
+
+function minutesFromHours(hours: number) {
+  if (!Number.isFinite(hours) || hours <= 0) return 30;
+  return Math.max(5, Math.round(hours * 60));
 }
 
 export function GmudForm({
@@ -209,7 +227,7 @@ export function GmudForm({
       <GmudStepper status={initial?.status ?? "DRAFT"} />
 
       {error ? (
-        <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
+        <div className="alle-alert-error rounded-xl p-4 text-sm">
           {error}
         </div>
       ) : null}
@@ -224,7 +242,7 @@ export function GmudForm({
           <div className="space-y-2 md:col-span-2">
             <div className="flex items-center justify-between">
               <div className="text-sm text-muted-foreground">
-                Título / Nome da mudança <span className="text-red-300">*</span>
+                Título / Nome da mudança <span className="text-destructive">*</span>
               </div>
             </div>
             <Input
@@ -241,7 +259,7 @@ export function GmudForm({
 
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">
-              Empresa <span className="text-red-300">*</span>
+              Empresa <span className="text-destructive">*</span>
             </div>
             {companyLocked ? (
               <Input
@@ -351,22 +369,20 @@ export function GmudForm({
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Início do downtime</div>
-                  <Input
-                    type="datetime-local"
+                  <DateTimePickerField
                     value={downtimeStart}
                     disabled={readonly || !canEdit}
-                    onChange={(e) => setDowntimeStart(e.target.value)}
-                    className=""
+                    onChange={setDowntimeStart}
+                    datePlaceholder="Data de início"
                   />
                 </div>
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Fim do downtime</div>
-                  <Input
-                    type="datetime-local"
+                  <DateTimePickerField
                     value={downtimeEnd}
                     disabled={readonly || !canEdit}
-                    onChange={(e) => setDowntimeEnd(e.target.value)}
-                    className=""
+                    onChange={setDowntimeEnd}
+                    datePlaceholder="Data de fim"
                   />
                 </div>
               </div>
@@ -393,7 +409,7 @@ export function GmudForm({
         <CardContent className="space-y-2">
           {executors.length === 0 ? (
             <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-              Nenhum executor selecionado. <span className="text-red-300">*</span>
+              Nenhum executor selecionado. <span className="text-destructive">*</span>
             </div>
           ) : null}
           {executors.map((u) => (
@@ -437,7 +453,7 @@ export function GmudForm({
         <CardContent className="space-y-2">
           {approvers.length === 0 ? (
             <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-              Nenhum aprovador selecionado. <span className="text-red-300">*</span>
+              Nenhum aprovador selecionado. <span className="text-destructive">*</span>
             </div>
           ) : null}
           {approvers.map((u) => (
@@ -510,26 +526,32 @@ export function GmudForm({
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-sm text-muted-foreground">Atividades</CardTitle>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <CardTitle className="text-sm text-muted-foreground">Agenda da GMUD</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Cronograma de execução: data, hora, duração em horas e responsável por atividade
+              (mesmo padrão de data do dashboard).
+            </p>
+          </div>
           <Button
             type="button"
             disabled={readonly || !canEdit}
             onClick={() =>
               setActivities((prev) => [
                 ...prev,
-                { scheduledAt: "", durationMinutes: 30, executorUserId: "", description: "" },
+                { scheduledAt: "", durationMinutes: 60, executorUserId: "", description: "" },
               ])
             }
             variant="secondary"
           >
-            + Adicionar
+            + Adicionar atividade
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
           {activities.length === 0 ? (
             <div className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-              Nenhuma atividade cadastrada.
+              Nenhuma atividade na agenda.
             </div>
           ) : null}
 
@@ -538,34 +560,42 @@ export function GmudForm({
               <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
                 <div className="space-y-2 md:col-span-2">
                   <div className="text-sm text-muted-foreground">Data e hora</div>
-                  <Input
-                    type="datetime-local"
+                  <DateTimePickerField
                     value={a.scheduledAt}
                     disabled={readonly || !canEdit}
-                    onChange={(e) =>
+                    datePlaceholder="Data da atividade"
+                    onChange={(next) =>
                       setActivities((prev) =>
-                        prev.map((x, i) => (i === idx ? { ...x, scheduledAt: e.target.value } : x))
+                        prev.map((x, i) => (i === idx ? { ...x, scheduledAt: next } : x))
                       )
                     }
-                    className=""
                   />
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">Duração (min)</div>
+                  <div className="text-sm text-muted-foreground">Duração (horas)</div>
                   <Input
                     type="number"
-                    min={1}
-                    value={a.durationMinutes}
+                    min={0.25}
+                    step={0.25}
+                    value={hoursFromMinutes(a.durationMinutes)}
                     disabled={readonly || !canEdit}
                     onChange={(e) =>
                       setActivities((prev) =>
                         prev.map((x, i) =>
-                          i === idx ? { ...x, durationMinutes: Number(e.target.value) } : x
+                          i === idx
+                            ? {
+                                ...x,
+                                durationMinutes: minutesFromHours(Number(e.target.value)),
+                              }
+                            : x
                         )
                       )
                     }
                     className=""
                   />
+                  <p className="text-xs text-muted-foreground">
+                    {formatDurationLabel(a.durationMinutes)}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Executor</div>

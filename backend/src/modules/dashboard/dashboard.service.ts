@@ -8,28 +8,15 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { ZabbixService } from '../zabbix/zabbix.service';
+import {
+  categorizeTicketByDesk,
+  emptyDeskCategoryCounts,
+  type DeskCategory,
+  type MonthlyDeskBreakdownRow,
+} from './desk-categories';
 
-type TicketCategory = 'Infraestrutura' | 'Sistema' | 'NOC' | 'Rotinas';
-
-type MonthlyTicketRow = {
-  monthKey: string;
-  monthLabel: string;
-  Infraestrutura: number;
-  Sistema: number;
-  NOC: number;
-  Rotinas: number;
-  Total: number;
-};
-
-type MonthlyHoursRow = {
-  monthKey: string;
-  monthLabel: string;
-  Infraestrutura: number;
-  Sistema: number;
-  NOC: number;
-  Rotinas: number;
-  Total: number;
-};
+type MonthlyTicketRow = MonthlyDeskBreakdownRow;
+type MonthlyHoursRow = MonthlyDeskBreakdownRow;
 
 type MonthlyAlertsRow = {
   monthKey: string;
@@ -748,10 +735,7 @@ export class DashboardService {
       ([monthKey, monthLabel]) => ({
         monthKey,
         monthLabel,
-        Infraestrutura: 0,
-        Sistema: 0,
-        NOC: 0,
-        Rotinas: 0,
+        ...emptyDeskCategoryCounts(),
         Total: 0,
       }),
     );
@@ -765,46 +749,14 @@ export class DashboardService {
       ([monthKey, monthLabel]) => ({
         monthKey,
         monthLabel,
-        Infraestrutura: 0,
-        Sistema: 0,
-        NOC: 0,
-        Rotinas: 0,
+        ...emptyDeskCategoryCounts(),
         Total: 0,
       }),
     );
   }
 
-  private categorizeTicket(ticket: Record<string, unknown>): TicketCategory {
-    const deskName =
-      typeof ticket.desk === 'object' && ticket.desk && 'name' in ticket.desk
-        ? String((ticket.desk as { name?: unknown }).name ?? '')
-        : '';
-
-    const title = String(ticket.title ?? '');
-    const searchBase = `${deskName} ${title}`.toLowerCase();
-
-    if (
-      searchBase.includes('infra') ||
-      searchBase.includes('infraestrutura') ||
-      searchBase.includes('network') ||
-      searchBase.includes('rede')
-    ) {
-      return 'Infraestrutura';
-    }
-
-    if (searchBase.includes('noc')) {
-      return 'NOC';
-    }
-
-    if (
-      searchBase.includes('rotina') ||
-      searchBase.includes('routine') ||
-      searchBase.includes('runbook')
-    ) {
-      return 'Rotinas';
-    }
-
-    return 'Sistema';
+  private categorizeTicket(ticket: Record<string, unknown>): DeskCategory {
+    return categorizeTicketByDesk(ticket);
   }
 
   private getDeskNameFromTicket(ticket: Record<string, unknown>): string {
@@ -1987,22 +1939,13 @@ export class DashboardService {
     const rows = new Map<string, MonthlyHoursRow>();
     const totalMinutesByMonth = new Map<
       string,
-      {
-        Infraestrutura: number;
-        Sistema: number;
-        NOC: number;
-        Rotinas: number;
-        Total: number;
-      }
+      Record<DeskCategory, number> & { Total: number }
     >();
 
     for (const row of this.buildEmptyHoursRows(startDate, endDate)) {
       rows.set(row.monthKey, row);
       totalMinutesByMonth.set(row.monthKey, {
-        Infraestrutura: 0,
-        Sistema: 0,
-        NOC: 0,
-        Rotinas: 0,
+        ...emptyDeskCategoryCounts(),
         Total: 0,
       });
     }
@@ -2073,6 +2016,7 @@ export class DashboardService {
       row.Sistema = Number((minutesRow.Sistema / 60).toFixed(2));
       row.NOC = Number((minutesRow.NOC / 60).toFixed(2));
       row.Rotinas = Number((minutesRow.Rotinas / 60).toFixed(2));
+      row.Consult = Number((minutesRow.Consult / 60).toFixed(2));
       row.Total = Number((minutesRow.Total / 60).toFixed(2));
     }
 

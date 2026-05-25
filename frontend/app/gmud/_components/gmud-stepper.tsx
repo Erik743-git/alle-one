@@ -101,7 +101,7 @@ export function GmudStepper({ status }: { status: GmudStatus }) {
                   className={cn(
                     "truncate text-sm font-semibold",
                     isActive && "text-foreground",
-                    isDone && "text-emerald-200",
+                    isDone && "text-emerald-700 dark:text-emerald-200",
                     !isDone && !isActive && "text-muted-foreground"
                   )}
                 >

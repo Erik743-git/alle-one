@@ -160,8 +160,7 @@ export default function GeradorRelatoriosPage() {
     <ProtectedPage>
     <PermissionGate module="REPORTS">
     <AppShell>
-      <div className="font-sans relative w-full overflow-hidden rounded-[28px] bg-background">
-        <div className="relative z-10 space-y-6 p-4 sm:p-6 xl:p-8">
+      <div className="font-sans w-full space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="space-y-2">
               <h1 className="text-3xl font-bold text-foreground">Relatórios</h1>
@@ -183,7 +182,7 @@ export default function GeradorRelatoriosPage() {
           </div>
 
           {erro ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+            <div className="alle-alert-error rounded-xl px-4 py-3 text-sm">
               {erro}
             </div>
           ) : null}
@@ -421,7 +420,6 @@ export default function GeradorRelatoriosPage() {
               </CardContent>
             </Card>
           </div>
-        </div>
       </div>
     </AppShell>
     </PermissionGate>

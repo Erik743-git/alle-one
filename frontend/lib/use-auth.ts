@@ -41,18 +41,13 @@ export function useAuth() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const initial = getStoredUser();
-      if (initial) {
-        if (!cancelled) {
-          setUser(initial);
-          setHydrated(true);
-        }
-        return;
-      }
       const restored = await tryRestoreSessionFromCookie();
       if (!cancelled) {
         if (restored) {
           setUser(restored);
+        } else {
+          clearSession();
+          setUser(null);
         }
         setHydrated(true);
       }

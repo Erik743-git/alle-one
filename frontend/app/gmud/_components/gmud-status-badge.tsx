@@ -9,31 +9,31 @@ const STATUS_META: Record<
 > = {
   DRAFT: {
     label: "Rascunho",
-    className: "bg-slate-500/15 text-slate-200 border border-slate-400/20",
+    className: "alle-badge-neutral",
   },
   PENDING_APPROVAL: {
     label: "Pendente de aprovação",
-    className: "bg-orange-500/15 text-orange-200 border border-orange-400/20",
+    className: "alle-badge-warning",
   },
   APPROVED: {
     label: "Aprovada",
-    className: "bg-emerald-500/15 text-emerald-200 border border-emerald-400/20",
+    className: "alle-badge-success",
   },
   IN_EXECUTION: {
     label: "Em execução",
-    className: "bg-blue-500/15 text-blue-200 border border-blue-400/20",
+    className: "alle-badge-info",
   },
   EXECUTED: {
     label: "Executada",
-    className: "bg-teal-500/15 text-teal-200 border border-teal-400/20",
+    className: "alle-badge-teal",
   },
   REJECTED: {
     label: "Rejeitada",
-    className: "bg-red-500/15 text-red-200 border border-red-400/20",
+    className: "alle-badge-danger",
   },
   CANCELED: {
     label: "Cancelada",
-    className: "bg-zinc-500/15 text-zinc-200 border border-zinc-400/20",
+    className: "alle-badge-neutral",
   },
 };
 
@@ -51,4 +51,3 @@ export function GmudStatusBadge({ status }: { status: GmudStatus }) {
     </span>
   );
 }
-

@@ -17,6 +17,8 @@ import {
   getZabbixGroups,
   type ZabbixGroupOption,
 } from '@/lib/services/zabbix.service';
+import { ZabbixGroupSelectField } from '@/components/ui/zabbix-group-select-field';
+import { TifluxClientSelectField } from '@/components/ui/tiflux-client-select-field';
 import { getTifluxClients, type TifluxClient } from '@/lib/services/tiflux.service';
 import { Building2, Upload } from 'lucide-react';
 
@@ -198,26 +200,12 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
                 Grupo Zabbix
               </Label>
 
-              <select
+              <ZabbixGroupSelectField
                 value={zabbixGroupName}
-                onChange={(e) => setZabbixGroupName(e.target.value)}
-                className="font-sans h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none"
-              >
-                <option value="">
-                  {carregandoGrupos
-                    ? 'Carregando grupos...'
-                    : 'Selecione um grupo'}
-                </option>
-
-                {gruposZabbix.map((grupo) => (
-                  <option
-                    key={grupo.groupid}
-                    value={grupo.name}
-                  >
-                    {grupo.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setZabbixGroupName}
+                groups={gruposZabbix}
+                loading={carregandoGrupos}
+              />
             </div>
 
             <div className="space-y-2 sm:col-span-2">
@@ -225,32 +213,12 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
                 Empresa no TiFlux
               </Label>
 
-              <select
-                value={tifluxClientId === null ? '' : String(tifluxClientId)}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (!raw) {
-                    setTifluxClientId(null);
-                    return;
-                  }
-                  const parsed = Number(raw);
-                  setTifluxClientId(Number.isNaN(parsed) ? null : parsed);
-                }}
-                className="font-sans h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none"
-              >
-                <option value="">
-                  {carregandoTiflux ? 'Carregando clientes...' : 'Selecione um cliente'}
-                </option>
-
-                {tifluxClients.map((client) => (
-                  <option
-                    key={client.id}
-                    value={String(client.id)}
-                  >
-                    {client.name || client.social_name || `Cliente ${client.id}`}
-                  </option>
-                ))}
-              </select>
+              <TifluxClientSelectField
+                value={tifluxClientId}
+                onChange={(clientId) => setTifluxClientId(clientId)}
+                clients={tifluxClients}
+                loading={carregandoTiflux}
+              />
             </div>
 
             <div className="space-y-2 sm:col-span-2">
@@ -296,13 +264,13 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
           </div>
 
           {erro && (
-            <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+            <div className="mt-4 alle-alert-error rounded-lg p-3 text-sm">
               {erro}
             </div>
           )}
         </div>
 
-        <DialogFooter className="shrink-0 border-t border-border bg-card px-5 py-4 sm:px-6">
+        <DialogFooter className="!mx-0 !mb-0 shrink-0 gap-0 border-t border-border bg-card px-5 pt-4 pb-6 sm:px-6 sm:pb-6">
           <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button
               type="button"

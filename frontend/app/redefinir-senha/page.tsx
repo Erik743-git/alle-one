@@ -151,11 +151,11 @@ function RedefinirSenhaForm() {
               </div>
 
               {erro && (
-                <div className="text-sm text-red-400">{erro}</div>
+                <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">{erro}</div>
               )}
 
               {sucesso && (
-                <div className="text-sm text-green-400">{sucesso}</div>
+                <div className="alle-alert-success rounded-xl px-3 py-2 text-sm">{sucesso}</div>
               )}
 
               <Button

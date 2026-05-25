@@ -22,6 +22,7 @@ export type DashboardChamadosMes = {
   Sistema: number;
   NOC: number;
   Rotinas: number;
+  Consult: number;
   Total: number;
 };
 
@@ -32,6 +33,7 @@ export type DashboardHorasMes = {
   Sistema: number;
   NOC: number;
   Rotinas: number;
+  Consult: number;
   Total: number;
 };
 

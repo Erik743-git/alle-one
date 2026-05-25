@@ -29,7 +29,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { getStoredUser, setStoredUser } from "@/lib/session";
+import { getStoredUser, setSession, setStoredUser } from "@/lib/session";
+import { authService } from "@/lib/services/auth.service";
 import type { ModulePermission } from "@/lib/permission-modules";
 
 type LoginResponse = {
@@ -72,10 +73,26 @@ export default function LoginPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const user = getStoredUser();
-    if (user) {
-      router.replace("/dashboard");
-    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`${API_URL}/auth/me`, {
+          credentials: "include",
+        });
+        if (!cancelled && res.ok) {
+          const data = (await res.json()) as LoginResponse;
+          if (data?.user) {
+            setStoredUser(data.user);
+            router.replace("/dashboard");
+          }
+        }
+      } catch {
+        /* sem sessão — permanece no login */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   async function handleLogin(e: FormEvent<HTMLFormElement>) {
@@ -114,16 +131,32 @@ export default function LoginPage() {
 
       const loginData = data as LoginResponse;
 
-      setStoredUser(loginData.user);
+      setSession(loginData.accessToken ?? null, loginData.user);
 
-      if (loginData.user.firstAccess) {
+      let user = loginData.user;
+      try {
+        const meData = await authService.me();
+        if (meData?.user) {
+          user = meData.user;
+          setStoredUser(user);
+        }
+      } catch {
+        setErro(
+          "Senha aceita, mas a sessão não foi validada. Use http://localhost:3000 e http://localhost:3002 (reinicie front e backend).",
+        );
+        return;
+      }
+
+      if (user.firstAccess) {
         router.push("/primeiro-acesso");
         return;
       }
 
       router.push("/dashboard");
     } catch {
-      setErro("Erro ao conectar com o servidor.");
+      setErro(
+        `Erro ao conectar com a API (${API_URL}). Confira se o backend está rodando na porta 3002.`,
+      );
     } finally {
       setCarregando(false);
     }
@@ -234,7 +267,7 @@ export default function LoginPage() {
               </div>
 
               {erro ? (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">
                   {erro}
                 </div>
               ) : null}

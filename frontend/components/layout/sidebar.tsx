@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
@@ -12,6 +12,8 @@ import {
   FileText,
   ShieldCheck,
   Boxes,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import {
   canAccessAdmin,
@@ -22,15 +24,27 @@ import {
   canAccessRelatorios,
 } from "@/lib/access-control";
 import ThemeToggle from "@/components/theme/theme-toggle";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  useSidebar,
+  SIDEBAR_WIDTH_COLLAPSED,
+  SIDEBAR_WIDTH_EXPANDED,
+} from "./sidebar-context";
 
 const SessionPanel = dynamic(
   () => import("@/components/layout/session-panel"),
-  { ssr: false }
+  { ssr: false, loading: () => <div className="h-16 shrink-0" aria-hidden /> },
 );
 
 const ModalAplicativos = dynamic(
   () => import("@/components/modals/modal-aplicativos"),
-  { ssr: false }
+  { ssr: false },
 );
 
 type MenuItem = {
@@ -42,62 +56,177 @@ type MenuItem = {
   active?: boolean;
 };
 
-export default function Sidebar() {
+const MENU_ITEMS: MenuItem[] = [
+  {
+    name: "Dashboard",
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    visible: canAccessDashboard(),
+  },
+  {
+    name: "Financeiro",
+    href: "/financeiro",
+    icon: DollarSign,
+    visible: canAccessFinanceiro(),
+  },
+  {
+    name: "GMUD",
+    href: "/gmud",
+    icon: ClipboardList,
+    visible: canAccessGmud(),
+  },
+  {
+    name: "Relatórios",
+    href: "/gerador-relatorios",
+    icon: FileText,
+    visible: canAccessRelatorios(),
+  },
+  {
+    name: "Aplicativos",
+    icon: Boxes,
+    visible: canAccessAplicativos(),
+  },
+  {
+    name: "Administração",
+    href: "/admin",
+    icon: ShieldCheck,
+    visible: canAccessAdmin(),
+  },
+];
+
+const NavLabel = memo(function NavLabel({
+  children,
+  collapsed,
+}: {
+  children: string;
+  collapsed: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "truncate transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+        collapsed
+          ? "pointer-events-none w-0 scale-x-0 opacity-0"
+          : "w-auto scale-x-100 opacity-100",
+      )}
+    >
+      {children}
+    </span>
+  );
+});
+
+type SidebarNavProps = {
+  collapsed: boolean;
+  onNavigate?: () => void;
+};
+
+const SidebarNav = memo(function SidebarNav({
+  collapsed,
+  onNavigate,
+}: SidebarNavProps) {
   const pathname = usePathname();
   const [modalAplicativos, setModalAplicativos] = useState(false);
 
-  const menu: MenuItem[] = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: LayoutDashboard,
-      visible: canAccessDashboard(),
-    },
-    {
-      name: "Financeiro",
-      href: "/financeiro",
-      icon: DollarSign,
-      visible: canAccessFinanceiro(),
-    },
-    {
-      name: "GMUD",
-      href: "/gmud",
-      icon: ClipboardList,
-      visible: canAccessGmud(),
-    },
-    {
-      name: "Relatórios",
-      href: "/gerador-relatorios",
-      icon: FileText,
-      visible: canAccessRelatorios(),
-    },
-    {
-      name: "Aplicativos",
-      icon: Boxes,
-      visible: canAccessAplicativos(),
-      action: () => setModalAplicativos(true),
-      active: modalAplicativos,
-    },
-    {
-      name: "Administração",
-      href: "/admin",
-      icon: ShieldCheck,
-      visible: canAccessAdmin(),
-    },
-  ];
+  const menu = MENU_ITEMS;
+
+  const itemClass = (active: boolean) =>
+    cn(
+      "flex items-center overflow-hidden rounded-xl text-sm font-semibold transition-colors duration-150",
+      collapsed ? "justify-center gap-0 px-2 py-3" : "gap-3 px-4 py-3",
+      active
+        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
+        : "text-sidebar-foreground/80 hover:bg-muted",
+    );
 
   return (
     <>
-      <aside className="font-sans fixed left-0 top-0 z-40 hidden h-screen w-[260px] flex-col border-r border-sidebar-border bg-sidebar shadow-[4px_0_32px_rgba(0,0,0,0.25)] backdrop-blur-md md:flex">
-        <div className="flex flex-col gap-1 border-b border-sidebar-border px-6 py-6">
-          <div className="flex items-center justify-center gap-3">
+      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden overscroll-contain px-2 pb-2 pt-2 md:px-3">
+        {menu
+          .filter((item) => item.visible)
+          .map((item) => {
+            const Icon = item.icon;
+            const active =
+              item.href
+                ? pathname === item.href ||
+                  pathname.startsWith(`${item.href}/`)
+                : item.active;
+
+            if (item.name === "Aplicativos") {
+              return (
+                <button
+                  key={item.name}
+                  type="button"
+                  title={collapsed ? item.name : undefined}
+                  onClick={() => {
+                    setModalAplicativos(true);
+                    onNavigate?.();
+                  }}
+                  className={cn(
+                    itemClass(modalAplicativos),
+                    !collapsed && "text-left",
+                  )}
+                >
+                  <Icon size={18} className="shrink-0" />
+                  <NavLabel collapsed={collapsed}>{item.name}</NavLabel>
+                </button>
+              );
+            }
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href!}
+                title={collapsed ? item.name : undefined}
+                onClick={() => onNavigate?.()}
+                className={itemClass(!!active)}
+              >
+                <Icon size={18} className="shrink-0" />
+                <NavLabel collapsed={collapsed}>{item.name}</NavLabel>
+              </Link>
+            );
+          })}
+      </nav>
+
+      <ModalAplicativos
+        open={modalAplicativos}
+        onOpenChange={setModalAplicativos}
+      />
+    </>
+  );
+});
+
+const SidebarBrand = memo(function SidebarBrand({
+  collapsed,
+}: {
+  collapsed: boolean;
+}) {
+  if (collapsed) {
+    return (
+      <div className="flex shrink-0 flex-col items-center gap-2 border-b border-sidebar-border px-2 py-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-xs font-black text-primary">
+          A1
+        </div>
+        <ThemeToggle />
+      </div>
+    );
+  }
+
+  return (
+    <div className="shrink-0 border-b border-sidebar-border px-4 py-5">
+      <div className="relative">
+        <div className="absolute right-0 top-0">
+          <ThemeToggle />
+        </div>
+
+        <div className="flex flex-col items-center gap-2 pr-10">
+          <div className="flex w-full justify-center">
             <Image
               src="/Logo_White.png"
               alt="Alle One"
               width={190}
               height={68}
               priority
-              className="h-auto w-[190px] dark:hidden"
+              className="h-auto w-full max-w-[168px] dark:hidden"
             />
             <Image
               src="/logo-alle.png"
@@ -105,70 +234,108 @@ export default function Sidebar() {
               width={190}
               height={68}
               priority
-              className="hidden h-auto w-[190px] dark:block"
+              className="hidden h-auto w-full max-w-[168px] dark:block"
             />
-            <ThemeToggle />
           </div>
-          <p className="text-center text-[12px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">
+          <p className="text-center text-[11px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">
             ALLE ONE
           </p>
         </div>
+      </div>
+    </div>
+  );
+});
 
-        <nav className="flex flex-1 flex-col gap-0.5 px-3 pb-4 pt-4">
-          {menu
-            .filter((item) => item.visible)
-            .map((item) => {
-              const Icon = item.icon;
-              const active =
-                item.href
-                  ? pathname === item.href ||
-                    pathname.startsWith(`${item.href}/`)
-                  : item.active;
+function DesktopSidebar() {
+  const { collapsed, toggleCollapsed, endLayoutAnimation } = useSidebar();
+  const width = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
 
-              if (item.action) {
-                return (
-                  <button
-                    key={item.name}
-                    type="button"
-                    onClick={item.action}
-                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold transition ${
-                      active
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
-                        : "text-sidebar-foreground/80 hover:bg-muted"
-                    }`}
-                  >
-                    <Icon size={18} />
-                    {item.name}
-                  </button>
-                );
-              }
+  return (
+    <aside
+      className={cn(
+        "font-sans fixed left-0 top-0 z-40 hidden h-screen flex-col overflow-hidden",
+        "border-r border-sidebar-border bg-sidebar shadow-[2px_0_16px_rgba(0,0,0,0.12)]",
+        "transition-[width] duration-200 ease-out motion-reduce:transition-none",
+        "[contain:layout_style_paint] md:flex",
+      )}
+      style={{ width }}
+      onTransitionEnd={(event) => {
+        if (event.propertyName === "width") {
+          endLayoutAnimation();
+        }
+      }}
+    >
+      <SidebarBrand collapsed={collapsed} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <SidebarNav collapsed={collapsed} />
+      </div>
+      <div
+        className={cn(
+          "shrink-0 border-t border-sidebar-border",
+          collapsed ? "px-2 py-2" : "px-2 py-3 md:px-3",
+        )}
+      >
+        <SessionPanel collapsed={collapsed} />
+      </div>
+      <div
+        className={cn(
+          "shrink-0 border-t border-sidebar-border p-2",
+          collapsed ? "flex justify-center" : "px-3",
+        )}
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size={collapsed ? "icon" : "sm"}
+          className={cn(
+            "w-full overflow-hidden text-sidebar-foreground/80",
+            !collapsed && "justify-start gap-2",
+          )}
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+        >
+          {collapsed ? (
+            <PanelLeftOpen className="size-4 shrink-0" />
+          ) : (
+            <>
+              <PanelLeftClose className="size-4 shrink-0" />
+              <span className="truncate">Recolher menu</span>
+            </>
+          )}
+        </Button>
+      </div>
+    </aside>
+  );
+}
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href!}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                    active
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
-                      : "text-sidebar-foreground/80 hover:bg-muted"
-                  }`}
-                >
-                  <Icon size={18} />
-                  {item.name}
-                </Link>
-              );
-            })}
+function MobileSidebar() {
+  const { mobileOpen, setMobileOpen } = useSidebar();
 
-          <div className="mt-auto">
-            <SessionPanel />
-          </div>
-        </nav>
-      </aside>
+  return (
+    <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+      <SheetContent
+        side="left"
+        className="w-[min(100vw-2rem,280px)] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+        showCloseButton
+      >
+        <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
+        <div className="flex h-full flex-col">
+          <SidebarBrand collapsed={false} />
+          <SidebarNav
+            collapsed={false}
+            onNavigate={() => setMobileOpen(false)}
+          />
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
-      <ModalAplicativos
-        open={modalAplicativos}
-        onOpenChange={setModalAplicativos}
-      />
+export default function Sidebar() {
+  return (
+    <>
+      <DesktopSidebar />
+      <MobileSidebar />
     </>
   );
 }

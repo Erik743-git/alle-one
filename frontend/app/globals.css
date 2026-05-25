@@ -47,6 +47,7 @@
 }
 
 :root {
+  --sidebar-width: 260px;
   /* Tema claro (mesma identidade, mais "azul claro") */
   --background: #eef4ff;
   --foreground: #071225;
@@ -59,7 +60,7 @@
   --secondary: #e3efff;
   --secondary-foreground: #071225;
   --muted: #e6f0ff;
-  --muted-foreground: #516079;
+  --muted-foreground: #3d4f66;
   --accent: #ddf6ff;
   --accent-foreground: #071225;
   --destructive: #dc2626;
@@ -117,6 +118,114 @@
   --sidebar-ring: rgba(18, 181, 217, 0.35);
 }
 
+@layer utilities {
+  /* Alertas e avisos — legíveis no claro e no escuro */
+  .alle-alert-error {
+    border: 1px solid color-mix(in srgb, var(--destructive) 40%, transparent);
+    background-color: color-mix(in srgb, var(--destructive) 12%, transparent);
+    color: var(--destructive);
+  }
+  .dark .alle-alert-error {
+    border-color: rgb(239 68 68 / 0.28);
+    background-color: rgb(239 68 68 / 0.12);
+    color: rgb(254 202 202);
+  }
+
+  .alle-alert-success {
+    border: 1px solid color-mix(in srgb, #059669 35%, transparent);
+    background-color: color-mix(in srgb, #059669 10%, transparent);
+    color: #047857;
+  }
+  .dark .alle-alert-success {
+    border-color: rgb(16 185 129 / 0.28);
+    background-color: rgb(16 185 129 / 0.12);
+    color: rgb(167 243 208);
+  }
+
+  .alle-badge-neutral {
+    border: 1px solid color-mix(in srgb, #64748b 30%, transparent);
+    background-color: color-mix(in srgb, #64748b 12%, transparent);
+    color: #334155;
+  }
+  .dark .alle-badge-neutral {
+    border-color: rgb(148 163 184 / 0.22);
+    background-color: rgb(100 116 139 / 0.15);
+    color: rgb(226 232 240);
+  }
+
+  .alle-badge-warning {
+    border: 1px solid color-mix(in srgb, #ea580c 35%, transparent);
+    background-color: color-mix(in srgb, #ea580c 12%, transparent);
+    color: #9a3412;
+  }
+  .dark .alle-badge-warning {
+    border-color: rgb(251 146 60 / 0.28);
+    background-color: rgb(234 88 12 / 0.15);
+    color: rgb(254 215 170);
+  }
+
+  .alle-badge-success {
+    border: 1px solid color-mix(in srgb, #059669 35%, transparent);
+    background-color: color-mix(in srgb, #059669 12%, transparent);
+    color: #047857;
+  }
+  .dark .alle-badge-success {
+    border-color: rgb(52 211 153 / 0.28);
+    background-color: rgb(16 185 129 / 0.15);
+    color: rgb(167 243 208);
+  }
+
+  .alle-badge-info {
+    border: 1px solid color-mix(in srgb, #2563eb 35%, transparent);
+    background-color: color-mix(in srgb, #2563eb 12%, transparent);
+    color: #1d4ed8;
+  }
+  .dark .alle-badge-info {
+    border-color: rgb(96 165 250 / 0.28);
+    background-color: rgb(37 99 235 / 0.15);
+    color: rgb(191 219 254);
+  }
+
+  .alle-badge-teal {
+    border: 1px solid color-mix(in srgb, #0d9488 35%, transparent);
+    background-color: color-mix(in srgb, #0d9488 12%, transparent);
+    color: #0f766e;
+  }
+  .dark .alle-badge-teal {
+    border-color: rgb(45 212 191 / 0.28);
+    background-color: rgb(13 148 136 / 0.15);
+    color: rgb(153 246 228);
+  }
+
+  .alle-badge-danger {
+    border: 1px solid color-mix(in srgb, var(--destructive) 38%, transparent);
+    background-color: color-mix(in srgb, var(--destructive) 12%, transparent);
+    color: var(--destructive);
+  }
+  .dark .alle-badge-danger {
+    border-color: rgb(248 113 113 / 0.28);
+    background-color: rgb(239 68 68 / 0.15);
+    color: rgb(254 202 202);
+  }
+
+  .alle-btn-outline-danger {
+    border: 1px solid color-mix(in srgb, var(--destructive) 45%, transparent) !important;
+    background-color: color-mix(in srgb, var(--destructive) 10%, transparent) !important;
+    color: var(--destructive) !important;
+  }
+  .alle-btn-outline-danger:hover {
+    background-color: color-mix(in srgb, var(--destructive) 18%, transparent) !important;
+  }
+  .dark .alle-btn-outline-danger {
+    border-color: rgb(248 113 113 / 0.35) !important;
+    background-color: rgb(239 68 68 / 0.12) !important;
+    color: rgb(254 202 202) !important;
+  }
+  .dark .alle-btn-outline-danger:hover {
+    background-color: rgb(239 68 68 / 0.2) !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -136,6 +245,24 @@ html {
 
 html.dark {
   color-scheme: dark;
+}
+
+/* Menu fixo: conteúdo acompanha a largura; anima junto com o aside */
+@media (min-width: 768px) {
+  .app-shell-main {
+    padding-left: var(--sidebar-width, 260px);
+    transition: padding-left 200ms ease-out;
+  }
+
+  html[data-sidebar-resizing="true"] .app-shell-main {
+    transition: padding-left 200ms ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell-main {
+    transition: none !important;
+  }
 }
 
 /* Select (remove setas brancas / padronizar) */

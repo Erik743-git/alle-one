@@ -38,8 +38,8 @@ export class AuthController {
   ) {
     const result = await this.authService.login(data);
     attachAccessTokenCookie(res, result.accessToken);
-    const { accessToken: _omit, ...body } = result;
-    return body;
+    // accessToken no JSON: fallback quando cookie cross-origin falha (ex.: localhost vs 127.0.0.1).
+    return result;
   }
 
   @Throttle({ default: { limit: 12, ttl: 60_000 } })

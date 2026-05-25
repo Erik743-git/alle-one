@@ -214,7 +214,7 @@ export default function ModalPermissoesUsuario({
           ) : null}
 
           {erro ? (
-            <p className="mb-4 text-sm text-red-400">{erro}</p>
+            <p className="alle-alert-error mb-4 rounded-xl px-3 py-2 text-sm">{erro}</p>
           ) : null}
 
           {!carregando && userId && !isAdminTarget ? (

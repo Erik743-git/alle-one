@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -14,6 +13,8 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
+import { DeferredResponsiveContainer } from "@/components/charts/deferred-responsive-container";
+import { useChartTheme, useChartTooltipProps } from "@/lib/chart-theme";
 import { getStoredUser } from "@/lib/session";
 import {
   companiesService,
@@ -48,7 +49,6 @@ import {
   Legend,
   Line,
   LineChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -77,30 +77,6 @@ function MetricCard({
       </CardContent>
     </Card>
   );
-}
-
-function getDarkModeSnapshot(): boolean {
-  if (typeof document === "undefined") return true;
-  const el = document.documentElement;
-  if (el.classList.contains("dark")) return true;
-  if (el.classList.contains("light")) return false;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-function subscribeDarkMode(onStoreChange: () => void) {
-  const el = document.documentElement;
-  const obs = new MutationObserver(onStoreChange);
-  obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-  const mq = window.matchMedia("(prefers-color-scheme: dark)");
-  mq.addEventListener("change", onStoreChange);
-  return () => {
-    obs.disconnect();
-    mq.removeEventListener("change", onStoreChange);
-  };
-}
-
-function useIsDarkMode() {
-  return useSyncExternalStore(subscribeDarkMode, getDarkModeSnapshot, () => true);
 }
 
 function formatDateInput(date: Date) {
@@ -167,6 +143,7 @@ function buildEmptyHoursRows(
       Sistema: 0,
       NOC: 0,
       Rotinas: 0,
+      Consult: 0,
       Total: 0,
     });
 
@@ -282,7 +259,6 @@ function normalizeDashboardResponse(
 }
 
 export default function DashboardPage() {
-  const isDarkMode = useIsDarkMode();
   const user = getStoredUser();
 
   const [dashboard, setDashboard] = useState<DashboardCompleteResponse | null>(null);
@@ -310,39 +286,8 @@ export default function DashboardPage() {
   const completeRequestIdRef = useRef(0);
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const chartTheme = useMemo(() => {
-    // Recharts usa SVG; em alguns browsers `hsl(var(--...))` não resolve em atributos SVG,
-    // então usamos cores fixas por tema.
-    if (isDarkMode) {
-      return {
-        grid: "rgba(255,255,255,0.12)",
-        tick: "rgba(226,232,240,0.88)",
-        tooltipBg: "#020b1b",
-        tooltipBorder: "rgba(255,255,255,0.12)",
-        tooltipText: "rgba(226,232,240,0.95)",
-      };
-    }
-    return {
-      grid: "rgba(7,18,37,0.16)",
-      tick: "rgba(7,18,37,0.78)",
-      tooltipBg: "#f7fbff",
-      tooltipBorder: "rgba(7,18,37,0.14)",
-      tooltipText: "rgba(7,18,37,0.92)",
-    };
-  }, [isDarkMode]);
-
-  const TOOLTIP_PROPS = useMemo(() => {
-    return {
-      contentStyle: {
-        background: chartTheme.tooltipBg,
-        border: `1px solid ${chartTheme.tooltipBorder}`,
-        borderRadius: 12,
-        color: chartTheme.tooltipText,
-      } as const,
-      labelStyle: { color: chartTheme.tooltipText } as const,
-      itemStyle: { color: chartTheme.tooltipText } as const,
-    };
-  }, [chartTheme]);
+  const chartTheme = useChartTheme();
+  const TOOLTIP_PROPS = useChartTooltipProps(chartTheme);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -708,7 +653,7 @@ export default function DashboardPage() {
           </div>
 
           {error ? (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6 text-sm text-red-200">
+            <div className="alle-alert-error rounded-2xl p-6 text-sm">
               {error}
             </div>
           ) : null}
@@ -751,7 +696,7 @@ export default function DashboardPage() {
             <MetricCard
               title="Alertas Disaster"
               value={initialLoading ? "--" : dashboard?.summary.totalDisaster ?? 0}
-              icon={<ShieldAlert size={18} className="text-red-400" />}
+              icon={<ShieldAlert size={18} className="text-destructive" />}
             />
             <MetricCard
               title="Hosts totais"
@@ -770,7 +715,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-[920px] w-full text-left text-sm">
+                <table className="min-w-[1020px] w-full text-left text-sm">
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
@@ -778,6 +723,7 @@ export default function DashboardPage() {
                       <th className="px-4 py-3">Sistema</th>
                       <th className="px-4 py-3">NOC</th>
                       <th className="px-4 py-3">Rotinas</th>
+                      <th className="px-4 py-3">Consult</th>
                       <th className="px-4 py-3">Total</th>
                     </tr>
                   </thead>
@@ -789,6 +735,7 @@ export default function DashboardPage() {
                         <td className="px-4 py-3">{row.Sistema}</td>
                         <td className="px-4 py-3">{row.NOC}</td>
                         <td className="px-4 py-3">{row.Rotinas}</td>
+                        <td className="px-4 py-3">{row.Consult ?? 0}</td>
                         <td className="px-4 py-3 font-bold text-primary">
                           {row.Total}
                         </td>
@@ -799,7 +746,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="h-[360px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <DeferredResponsiveContainer width="100%" height="100%">
                   <BarChart data={chamadosChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                     <XAxis
@@ -826,9 +773,10 @@ export default function DashboardPage() {
                     <Bar dataKey="Sistema" fill="#d85c57" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="NOC" fill="#8c6fd1" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Rotinas" fill="#9bc45b" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Consult" fill="#ed7d31" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Total" fill="#57c1d9" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
+                </DeferredResponsiveContainer>
               </div>
 
               {dashboard?.resumoHorasTrabalhadas ? (
@@ -911,7 +859,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-[920px] w-full text-left text-sm">
+                <table className="min-w-[1020px] w-full text-left text-sm">
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
@@ -919,6 +867,7 @@ export default function DashboardPage() {
                       <th className="px-4 py-3">Sistema</th>
                       <th className="px-4 py-3">NOC</th>
                       <th className="px-4 py-3">Rotinas</th>
+                      <th className="px-4 py-3">Consult</th>
                       <th className="px-4 py-3">Total</th>
                     </tr>
                   </thead>
@@ -930,6 +879,7 @@ export default function DashboardPage() {
                         <td className="px-4 py-3">{row.Sistema}</td>
                         <td className="px-4 py-3">{row.NOC}</td>
                         <td className="px-4 py-3">{row.Rotinas}</td>
+                        <td className="px-4 py-3">{row.Consult ?? 0}</td>
                         <td className="px-4 py-3 font-bold text-primary">
                           {row.Total}
                         </td>
@@ -940,7 +890,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="h-[360px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <DeferredResponsiveContainer width="100%" height="100%">
                   <BarChart data={horasChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                     <XAxis
@@ -967,9 +917,10 @@ export default function DashboardPage() {
                     <Bar dataKey="Sistema" fill="#d85c57" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="NOC" fill="#8c6fd1" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Rotinas" fill="#9bc45b" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Consult" fill="#ed7d31" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Total" fill="#57c1d9" radius={[6, 6, 0, 0]} />
                   </BarChart>
-                </ResponsiveContainer>
+                </DeferredResponsiveContainer>
               </div>
             </CardContent>
           </Card>
@@ -1005,7 +956,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="h-[360px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <DeferredResponsiveContainer width="100%" height="100%">
                   <LineChart data={alertasChartWeeklyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                     <XAxis
@@ -1051,7 +1002,7 @@ export default function DashboardPage() {
                       activeDot={{ r: 6 }}
                     />
                   </LineChart>
-                </ResponsiveContainer>
+                </DeferredResponsiveContainer>
               </div>
             </CardContent>
           </Card>
@@ -1142,8 +1093,8 @@ export default function DashboardPage() {
                         <td
                           className={`px-4 py-3 font-bold ${
                             row.severity === "Disaster"
-                              ? "text-red-400"
-                              : "text-yellow-300"
+                              ? "text-destructive"
+                              : "text-amber-800 dark:text-yellow-300"
                           }`}
                         >
                           {row.severity}

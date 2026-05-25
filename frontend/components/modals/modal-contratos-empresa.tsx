@@ -304,7 +304,7 @@ export default function ModalContratosEmpresa({
           ) : (
             <>
               {error ? (
-                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-200">
+                <div className="alle-alert-error rounded-2xl p-4 text-sm">
                   {error}
                 </div>
               ) : null}
@@ -405,7 +405,7 @@ export default function ModalContratosEmpresa({
                   </div>
 
                   <div className="space-y-1 md:col-span-2">
-                    <label className="text-xs font-semibold text-slate-400">
+                    <label className="text-xs font-semibold text-muted-foreground">
                       Arquivo do contrato (opcional)
                     </label>
                     <Input

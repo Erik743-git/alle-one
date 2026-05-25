@@ -104,11 +104,11 @@ export default function EsqueciSenhaPage() {
               </div>
 
               {erro ? (
-                <div className="text-sm text-red-400">{erro}</div>
+                <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">{erro}</div>
               ) : null}
 
               {enviado ? (
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+                <div className="alle-alert-success rounded-xl px-3 py-2 text-sm">
                   Se o e-mail estiver cadastrado, você receberá um link para
                   redefinir a senha. Verifique também a caixa de spam.
                 </div>

@@ -75,7 +75,7 @@ export function UserSearchDialog({
             className=""
           />
 
-          {error ? <div className="text-sm text-red-300">{error}</div> : null}
+          {error ? <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">{error}</div> : null}
           {loading ? <div className="text-sm text-muted-foreground">Buscando...</div> : null}
 
           <div className="max-h-[320px] space-y-2 overflow-auto rounded-xl border border-border bg-muted/40 p-2">

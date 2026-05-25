@@ -32,9 +32,9 @@ export default function PermissionGate({
 
   if (!allowed) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 font-sans text-white">
-        <Loader2 className="h-7 w-7 animate-spin text-[#12b5d9]" />
-        <p className="text-sm text-slate-400">Verificando permissões…</p>
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 font-sans text-foreground">
+        <Loader2 className="h-7 w-7 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Verificando permissões…</p>
       </div>
     );
   }

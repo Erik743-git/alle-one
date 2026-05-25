@@ -342,7 +342,7 @@ export default function FinanceiroPage() {
                   <p className="text-3xl font-bold">
                     {extraHourPrice === null ? "—" : `R$ ${extraHourPrice.toFixed(2)}`}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-muted-foreground">
                     {extraHourPrice === null
                       ? "Definido por contrato (exibido quando há 1 contrato ativo)."
                       : "Baseado no contrato ativo."}
@@ -356,7 +356,7 @@ export default function FinanceiroPage() {
           </div>
 
           {error ? (
-            <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
+            <div className="alle-alert-error rounded-xl p-4 text-sm">
               {error}
             </div>
           ) : null}
@@ -370,7 +370,7 @@ export default function FinanceiroPage() {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={q}
                       onChange={(e) => setQ(e.target.value)}
@@ -477,7 +477,7 @@ export default function FinanceiroPage() {
                               </Button>
                             </div>
                           ) : (
-                            <div className="mt-3 text-xs text-slate-500">
+                            <div className="mt-3 text-xs text-muted-foreground">
                               Sem arquivo anexado neste contrato.
                             </div>
                           )}
@@ -541,14 +541,14 @@ export default function FinanceiroPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="mt-3 text-xs text-slate-500">
+                      <div className="mt-3 text-xs text-muted-foreground">
                         Documentos vinculados:{" "}
-                        <span className="text-slate-200">{c.documentsCount}</span>
+                        <span className="text-foreground">{c.documentsCount}</span>
                         {c.latestBilling?.monthReference ? (
                           <>
                             {" "}
                             • Referência:{" "}
-                            <span className="text-slate-200">
+                            <span className="text-foreground">
                               {new Date(c.latestBilling.monthReference).toLocaleDateString(
                                 "pt-BR",
                                 { month: "2-digit", year: "numeric" }
