@@ -29,7 +29,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { getStoredUser, setSession, setStoredUser } from "@/lib/session";
+import { setSession, setStoredUser } from "@/lib/session";
 import { authService } from "@/lib/services/auth.service";
 import type { ModulePermission } from "@/lib/permission-modules";
 

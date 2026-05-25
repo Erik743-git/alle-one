@@ -20,21 +20,20 @@ export function DeferredResponsiveContainer({
 }: DeferredResponsiveContainerProps) {
   const { isLayoutAnimating } = useSidebar();
   const hostRef = React.useRef<HTMLDivElement>(null);
-  const frozenSizeRef = React.useRef<{ width: number; height: number } | null>(
-    null,
-  );
   const [size, setSize] = React.useState<{ width: number; height: number } | null>(
     null,
   );
+  const [frozenSize, setFrozenSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(null);
 
   const measure = React.useCallback(() => {
     const el = hostRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     if (rect.width > 0 && rect.height > 0) {
-      const next = { width: rect.width, height: rect.height };
-      frozenSizeRef.current = next;
-      setSize(next);
+      setSize({ width: rect.width, height: rect.height });
     }
   }, []);
 
@@ -58,11 +57,21 @@ export function DeferredResponsiveContainer({
     }
   }, [isLayoutAnimating, measure]);
 
+  React.useEffect(() => {
+    if (isLayoutAnimating) {
+      if (size) {
+        setFrozenSize((prev) => prev ?? size);
+      }
+      return;
+    }
+    setFrozenSize(null);
+  }, [isLayoutAnimating, size]);
+
   const renderWidth = isLayoutAnimating
-    ? (frozenSizeRef.current?.width ?? size?.width ?? 0)
+    ? (frozenSize?.width ?? size?.width ?? 0)
     : (size?.width ?? 0);
   const renderHeight = isLayoutAnimating
-    ? (frozenSizeRef.current?.height ?? size?.height ?? 0)
+    ? (frozenSize?.height ?? size?.height ?? 0)
     : (size?.height ?? 0);
 
   return (
