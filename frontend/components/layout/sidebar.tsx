@@ -14,6 +14,7 @@ import {
   Boxes,
   PanelLeftClose,
   PanelLeftOpen,
+  CalendarRange,
 } from "lucide-react";
 import {
   canAccessAdmin,
@@ -22,6 +23,7 @@ import {
   canAccessFinanceiro,
   canAccessGmud,
   canAccessRelatorios,
+  canAccessRendimento,
 } from "@/lib/access-control";
 import ThemeToggle from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -80,6 +82,12 @@ const MENU_ITEMS: MenuItem[] = [
     href: "/gerador-relatorios",
     icon: FileText,
     visible: canAccessRelatorios(),
+  },
+  {
+    name: "Rendimento",
+    href: "/rendimento",
+    icon: CalendarRange,
+    visible: canAccessRendimento(),
   },
   {
     name: "Aplicativos",

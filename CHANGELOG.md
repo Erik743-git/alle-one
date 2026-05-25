@@ -4,6 +4,13 @@ Todas as mudanças relevantes do **Alle One** são documentadas neste arquivo.
 
 O versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/) (`MAJOR.MINOR.PATCH`). A versão canônica do repositório está em [`VERSION`](VERSION).
 
+## [Unreleased]
+
+### Adicionado
+
+- Módulo **Rendimento**: lista de colaboradores, agenda de horas (mês/semana/dia) com dados do cache TiFlux.
+- Permissão `RENDIMENTO` e item no menu lateral.
+
 ## [0.3.0] — 2026-05-22
 
 ### Adicionado

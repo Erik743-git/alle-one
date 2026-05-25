@@ -71,6 +71,7 @@ Registrados em `backend/src/app.module.ts`:
 | **Zabbix** | Grupos, hosts, triggers, eventos |
 | **Tiflux** | Clientes, contratos, apontamentos |
 | **UsageAlerts** | Alertas de uso + job agendado |
+| **Rendimento** | Agenda de horas TiFlux por colaborador (mês/semana/dia) |
 | **Admin** | Operações administrativas agregadas |
 | **Mail** | Envio de e-mail (compartilhado) |
 

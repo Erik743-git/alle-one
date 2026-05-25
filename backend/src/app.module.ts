@@ -19,6 +19,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsageAlertsModule } from './modules/usage-alerts/usage-alerts.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { RendimentoModule } from './modules/rendimento/rendimento.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { ReportsModule } from './modules/reports/reports.module';
     PermissionsModule,
     UsageAlertsModule,
     ReportsModule,
+    RendimentoModule,
   ],
   controllers: [AppController],
   providers: [

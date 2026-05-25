@@ -14,7 +14,8 @@ export type PermissionModuleKey =
   | "DOCUMENTATION"
   | "PROJECTS"
   | "SLA"
-  | "BILLING";
+  | "BILLING"
+  | "RENDIMENTO";
 
 export type ModulePermission = {
   module: PermissionModuleKey;

@@ -1,0 +1,174 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { CalendarDays, Loader2, Search, Users } from "lucide-react";
+
+import AppShell from "@/components/layout/app-shell";
+import ProtectedPage from "@/components/auth/protected-page";
+import PermissionGate from "@/components/auth/permission-gate";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  rendimentoService,
+  type RendimentoCollaborator,
+} from "@/lib/services/rendimento.service";
+
+function roleLabel(role: RendimentoCollaborator["role"]) {
+  if (role === "ADMIN") return "Administrador";
+  if (role === "COLLABORATOR") return "Colaborador";
+  return "Cliente";
+}
+
+export default function RendimentoPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [collaborators, setCollaborators] = useState<RendimentoCollaborator[]>(
+    [],
+  );
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const data = await rendimentoService.listCollaborators();
+        setCollaborators(data);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar os colaboradores.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return collaborators;
+    return collaborators.filter((item) => {
+      const haystack = [
+        item.name,
+        item.email,
+        item.companyName ?? "",
+        item.tifluxUserName ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [collaborators, search]);
+
+  return (
+    <ProtectedPage>
+      <PermissionGate module="RENDIMENTO">
+        <AppShell>
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-8">
+            <div className="flex flex-col gap-2">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <Users size={24} />
+              </div>
+              <h1 className="text-2xl font-bold text-foreground">Rendimento</h1>
+              <p className="text-sm text-muted-foreground">
+                Acompanhe os apontamentos de horas dos colaboradores no TiFlux.
+                Horas do mês atual aparecem na lista; abra a agenda para ver mês,
+                semana ou dia.
+              </p>
+            </div>
+
+            <Card>
+              <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="text-lg">Colaboradores</CardTitle>
+                <div className="relative w-full sm:max-w-xs">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar nome ou e-mail..."
+                    className="h-10 pl-9"
+                  />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="flex min-h-[200px] items-center justify-center">
+                    <Loader2 className="size-8 animate-spin text-primary" />
+                  </div>
+                ) : error ? (
+                  <div className="alle-alert-error rounded-xl p-4 text-sm">
+                    {error}
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-border">
+                    <table className="w-full min-w-[720px] text-left text-sm">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold">Nome</th>
+                          <th className="px-4 py-3 font-semibold">E-mail</th>
+                          <th className="px-4 py-3 font-semibold">Perfil</th>
+                          <th className="px-4 py-3 font-semibold">Horas no mês</th>
+                          <th className="px-4 py-3 font-semibold">TiFlux</th>
+                          <th className="px-4 py-3 font-semibold text-right">
+                            Agenda
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="px-4 py-8 text-center text-muted-foreground"
+                            >
+                              Nenhum colaborador encontrado.
+                            </td>
+                          </tr>
+                        ) : (
+                          filtered.map((item) => (
+                            <tr
+                              key={item.id}
+                              className="border-t border-border hover:bg-muted/20"
+                            >
+                              <td className="px-4 py-3 font-medium text-foreground">
+                                {item.name}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {item.email}
+                              </td>
+                              <td className="px-4 py-3">{roleLabel(item.role)}</td>
+                              <td className="px-4 py-3 font-bold text-primary">
+                                {item.monthTotalHoursFormatted}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {item.tifluxUserId
+                                  ? item.tifluxUserName ?? `ID ${item.tifluxUserId}`
+                                  : "Sem vínculo"}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button asChild size="sm" variant="outline">
+                                  <Link href={`/rendimento/${item.id}`}>
+                                    <CalendarDays className="mr-2 size-4" />
+                                    Ver agenda
+                                  </Link>
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </AppShell>
+      </PermissionGate>
+    </ProtectedPage>
+  );
+}

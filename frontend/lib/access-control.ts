@@ -72,6 +72,12 @@ export function canAccessDashboard() {
   return isClient() || canViewModule("DASHBOARD");
 }
 
+export function canAccessRendimento() {
+  return (
+    (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO")
+  );
+}
+
 export function canAccessAplicativos() {
   const role = getCurrentRole();
   return (

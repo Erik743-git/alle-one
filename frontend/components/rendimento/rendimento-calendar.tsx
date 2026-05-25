@@ -1,0 +1,327 @@
+"use client";
+
+import * as React from "react";
+import {
+  addDays,
+  addMonths,
+  addWeeks,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  isSameDay,
+  isSameMonth,
+  parseISO,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+  subMonths,
+  subWeeks,
+} from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type {
+  RendimentoCalendarView,
+  RendimentoDaySummary,
+  RendimentoTimesheet,
+} from "@/lib/services/rendimento.service";
+
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+type RendimentoCalendarProps = {
+  timesheet: RendimentoTimesheet | null;
+  view: RendimentoCalendarView;
+  referenceDate: Date;
+  loading?: boolean;
+  onViewChange: (view: RendimentoCalendarView) => void;
+  onReferenceDateChange: (date: Date) => void;
+};
+
+function dayMap(timesheet: RendimentoTimesheet | null) {
+  const map = new Map<string, RendimentoDaySummary>();
+  if (!timesheet) return map;
+  for (const day of timesheet.days) {
+    map.set(day.date.slice(0, 10), day);
+  }
+  return map;
+}
+
+function formatRangeTitle(view: RendimentoCalendarView, reference: Date) {
+  if (view === "day") {
+    return format(reference, "EEEE, d 'de' MMMM yyyy", { locale: ptBR });
+  }
+  if (view === "week") {
+    const start = startOfWeek(reference, { weekStartsOn: 0 });
+    const end = endOfWeek(reference, { weekStartsOn: 0 });
+    return `${format(start, "d MMM", { locale: ptBR })} – ${format(end, "d MMM yyyy", { locale: ptBR })}`;
+  }
+  return format(reference, "MMMM yyyy", { locale: ptBR });
+}
+
+export function RendimentoCalendar({
+  timesheet,
+  view,
+  referenceDate,
+  loading = false,
+  onViewChange,
+  onReferenceDateChange,
+}: RendimentoCalendarProps) {
+  const daysByDate = React.useMemo(() => dayMap(timesheet), [timesheet]);
+
+  function navigate(delta: -1 | 1) {
+    const next =
+      view === "month"
+        ? delta === 1
+          ? addMonths(referenceDate, 1)
+          : subMonths(referenceDate, 1)
+        : view === "week"
+          ? delta === 1
+            ? addWeeks(referenceDate, 1)
+            : subWeeks(referenceDate, 1)
+          : delta === 1
+            ? addDays(referenceDate, 1)
+            : subDays(referenceDate, 1);
+    onReferenceDateChange(next);
+  }
+
+  const monthGridDays = React.useMemo(() => {
+    const monthStart = startOfMonth(referenceDate);
+    const monthEnd = endOfMonth(referenceDate);
+    const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+    const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
+    return eachDayOfInterval({ start: gridStart, end: gridEnd });
+  }, [referenceDate]);
+
+  const weekDays = React.useMemo(() => {
+    const start = startOfWeek(referenceDate, { weekStartsOn: 0 });
+    return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  }, [referenceDate]);
+
+  const selectedDayKey = format(referenceDate, "yyyy-MM-dd");
+  const selectedDay = daysByDate.get(selectedDayKey);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {(["month", "week", "day"] as const).map((option) => (
+            <Button
+              key={option}
+              type="button"
+              size="sm"
+              variant={view === option ? "default" : "outline"}
+              onClick={() => onViewChange(option)}
+            >
+              {option === "month" ? "Mês" : option === "week" ? "Semana" : "Dia"}
+            </Button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            onClick={() => navigate(-1)}
+            aria-label="Período anterior"
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <span className="min-w-[12rem] text-center text-sm font-semibold capitalize text-foreground">
+            {formatRangeTitle(view, referenceDate)}
+          </span>
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            onClick={() => navigate(1)}
+            aria-label="Próximo período"
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-card px-4 py-3">
+        <p className="text-sm text-muted-foreground">Total no período</p>
+        <p className="text-2xl font-bold text-foreground">
+          {loading ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
+        </p>
+      </div>
+
+      {loading ? (
+        <div className="flex min-h-[280px] items-center justify-center">
+          <Loader2 className="size-8 animate-spin text-primary" />
+        </div>
+      ) : null}
+
+      {!loading && view === "month" ? (
+        <div className="overflow-hidden rounded-xl border border-border">
+          <div className="grid grid-cols-7 border-b border-border bg-muted/40">
+            {WEEKDAY_LABELS.map((label) => (
+              <div
+                key={label}
+                className="px-2 py-2 text-center text-xs font-semibold text-muted-foreground"
+              >
+                {label}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7">
+            {monthGridDays.map((day) => {
+              const key = format(day, "yyyy-MM-dd");
+              const summary = daysByDate.get(key);
+              const inMonth = isSameMonth(day, referenceDate);
+              const isToday = isSameDay(day, new Date());
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    onReferenceDateChange(day);
+                    onViewChange("day");
+                  }}
+                  className={cn(
+                    "min-h-[88px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
+                    !inMonth && "bg-muted/20 text-muted-foreground",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <span
+                      className={cn(
+                        "inline-flex size-7 items-center justify-center rounded-full text-xs font-semibold",
+                        isToday && "bg-primary text-primary-foreground",
+                      )}
+                    >
+                      {format(day, "d")}
+                    </span>
+                    {summary && summary.totalMinutes > 0 ? (
+                      <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-bold text-primary">
+                        {summary.totalHoursFormatted}
+                      </span>
+                    ) : null}
+                  </div>
+                  {summary && summary.entries.length > 0 ? (
+                    <p className="mt-1 truncate text-[10px] text-muted-foreground">
+                      {summary.entries.length} apont.
+                    </p>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {!loading && view === "week" ? (
+        <div className="grid gap-3 md:grid-cols-7">
+          {weekDays.map((day) => {
+            const key = format(day, "yyyy-MM-dd");
+            const summary = daysByDate.get(key);
+            const isToday = isSameDay(day, new Date());
+
+            return (
+              <div
+                key={key}
+                className={cn(
+                  "flex min-h-[200px] flex-col rounded-xl border border-border bg-card p-2",
+                  isToday && "ring-2 ring-primary/40",
+                )}
+              >
+                <div className="mb-2 border-b border-border pb-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">
+                    {format(day, "EEE", { locale: ptBR })}
+                  </p>
+                  <p className="text-lg font-bold text-foreground">
+                    {format(day, "d")}
+                  </p>
+                  <p className="text-xs font-semibold text-primary">
+                    {summary?.totalHoursFormatted ?? "00:00"}
+                  </p>
+                </div>
+                <ul className="flex-1 space-y-1 overflow-y-auto">
+                  {(summary?.entries ?? []).map((entry) => (
+                    <li
+                      key={entry.id}
+                      className="rounded-md bg-primary/10 px-2 py-1 text-[10px] text-foreground"
+                    >
+                      <span className="font-semibold">
+                        {entry.initTime?.slice(0, 5) ?? "—"}
+                      </span>{" "}
+                      · {entry.hoursFormatted}
+                      <p className="truncate text-muted-foreground">
+                        #{entry.ticketNumber}
+                        {entry.clientName ? ` · ${entry.clientName}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {!loading && view === "day" ? (
+        <div className="rounded-xl border border-border bg-card">
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm text-muted-foreground">Dia selecionado</p>
+            <p className="font-semibold text-foreground">
+              {format(referenceDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
+            </p>
+            <p className="text-lg font-bold text-primary">
+              {selectedDay?.totalHoursFormatted ?? "00:00"}
+            </p>
+          </div>
+          <ul className="divide-y divide-border">
+            {(selectedDay?.entries ?? []).length === 0 ? (
+              <li className="px-4 py-8 text-center text-sm text-muted-foreground">
+                Nenhum apontamento neste dia.
+              </li>
+            ) : (
+              (selectedDay?.entries ?? []).map((entry) => (
+                <li
+                  key={entry.id}
+                  className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="font-semibold text-foreground">
+                      {entry.initTime?.slice(0, 5) ?? "—"} –{" "}
+                      {entry.endTime?.slice(0, 5) ?? "—"}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Ticket #{entry.ticketNumber}
+                      {entry.clientName ? ` · ${entry.clientName}` : ""}
+                    </p>
+                    {entry.description ? (
+                      <p className="mt-1 text-sm text-foreground/80">
+                        {entry.description}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="shrink-0 rounded-lg bg-primary/15 px-3 py-1 text-sm font-bold text-primary">
+                    {entry.hoursFormatted}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function toDateInputValue(date: Date) {
+  return format(date, "yyyy-MM-dd");
+}
+
+export function parseDateInput(value?: string) {
+  if (!value) return new Date();
+  const parsed = parseISO(`${value}T12:00:00`);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
