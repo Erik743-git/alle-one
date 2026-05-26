@@ -29,23 +29,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { setSession, setStoredUser } from "@/lib/session";
+import { setSession, setStoredUser, type AuthUser } from "@/lib/session";
 import { authService } from "@/lib/services/auth.service";
-import type { ModulePermission } from "@/lib/permission-modules";
 
 type LoginResponse = {
   message: string;
   accessToken?: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: "ADMIN" | "COLLABORATOR" | "CLIENT";
-    companyId: string | null;
-    companyName: string | null;
-    firstAccess: boolean;
-    permissions: ModulePermission[];
-  };
+  user: AuthUser;
 };
 
 type ErrorResponse = {
@@ -131,9 +121,9 @@ export default function LoginPage() {
 
       const loginData = data as LoginResponse;
 
-      setSession(loginData.accessToken ?? null, loginData.user);
+      setSession(undefined, loginData.user);
 
-      let user = loginData.user;
+      let user: AuthUser = loginData.user;
       try {
         const meData = await authService.me();
         if (meData?.user) {
