@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { companiesService, type Company } from "@/lib/services/companies.service";
@@ -60,6 +61,10 @@ function hoursFromMinutes(minutes: number) {
 function minutesFromHours(hours: number) {
   if (!Number.isFinite(hours) || hours <= 0) return 30;
   return Math.max(5, Math.round(hours * 60));
+}
+
+function sortByName<T extends { name: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
 
 export function GmudForm({
@@ -133,7 +138,7 @@ export function GmudForm({
       setLoadingCompanies(true);
       try {
         const data = await companiesService.list();
-        if (!cancelled) setCompanies(data);
+        if (!cancelled) setCompanies(sortByName(data));
       } catch {
         // manter silencioso, a tela ainda pode funcionar com companyId preenchido
       } finally {
@@ -148,7 +153,7 @@ export function GmudForm({
 
   const companyLocked = isClient;
 
-  const executorOptions = useMemo(() => executors, [executors]);
+  const executorOptions = useMemo(() => sortByName(executors), [executors]);
 
   function addUnique(list: SelectedUser[], user: SelectedUser) {
     if (list.some((u) => u.id === user.id)) return list;
@@ -269,19 +274,14 @@ export function GmudForm({
               />
             ) : (
               <div className="flex gap-2">
-                <select
+                <SearchableSelectField
                   value={companyId}
                   disabled={readonly || !canEdit || loadingCompanies}
-                  onChange={(e) => setCompanyId(e.target.value)}
-                  className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                >
-                  <option value="">Selecione...</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setCompanyId}
+                  options={companies.map((c) => ({ value: c.id, label: c.name }))}
+                  emptyLabel="Selecione..."
+                  className="min-w-0 flex-1"
+                />
                 <Button
                   type="button"
                   variant="outline"
@@ -290,12 +290,12 @@ export function GmudForm({
                     setLoadingCompanies(true);
                     try {
                       const data = await companiesService.list();
-                      setCompanies(data);
+                      setCompanies(sortByName(data));
                     } finally {
                       setLoadingCompanies(false);
                     }
                   }}
-                  className="h-11"
+                  className="h-11 shrink-0"
                 >
                   Atualizar
                 </Button>
@@ -314,7 +314,7 @@ export function GmudForm({
               <Input
                 value={responsible ? `${responsible.name} (${responsible.email})` : ""}
                 disabled
-                className=""
+                className="min-w-0 flex-1"
                 placeholder="Selecione um usuário"
               />
               <Button
@@ -325,6 +325,7 @@ export function GmudForm({
                   setPickerOpen(true);
                 }}
                 variant="secondary"
+                className="shrink-0"
               >
                 Buscar
               </Button>
@@ -599,25 +600,22 @@ export function GmudForm({
                 </div>
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Executor</div>
-                  <select
+                  <SearchableSelectField
                     value={a.executorUserId}
                     disabled={readonly || !canEdit}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setActivities((prev) =>
                         prev.map((x, i) =>
-                          i === idx ? { ...x, executorUserId: e.target.value } : x
-                        )
+                          i === idx ? { ...x, executorUserId: value } : x,
+                        ),
                       )
                     }
-                    className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                  >
-                    <option value="">Selecione...</option>
-                    {executorOptions.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={executorOptions.map((u) => ({
+                      value: u.id,
+                      label: u.name,
+                    }))}
+                    emptyLabel="Selecione..."
+                  />
                 </div>
                 <div className="space-y-2 md:col-span-4">
                   <div className="text-sm text-muted-foreground">Descrição da atividade</div>

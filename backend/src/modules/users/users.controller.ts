@@ -30,6 +30,12 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  @Get('service-desks')
+  @RequirePermission(PermissionModule.USERS, 'canView')
+  listServiceDesks() {
+    return this.usersService.listServiceDesks();
+  }
+
   @Get(':id')
   @RequirePermission(PermissionModule.USERS, 'canView')
   findOne(@Param('id') id: string) {

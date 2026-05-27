@@ -26,9 +26,19 @@ type TifluxRequestDto = {
 export class TifluxController {
   constructor(private readonly tifluxService: TifluxService) {}
 
+  private assertUnsafeTifluxEndpointsEnabled(): void {
+    const enabled = process.env.TIFLUX_UNSAFE_ENDPOINTS === 'true';
+    if (!enabled) {
+      throw new BadRequestException(
+        'Endpoint TiFlux desabilitado por segurança.',
+      );
+    }
+  }
+
   @Get('test')
   @Roles('ADMIN')
   testConnection() {
+    this.assertUnsafeTifluxEndpointsEnabled();
     return this.tifluxService.testConnection();
   }
 
@@ -213,6 +223,7 @@ export class TifluxController {
     @Query('path') path: string,
     @Query('method') method?: 'GET' | 'POST' | 'PUT' | 'DELETE',
   ) {
+    this.assertUnsafeTifluxEndpointsEnabled();
     if (!path?.trim()) {
       throw new BadRequestException('O parâmetro "path" é obrigatório.');
     }
@@ -223,6 +234,7 @@ export class TifluxController {
   @Post('request')
   @Roles('ADMIN')
   requestByBody(@Body() data: TifluxRequestDto) {
+    this.assertUnsafeTifluxEndpointsEnabled();
     if (!data.path?.trim()) {
       throw new BadRequestException('O campo "path" é obrigatório.');
     }

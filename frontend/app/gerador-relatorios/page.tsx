@@ -8,7 +8,14 @@ import { Download, Loader2, RefreshCw } from "lucide-react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { getStoredUser } from "@/lib/session";
+import {
+  getFormatsForReportType,
+  getReportTypeLabel,
+  REPORT_TYPES,
+  type ReportFormatOption,
+} from "@/lib/report-types";
 import { reportsService } from "@/lib/services/reports.service";
 import type { ReportRow } from "@/lib/services/reports.service";
 
@@ -23,7 +30,7 @@ export default function GeradorRelatoriosPage() {
   );
   const [companyId, setCompanyId] = useState<string>("");
   const [type, setType] = useState<string>("1");
-  const [format, setFormat] = useState<"CSV" | "PDF" | "XLSX">("CSV");
+  const [format, setFormat] = useState<ReportFormatOption>("XLSX");
   const [start, setStart] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() - 6);
@@ -34,25 +41,57 @@ export default function GeradorRelatoriosPage() {
   const [lastReport, setLastReport] = useState<ReportRow | null>(null);
   const [reports, setReports] = useState<ReportRow[]>([]);
 
-  const types = useMemo(
-    () => [
-      { value: "1", label: "Tipo 1" },
-      { value: "2", label: "Tipo 2" },
-      { value: "3", label: "Tipo 3" },
-      { value: "4", label: "Tipo 4" },
-    ],
-    []
+  const formatOptions = useMemo(
+    () => getFormatsForReportType(type),
+    [type],
   );
+  const isRendimento = type === "1";
+  const alleCompanyId = useMemo(
+    () =>
+      companies.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "",
+    [companies],
+  );
+  const effectiveCompanyId =
+    isRendimento && alleCompanyId ? alleCompanyId : companyId;
+  const companyOptions = useMemo(
+    () => companies.map((c) => ({ value: c.id, label: c.name })),
+    [companies],
+  );
+  const typeOptions = useMemo(
+    () => REPORT_TYPES.map((t) => ({ value: t.value, label: t.label })),
+    [],
+  );
+  const formatSelectOptions = useMemo(
+    () => formatOptions.map((item) => ({ value: item, label: item })),
+    [formatOptions],
+  );
+
+  useEffect(() => {
+    const allowed = getFormatsForReportType(type);
+    if (!allowed.includes(format)) {
+      setFormat(allowed[0] ?? "XLSX");
+    }
+  }, [type, format]);
+
+  useEffect(() => {
+    if (isRendimento && alleCompanyId && companyId !== alleCompanyId) {
+      setCompanyId(alleCompanyId);
+    }
+  }, [alleCompanyId, companyId, isRendimento]);
 
   async function loadAll() {
     setErro("");
     setCarregando(true);
     try {
       const comps = await reportsService.listCompanies();
-      setCompanies(comps);
+      setCompanies(
+        [...comps].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+      );
 
       const defaultCompanyId =
-        companyId ||
+        (isRendimento
+          ? comps.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? ""
+          : companyId) ||
         (user?.role === "CLIENT" && user.companyId ? user.companyId : "") ||
         comps[0]?.id ||
         "";
@@ -88,8 +127,8 @@ export default function GeradorRelatoriosPage() {
     setErro("");
     try {
       const [items, last] = await Promise.all([
-        reportsService.list({ companyId: companyId || undefined, type }),
-        reportsService.last({ companyId: companyId || undefined, type }),
+        reportsService.list({ companyId: effectiveCompanyId || undefined, type }),
+        reportsService.last({ companyId: effectiveCompanyId || undefined, type }),
       ]);
       setReports(items ?? []);
       setLastReport(last ?? null);
@@ -101,7 +140,7 @@ export default function GeradorRelatoriosPage() {
   async function handleGenerate() {
     setErro("");
 
-    if (!companyId) {
+    if (!effectiveCompanyId) {
       setErro("Selecione a empresa.");
       return;
     }
@@ -125,7 +164,7 @@ export default function GeradorRelatoriosPage() {
     try {
       setGerando(true);
       await reportsService.generate({
-        companyId,
+        companyId: effectiveCompanyId,
         type,
         format,
         start: startDate.toISOString(),
@@ -222,62 +261,49 @@ export default function GeradorRelatoriosPage() {
                   <label className="text-xs font-semibold text-muted-foreground">
                     Empresa
                   </label>
-                  <select
+                  <SearchableSelectField
                     value={companyId}
-                    onChange={(e) => setCompanyId(e.target.value)}
-                    disabled={carregando || companies.length === 0}
-                    className="h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground outline-none disabled:opacity-60"
-                  >
-                    <option value="">
-                      {carregando ? "Carregando..." : "Selecione"}
-                    </option>
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCompanyId}
+                    options={companyOptions}
+                    loading={carregando}
+                    disabled={
+                      carregando ||
+                      companies.length === 0 ||
+                      (isRendimento && !!alleCompanyId)
+                    }
+                    emptyLabel={carregando ? "Carregando..." : "Selecione"}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
-                    Tipo
+                    Relatório
                   </label>
-                  <select
+                  <SearchableSelectField
                     value={type}
-                    onChange={(e) => setType(e.target.value)}
-                    className="h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground outline-none"
-                  >
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setType}
+                    options={typeOptions}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
                     Formato
                   </label>
-                  <select
+                  <SearchableSelectField
                     value={format}
-                    onChange={(e) =>
-                      setFormat(e.target.value as "CSV" | "PDF" | "XLSX")
-                    }
-                    className="h-11 w-full rounded-xl border border-input bg-background px-4 text-sm text-foreground outline-none"
-                  >
-                    <option value="CSV">CSV</option>
-                    <option value="XLSX">XLSX</option>
-                    <option value="PDF">PDF (em breve)</option>
-                  </select>
+                    onChange={(value) => setFormat(value as ReportFormatOption)}
+                    options={formatSelectOptions}
+                    disabled={formatOptions.length <= 1}
+                  />
                 </div>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   Permissões: CLIENT vê apenas sua empresa. ADMIN vê todas.
-                  COLLABORATOR pode escolher qualquer empresa.
+                  COLLABORATOR pode escolher qualquer empresa. Para Rendimento,
+                  a empresa Alle é aplicada automaticamente.
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -328,7 +354,7 @@ export default function GeradorRelatoriosPage() {
                 ) : (
                   <div className="rounded-xl border border-border bg-muted/40 p-4">
                     <p className="text-lg font-bold text-foreground">
-                      Relatório Tipo {String(lastReport.type)}
+                      Relatório {getReportTypeLabel(lastReport.type)}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
                       Empresa: {lastReport.company?.name ?? "-"}
@@ -375,7 +401,7 @@ export default function GeradorRelatoriosPage() {
                     <table className="w-full text-left text-sm">
                       <thead className="text-xs uppercase text-muted-foreground">
                         <tr className="border-b border-border">
-                          <th className="px-2 py-3">Tipo</th>
+                          <th className="px-2 py-3">Relatório</th>
                           <th className="px-2 py-3">Empresa</th>
                           <th className="px-2 py-3">Período</th>
                           <th className="px-2 py-3">Formato</th>
@@ -389,7 +415,9 @@ export default function GeradorRelatoriosPage() {
                             key={r.id}
                             className="border-b border-border text-foreground"
                           >
-                            <td className="px-2 py-3">Tipo {r.type}</td>
+                            <td className="px-2 py-3">
+                              {getReportTypeLabel(r.type)}
+                            </td>
                             <td className="px-2 py-3">
                               {r.company?.name ?? "-"}
                             </td>

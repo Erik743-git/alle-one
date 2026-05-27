@@ -188,6 +188,13 @@ export class DashboardService {
 
   private readonly tifluxAppointmentsBatchSize = 1;
   private readonly tifluxAppointmentsPauseMs = 800;
+  /**
+   * Segurança/performance: por padrão o portal NÃO consulta a API TiFlux em runtime.
+   * Toda leitura deve vir do banco local sincronizado.
+   * Para habilitar fallback temporário de API: TIFLUX_RUNTIME_API=true
+   */
+  private readonly allowRuntimeTifluxApi =
+    process.env.TIFLUX_RUNTIME_API === 'true';
   /** Cache do /dashboard/complete em memória (ms). Env: DASHBOARD_COMPLETE_CACHE_MS */
   private readonly dashboardCacheTtlMs = (() => {
     const n = Number(process.env.DASHBOARD_COMPLETE_CACHE_MS);
@@ -1373,6 +1380,10 @@ export class DashboardService {
     this.devDebug('limit:', this.chartTicketsLimit);
     this.devDebug('==================================================');
 
+    if (!this.allowRuntimeTifluxApi) {
+      return [];
+    }
+
     try {
       const tickets = await this.tifluxService.getTickets({
         filter_by: 'all',
@@ -1409,6 +1420,12 @@ export class DashboardService {
   }): Promise<Array<{ ticket_number: number } & Record<string, unknown>>> {
     if (filters.tifluxClientId === null) {
       this.devDebug('getTicketsForHours: tifluxClientId nulo, retornando []');
+      return [];
+    }
+    if (!this.allowRuntimeTifluxApi) {
+      this.devDebug(
+        'getTicketsForHours: TIFLUX_RUNTIME_API desabilitado, retornando []',
+      );
       return [];
     }
 
@@ -1562,6 +1579,10 @@ export class DashboardService {
     ticketNumber: number,
     filters: { startDate: Date; endDate: Date },
   ): Promise<AppointmentLike[]> {
+    if (!this.allowRuntimeTifluxApi) {
+      return [];
+    }
+
     const allAppointments: AppointmentLike[] = [];
     let page = 1;
     const start_date = this.toDateOnlyISO(filters.startDate);
@@ -2731,59 +2752,59 @@ export class DashboardService {
               chartLimit: this.chartTicketsLimit,
             });
 
-            // Sanity-check: em alguns ambientes o sync `tiflux.tickets` pode estar incompleto.
-            // Para manter o dashboard fiel ao TiFlux, comparamos com a contagem da API e,
-            // quando necessário, usamos a listagem da API para agregações.
-            try {
-              const tifluxListParams = {
-                filter_by: 'all' as const,
-                client_ids: [integrations.tifluxClientId],
-                date_type: 'created_at' as const,
-                start_datetime: startISO,
-                end_datetime: endISO,
-                // O portal tipicamente fica bem abaixo disso; 200 cobre os casos comuns (ex.: 65 tickets).
-                limit: 200,
-                offset: 1,
-              };
-
-              const [openCountApi, allPageApi] = await Promise.all([
-                this.tifluxService.getTicketsTotalItems({
-                  filter_by: 'open',
+            if (this.allowRuntimeTifluxApi) {
+              // Sanity-check opcional para ambientes onde fallback da API está habilitado.
+              try {
+                const tifluxListParams = {
+                  filter_by: 'all' as const,
                   client_ids: [integrations.tifluxClientId],
-                  date_type: 'created_at',
+                  date_type: 'created_at' as const,
                   start_datetime: startISO,
                   end_datetime: endISO,
-                }),
-                this.tifluxService.getTicketsWithTotal(tifluxListParams),
-              ]);
-
-              const apiTotal = Number(allPageApi.totalItems ?? 0) || 0;
-              const apiOpen = Number(openCountApi ?? 0) || 0;
-              const apiTickets = (allPageApi.tickets ?? []) as Array<
-                Record<string, unknown>
-              >;
-
-              const dbTotal = Number(fromDb.totalTickets ?? 0) || 0;
-
-              // Se a API trouxer mais tickets que o banco, preferimos a API (dados mais completos).
-              if (apiTotal > dbTotal) {
-                return {
-                  ...fromDb,
-                  totalTickets: apiTotal,
-                  totalOpenTickets: apiOpen,
-                  ticketsForCharts: apiTickets.slice(0, this.chartTicketsLimit),
-                  ticketsForAggregation:
-                    apiTickets.length &&
-                    apiTickets.length >= Math.min(apiTotal, 200)
-                      ? apiTickets
-                      : fromDb.ticketsForAggregation,
+                  // O portal tipicamente fica bem abaixo disso; 200 cobre os casos comuns (ex.: 65 tickets).
+                  limit: 200,
+                  offset: 1,
                 };
+
+                const [openCountApi, allPageApi] = await Promise.all([
+                  this.tifluxService.getTicketsTotalItems({
+                    filter_by: 'open',
+                    client_ids: [integrations.tifluxClientId],
+                    date_type: 'created_at',
+                    start_datetime: startISO,
+                    end_datetime: endISO,
+                  }),
+                  this.tifluxService.getTicketsWithTotal(tifluxListParams),
+                ]);
+
+                const apiTotal = Number(allPageApi.totalItems ?? 0) || 0;
+                const apiOpen = Number(openCountApi ?? 0) || 0;
+                const apiTickets = (allPageApi.tickets ?? []) as Array<
+                  Record<string, unknown>
+                >;
+
+                const dbTotal = Number(fromDb.totalTickets ?? 0) || 0;
+
+                // Se a API trouxer mais tickets que o banco, preferimos a API (dados mais completos).
+                if (apiTotal > dbTotal) {
+                  return {
+                    ...fromDb,
+                    totalTickets: apiTotal,
+                    totalOpenTickets: apiOpen,
+                    ticketsForCharts: apiTickets.slice(0, this.chartTicketsLimit),
+                    ticketsForAggregation:
+                      apiTickets.length &&
+                      apiTickets.length >= Math.min(apiTotal, 200)
+                        ? apiTickets
+                        : fromDb.ticketsForAggregation,
+                  };
+                }
+              } catch (apiCheckError) {
+                console.error(
+                  'Sanity-check TiFlux API falhou; mantendo banco:',
+                  apiCheckError,
+                );
               }
-            } catch (apiCheckError) {
-              console.error(
-                'Sanity-check TiFlux API falhou; mantendo banco:',
-                apiCheckError,
-              );
             }
 
             this.devDebug('==================================================');
@@ -2809,6 +2830,17 @@ export class DashboardService {
               dbError,
             );
           }
+        }
+
+        if (!this.allowRuntimeTifluxApi) {
+          this.devDebug(
+            'TIFLUX_RUNTIME_API desabilitado e leitura DB indisponível para este cliente.',
+          );
+          return {
+            ticketsForCharts: [] as Array<Record<string, unknown>>,
+            totalTickets: 0,
+            totalOpenTickets: 0,
+          };
         }
 
         try {

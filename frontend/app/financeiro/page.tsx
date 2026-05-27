@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   Dialog,
   DialogContent,
@@ -58,14 +59,19 @@ export default function FinanceiroPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>("Contrato");
   const companyRequestIdRef = useRef(0);
+  const companyOptions = useMemo(
+    () => companies.map((c) => ({ value: c.id, label: c.name })),
+    [companies],
+  );
 
   async function loadCompanies() {
     if (isClient) return;
     try {
       const list = await companiesService.list();
-      setCompanies(list);
-      if (!companyId && list.length) {
-        setCompanyId(list[0].id);
+      const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+      setCompanies(sorted);
+      if (!companyId && sorted.length) {
+        setCompanyId(sorted[0].id);
       }
     } catch {
       // silencioso
@@ -145,11 +151,13 @@ export default function FinanceiroPage() {
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
     const items = contracts ?? [];
-    if (!term) return items;
-    return items.filter((c) => {
+    const base = !term
+      ? items
+      : items.filter((c) => {
       const hay = `${c.id} ${c.title} ${c.description ?? ""}`.toLowerCase();
       return hay.includes(term);
     });
+    return [...base].sort((a, b) => a.title.localeCompare(b.title, "pt-BR"));
   }, [contracts, q]);
 
   const metrics = useMemo(() => {
@@ -380,27 +388,20 @@ export default function FinanceiroPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-3">
-                    <select
-                      value={companyId}
-                      onChange={(e) => setCompanyId(e.target.value)}
-                      className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-                      disabled={isClient}
-                    >
-                      {isClient ? (
-                        <option value={companyId}>
-                          {user?.companyName ?? "Minha empresa"}
-                        </option>
-                      ) : (
-                        <>
-                          <option value="">Selecione...</option>
-                          {companies.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.name}
-                            </option>
-                          ))}
-                        </>
-                      )}
-                    </select>
+                    {isClient ? (
+                      <Input
+                        value={user?.companyName ?? "Minha empresa"}
+                        disabled
+                        className="h-11"
+                      />
+                    ) : (
+                      <SearchableSelectField
+                        value={companyId}
+                        onChange={setCompanyId}
+                        options={companyOptions}
+                        emptyLabel="Selecione..."
+                      />
+                    )}
                   </div>
                 </div>
 

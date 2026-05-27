@@ -11,6 +11,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Eye, UserPlus, EyeOff } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 
@@ -24,7 +26,17 @@ type Company = {
   name: string;
 };
 
+type ServiceDeskOption = {
+  id: string;
+  name: string;
+  externalId: number | null;
+};
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+function sortByName<T extends { name: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
 
 export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   const [nome, setNome] = useState("");
@@ -32,10 +44,14 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   const [password, setPassword] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [role, setRole] = useState("CLIENT");
+  const [responsible, setResponsible] = useState(false);
+  const [serviceDeskIds, setServiceDeskIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
 
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [serviceDesks, setServiceDesks] = useState<ServiceDeskOption[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [loadingServiceDesks, setLoadingServiceDesks] = useState(false);
   const [loadingSave, setLoadingSave] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -62,7 +78,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
         return;
       }
 
-      setCompanies(Array.isArray(data) ? data : []);
+      setCompanies(Array.isArray(data) ? sortByName(data) : []);
     } catch {
       setErro("Erro ao conectar com backend.");
     } finally {
@@ -73,8 +89,38 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (open) {
       void buscarEmpresas();
+      void buscarMesasDeServico();
     }
   }, [open]);
+
+  async function buscarMesasDeServico() {
+    try {
+      setLoadingServiceDesks(true);
+      setErro("");
+
+      const response = await authFetch(`${API_URL}/users/service-desks`);
+      const data = (await response.json()) as
+        | ServiceDeskOption[]
+        | { message?: string | string[] };
+
+      if (!response.ok) {
+        const message =
+          !Array.isArray(data) && data.message
+            ? Array.isArray(data.message)
+              ? data.message[0]
+              : data.message
+            : "Erro ao buscar mesas de serviço.";
+        setErro(message);
+        return;
+      }
+
+      setServiceDesks(Array.isArray(data) ? sortByName(data) : []);
+    } catch {
+      setErro("Erro ao conectar com backend.");
+    } finally {
+      setLoadingServiceDesks(false);
+    }
+  }
 
   async function criarUsuario() {
     if (!nome || !email || !password || !companyId || !role) {
@@ -99,6 +145,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
           companyId,
           status: "ACTIVE",
           firstAccess: true,
+          responsible,
+          serviceDeskIds,
         }),
       });
 
@@ -123,6 +171,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setPassword("");
       setCompanyId("");
       setRole("CLIENT");
+      setResponsible(false);
+      setServiceDeskIds([]);
 
       onOpenChange(false);
       window.location.reload();
@@ -138,9 +188,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       <DialogContent
         className="
           font-sans
-          flex max-h-[90vh] w-[95vw] max-w-[520px] flex-col overflow-hidden
+          flex max-h-[92vh] !w-[95vw] !max-w-[980px] sm:!w-[min(980px,95vw)] sm:!max-w-[980px] flex-col overflow-hidden
           border border-border bg-card p-0 text-card-foreground
-          sm:max-w-[600px]
         "
       >
         <div className="shrink-0 border-b border-border px-5 py-5 sm:px-6">
@@ -192,19 +241,16 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                 Empresa
               </Label>
 
-              <select
+              <SearchableSelectField
                 value={companyId}
-                onChange={(e) => setCompanyId(e.target.value)}
+                onChange={setCompanyId}
+                options={companies.map((company) => ({
+                  value: company.id,
+                  label: company.name,
+                }))}
                 disabled={loadingCompanies}
-                className="font-sans h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">Selecione a empresa</option>
-                {companies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </select>
+                emptyLabel="Selecione a empresa"
+              />
             </div>
 
             <div className="space-y-2">
@@ -212,15 +258,61 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                 Perfil
               </Label>
 
-              <select
+              <SearchableSelectField
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="font-sans h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none"
-              >
-                <option value="CLIENT">Cliente</option>
-                <option value="COLLABORATOR">Colaborador</option>
-                <option value="ADMIN">Administrador</option>
-              </select>
+                onChange={setRole}
+                options={[
+                  { value: "ADMIN", label: "Administrador" },
+                  { value: "CLIENT", label: "Cliente" },
+                  { value: "COLLABORATOR", label: "Colaborador" },
+                ]}
+              />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <Label className="font-sans text-sm font-semibold text-foreground">
+                Mesas de serviço
+              </Label>
+              <div className="rounded-xl border border-input bg-background p-3">
+                {loadingServiceDesks ? (
+                  <p className="text-sm text-muted-foreground">Carregando mesas...</p>
+                ) : serviceDesks.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma mesa disponível.
+                  </p>
+                ) : (
+                  <div className="grid max-h-40 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                    {serviceDesks.map((desk) => (
+                      <label
+                        key={desk.id}
+                        className="flex items-center gap-2 text-sm text-foreground"
+                      >
+                        <FlipCheckbox
+                          checked={serviceDeskIds.includes(desk.id)}
+                          onChange={(e) => {
+                            setServiceDeskIds((prev) =>
+                              e.target.checked
+                                ? [...prev, desk.id]
+                                : prev.filter((id) => id !== desk.id),
+                            );
+                          }}
+                        />
+                        <span>{desk.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <FlipCheckbox
+                  checked={responsible}
+                  onChange={(e) => setResponsible(e.target.checked)}
+                />
+                Marcar usuário como responsável
+              </label>
             </div>
 
             <div className="space-y-2 sm:col-span-2">

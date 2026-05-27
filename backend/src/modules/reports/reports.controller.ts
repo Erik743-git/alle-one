@@ -61,7 +61,7 @@ export class ReportsController {
     body: {
       companyId: string;
       type: string;
-      format: 'CSV' | 'PDF' | 'XLSX';
+      format: 'CSV' | 'XLSX';
       start: string;
       end: string;
     },

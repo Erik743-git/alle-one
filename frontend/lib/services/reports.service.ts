@@ -1,7 +1,7 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
 
-export type ReportFormat = "CSV" | "PDF" | "XLSX";
+export type ReportFormat = "CSV" | "XLSX";
 
 export type ReportRow = {
   id: string;

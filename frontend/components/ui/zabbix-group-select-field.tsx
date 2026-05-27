@@ -30,6 +30,16 @@ export function ZabbixGroupSelectField({
 }: ZabbixGroupSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const handleListWheel = React.useCallback(
+    (event: React.WheelEvent<HTMLUListElement>) => {
+      const element = event.currentTarget;
+      if (element.scrollHeight <= element.clientHeight) return;
+      // Em popover dentro de dialog, alguns navegadores bloqueiam scroll por roda.
+      event.preventDefault();
+      element.scrollTop += event.deltaY;
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (!open) {
@@ -58,6 +68,7 @@ export function ZabbixGroupSelectField({
   }, [groups, query, value]);
 
   const label = value.trim() || (loading ? "Carregando grupos..." : placeholder);
+  const showSearch = options.length > 8;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -81,17 +92,20 @@ export function ZabbixGroupSelectField({
         align="start"
         className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] p-2"
       >
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Pesquisar grupo..."
-          className="mb-2 h-9 font-sans"
-          autoFocus
-        />
+        {showSearch ? (
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Pesquisar grupo..."
+            className="mb-2 h-9 font-sans"
+            autoFocus
+          />
+        ) : null}
 
         <ul
           className="max-h-48 overflow-y-auto overscroll-contain rounded-md border border-border"
           role="listbox"
+          onWheelCapture={handleListWheel}
         >
           <li>
             <button

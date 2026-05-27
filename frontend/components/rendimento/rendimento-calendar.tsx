@@ -21,6 +21,13 @@ import {
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
+import {
+  buildDayTimeline,
+  RendimentoDayIndicators,
+  RendimentoEntryCard,
+  RendimentoGapBlock,
+  RendimentoLegend,
+} from "@/components/rendimento/rendimento-calendar-parts";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type {
@@ -36,6 +43,17 @@ type RendimentoCalendarProps = {
   view: RendimentoCalendarView;
   referenceDate: Date;
   loading?: boolean;
+  canApproveJustification?: boolean;
+  onOpenAlertJustification?: (params: {
+    date: string;
+    fromTime: string;
+    toTime: string;
+    gapMinutes: number;
+    gapType: "idle" | "lunch";
+  }) => void;
+  onOpenVoluntaryJustification?: (params: { date: string }) => void;
+  onApproveJustification?: (id: string) => void;
+  onRejectJustification?: (id: string) => void;
   onViewChange: (view: RendimentoCalendarView) => void;
   onReferenceDateChange: (date: Date) => void;
 };
@@ -66,6 +84,11 @@ export function RendimentoCalendar({
   view,
   referenceDate,
   loading = false,
+  canApproveJustification = false,
+  onOpenAlertJustification,
+  onOpenVoluntaryJustification,
+  onApproveJustification,
+  onRejectJustification,
   onViewChange,
   onReferenceDateChange,
 }: RendimentoCalendarProps) {
@@ -104,7 +127,7 @@ export function RendimentoCalendar({
   const selectedDay = daysByDate.get(selectedDayKey);
 
   return (
-    <div className="space-y-4">
+    <div className="font-sans space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap gap-2">
           {(["month", "week", "day"] as const).map((option) => (
@@ -145,11 +168,26 @@ export function RendimentoCalendar({
         </div>
       </div>
 
+      <RendimentoLegend />
+
       <div className="rounded-xl border border-border bg-card px-4 py-3">
-        <p className="text-sm text-muted-foreground">Total no período</p>
-        <p className="text-2xl font-bold text-foreground">
-          {loading ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
-        </p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div>
+            <p className="text-sm text-muted-foreground">Total no período</p>
+            <p className="text-2xl font-bold text-foreground">
+              {loading ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Horas extras no período</p>
+            <p className="text-2xl font-bold text-amber-600 dark:text-amber-300">
+              {loading ? "—" : timesheet?.periodOvertimeFormatted ?? "00:00"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Saldo: {loading ? "—" : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+            </p>
+          </div>
+        </div>
       </div>
 
       {loading ? (
@@ -186,8 +224,10 @@ export function RendimentoCalendar({
                     onViewChange("day");
                   }}
                   className={cn(
-                    "min-h-[88px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
+                    "min-h-[96px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
                     !inMonth && "bg-muted/20 text-muted-foreground",
+                    summary?.insights?.hasIdleGapAlert &&
+                      "ring-1 ring-inset ring-orange-500/50",
                   )}
                 >
                   <div className="flex items-start justify-between gap-1">
@@ -205,11 +245,7 @@ export function RendimentoCalendar({
                       </span>
                     ) : null}
                   </div>
-                  {summary && summary.entries.length > 0 ? (
-                    <p className="mt-1 truncate text-[10px] text-muted-foreground">
-                      {summary.entries.length} apont.
-                    </p>
-                  ) : null}
+                  <RendimentoDayIndicators summary={summary} compact />
                 </button>
               );
             })}
@@ -228,8 +264,9 @@ export function RendimentoCalendar({
               <div
                 key={key}
                 className={cn(
-                  "flex min-h-[200px] flex-col rounded-xl border border-border bg-card p-2",
+                  "flex min-h-[220px] flex-col rounded-xl border border-border bg-card p-2",
                   isToday && "ring-2 ring-primary/40",
+                  summary?.insights?.hasIdleGapAlert && "border-orange-500/50",
                 )}
               >
                 <div className="mb-2 border-b border-border pb-2">
@@ -242,23 +279,25 @@ export function RendimentoCalendar({
                   <p className="text-xs font-semibold text-primary">
                     {summary?.totalHoursFormatted ?? "00:00"}
                   </p>
+                  <RendimentoDayIndicators summary={summary} compact />
                 </div>
                 <ul className="flex-1 space-y-1 overflow-y-auto">
-                  {(summary?.entries ?? []).map((entry) => (
-                    <li
-                      key={entry.id}
-                      className="rounded-md bg-primary/10 px-2 py-1 text-[10px] text-foreground"
-                    >
-                      <span className="font-semibold">
-                        {entry.initTime?.slice(0, 5) ?? "—"}
-                      </span>{" "}
-                      · {entry.hoursFormatted}
-                      <p className="truncate text-muted-foreground">
-                        #{entry.ticketNumber}
-                        {entry.clientName ? ` · ${entry.clientName}` : ""}
-                      </p>
-                    </li>
-                  ))}
+                  {summary
+                    ? buildDayTimeline(summary).map((item, index) =>
+                        item.kind === "gap" ? (
+                          <RendimentoGapBlock
+                            key={`gap-${item.gap.fromTime}-${index}`}
+                            gap={item.gap}
+                          />
+                        ) : (
+                          <RendimentoEntryCard
+                            key={item.entry.id}
+                            entry={item.entry}
+                            dense
+                          />
+                        ),
+                      )
+                    : null}
                 </ul>
               </div>
             );
@@ -276,38 +315,118 @@ export function RendimentoCalendar({
             <p className="text-lg font-bold text-primary">
               {selectedDay?.totalHoursFormatted ?? "00:00"}
             </p>
+            {selectedDay?.insights ? (
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md bg-muted px-2 py-1">
+                  Regular:{" "}
+                  {String(Math.floor(selectedDay.insights.regularMinutes / 60)).padStart(2, "0")}
+                  :
+                  {String(selectedDay.insights.regularMinutes % 60).padStart(2, "0")}
+                </span>
+                {selectedDay.insights.hasOvertime ? (
+                  <span className="rounded-md bg-amber-500/20 px-2 py-1 font-semibold text-amber-800 dark:text-amber-200">
+                    Hora extra:{" "}
+                    {String(Math.floor(selectedDay.insights.overtimeMinutes / 60)).padStart(2, "0")}
+                    :
+                    {String(selectedDay.insights.overtimeMinutes % 60).padStart(2, "0")}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <RendimentoDayIndicators summary={selectedDay} />
+            {onOpenVoluntaryJustification && selectedDay ? (
+              <div className="mt-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    onOpenVoluntaryJustification({ date: selectedDay.date.slice(0, 10) })
+                  }
+                >
+                  Justificativa voluntária
+                </Button>
+              </div>
+            ) : null}
           </div>
-          <ul className="divide-y divide-border">
+          <ul className="space-y-2 p-4">
             {(selectedDay?.entries ?? []).length === 0 ? (
-              <li className="px-4 py-8 text-center text-sm text-muted-foreground">
+              <li className="py-8 text-center text-sm text-muted-foreground">
                 Nenhum apontamento neste dia.
               </li>
             ) : (
-              (selectedDay?.entries ?? []).map((entry) => (
-                <li
-                  key={entry.id}
-                  className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p className="font-semibold text-foreground">
-                      {entry.initTime?.slice(0, 5) ?? "—"} –{" "}
-                      {entry.endTime?.slice(0, 5) ?? "—"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Ticket #{entry.ticketNumber}
-                      {entry.clientName ? ` · ${entry.clientName}` : ""}
-                    </p>
-                    {entry.description ? (
-                      <p className="mt-1 text-sm text-foreground/80">
-                        {entry.description}
+              buildDayTimeline(selectedDay!).map((item, index) =>
+                item.kind === "gap" ? (
+                  <RendimentoGapBlock
+                    key={`day-gap-${item.gap.fromTime}-${index}`}
+                    gap={item.gap}
+                    onJustify={
+                      onOpenAlertJustification
+                        ? () =>
+                            onOpenAlertJustification({
+                              date: selectedDay!.date.slice(0, 10),
+                              fromTime: item.gap.fromTime,
+                              toTime: item.gap.toTime,
+                              gapMinutes: item.gap.gapMinutes,
+                              gapType: item.gap.type,
+                            })
+                        : undefined
+                    }
+                    canApprove={canApproveJustification}
+                    onApprove={
+                      item.gap.justification?.id && onApproveJustification
+                        ? () => onApproveJustification(item.gap.justification!.id)
+                        : undefined
+                    }
+                    onReject={
+                      item.gap.justification?.id && onRejectJustification
+                        ? () => onRejectJustification(item.gap.justification!.id)
+                        : undefined
+                    }
+                  />
+                ) : (
+                  <li
+                    key={item.entry.id}
+                    className={cn(
+                      "flex flex-col gap-1 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+                      item.entry.isOvertime
+                        ? "border-amber-500/50 bg-amber-500/10"
+                        : "border-border bg-muted/20",
+                    )}
+                  >
+                    <div>
+                      <p className="font-semibold text-foreground">
+                        {item.entry.initTime?.slice(0, 5) ?? "—"} –{" "}
+                        {item.entry.endTime?.slice(0, 5) ?? "—"}
+                        {item.entry.isOvertime ? (
+                          <span className="ml-2 rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                            HORA EXTRA
+                          </span>
+                        ) : null}
                       </p>
-                    ) : null}
-                  </div>
-                  <span className="shrink-0 rounded-lg bg-primary/15 px-3 py-1 text-sm font-bold text-primary">
-                    {entry.hoursFormatted}
-                  </span>
-                </li>
-              ))
+                      <p className="text-sm text-muted-foreground">
+                        Ticket #{item.entry.ticketNumber}
+                        {item.entry.clientName ? ` · ${item.entry.clientName}` : ""}
+                      </p>
+                      {item.entry.description ? (
+                        <p className="mt-1 text-sm text-foreground/80">
+                          {item.entry.description}
+                        </p>
+                      ) : null}
+                    </div>
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-lg px-3 py-1 text-sm font-bold",
+                        item.entry.isOvertime
+                          ? "bg-amber-500/25 text-amber-800 dark:text-amber-200"
+                          : "bg-primary/15 text-primary",
+                      )}
+                    >
+                      {item.entry.hoursFormatted}
+                    </span>
+                  </li>
+                ),
+              )
             )}
           </ul>
         </div>

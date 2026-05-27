@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import ModalNovoUsuario from "@/components/modals/modal-novo-usuario";
 import ModalPermissoesUsuario from "@/components/modals/modal-permissoes-usuario";
 import {
@@ -38,7 +40,13 @@ type ApiUser = {
   role: "ADMIN" | "COLLABORATOR" | "CLIENT";
   status: "ACTIVE" | "INACTIVE";
   firstAccess: boolean;
+  responsible: boolean;
   companyId: string | null;
+  serviceDesks: Array<{
+    id: string;
+    name: string;
+    externalId: number | null;
+  }>;
   company?: {
     id: string;
     name: string;
@@ -74,7 +82,19 @@ type FormEdicao = {
   status: "ACTIVE" | "INACTIVE";
   companyId: string;
   firstAccess: boolean;
+  responsible: boolean;
+  serviceDeskIds: string[];
 };
+
+type ServiceDeskOption = {
+  id: string;
+  name: string;
+  externalId: number | null;
+};
+
+function sortByName<T extends { name: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -114,9 +134,11 @@ export default function AdminUsuariosPage() {
   const [busca, setBusca] = useState("");
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [empresas, setEmpresas] = useState<EmpresaApi[]>([]);
+  const [serviceDesks, setServiceDesks] = useState<ServiceDeskOption[]>([]);
 
   const [carregando, setCarregando] = useState(true);
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(false);
+  const [carregandoMesas, setCarregandoMesas] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [desativandoUsuario, setDesativandoUsuario] = useState(false);
 
@@ -132,6 +154,8 @@ export default function AdminUsuariosPage() {
     status: "ACTIVE",
     companyId: "",
     firstAccess: false,
+    responsible: false,
+    serviceDeskIds: [],
   });
 
   async function buscarUsuarios() {
@@ -159,7 +183,9 @@ export default function AdminUsuariosPage() {
         return;
       }
 
-      setUsuarios(Array.isArray(data) ? data : []);
+      setUsuarios(
+        Array.isArray(data) ? [...data].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) : [],
+      );
     } catch {
       setErro("Erro ao conectar com o backend.");
       setUsuarios([]);
@@ -195,7 +221,7 @@ export default function AdminUsuariosPage() {
         return;
       }
 
-      setEmpresas(Array.isArray(data) ? data : []);
+      setEmpresas(Array.isArray(data) ? sortByName(data) : []);
     } catch {
       setErroEdicao("Erro ao conectar com o backend.");
       setEmpresas([]);
@@ -204,18 +230,50 @@ export default function AdminUsuariosPage() {
     }
   }
 
+  async function buscarMesasDeServico() {
+    try {
+      setCarregandoMesas(true);
+      setErroEdicao("");
+
+      const response = await authFetch(`${API_URL}/users/service-desks`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = (await response.json()) as
+        | ServiceDeskOption[]
+        | { message?: string };
+
+      if (!response.ok) {
+        const message =
+          !Array.isArray(data) && typeof data.message === "string"
+            ? data.message
+            : "Não foi possível carregar as mesas de serviço.";
+        setErroEdicao(message);
+        setServiceDesks([]);
+        return;
+      }
+
+      setServiceDesks(Array.isArray(data) ? sortByName(data) : []);
+    } catch {
+      setErroEdicao("Erro ao conectar com o backend.");
+      setServiceDesks([]);
+    } finally {
+      setCarregandoMesas(false);
+    }
+  }
+
   useEffect(() => {
     void buscarUsuarios();
+    void buscarMesasDeServico();
   }, []);
 
   const usuariosFiltrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
-    if (!termo) {
-      return usuarios;
-    }
-
-    return usuarios.filter((usuario) => {
+    const base = !termo
+      ? usuarios
+      : usuarios.filter((usuario) => {
       const empresa = usuario.company?.name ?? "Sem empresa";
       return (
         usuario.name.toLowerCase().includes(termo) ||
@@ -224,6 +282,7 @@ export default function AdminUsuariosPage() {
         empresa.toLowerCase().includes(termo)
       );
     });
+    return [...base].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [busca, usuarios]);
 
   const usuariosPorEmpresa = useMemo<GrupoEmpresa[]>(() => {
@@ -245,10 +304,14 @@ export default function AdminUsuariosPage() {
       });
     });
 
-    return Array.from(grupos.entries()).map(([empresa, usuariosEmpresa]) => ({
-      empresa,
-      usuarios: usuariosEmpresa,
-    }));
+    return Array.from(grupos.entries())
+      .map(([empresa, usuariosEmpresa]) => ({
+        empresa,
+        usuarios: [...usuariosEmpresa].sort((a, b) =>
+          a.nome.localeCompare(b.nome, "pt-BR"),
+        ),
+      }))
+      .sort((a, b) => a.empresa.localeCompare(b.empresa, "pt-BR"));
   }, [usuariosFiltrados]);
 
   const totalUsuarios = usuariosFiltrados.length;
@@ -275,6 +338,9 @@ export default function AdminUsuariosPage() {
     if (empresas.length === 0) {
       await buscarEmpresas();
     }
+    if (serviceDesks.length === 0) {
+      await buscarMesasDeServico();
+    }
 
     setErroEdicao("");
     setFormEdicao({
@@ -285,6 +351,8 @@ export default function AdminUsuariosPage() {
       status: usuario.status,
       companyId: usuario.companyId ?? "",
       firstAccess: usuario.firstAccess,
+      responsible: usuario.responsible,
+      serviceDeskIds: usuario.serviceDesks.map((desk) => desk.id),
     });
 
     setModalEditarUsuario(true);
@@ -331,6 +399,8 @@ export default function AdminUsuariosPage() {
           status: formEdicao.status,
           companyId: formEdicao.companyId || null,
           firstAccess: formEdicao.firstAccess,
+          responsible: formEdicao.responsible,
+          serviceDeskIds: formEdicao.serviceDeskIds,
         }),
       });
 
@@ -576,6 +646,17 @@ export default function AdminUsuariosPage() {
                                 <p className="text-sm text-muted-foreground">
                                   {usuario.email}
                                 </p>
+                                {(() => {
+                                  const full = usuarios.find((u) => u.id === usuario.id);
+                                  if (!full) return null;
+                                  const desks = full.serviceDesks.map((d) => d.name).join(", ");
+                                  return (
+                                    <p className="text-xs text-muted-foreground">
+                                      {desks ? `Mesas: ${desks}` : "Sem mesa vinculada"}
+                                      {full.responsible ? " • Responsável" : ""}
+                                    </p>
+                                  );
+                                })()}
                               </div>
 
                               <div className="flex flex-wrap items-center gap-2">
@@ -715,7 +796,7 @@ export default function AdminUsuariosPage() {
           <DialogContent
             className="
               font-sans
-              flex max-h-[92vh] w-[min(1200px,96vw)] max-w-none flex-col overflow-hidden
+              flex max-h-[92vh] !w-[95vw] !max-w-[980px] sm:!w-[min(980px,95vw)] sm:!max-w-[980px] flex-col overflow-hidden
               border border-border bg-card p-0 text-card-foreground
             "
           >
@@ -774,82 +855,136 @@ export default function AdminUsuariosPage() {
                   <Label className="text-sm font-semibold text-foreground">
                     Empresa
                   </Label>
-                  <select
+                  <SearchableSelectField
                     value={formEdicao.companyId}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setFormEdicao((prev) => ({
                         ...prev,
-                        companyId: e.target.value,
+                        companyId: value,
                       }))
                     }
                     disabled={carregandoEmpresas}
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none"
-                  >
-                    <option value="">Sem empresa</option>
-                    {empresas.map((empresa) => (
-                      <option key={empresa.id} value={empresa.id}>
-                        {empresa.name}
-                      </option>
-                    ))}
-                  </select>
+                    options={empresas.map((empresa) => ({
+                      value: empresa.id,
+                      label: empresa.name,
+                    }))}
+                    emptyLabel="Sem empresa"
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-foreground">
                     Perfil
                   </Label>
-                  <select
+                  <SearchableSelectField
                     value={formEdicao.role}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setFormEdicao((prev) => ({
                         ...prev,
-                        role: e.target.value as FormEdicao["role"],
+                        role: value as FormEdicao["role"],
                       }))
                     }
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none"
-                  >
-                    <option value="ADMIN">Administrador</option>
-                    <option value="COLLABORATOR">Colaborador</option>
-                    <option value="CLIENT">Cliente</option>
-                  </select>
+                    options={[
+                      { value: "ADMIN", label: "Administrador" },
+                      { value: "CLIENT", label: "Cliente" },
+                      { value: "COLLABORATOR", label: "Colaborador" },
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-foreground">
                     Status
                   </Label>
-                  <select
+                  <SearchableSelectField
                     value={formEdicao.status}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setFormEdicao((prev) => ({
                         ...prev,
-                        status: e.target.value as FormEdicao["status"],
+                        status: value as FormEdicao["status"],
                       }))
                     }
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none"
-                  >
-                    <option value="ACTIVE">Ativo</option>
-                    <option value="INACTIVE">Inativo</option>
-                  </select>
+                    options={[
+                      { value: "ACTIVE", label: "Ativo" },
+                      { value: "INACTIVE", label: "Inativo" },
+                    ]}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-foreground">
                     Primeiro acesso
                   </Label>
-                  <select
+                  <SearchableSelectField
                     value={formEdicao.firstAccess ? "true" : "false"}
-                    onChange={(e) =>
+                    onChange={(value) =>
                       setFormEdicao((prev) => ({
                         ...prev,
-                        firstAccess: e.target.value === "true",
+                        firstAccess: value === "true",
                       }))
                     }
-                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none"
-                  >
-                    <option value="true">Sim</option>
-                    <option value="false">Não</option>
-                  </select>
+                    options={[
+                      { value: "false", label: "Não" },
+                      { value: "true", label: "Sim" },
+                    ]}
+                  />
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-sm font-semibold text-foreground">
+                    Mesas de serviço
+                  </Label>
+                  <div className="max-h-40 overflow-y-auto rounded-xl border border-input bg-background p-3">
+                    {carregandoMesas ? (
+                      <p className="text-sm text-muted-foreground">Carregando mesas...</p>
+                    ) : serviceDesks.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma mesa disponível.
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {serviceDesks.map((desk) => (
+                          <label
+                            key={desk.id}
+                            className="flex items-center gap-2 text-sm text-foreground"
+                          >
+                            <FlipCheckbox
+                              checked={formEdicao.serviceDeskIds.includes(desk.id)}
+                              onChange={(e) =>
+                                setFormEdicao((prev) => ({
+                                  ...prev,
+                                  serviceDeskIds: e.target.checked
+                                    ? [...prev.serviceDeskIds, desk.id]
+                                    : prev.serviceDeskIds.filter(
+                                        (id) => id !== desk.id,
+                                      ),
+                                }))
+                              }
+                            />
+                            <span>{desk.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className="text-sm font-semibold text-foreground">
+                    Responsável
+                  </Label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <FlipCheckbox
+                      checked={formEdicao.responsible}
+                      onChange={(e) =>
+                        setFormEdicao((prev) => ({
+                          ...prev,
+                          responsible: e.target.checked,
+                        }))
+                      }
+                    />
+                    Marcar usuário como responsável
+                  </label>
                 </div>
               </div>
 

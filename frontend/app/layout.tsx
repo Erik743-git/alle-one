@@ -24,7 +24,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="dark" suppressHydrationWarning>
-      <body className={`${nunito.variable} ${geistMono.variable} antialiased`}>
+      <body
+        className={`${nunito.variable} ${geistMono.variable} font-sans antialiased`}
+      >
         <script
           // Define o tema antes do React hidratar (evita flash).
           dangerouslySetInnerHTML={{

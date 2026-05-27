@@ -1,0 +1,84 @@
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-alleone}
+      POSTGRES_USER: ${POSTGRES_USER:-alleone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      TRUST_PROXY: "1"
+      PORT: "3003"
+      # obrigatório em produção (origem exata do frontend, sem barra no final)
+      CORS_ORIGINS: ${CORS_ORIGINS:?defina CORS_ORIGINS}
+      # banco somente na rede interna do compose
+      DATABASE_URL: ${DATABASE_URL:?defina DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      # SMTP / integrações (defina somente se usar)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      MAIL_FROM: ${MAIL_FROM:-}
+      ZABBIX_URL: ${ZABBIX_URL:-}
+      ZABBIX_TOKEN: ${ZABBIX_TOKEN:-}
+      TIFLUX_API_URL: ${TIFLUX_API_URL:-}
+      TIFLUX_TOKEN: ${TIFLUX_TOKEN:-}
+      TIFLUX_RESUMO_MAX_LINHAS: ${TIFLUX_RESUMO_MAX_LINHAS:-100000}
+      TIFLUX_SYNC_ENABLED: ${TIFLUX_SYNC_ENABLED:-true}
+      TIFLUX_SYNC_STARTUP: ${TIFLUX_SYNC_STARTUP:-true}
+      TIFLUX_SYNC_PAGE_LIMIT: ${TIFLUX_SYNC_PAGE_LIMIT:-200}
+      TIFLUX_SYNC_MAX_PAGES: ${TIFLUX_SYNC_MAX_PAGES:-100}
+      TIFLUX_SYNC_APPOINTMENTS_MAX_TICKETS_PER_RUN: ${TIFLUX_SYNC_APPOINTMENTS_MAX_TICKETS_PER_RUN:-300}
+      TIFLUX_SYNC_APPOINTMENTS_MAX_PAGES: ${TIFLUX_SYNC_APPOINTMENTS_MAX_PAGES:-50}
+      TIFLUX_SYNC_OPEN_APPOINTMENTS_RESYNC_HOURS: ${TIFLUX_SYNC_OPEN_APPOINTMENTS_RESYNC_HOURS:-2400}
+      TIFLUX_RUNTIME_API: ${TIFLUX_RUNTIME_API:-false}
+      TIFLUX_UNSAFE_ENDPOINTS: ${TIFLUX_UNSAFE_ENDPOINTS:-false}
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NODE_ENV: production
+      # IMPORTANTE: o Next injeta NEXT_PUBLIC_* no build.
+      # No Coolify, configure essa variável no build (Build args/env) também.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?defina NEXT_PUBLIC_API_URL}
+    ports:
+      - "3000:3000"
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  postgres_data:
+

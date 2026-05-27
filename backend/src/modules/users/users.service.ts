@@ -11,26 +11,107 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 type UserWithCompany = User & {
   company: { id: string; name: string } | null;
+  serviceDeskLinks: Array<{
+    serviceDesk: { id: string; name: string; externalId: number | null };
+  }>;
 };
 
-type PublicUser = Omit<UserWithCompany, 'passwordHash'>;
+type PublicUser = Omit<UserWithCompany, 'passwordHash' | 'serviceDeskLinks'> & {
+  serviceDesks: Array<{ id: string; name: string; externalId: number | null }>;
+};
+
+type ServiceDeskSourceRow = {
+  desk_external_id: number | null;
+  desk_name: string | null;
+};
 
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   private toPublicUser(user: UserWithCompany): PublicUser {
-    const { passwordHash: _omit, ...rest } = user;
-    return rest;
+    const { passwordHash: _omit, serviceDeskLinks, ...rest } = user;
+    return {
+      ...rest,
+      serviceDesks: serviceDeskLinks.map((link) => link.serviceDesk),
+    };
+  }
+
+  private async validateServiceDeskIds(serviceDeskIds: string[]) {
+    const ids = Array.from(new Set(serviceDeskIds.map((id) => id.trim()))).filter(
+      Boolean,
+    );
+    if (ids.length === 0) return [];
+
+    const existing = await this.prisma.serviceDesk.findMany({
+      where: { id: { in: ids }, deletedAt: null, active: true },
+      select: { id: true },
+    });
+
+    if (existing.length !== ids.length) {
+      throw new BadRequestException(
+        'Uma ou mais mesas de serviço selecionadas não existem.',
+      );
+    }
+
+    return ids;
+  }
+
+  private async syncServiceDesksFromTifluxTickets() {
+    const rows =
+      (await this.prisma.$queryRaw<ServiceDeskSourceRow[]>`
+      select distinct
+        t.desk_external_id,
+        nullif(trim(t.desk_name), '') as desk_name
+      from tiflux.tickets t
+      where t.desk_name is not null
+    `) ?? [];
+
+    for (const row of rows) {
+      const name = row.desk_name?.trim();
+      if (!name) continue;
+      const externalId =
+        row.desk_external_id == null ? null : Number(row.desk_external_id);
+
+      if (externalId != null && !Number.isNaN(externalId)) {
+        await this.prisma.serviceDesk.upsert({
+          where: { externalId },
+          update: { name, active: true, deletedAt: null },
+          create: { externalId, name, active: true },
+        });
+      } else {
+        await this.prisma.serviceDesk.upsert({
+          where: { name },
+          update: { active: true, deletedAt: null },
+          create: { name, active: true },
+        });
+      }
+    }
+  }
+
+  async listServiceDesks() {
+    await this.syncServiceDesksFromTifluxTickets();
+    return this.prisma.serviceDesk.findMany({
+      where: { deletedAt: null, active: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, externalId: true },
+    });
   }
 
   async findAll() {
     const rows = await this.prisma.user.findMany({
       include: {
         company: true,
+        serviceDeskLinks: {
+          include: {
+            serviceDesk: {
+              select: { id: true, name: true, externalId: true },
+            },
+          },
+        },
       },
       orderBy: {
-        createdAt: 'desc',
+        name: 'asc',
       },
     });
 
@@ -42,6 +123,13 @@ export class UsersService {
       where: { id },
       include: {
         company: true,
+        serviceDeskLinks: {
+          include: {
+            serviceDesk: {
+              select: { id: true, name: true, externalId: true },
+            },
+          },
+        },
       },
     });
 
@@ -67,18 +155,38 @@ export class UsersService {
       passwordHash = await bcrypt.hash(data.password, 10);
     }
 
+    const serviceDeskIds = await this.validateServiceDeskIds(
+      data.serviceDeskIds ?? [],
+    );
+
     const created = await this.prisma.user.create({
       data: {
-        name: data.name,
-        email: data.email,
+        name: data.name.trim(),
+        email: data.email.trim().toLowerCase(),
         passwordHash,
         role: data.role,
         status: data.status ?? UserStatus.ACTIVE,
         companyId: data.companyId ?? null,
         firstAccess: data.firstAccess ?? true,
+        responsible: data.responsible ?? false,
+        serviceDeskLinks:
+          serviceDeskIds.length > 0
+            ? {
+                createMany: {
+                  data: serviceDeskIds.map((serviceDeskId) => ({ serviceDeskId })),
+                },
+              }
+            : undefined,
       },
       include: {
         company: true,
+        serviceDeskLinks: {
+          include: {
+            serviceDesk: {
+              select: { id: true, name: true, externalId: true },
+            },
+          },
+        },
       },
     });
 
@@ -100,19 +208,46 @@ export class UsersService {
       passwordHash = await bcrypt.hash(data.password, 10);
     }
 
+    const serviceDeskIds =
+      data.serviceDeskIds !== undefined
+        ? await this.validateServiceDeskIds(data.serviceDeskIds)
+        : undefined;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
-        name: data.name,
-        email: data.email,
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.email !== undefined && { email: data.email.trim().toLowerCase() }),
         passwordHash,
         role: data.role,
         status: data.status,
         companyId: data.companyId,
         firstAccess: data.firstAccess,
+        responsible: data.responsible,
+        ...(serviceDeskIds !== undefined && {
+          serviceDeskLinks: {
+            deleteMany: {},
+            ...(serviceDeskIds.length > 0
+              ? {
+                  createMany: {
+                    data: serviceDeskIds.map((serviceDeskId) => ({
+                      serviceDeskId,
+                    })),
+                  },
+                }
+              : {}),
+          },
+        }),
       },
       include: {
         company: true,
+        serviceDeskLinks: {
+          include: {
+            serviceDesk: {
+              select: { id: true, name: true, externalId: true },
+            },
+          },
+        },
       },
     });
 
@@ -135,6 +270,13 @@ export class UsersService {
       },
       include: {
         company: true,
+        serviceDeskLinks: {
+          include: {
+            serviceDesk: {
+              select: { id: true, name: true, externalId: true },
+            },
+          },
+        },
       },
     });
 

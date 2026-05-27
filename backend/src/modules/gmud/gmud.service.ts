@@ -41,9 +41,9 @@ export class GmudService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === 'CLIENT') {
+    if (user.role === 'CLIENT' || user.role === 'COLLABORATOR') {
       if (!user.companyId) {
-        throw new ForbiddenException('Usuário CLIENT sem empresa vinculada');
+        throw new ForbiddenException('Usuário sem empresa vinculada');
       }
       return [user.companyId];
     }

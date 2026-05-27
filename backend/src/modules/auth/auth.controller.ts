@@ -15,6 +15,7 @@ import { LoginDto } from './dto/login.dto';
 import { FirstAccessDto } from './dto/first-access.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ValidateResetTokenDto } from './dto/validate-reset-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AuthenticatedRequestUser } from './auth-request-user';
 import {
@@ -38,8 +39,8 @@ export class AuthController {
   ) {
     const result = await this.authService.login(data);
     attachAccessTokenCookie(res, result.accessToken);
-    // accessToken no JSON: fallback quando cookie cross-origin falha (ex.: localhost vs 127.0.0.1).
-    return result;
+    const { accessToken: _omit, ...safe } = result;
+    return safe;
   }
 
   @Throttle({ default: { limit: 12, ttl: 60_000 } })
@@ -54,7 +55,13 @@ export class AuthController {
     return this.authService.forgotPassword(data);
   }
 
-  @Throttle({ default: { limit: 12, ttl: 3_600_000 } })
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
+  @Post('validar-token-redefinicao')
+  validateResetToken(@Body() data: ValidateResetTokenDto) {
+    return this.authService.validateResetToken(data);
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Post('redefinir-senha')
   resetPassword(@Body() data: ResetPasswordDto) {
     return this.authService.resetPassword(data);

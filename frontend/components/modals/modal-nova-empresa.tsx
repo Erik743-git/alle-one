@@ -31,6 +31,8 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
   const [nome, setNome] = useState('');
   const [responsavel, setResponsavel] = useState('');
   const [email, setEmail] = useState('');
+  const [cnpj, setCnpj] = useState('');
+  const [address, setAddress] = useState('');
   const [zabbixGroupName, setZabbixGroupName] = useState('');
   const [tifluxClientId, setTifluxClientId] = useState<number | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -72,7 +74,13 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
       try {
         setCarregandoTiflux(true);
         const data = await getTifluxClients();
-        setTifluxClients(Array.isArray(data) ? data : []);
+        setTifluxClients(
+          Array.isArray(data)
+            ? [...data].sort((a, b) =>
+                String(a.name ?? "").localeCompare(String(b.name ?? ""), "pt-BR"),
+              )
+            : [],
+        );
       } catch (error) {
         console.error(error);
         setTifluxClients([]);
@@ -98,6 +106,8 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
         name: nome,
         responsibleName: responsavel,
         email,
+        cnpj: cnpj.trim() || undefined,
+        address: address.trim() || undefined,
         zabbixGroupName: zabbixGroupName.trim() || undefined,
         tifluxClientId: tifluxClientId ?? undefined,
       });
@@ -109,6 +119,8 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
       setNome('');
       setResponsavel('');
       setEmail('');
+      setCnpj('');
+      setAddress('');
       setZabbixGroupName('');
       setTifluxClientId(null);
       setLogoFile(null);
@@ -133,9 +145,9 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
       <DialogContent
         className="
           font-sans
-          flex max-h-[90vh] w-[95vw] max-w-[520px] flex-col overflow-hidden
+          flex max-h-[90vh] w-[95vw] max-w-[580px] flex-col overflow-hidden
           border border-border bg-card p-0 text-card-foreground
-          sm:max-w-[600px]
+          sm:max-w-[680px]
         "
       >
         <div className="shrink-0 border-b border-border px-5 py-5 sm:px-6">
@@ -191,6 +203,30 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="email@empresa.com"
+                className="font-sans h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-sans text-sm font-semibold text-foreground">
+                CNPJ
+              </Label>
+              <Input
+                value={cnpj}
+                onChange={(e) => setCnpj(e.target.value)}
+                placeholder="00.000.000/0000-00"
+                className="font-sans h-11"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label className="font-sans text-sm font-semibold text-foreground">
+                Endereço
+              </Label>
+              <Input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Rua, número, bairro, cidade"
                 className="font-sans h-11"
               />
             </div>

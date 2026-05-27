@@ -43,6 +43,8 @@ type EmpresaUI = {
   nome: string;
   responsavel: string;
   email: string;
+  cnpj: string;
+  endereco: string;
   zabbixGroupName: string;
   tifluxClientName: string;
   status: "Ativa" | "Inativa";
@@ -55,6 +57,8 @@ type EditCompanyForm = {
   name: string;
   responsibleName: string;
   email: string;
+  cnpj: string;
+  address: string;
   status: boolean;
   zabbixGroupName: string;
   tifluxClientId: number | null;
@@ -67,6 +71,8 @@ function mapCompanyToUI(company: Company): EmpresaUI {
     nome: company.name,
     responsavel: company.responsibleName,
     email: company.email,
+    cnpj: company.cnpj ?? "",
+    endereco: company.address ?? "",
     zabbixGroupName: company.zabbixGroupName ?? "",
     tifluxClientName: company.tifluxClientName ?? "",
     status: company.status ? "Ativa" : "Inativa",
@@ -114,9 +120,9 @@ function EditarEmpresaModal({
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 font-sans antialiased">
       <div
         className="
-          flex max-h-[92vh] w-[98vw] max-w-[900px] flex-col overflow-hidden
+          flex max-h-[90vh] w-[95vw] max-w-[580px] flex-col overflow-hidden
           rounded-3xl border border-border bg-card shadow-2xl font-sans
-          lg:max-w-[1100px]
+          sm:max-w-[680px]
         "
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-5">
@@ -172,6 +178,30 @@ function EditarEmpresaModal({
                 value={form.email}
                 onChange={(e) => onChange("email", e.target.value)}
                 placeholder="Digite o e-mail da empresa"
+                className="h-11 font-sans text-sm placeholder:font-sans"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
+                CNPJ
+              </label>
+              <Input
+                value={form.cnpj}
+                onChange={(e) => onChange("cnpj", e.target.value)}
+                placeholder="00.000.000/0000-00"
+                className="h-11 font-sans text-sm placeholder:font-sans"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
+                Endereço
+              </label>
+              <Input
+                value={form.address}
+                onChange={(e) => onChange("address", e.target.value)}
+                placeholder="Rua, número, bairro, cidade"
                 className="h-11 font-sans text-sm placeholder:font-sans"
               />
             </div>
@@ -465,7 +495,11 @@ export default function AdminEmpresasPage() {
       setErro("");
 
       const data = await companiesService.list();
-      setEmpresas(data.map(mapCompanyToUI));
+      setEmpresas(
+        data
+          .map(mapCompanyToUI)
+          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")),
+      );
     } catch (error) {
       const message =
         error instanceof Error
@@ -495,7 +529,13 @@ export default function AdminEmpresasPage() {
     try {
       setCarregandoTiflux(true);
       const data = await getTifluxClients();
-      setTifluxClients(Array.isArray(data) ? data : []);
+      setTifluxClients(
+        Array.isArray(data)
+          ? [...data].sort((a, b) =>
+              String(a.name ?? "").localeCompare(String(b.name ?? ""), "pt-BR"),
+            )
+          : [],
+      );
     } catch (error) {
       console.error(error);
       setTifluxClients([]);
@@ -513,19 +553,20 @@ export default function AdminEmpresasPage() {
   const empresasFiltradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
 
-    if (!termo) {
-      return empresas;
-    }
-
-    return empresas.filter((empresa) => {
+    const base = !termo
+      ? empresas
+      : empresas.filter((empresa) => {
       return (
         empresa.nome.toLowerCase().includes(termo) ||
         empresa.responsavel.toLowerCase().includes(termo) ||
         empresa.email.toLowerCase().includes(termo) ||
+        empresa.cnpj.toLowerCase().includes(termo) ||
+        empresa.endereco.toLowerCase().includes(termo) ||
         empresa.zabbixGroupName.toLowerCase().includes(termo) ||
         empresa.tifluxClientName.toLowerCase().includes(termo)
       );
     });
+    return [...base].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [busca, empresas]);
 
   const totalEmpresas = empresasFiltradas.length;
@@ -550,6 +591,8 @@ export default function AdminEmpresasPage() {
         name: company.name,
         responsibleName: company.responsibleName,
         email: company.email,
+        cnpj: company.cnpj ?? "",
+        address: company.address ?? "",
         status: company.status,
         zabbixGroupName: company.zabbixGroupName ?? "",
         tifluxClientId: company.tifluxClientId ?? null,
@@ -606,6 +649,8 @@ export default function AdminEmpresasPage() {
         name: empresaEdicao.name.trim(),
         responsibleName: empresaEdicao.responsibleName.trim(),
         email: empresaEdicao.email.trim(),
+        cnpj: empresaEdicao.cnpj.trim() || undefined,
+        address: empresaEdicao.address.trim() || undefined,
         zabbixGroupName: empresaEdicao.zabbixGroupName.trim() || undefined,
         tifluxClientId: empresaEdicao.tifluxClientId ?? undefined,
         tifluxClientName: empresaEdicao.tifluxClientName.trim() || undefined,
@@ -801,6 +846,8 @@ export default function AdminEmpresasPage() {
                             Responsável
                           </th>
                           <th className="px-4 py-4 font-semibold">E-mail</th>
+                          <th className="px-4 py-4 font-semibold">CNPJ</th>
+                          <th className="px-4 py-4 font-semibold">Endereço</th>
                           <th className="px-4 py-4 font-semibold">
                             Grupo Zabbix
                           </th>
@@ -809,7 +856,7 @@ export default function AdminEmpresasPage() {
                           </th>
                           <th className="px-4 py-4 font-semibold">Contratos</th>
                           <th className="px-4 py-4 font-semibold">Status</th>
-                          <th className="px-4 py-4 font-semibold text-right">
+                          <th className="sticky right-0 z-20 bg-muted/40 px-4 py-4 font-semibold text-right shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
                             Ações
                           </th>
                         </tr>
@@ -847,6 +894,14 @@ export default function AdminEmpresasPage() {
                             </td>
 
                             <td className="px-4 py-4 text-muted-foreground">
+                              {empresa.cnpj || "--"}
+                            </td>
+
+                            <td className="px-4 py-4 text-muted-foreground">
+                              {empresa.endereco || "--"}
+                            </td>
+
+                            <td className="px-4 py-4 text-muted-foreground">
                               {empresa.zabbixGroupName || "--"}
                             </td>
 
@@ -872,7 +927,7 @@ export default function AdminEmpresasPage() {
                               </span>
                             </td>
 
-                            <td className="px-4 py-4">
+                            <td className="sticky right-0 z-10 bg-card px-4 py-4 shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => {

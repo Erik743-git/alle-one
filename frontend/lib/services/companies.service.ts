@@ -6,6 +6,8 @@ export type Company = {
   name: string;
   responsibleName: string;
   email: string;
+  cnpj?: string | null;
+  address?: string | null;
   status: boolean;
   tifluxClientId?: number | null;
   tifluxClientName?: string | null;
@@ -22,6 +24,8 @@ export type CreateCompanyPayload = {
   name: string;
   responsibleName: string;
   email: string;
+  cnpj?: string;
+  address?: string;
   zabbixGroupName?: string;
   tifluxClientId?: number;
   tifluxClientName?: string;
@@ -32,6 +36,8 @@ export type UpdateCompanyPayload = {
   name?: string;
   responsibleName?: string;
   email?: string;
+  cnpj?: string;
+  address?: string;
   zabbixGroupName?: string;
   tifluxClientId?: number;
   tifluxClientName?: string;
@@ -45,6 +51,11 @@ export const companiesService = {
 
   async getById(id: string) {
     return apiRequest<Company>(`/companies/${id}`);
+  },
+
+  /** Empresa do usuário logado (não exige módulo Empresas / perfil admin). */
+  async getSessionCompany() {
+    return apiRequest<Company>("/companies/session/mine");
   },
 
   async create(payload: CreateCompanyPayload) {

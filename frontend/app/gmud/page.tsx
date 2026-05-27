@@ -8,6 +8,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   Accordion,
   AccordionContent,
@@ -42,6 +43,10 @@ type StatusFilter =
   | "REJECTED"
   | "CANCELED"
   | "DRAFT";
+
+function sortByName<T extends { name: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
 
 function canEdit(gmud: Gmud) {
   return gmud.status === "DRAFT" || gmud.status === "PENDING_APPROVAL";
@@ -102,13 +107,21 @@ export default function GmudPage() {
     setError(null);
     try {
       const isClient = user?.role === "CLIENT";
+      const isCollaborator = user?.role === "COLLABORATOR";
       const [companiesData, gmudsData] = await Promise.all([
-        isClient ? Promise.resolve([] as Company[]) : companiesService.list(),
+        isClient
+          ? Promise.resolve([] as Company[])
+          : isCollaborator
+            ? companiesService
+                .getSessionCompany()
+                .then((company) => [company])
+                .catch(() => [] as Company[])
+            : companiesService.list(),
         gmudsService.list(),
       ]);
 
       if (cancelled) return;
-      setCompanies(companiesData);
+      setCompanies(sortByName(companiesData));
       setGmuds(gmudsData);
     } catch (e) {
       if (cancelled) return;
@@ -162,7 +175,7 @@ export default function GmudPage() {
       byCompany.set(g.companyId, [...(byCompany.get(g.companyId) ?? []), g]);
     }
 
-    return companies.map((c) => ({
+    return sortByName(companies).map((c) => ({
       company: c,
       gmuds: byCompany.get(c.id) ?? [],
     }));
@@ -312,35 +325,32 @@ export default function GmudPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
-                      <select
+                      <SearchableSelectField
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                        className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                      >
-                        <option value="OPEN">Abertas</option>
-                        <option value="ALL">Todas</option>
-                        <option value="PENDING_APPROVAL">Pendente aprovação</option>
-                        <option value="APPROVED">Aprovadas</option>
-                        <option value="IN_EXECUTION">Em execução</option>
-                        <option value="EXECUTED">Executadas</option>
-                        <option value="REJECTED">Rejeitadas</option>
-                        <option value="CANCELED">Canceladas</option>
-                        <option value="DRAFT">Rascunho</option>
-                      </select>
+                        onChange={(value) => setStatusFilter(value as StatusFilter)}
+                        options={[
+                          { value: "OPEN", label: "Abertas" },
+                          { value: "ALL", label: "Todas" },
+                          { value: "PENDING_APPROVAL", label: "Pendente aprovação" },
+                          { value: "APPROVED", label: "Aprovadas" },
+                          { value: "IN_EXECUTION", label: "Em execução" },
+                          { value: "EXECUTED", label: "Executadas" },
+                          { value: "REJECTED", label: "Rejeitadas" },
+                          { value: "CANCELED", label: "Canceladas" },
+                          { value: "DRAFT", label: "Rascunho" },
+                        ]}
+                      />
 
-                      <select
+                      <SearchableSelectField
                         value={selectedCompanyId}
-                        onChange={(e) => setSelectedCompanyId(e.target.value)}
-                        className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                        onChange={setSelectedCompanyId}
                         disabled={user?.role === "CLIENT"}
-                      >
-                        <option value="ALL">Todas empresas</option>
-                        {scopedCompanies.map((g) => (
-                          <option key={g.company.id} value={g.company.id}>
-                            {g.company.name}
-                          </option>
-                        ))}
-                      </select>
+                        options={scopedCompanies.map((g) => ({
+                          value: g.company.id,
+                          label: g.company.name,
+                        }))}
+                        emptyLabel="Todas empresas"
+                      />
                     </div>
                   </div>
 

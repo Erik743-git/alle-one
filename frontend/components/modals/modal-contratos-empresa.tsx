@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { FileText, Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { AppAlert } from "@/components/ui/app-alert";
 import {
@@ -340,17 +341,18 @@ export default function ModalContratosEmpresa({
 
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">Status</label>
-                    <select
+                    <SearchableSelectField
                       value={form.status}
-                      onChange={(e) =>
-                        setForm((p) => ({ ...p, status: e.target.value as ContractStatus }))
+                      onChange={(value) =>
+                        setForm((p) => ({ ...p, status: value as ContractStatus }))
                       }
-                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none"
-                    >
-                      <option value="ACTIVE">Ativo</option>
-                      <option value="INACTIVE">Inativo</option>
-                      <option value="EXPIRED">Expirado</option>
-                    </select>
+                      options={[
+                        { value: "ACTIVE", label: "Ativo" },
+                        { value: "EXPIRED", label: "Expirado" },
+                        { value: "INACTIVE", label: "Inativo" },
+                      ]}
+                      className="h-10"
+                    />
                   </div>
 
                   <div className="space-y-1">

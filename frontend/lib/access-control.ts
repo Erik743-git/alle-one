@@ -37,11 +37,28 @@ function getModuleEntry(module: PermissionModuleKey) {
   return user.permissions.find((p) => p.module === module) ?? null;
 }
 
+const COLLABORATOR_DEFAULT_VIEW: PermissionModuleKey[] = [
+  "DASHBOARD",
+  "GMUD",
+  "REPORTS",
+];
+
 export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag) {
   // Para CLIENT: permitir ver o dashboard mesmo quando `permissions` vier vazio.
   if (flag === "canView" && module === "DASHBOARD" && isClient()) {
     return true;
   }
+
+  const user = getStoredUser();
+  if (
+    flag === "canView" &&
+    user?.role === "COLLABORATOR" &&
+    (!user.permissions?.length ||
+      !user.permissions.some((p) => p.module === module))
+  ) {
+    return COLLABORATOR_DEFAULT_VIEW.includes(module);
+  }
+
   const entry = getModuleEntry(module);
   return entry?.[flag] === true;
 }

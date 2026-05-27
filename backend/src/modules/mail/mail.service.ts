@@ -20,12 +20,6 @@ function envTrim(value: string | undefined): string | undefined {
   return t;
 }
 
-function redact(value: string | undefined): string {
-  if (!value) return '(vazio)';
-  if (value.length <= 6) return '***';
-  return `${value.slice(0, 3)}***${value.slice(-3)}`;
-}
-
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -42,10 +36,11 @@ export class MailService {
     const clientSecret = envTrim(process.env.GOOGLE_CLIENT_SECRET);
     const refreshToken = envTrim(process.env.GOOGLE_REFRESH_TOKEN);
 
-    const usingOAuth2 = Boolean(
-      clientId && clientSecret && refreshToken && user,
-    );
     const usingPassword = Boolean(user && pass);
+    // Senha de app tem prioridade; OAuth só quando não há SMTP_PASS.
+    const usingOAuth2 = Boolean(
+      clientId && clientSecret && refreshToken && user && !usingPassword,
+    );
 
     if (!host || !portRaw || !user || (!usingOAuth2 && !usingPassword)) {
       this.transportState = 'disabled';
@@ -66,14 +61,6 @@ export class MailService {
     const rejectUnauthorized =
       process.env.SMTP_TLS_REJECT_UNAUTHORIZED !== 'false';
 
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.log(
-        `[DEV] SMTP config: host=${host} port=${port} secure=${secure} user=${user} auth=${
-          usingOAuth2 ? 'oauth2' : 'password'
-        } from=${redact(envTrim(process.env.MAIL_FROM))}`,
-      );
-    }
-
     this.transportState = 'ready';
     return nodemailer.createTransport({
       host,
@@ -92,9 +79,6 @@ export class MailService {
         ? { requireTLS: true }
         : {}),
       tls: { rejectUnauthorized },
-      ...(process.env.NODE_ENV !== 'production'
-        ? { logger: true, debug: true }
-        : {}),
     });
   }
 
@@ -105,7 +89,7 @@ export class MailService {
     return this.transport;
   }
 
-  async sendMail(payload: SendMailPayload) {
+  async sendMail(payload: SendMailPayload): Promise<boolean> {
     const from =
       envTrim(process.env.MAIL_FROM) ??
       envTrim(process.env.SMTP_USER) ??
@@ -113,15 +97,11 @@ export class MailService {
 
     const transport = this.getTransport();
     if (!transport) {
-      // Fallback: log em dev para não "sumir" a notificação.
-      this.logger.log('--- EMAIL (sem SMTP) ---');
-      this.logger.log(
-        `Para: ${Array.isArray(payload.to) ? payload.to.join(', ') : payload.to}`,
+      const to = Array.isArray(payload.to) ? payload.to.join(', ') : payload.to;
+      this.logger.warn(
+        `SMTP não configurado: e-mail não enviado (para=${to}, assunto=${payload.subject}).`,
       );
-      this.logger.log(`Assunto: ${payload.subject}`);
-      this.logger.log(payload.text);
-      this.logger.log('------------------------');
-      return;
+      return false;
     }
 
     const info = await transport.sendMail({
@@ -135,5 +115,6 @@ export class MailService {
     this.logger.log(
       `E-mail enviado (messageId: ${String((info as any)?.messageId ?? 'n/d')})`,
     );
+    return true;
   }
 }

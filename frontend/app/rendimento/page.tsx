@@ -68,13 +68,13 @@ export default function RendimentoPage() {
     <ProtectedPage>
       <PermissionGate module="RENDIMENTO">
         <AppShell>
-          <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 md:p-8">
-            <div className="flex flex-col gap-2">
+          <div className="font-sans w-full space-y-8">
+            <div className="space-y-2">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <Users size={24} />
               </div>
-              <h1 className="text-2xl font-bold text-foreground">Rendimento</h1>
-              <p className="text-sm text-muted-foreground">
+              <h1 className="text-3xl font-bold text-foreground">Rendimento</h1>
+              <p className="text-muted-foreground">
                 Acompanhe os apontamentos de horas dos colaboradores no TiFlux.
                 Horas do mês atual aparecem na lista; abra a agenda para ver mês,
                 semana ou dia.
@@ -105,7 +105,7 @@ export default function RendimentoPage() {
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-border">
-                    <table className="w-full min-w-[720px] text-left text-sm">
+                    <table className="w-full min-w-[720px] text-left font-sans text-sm">
                       <thead className="bg-muted/40 text-muted-foreground">
                         <tr>
                           <th className="px-4 py-3 font-semibold">Nome</th>

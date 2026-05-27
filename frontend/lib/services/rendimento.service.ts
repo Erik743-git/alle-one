@@ -15,6 +15,35 @@ export type RendimentoCollaborator = {
   monthTotalHoursFormatted: string;
 };
 
+export type RendimentoGap = {
+  type: "idle" | "lunch";
+  fromTime: string;
+  toTime: string;
+  gapMinutes: number;
+  label: string;
+  justification?: {
+    id: string;
+    kind: "ALERT" | "VOLUNTARY";
+    status: "PENDING" | "APPROVED" | "REJECTED";
+    reason: string;
+    debitOvertime: boolean;
+    overtimeMinutes: number;
+    createdBy: string;
+    createdAt: string;
+    approvedBy: string | null;
+    approvedAt: string | null;
+  };
+};
+
+export type RendimentoDayInsights = {
+  regularMinutes: number;
+  overtimeMinutes: number;
+  hasOvertime: boolean;
+  hasIdleGapAlert: boolean;
+  hasExpectedLunch: boolean;
+  gaps: RendimentoGap[];
+};
+
 export type RendimentoEntry = {
   id: number;
   date: string;
@@ -25,6 +54,7 @@ export type RendimentoEntry = {
   ticketNumber: number;
   clientName: string | null;
   description: string | null;
+  isOvertime: boolean;
 };
 
 export type RendimentoDaySummary = {
@@ -32,6 +62,7 @@ export type RendimentoDaySummary = {
   totalMinutes: number;
   totalHoursFormatted: string;
   entries: RendimentoEntry[];
+  insights: RendimentoDayInsights;
 };
 
 export type RendimentoTimesheet = {
@@ -43,6 +74,10 @@ export type RendimentoTimesheet = {
   rangeEnd: string;
   totalMinutes: number;
   totalHoursFormatted: string;
+  periodOvertimeMinutes: number;
+  periodOvertimeFormatted: string;
+  overtimeBalanceMinutes: number;
+  overtimeBalanceFormatted: string;
   days: RendimentoDaySummary[];
 };
 
@@ -63,6 +98,45 @@ export const rendimentoService = {
     }
     return apiRequest<RendimentoTimesheet>(
       `/rendimento/users/${params.userId}/timesheet?${search.toString()}`,
+    );
+  },
+
+  createJustification(params: {
+    userId: string;
+    date: string;
+    fromTime: string;
+    toTime: string;
+    gapType: "idle" | "lunch";
+    gapMinutes: number;
+    kind: "ALERT" | "VOLUNTARY";
+    reason: string;
+    debitOvertime?: boolean;
+    overtimeMinutes?: number;
+  }) {
+    return apiRequest<{ id: string; status: "PENDING" }>(
+      `/rendimento/users/${params.userId}/justifications`,
+      {
+        method: "POST",
+        // `userId` vai na URL. Se vier no body o backend rejeita (whitelist + forbidNonWhitelisted).
+        body: (({ userId: _userId, ...body }) => body)(params),
+      },
+    );
+  },
+
+  decideJustification(params: {
+    id: string;
+    decision: "APPROVED" | "REJECTED";
+    note?: string;
+  }) {
+    return apiRequest<{ id: string; status: "APPROVED" | "REJECTED" }>(
+      `/rendimento/justifications/${params.id}/decision`,
+      {
+        method: "PATCH",
+        body: {
+          decision: params.decision,
+          note: params.note,
+        },
+      },
     );
   },
 };

@@ -50,7 +50,7 @@ export default function AppShell({
 }) {
   return (
     <SidebarProvider>
-      <div className="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+      <div className="font-sans relative min-h-screen overflow-x-hidden bg-background text-foreground">
         <div
           className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(18,181,217,0.06),transparent_55%),radial-gradient(ellipse_80%_50%_at_100%_50%,rgba(59,130,246,0.04),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(18,181,217,0.11),transparent_50%),radial-gradient(ellipse_80%_50%_at_100%_50%,rgba(59,130,246,0.06),transparent_45%)]"
           aria-hidden

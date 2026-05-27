@@ -27,6 +27,15 @@ export class CompaniesService {
     return normalized.length ? normalized : null;
   }
 
+  private normalizeCnpj(value?: string | null) {
+    const normalized = value?.replace(/\D/g, '') ?? '';
+    if (!normalized) return null;
+    if (normalized.length !== 14) {
+      throw new BadRequestException('CNPJ inválido. Use 14 dígitos.');
+    }
+    return normalized;
+  }
+
   private async validateUniqueEmail(email: string, ignoreId?: string) {
     const existing = await this.prisma.company.findFirst({
       where: {
@@ -44,6 +53,28 @@ export class CompaniesService {
 
     if (existing) {
       throw new BadRequestException('Já existe uma empresa com este e-mail');
+    }
+  }
+
+  private async validateUniqueCnpj(cnpj: string | null, ignoreId?: string) {
+    if (!cnpj) return;
+
+    const existing = await this.prisma.company.findFirst({
+      where: {
+        cnpj,
+        deletedAt: null,
+        ...(ignoreId
+          ? {
+              id: {
+                not: ignoreId,
+              },
+            }
+          : {}),
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException('Já existe uma empresa com este CNPJ');
     }
   }
 
@@ -111,7 +142,7 @@ export class CompaniesService {
         deletedAt: null,
       },
       orderBy: {
-        createdAt: 'desc',
+        name: 'asc',
       },
     });
 
@@ -168,11 +199,14 @@ export class CompaniesService {
     const name = data.name.trim();
     const responsibleName = data.responsibleName.trim();
     const email = data.email.trim().toLowerCase();
+    const cnpj = this.normalizeCnpj(data.cnpj);
+    const address = this.normalizeString(data.address);
     const zabbixGroupName = this.normalizeString(data.zabbixGroupName);
     const tifluxClientId = data.tifluxClientId ?? null;
     const tifluxClientName = this.normalizeString(data.tifluxClientName);
 
     await this.validateUniqueEmail(email);
+    await this.validateUniqueCnpj(cnpj);
     await this.validateUniqueZabbixGroup(zabbixGroupName);
     await this.validateUniqueTifluxClient(tifluxClientId);
 
@@ -181,6 +215,8 @@ export class CompaniesService {
         name,
         responsibleName,
         email,
+        cnpj,
+        address,
         zabbixGroupName,
         tifluxClientId,
         tifluxClientName,
@@ -205,6 +241,14 @@ export class CompaniesService {
       data.email !== undefined
         ? data.email.trim().toLowerCase()
         : existingCompany.email;
+    const cnpj =
+      data.cnpj !== undefined
+        ? this.normalizeCnpj(data.cnpj)
+        : existingCompany.cnpj;
+    const address =
+      data.address !== undefined
+        ? this.normalizeString(data.address)
+        : existingCompany.address;
 
     const zabbixGroupName =
       data.zabbixGroupName !== undefined
@@ -225,6 +269,10 @@ export class CompaniesService {
       await this.validateUniqueEmail(email, id);
     }
 
+    if (cnpj !== existingCompany.cnpj) {
+      await this.validateUniqueCnpj(cnpj, id);
+    }
+
     if (zabbixGroupName !== existingCompany.zabbixGroupName) {
       await this.validateUniqueZabbixGroup(zabbixGroupName, id);
     }
@@ -243,6 +291,8 @@ export class CompaniesService {
           responsibleName: data.responsibleName.trim(),
         }),
         ...(data.email !== undefined && { email }),
+        ...(data.cnpj !== undefined && { cnpj }),
+        ...(data.address !== undefined && { address }),
         ...(data.zabbixGroupName !== undefined && { zabbixGroupName }),
         ...(data.tifluxClientId !== undefined && { tifluxClientId }),
         ...(data.tifluxClientName !== undefined && { tifluxClientName }),

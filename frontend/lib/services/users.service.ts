@@ -8,6 +8,12 @@ export type UserCompany = {
   name: string;
 };
 
+export type ServiceDesk = {
+  id: string;
+  name: string;
+  externalId: number | null;
+};
+
 export type User = {
   id: string;
   name: string;
@@ -17,6 +23,7 @@ export type User = {
   role: UserRole;
   status: UserStatus;
   firstAccess: boolean;
+  responsible: boolean;
   companyId: string | null;
   googleId: string | null;
   provider: string | null;
@@ -24,6 +31,7 @@ export type User = {
   updatedAt: string;
   deletedAt: string | null;
   company?: UserCompany | null;
+  serviceDesks: ServiceDesk[];
 };
 
 export type CreateUserPayload = {
@@ -34,6 +42,8 @@ export type CreateUserPayload = {
   status?: UserStatus;
   companyId?: string | null;
   firstAccess?: boolean;
+  responsible?: boolean;
+  serviceDeskIds?: string[];
 };
 
 export type UpdateUserPayload = {
@@ -44,6 +54,8 @@ export type UpdateUserPayload = {
   status?: UserStatus;
   companyId?: string | null;
   firstAccess?: boolean;
+  responsible?: boolean;
+  serviceDeskIds?: string[];
 };
 
 export const usersService = {

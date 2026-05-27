@@ -22,6 +22,16 @@ export class CreateCompanyDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(20)
+  cnpj?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(150)
   zabbixGroupName?: string;
 

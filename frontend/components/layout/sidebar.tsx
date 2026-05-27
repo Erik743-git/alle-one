@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import dynamic from "next/dynamic";
@@ -38,6 +38,7 @@ import {
   SIDEBAR_WIDTH_COLLAPSED,
   SIDEBAR_WIDTH_EXPANDED,
 } from "./sidebar-context";
+import { useAuth } from "@/lib/use-auth";
 
 const SessionPanel = dynamic(
   () => import("@/components/layout/session-panel"),
@@ -58,49 +59,52 @@ type MenuItem = {
   active?: boolean;
 };
 
-const MENU_ITEMS: MenuItem[] = [
-  {
-    name: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    visible: canAccessDashboard(),
-  },
-  {
-    name: "Financeiro",
-    href: "/financeiro",
-    icon: DollarSign,
-    visible: canAccessFinanceiro(),
-  },
-  {
-    name: "GMUD",
-    href: "/gmud",
-    icon: ClipboardList,
-    visible: canAccessGmud(),
-  },
-  {
-    name: "Relatórios",
-    href: "/gerador-relatorios",
-    icon: FileText,
-    visible: canAccessRelatorios(),
-  },
-  {
-    name: "Rendimento",
-    href: "/rendimento",
-    icon: CalendarRange,
-    visible: canAccessRendimento(),
-  },
-  {
-    name: "Aplicativos",
-    icon: Boxes,
-    visible: canAccessAplicativos(),
-  },
-  {
-    name: "Administração",
-    href: "/admin",
-    icon: ShieldCheck,
-    visible: canAccessAdmin(),
-  },
-];
+/** Recalculado no render — não usar `visible` no topo do módulo (SSR/login). */
+function buildMenuItems(): MenuItem[] {
+  return [
+    {
+      name: "Dashboard",
+      href: "/dashboard",
+      icon: LayoutDashboard,
+      visible: canAccessDashboard(),
+    },
+    {
+      name: "Financeiro",
+      href: "/financeiro",
+      icon: DollarSign,
+      visible: canAccessFinanceiro(),
+    },
+    {
+      name: "GMUD",
+      href: "/gmud",
+      icon: ClipboardList,
+      visible: canAccessGmud(),
+    },
+    {
+      name: "Relatórios",
+      href: "/gerador-relatorios",
+      icon: FileText,
+      visible: canAccessRelatorios(),
+    },
+    {
+      name: "Rendimento",
+      href: "/rendimento",
+      icon: CalendarRange,
+      visible: canAccessRendimento(),
+    },
+    {
+      name: "Aplicativos",
+      icon: Boxes,
+      visible: canAccessAplicativos(),
+    },
+    {
+      name: "Administração",
+      href: "/admin",
+      icon: ShieldCheck,
+      visible: canAccessAdmin(),
+    },
+  ];
+}
 
 const NavLabel = memo(function NavLabel({
   children,
@@ -133,9 +137,10 @@ const SidebarNav = memo(function SidebarNav({
   onNavigate,
 }: SidebarNavProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
   const [modalAplicativos, setModalAplicativos] = useState(false);
 
-  const menu = MENU_ITEMS;
+  const menu = useMemo(() => buildMenuItems(), [user]);
 
   const itemClass = (active: boolean) =>
     cn(

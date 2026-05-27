@@ -59,25 +59,15 @@ export function setStoredUser(user: AuthUser) {
   }
 }
 
-/**
- * @param token Opcional: legado Bearer; preferir omitir para usar apenas cookie.
- */
-export function setSession(token: string | null | undefined, user: AuthUser) {
+/** Persiste perfil no browser; JWT permanece só no cookie httpOnly da API. */
+export function setSession(_token: string | null | undefined, user: AuthUser) {
   if (typeof window === "undefined") {
     return;
   }
-  if (token) {
-    try {
-      window.localStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      /* ignore */
-    }
-  } else {
-    try {
-      window.localStorage.removeItem(TOKEN_KEY);
-    } catch {
-      /* ignore */
-    }
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
   }
   setStoredUser(user);
 }

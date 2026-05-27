@@ -865,6 +865,42 @@ export class TifluxService {
     return this.cachedGet<TifluxUser[]>(path, this.cacheLongTtlMs);
   }
 
+  async getUsersAll(filters?: {
+    active?: boolean;
+    type?: TifluxUserType;
+    limitPerPage?: number;
+    maxPages?: number;
+  }): Promise<TifluxUser[]> {
+    const limit = Math.max(1, Math.min(filters?.limitPerPage ?? 100, 100));
+    const maxPages = Math.max(1, filters?.maxPages ?? 50);
+
+    const all: TifluxUser[] = [];
+    let page = 1;
+
+    while (page <= maxPages) {
+      const pageData = await this.getUsers({
+        active: filters?.active,
+        type: filters?.type,
+        limit,
+        offset: page,
+      });
+
+      if (!Array.isArray(pageData) || pageData.length === 0) {
+        break;
+      }
+
+      all.push(...pageData);
+
+      if (pageData.length < limit) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return all;
+  }
+
   async getTickets(
     filters?: TifluxTicketsListFilters,
   ): Promise<TifluxTicket[]> {

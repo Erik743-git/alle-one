@@ -14,9 +14,22 @@ import { StreamableFile } from '@nestjs/common';
 import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ExcelJS from 'exceljs';
+import { isMonitoringPeriodWeekly } from '../../common/monitoring-period';
 
-type ReportFormat = 'CSV' | 'PDF' | 'XLSX';
+type ReportFormat = 'CSV' | 'XLSX';
 type ReportStatus = 'READY' | 'FAILED';
+
+const ALLOWED_REPORT_TYPES = new Set(['1', '4']);
+
+const REPORT_TYPE_LABELS: Record<string, string> = {
+  '1': 'Rendimento',
+  '4': 'Estatística Geral',
+};
+
+const REPORT_TYPE_SLUGS: Record<string, string> = {
+  '1': 'rendimento',
+  '4': 'estatistica-geral',
+};
 
 function parseDateOrThrow(value: string, label: string) {
   const d = new Date(value);
@@ -56,6 +69,14 @@ function safeFilenamePart(value: string) {
     .replace(/^-|-$/g, '')
     .toLowerCase()
     .slice(0, 80);
+}
+
+function normalizeNameKey(value: string | null | undefined) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 @Injectable()
@@ -143,7 +164,7 @@ export class ReportsService {
     row.height = 20;
   }
 
-  /** Paleta e layout do relatório Tipo 4 (modelo Alle WhatsApp). */
+  /** Paleta e layout da Estatística Geral (modelo Alle WhatsApp). */
   private readonly tipo4Theme = {
     titleBand: 'FF9DC3E6',
     tableTitle: 'FF1F3864',
@@ -560,6 +581,249 @@ export class ReportsService {
     sheet.views = [{ state: 'frozen', ySplit: 4, activeCell: 'A5' }];
   }
 
+  private async getTipo4TicketsStats(params: {
+    tifluxClientId: number;
+    start: Date;
+    end: Date;
+  }): Promise<{
+    openedInPeriod: number;
+    closedInPeriod: number;
+    openNowTotal: number;
+    ticketsBaseTotal: number;
+    openTickets: Array<{
+      ticketNumber: number;
+      title: string | null;
+      responsibleName: string | null;
+      deskName: string | null;
+      statusName: string | null;
+      updatedAtSource: string | null;
+    }>;
+  }> {
+    const [summary] =
+      (await this.prisma.$queryRaw<
+        Array<{
+          opened_in_period: number;
+          closed_in_period: number;
+          open_now_total: number;
+          tickets_base_total: number;
+        }>
+      >`
+      select
+        count(*) filter (
+          where t.created_at_source is not null
+            and t.created_at_source between ${params.start.toISOString()}::timestamptz and ${params.end.toISOString()}::timestamptz
+        )::int as opened_in_period,
+        count(*) filter (
+          where coalesce(t.is_closed, false) = true
+            and t.updated_at_source is not null
+            and t.updated_at_source between ${params.start.toISOString()}::timestamptz and ${params.end.toISOString()}::timestamptz
+        )::int as closed_in_period,
+        count(*) filter (where coalesce(t.is_closed, false) = false)::int as open_now_total,
+        count(*)::int as tickets_base_total
+      from tiflux.tickets t
+      where t.client_external_id = ${params.tifluxClientId}
+    `) ?? [];
+
+    const openRows =
+      (await this.prisma.$queryRaw<
+        Array<{
+          ticket_number: number;
+          title: string | null;
+          responsible_name: string | null;
+          desk_name: string | null;
+          status_name: string | null;
+          updated_at_source: string | null;
+        }>
+      >`
+      select
+        t.ticket_number,
+        t.title,
+        t.responsible_name,
+        t.desk_name,
+        t.status_name,
+        t.updated_at_source::text as updated_at_source
+      from tiflux.tickets t
+      where t.client_external_id = ${params.tifluxClientId}
+        and coalesce(t.is_closed, false) = false
+      order by t.updated_at_source desc nulls last, t.ticket_number asc
+    `) ?? [];
+
+    return {
+      openedInPeriod: Number(summary?.opened_in_period) || 0,
+      closedInPeriod: Number(summary?.closed_in_period) || 0,
+      openNowTotal: Number(summary?.open_now_total) || 0,
+      ticketsBaseTotal: Number(summary?.tickets_base_total) || 0,
+      openTickets: openRows.map((r) => ({
+        ticketNumber: Number(r.ticket_number),
+        title: r.title,
+        responsibleName: r.responsible_name,
+        deskName: r.desk_name,
+        statusName: r.status_name,
+        updatedAtSource: r.updated_at_source,
+      })),
+    };
+  }
+
+  private async writeTipo4TicketsSheet(params: {
+    workbook: ExcelJS.Workbook;
+    sheet: ExcelJS.Worksheet;
+    companyName: string;
+    periodLabel: string;
+    stats: {
+      openedInPeriod: number;
+      closedInPeriod: number;
+      openNowTotal: number;
+      ticketsBaseTotal: number;
+      openTickets: Array<{
+        ticketNumber: number;
+        title: string | null;
+        responsibleName: string | null;
+        deskName: string | null;
+        statusName: string | null;
+        updatedAtSource: string | null;
+      }>;
+    };
+    addCompanyLogo: (sheet: ExcelJS.Worksheet) => void;
+  }) {
+    const { workbook, sheet, companyName, periodLabel, stats, addCompanyLogo } =
+      params;
+    const colCount = 6;
+    const lastCol = String.fromCharCode(64 + colCount);
+
+    this.styleTipo4TitleBand(sheet, `Chamados — ${companyName}`, colCount);
+    addCompanyLogo(sheet);
+
+    sheet.mergeCells(`A2:${lastCol}2`);
+    const sub = sheet.getCell('A2');
+    sub.value = `Período de análise: ${periodLabel}`;
+    sub.font = { size: 11, italic: true, color: { argb: 'FF333333' } };
+    sub.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    sheet.getRow(2).height = 22;
+
+    this.styleTipo4TableTitleRow(sheet, 'Resumo de chamados', colCount, 3);
+    const headerRow = sheet.getRow(4);
+    headerRow.values = [
+      'Abertos no período',
+      'Fechados no período',
+      'Em aberto (geral)',
+      'Base de tickets',
+      '',
+      '',
+    ];
+    this.styleTipo4ColumnHeaderRow(headerRow, colCount);
+    sheet.mergeCells('D4:F4');
+    sheet.getCell('D4').alignment = { vertical: 'middle', horizontal: 'center' };
+
+    const valuesRow = sheet.getRow(5);
+    valuesRow.values = [
+      stats.openedInPeriod,
+      stats.closedInPeriod,
+      stats.openNowTotal,
+      stats.ticketsBaseTotal,
+      '',
+      '',
+    ];
+    valuesRow.height = 30;
+    for (let c = 1; c <= colCount; c += 1) {
+      const cell = valuesRow.getCell(c);
+      cell.font = { bold: true, size: 16, color: { argb: 'FF1F3864' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE8F0FA' },
+      };
+      cell.border = {
+        top: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        bottom: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        left: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+        right: { style: 'thin', color: { argb: this.tipo4Theme.border } },
+      };
+    }
+    sheet.mergeCells('D5:F5');
+    sheet.getCell('D5').alignment = { vertical: 'middle', horizontal: 'center' };
+
+    await this.embedTipo4Chart(
+      workbook,
+      sheet,
+      7,
+      this.buildTipo4GroupedBarChart({
+        title: 'Abertos/Fechados no período + Em aberto geral',
+        labels: ['Abertos (período)', 'Fechados (período)', 'Em aberto (geral)'],
+        datasets: [
+          {
+            label: 'Chamados',
+            data: [
+              stats.openedInPeriod,
+              stats.closedInPeriod,
+              stats.openNowTotal,
+            ],
+            backgroundColor: this.tipo4Theme.infra,
+          },
+        ],
+      }),
+    );
+
+    let rowIdx = 22;
+    this.styleTipo4TableTitleRow(
+      sheet,
+      `Chamados em aberto (geral) — ${stats.openTickets.length} registro(s)`,
+      colCount,
+      rowIdx,
+    );
+    rowIdx += 1;
+
+    const openHeader = sheet.getRow(rowIdx);
+    openHeader.values = [
+      'Ticket',
+      'Título',
+      'Responsável',
+      'Mesa',
+      'Status',
+      'Última atualização',
+    ];
+    this.styleTipo4ColumnHeaderRow(openHeader, colCount);
+    rowIdx += 1;
+
+    for (let i = 0; i < stats.openTickets.length; i += 1) {
+      const t = stats.openTickets[i];
+      const row = sheet.getRow(rowIdx);
+      row.values = [
+        t.ticketNumber,
+        t.title ?? '—',
+        t.responsibleName ?? '—',
+        t.deskName ?? '—',
+        t.statusName ?? '—',
+        t.updatedAtSource
+          ? new Date(t.updatedAtSource).toLocaleString('pt-BR')
+          : '—',
+      ];
+      this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
+      row.getCell(1).alignment = { horizontal: 'center' };
+      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: true };
+      row.getCell(3).alignment = { horizontal: 'left', indent: 1 };
+      row.getCell(4).alignment = { horizontal: 'left', indent: 1 };
+      row.getCell(5).alignment = { horizontal: 'center' };
+      row.getCell(6).alignment = { horizontal: 'center' };
+      rowIdx += 1;
+    }
+
+    if (stats.openTickets.length === 0) {
+      const row = sheet.getRow(rowIdx);
+      row.values = ['—', 'Nenhum chamado em aberto.', '—', '—', '—', '—'];
+      this.styleTipo4DataRow(row, 0, colCount);
+      row.getCell(2).alignment = { horizontal: 'left', indent: 1 };
+    }
+
+    sheet.getColumn(1).width = 12;
+    sheet.getColumn(2).width = 46;
+    sheet.getColumn(3).width = 24;
+    sheet.getColumn(4).width = 20;
+    sheet.getColumn(5).width = 14;
+    sheet.getColumn(6).width = 22;
+    sheet.views = [{ state: 'frozen', ySplit: 5, activeCell: 'A6' }];
+  }
+
   private tipo4ChartPlugins() {
     return ['chartjs-plugin-datalabels'];
   }
@@ -744,6 +1008,7 @@ export class ReportsService {
       select: {
         id: true,
         name: true,
+        tifluxClientId: true,
         zabbixGroupName: true,
         logoFile: { select: { path: true, mimeType: true } },
       },
@@ -800,6 +1065,26 @@ export class ReportsService {
             High: Number(row.High) || 0,
             Disaster: Number(row.Disaster) || 0,
           }));
+
+    const monitoringUseWeekly = isMonitoringPeriodWeekly(
+      params.start,
+      params.end,
+    );
+    const alertasMonitoringRows = monitoringUseWeekly
+      ? alertasWeeks.map((row) => ({
+          periodLabel: row.weekLabel,
+          High: Number(row.High) || 0,
+          Disaster: Number(row.Disaster) || 0,
+        }))
+      : (alertasMonths as Array<{
+          monthLabel: string;
+          High: number;
+          Disaster: number;
+        }>).map((row) => ({
+          periodLabel: row.monthLabel,
+          High: Number(row.High) || 0,
+          Disaster: Number(row.Disaster) || 0,
+        }));
     const dashSummary = (dash as { summary?: Record<string, unknown> })
       .summary;
     const topTriggers = Array.isArray(
@@ -833,6 +1118,20 @@ export class ReportsService {
           }>;
         }).principaisHostsPorMes)
       : [];
+    const ticketsStats =
+      company.tifluxClientId != null
+        ? await this.getTipo4TicketsStats({
+            tifluxClientId: company.tifluxClientId,
+            start: params.start,
+            end: params.end,
+          })
+        : {
+            openedInPeriod: 0,
+            closedInPeriod: 0,
+            openNowTotal: 0,
+            ticketsBaseTotal: 0,
+            openTickets: [],
+          };
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Alle One';
@@ -1046,42 +1345,50 @@ export class ReportsService {
       sheet.columns = [{ width: 18 }, { width: 12 }, { width: 12 }];
       this.styleTipo4TitleBand(sheet, 'Monitoramento', colCount);
       addCompanyLogo(sheet);
-      this.styleTipo4TableTitleRow(sheet, 'Total de Alertas por Mês', colCount);
+      this.styleTipo4TableTitleRow(
+        sheet,
+        monitoringUseWeekly
+          ? 'Total de Alertas por Semana'
+          : 'Total de Alertas por Mês',
+        colCount,
+      );
 
       const headerRow = sheet.getRow(4);
-      headerRow.values = ['Mês', 'High', 'Disaster'];
+      headerRow.values = [
+        monitoringUseWeekly ? 'Semana' : 'Mês',
+        'High',
+        'Disaster',
+      ];
       this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
       let rowIdx = 5;
-      for (const r of alertasMonths as any[]) {
+      for (const r of alertasMonitoringRows) {
         const row = sheet.getRow(rowIdx);
-        row.values = [
-          r.monthLabel,
-          Number(r.High) || 0,
-          Number(r.Disaster) || 0,
-        ];
+        row.values = [r.periodLabel, r.High, r.Disaster];
         this.styleTipo4DataRow(row, rowIdx - 5, colCount);
         rowIdx += 1;
       }
 
-      const chartLabels = alertasWeeks.map((r) => r.weekLabel);
+      const chartLabels = alertasMonitoringRows.map((r) => r.periodLabel);
       await this.embedTipo4Chart(
         workbook,
         sheet,
         rowIdx + 1,
         this.buildTipo4LineChart({
-          title: 'Alertas por Semana',
+          title: monitoringUseWeekly
+            ? 'Alertas por Semana'
+            : 'Alertas por Mês',
           labels: chartLabels,
           rotateLabels: chartLabels.length > 4,
           datasets: [
             {
               label: 'High',
-              data: alertasWeeks.map((r) => Number(r.High) || 0),
+              data: alertasMonitoringRows.map((r) => r.High),
               borderColor: this.tipo4Theme.high,
             },
             {
               label: 'Disaster',
-              data: alertasWeeks.map((r) => Number(r.Disaster) || 0),
+              data: alertasMonitoringRows.map((r) => r.Disaster),
               borderColor: this.tipo4Theme.disaster,
             },
           ],
@@ -1113,6 +1420,19 @@ export class ReportsService {
         group,
         periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
         rows: allTriggersInPeriod,
+        addCompanyLogo,
+      });
+    }
+
+    // Aba 6: chamados abertos/fechados e chamados em aberto geral
+    {
+      const sheet = workbook.addWorksheet('Chamados geral');
+      await this.writeTipo4TicketsSheet({
+        workbook,
+        sheet,
+        companyName: company.name,
+        periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+        stats: ticketsStats,
         addCompanyLogo,
       });
     }
@@ -1162,6 +1482,149 @@ export class ReportsService {
     }
 
     return Math.floor(diffSeconds / 60);
+  }
+
+  private formatMinutesHHMM(totalMinutes: number): string {
+    const total = Math.max(0, Math.trunc(Number(totalMinutes) || 0));
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  private formatTimeHHMM(value?: string | null): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '--:--';
+    const [h = '00', m = '00'] = raw.split(':');
+    return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+  }
+
+  private formatMonthShort(dateOnly: string): string {
+    const d = new Date(`${dateOnly}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return '';
+    const months = [
+      'jan',
+      'fev',
+      'mar',
+      'abr',
+      'mai',
+      'jun',
+      'jul',
+      'ago',
+      'set',
+      'out',
+      'nov',
+      'dez',
+    ];
+    return `${months[d.getMonth()]}/${String(d.getFullYear()).slice(-2)}`;
+  }
+
+  private mapAssistenciaLabel(createdByWayOf?: string | null): string {
+    const raw = String(createdByWayOf || '').trim();
+    if (!raw) return '-';
+    const normalized = raw.toLowerCase();
+    if (normalized.includes('intern')) return 'Interno';
+    if (normalized.includes('remot')) return 'Remoto';
+    if (normalized.includes('presen') || normalized.includes('onsite'))
+      return 'Presencial';
+    return raw;
+  }
+
+  private async getRendimentoDetailedRows(params: {
+    start: Date;
+    end: Date;
+  }): Promise<
+    Array<{
+      attendant: string;
+      ticketNumber: number;
+      title: string;
+      apontamento: string;
+      durationHHMM: string;
+      assistencia: string;
+      client: string;
+      equipe: string;
+      monthLabel: string;
+    }>
+  > {
+    const startDateOnly = toDateOnlyISO(params.start);
+    const endDateOnly = toDateOnlyISO(params.end);
+
+    const rows =
+      (await this.prisma.$queryRaw<
+        Array<{
+          user_name: string | null;
+          ticket_number: number | null;
+          title: string | null;
+          appointment_date: string;
+          init_time: string | null;
+          end_time: string | null;
+          client_name: string | null;
+          created_by_way_of: string | null;
+        }>
+      >`
+        select
+          a.user_name,
+          a.ticket_number,
+          coalesce(t.title, a.description, '') as title,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time::text as init_time,
+          a.end_time::text as end_time,
+          a.client_name,
+          t.created_by_way_of
+        from tiflux.ticket_appointments a
+        left join tiflux.tickets t
+          on t.ticket_number = a.ticket_number
+        where a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
+          and a.user_name is not null
+          and trim(a.user_name) <> ''
+        order by a.appointment_date::date asc, a.user_name asc, a.ticket_number asc, a.external_id asc
+      `) ?? [];
+
+    const users = await this.prisma.user.findMany({
+      where: { deletedAt: null },
+      select: {
+        name: true,
+        serviceDeskLinks: {
+          include: { serviceDesk: { select: { name: true } } },
+        },
+      },
+    });
+    const teamByUserName = new Map<string, string>();
+    for (const u of users) {
+      const key = normalizeNameKey(u.name);
+      if (!key) continue;
+      const desks = u.serviceDeskLinks
+        .map((l) => l.serviceDesk.name)
+        .filter((name) => !!String(name || '').trim());
+      if (desks.length === 0) continue;
+      teamByUserName.set(key, desks.join(' / '));
+    }
+
+    return rows.map((r) => {
+      const attendant = String(r.user_name || '').trim();
+      const dateLabel = new Date(`${r.appointment_date}T12:00:00`).toLocaleDateString(
+        'pt-BR',
+      );
+      const initHHMM = this.formatTimeHHMM(r.init_time);
+      const endHHMM = this.formatTimeHHMM(r.end_time);
+      const durationMinutes = this.getAppointmentMinutes({
+        init_time: r.init_time || undefined,
+        end_time: r.end_time || undefined,
+      });
+      const equipe =
+        teamByUserName.get(normalizeNameKey(attendant)) || 'Sem equipe';
+
+      return {
+        attendant,
+        ticketNumber: Number(r.ticket_number) || 0,
+        title: String(r.title || '').trim(),
+        apontamento: `${dateLabel} (${initHHMM} - ${endHHMM})`,
+        durationHHMM: this.formatMinutesHHMM(durationMinutes),
+        assistencia: this.mapAssistenciaLabel(r.created_by_way_of),
+        client: String(r.client_name || '').trim() || '-',
+        equipe,
+        monthLabel: this.formatMonthShort(r.appointment_date),
+      };
+    });
   }
 
   private async getHoursUsageRows(params: {
@@ -1369,20 +1832,15 @@ export class ReportsService {
       select: {
         id: true,
         name: true,
-        tifluxClientId: true,
         logoFile: { select: { path: true, mimeType: true } },
       },
     });
     if (!company) throw new NotFoundException('Empresa não encontrada');
-    if (!company.tifluxClientId) {
-      throw new BadRequestException('Empresa sem tifluxClientId');
-    }
 
     const startDateOnly = toDateOnlyISO(params.start);
     const endDateOnly = toDateOnlyISO(params.end);
 
-    const rows = await this.getHoursUsageRows({
-      companyId: params.companyId,
+    const rows = await this.getRendimentoDetailedRows({
       start: params.start,
       end: params.end,
     });
@@ -1396,16 +1854,17 @@ export class ReportsService {
     });
 
     // Cabeçalho + logo
-    sheet.getColumn(1).width = 16;
-    sheet.getColumn(2).width = 14;
-    sheet.getColumn(3).width = 14;
-    sheet.getColumn(4).width = 14;
-    sheet.getColumn(5).width = 28;
-    sheet.getColumn(6).width = 12;
-    sheet.getColumn(7).width = 12;
+    sheet.getColumn(1).width = 28;
+    sheet.getColumn(2).width = 12;
+    sheet.getColumn(3).width = 56;
+    sheet.getColumn(4).width = 28;
+    sheet.getColumn(5).width = 12;
+    sheet.getColumn(6).width = 30;
+    sheet.getColumn(7).width = 26;
+    sheet.getColumn(8).width = 10;
 
-    sheet.mergeCells('A1:E1');
-    sheet.getCell('A1').value = `Relatório (Tipo ${params.type})`;
+    sheet.mergeCells('A1:G1');
+    sheet.getCell('A1').value = 'Relatório Rendimento';
     sheet.getCell('A1').font = {
       bold: true,
       size: 16,
@@ -1449,7 +1908,7 @@ export class ReportsService {
         });
         // posiciona no canto superior direito
         sheet.addImage(imageId, {
-          tl: { col: 5.2, row: 0.2 },
+          tl: { col: 7.2, row: 0.2 },
           ext: { width: 120, height: 40 },
         });
       }
@@ -1458,13 +1917,14 @@ export class ReportsService {
     // Tabela
     const headerRowIndex = 7;
     const header = [
-      'Empresa',
-      'Início',
-      'Fim',
-      'Dia',
-      'Usuário',
-      'Minutos',
-      'Horas',
+      'Atendente',
+      'ID Ticket',
+      'Título',
+      'Apontamento',
+      'Duração',
+      'Cliente',
+      'Equipe',
+      'Mês',
     ];
     sheet.getRow(headerRowIndex).values = header;
     sheet.getRow(headerRowIndex).font = {
@@ -1481,25 +1941,23 @@ export class ReportsService {
 
     let rowIndex = headerRowIndex + 1;
     for (const r of rows) {
-      const minutes = Number(r.minutes) || 0;
-      const hours = Number((minutes / 60).toFixed(2));
       sheet.getRow(rowIndex).values = [
-        company.name,
-        startDateOnly,
-        endDateOnly,
-        r.day,
-        r.user,
-        minutes,
-        hours,
+        r.attendant,
+        r.ticketNumber || null,
+        r.title,
+        r.apontamento,
+        r.durationHHMM,
+        r.client,
+        r.equipe,
+        r.monthLabel,
       ];
-      sheet.getRow(rowIndex).getCell(6).numFmt = '0';
-      sheet.getRow(rowIndex).getCell(7).numFmt = '0.00';
+      sheet.getRow(rowIndex).getCell(2).numFmt = '0';
       rowIndex += 1;
     }
 
     sheet.autoFilter = {
       from: { row: headerRowIndex, column: 1 },
-      to: { row: headerRowIndex, column: 7 },
+      to: { row: headerRowIndex, column: 8 },
     };
 
     return workbook.xlsx.writeBuffer();
@@ -1609,16 +2067,21 @@ export class ReportsService {
 
     const type = payload.type?.trim();
     if (!type) throw new BadRequestException('type é obrigatório');
-
-    const format = (payload.format?.trim().toUpperCase() ||
-      'CSV') as ReportFormat;
-    if (!['CSV', 'PDF', 'XLSX'].includes(format)) {
-      throw new BadRequestException('format inválido (use CSV, PDF ou XLSX)');
+    if (!ALLOWED_REPORT_TYPES.has(type)) {
+      throw new BadRequestException(
+        'Tipo de relatório inválido. Use Rendimento (1) ou Estatística Geral (4).',
+      );
     }
 
-    if (format === 'PDF') {
+    const format = (payload.format?.trim().toUpperCase() ||
+      'XLSX') as ReportFormat;
+    if (!['CSV', 'XLSX'].includes(format)) {
+      throw new BadRequestException('format inválido (use CSV ou XLSX)');
+    }
+
+    if (type === '4' && format !== 'XLSX') {
       throw new BadRequestException(
-        'Formato ainda não suportado. Use CSV ou XLSX por enquanto.',
+        'Estatística Geral está disponível apenas em XLSX.',
       );
     }
 
@@ -1632,7 +2095,8 @@ export class ReportsService {
     mkdirSync(uploadsDir, { recursive: true });
 
     const companyPart = safeFilenamePart(company.name) || 'empresa';
-    const typePart = `tipo-${safeFilenamePart(type) || 'x'}`;
+    const typePart =
+      REPORT_TYPE_SLUGS[type] ?? `tipo-${safeFilenamePart(type) || 'x'}`;
     const startPart = toDateOnlyISO(range.start);
     const endPart = toDateOnlyISO(range.end);
     const baseName = `${companyPart}-${typePart}-${startPart}-a-${endPart}`;

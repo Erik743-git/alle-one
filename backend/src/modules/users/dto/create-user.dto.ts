@@ -1,10 +1,12 @@
 import {
+  ArrayUnique,
   IsBoolean,
   IsEmail,
   IsEnum,
   IsOptional,
   IsString,
   IsUUID,
+  IsArray,
   MinLength,
 } from 'class-validator';
 import { UserRole, UserStatus } from '@prisma/client';
@@ -34,4 +36,14 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   firstAccess?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  responsible?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  serviceDeskIds?: string[];
 }

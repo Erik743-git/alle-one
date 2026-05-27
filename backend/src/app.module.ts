@@ -20,6 +20,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsageAlertsModule } from './modules/usage-alerts/usage-alerts.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RendimentoModule } from './modules/rendimento/rendimento.module';
+import { TifluxSyncModule } from './modules/tiflux-sync/tiflux-sync.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { RendimentoModule } from './modules/rendimento/rendimento.module';
     UsageAlertsModule,
     ReportsModule,
     RendimentoModule,
+    TifluxSyncModule,
   ],
   controllers: [AppController],
   providers: [

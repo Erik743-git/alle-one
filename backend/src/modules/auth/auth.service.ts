@@ -1,22 +1,38 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
 import { UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { FirstAccessDto } from './dto/first-access.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ValidateResetTokenDto } from './dto/validate-reset-token.dto';
 import { AuthMailService } from './mail/auth-mail.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import {
+  delayResetGuard,
+  generatePasswordResetCode,
+  getFrontendBaseUrl,
+  hashPasswordResetCode,
+  normalizeResetTokenInput,
+} from './password-reset.helper';
 
-const FORGOT_PASSWORD_GENERIC_MESSAGE =
-  'Se o e-mail estiver cadastrado, você receberá um link para redefinir a senha.';
+const RESET_REQUESTS_PER_HOUR = 3;
+
+const RESET_TOKEN_TTL_MINUTES = Number(
+  process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES ?? 30,
+);
+
+const RESEND_COOLDOWN_SECONDS = Number(
+  process.env.PASSWORD_RESET_RESEND_COOLDOWN_SECONDS ?? 60,
+);
 
 @Injectable()
 export class AuthService {
@@ -152,65 +168,111 @@ export class AuthService {
   }
 
   async forgotPassword(data: ForgotPasswordDto) {
-    const email = data.email.trim();
-    const user = await this.prisma.user.findUnique({
+    const email = data.email.trim().toLowerCase();
+    const user = await this.prisma.user.findFirst({
       where: {
-        email,
+        email: { equals: email, mode: 'insensitive' },
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
       },
     });
 
     if (!user) {
-      return {
-        message: FORGOT_PASSWORD_GENERIC_MESSAGE,
-      };
+      throw new NotFoundException(
+        'Este e-mail não está cadastrado no portal.',
+      );
     }
 
-    const token = randomUUID();
-    const expiresAt = new Date(Date.now() + 1000 * 60 * 30);
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const recentRequests = await this.prisma.passwordResetToken.count({
+      where: {
+        userId: user.id,
+        createdAt: { gte: oneHourAgo },
+      },
+    });
+    if (recentRequests >= RESET_REQUESTS_PER_HOUR) {
+      throw new BadRequestException(
+        'Limite de envios atingido. Aguarde até uma hora e tente novamente.',
+      );
+    }
+
+    const ttlMinutes = Number.isFinite(RESET_TOKEN_TTL_MINUTES)
+      ? Math.max(5, RESET_TOKEN_TTL_MINUTES)
+      : 30;
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
+
+    await this.prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    let plainCode = generatePasswordResetCode();
+    let tokenHash = hashPasswordResetCode(plainCode);
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const exists = await this.prisma.passwordResetToken.findUnique({
+        where: { token: tokenHash },
+        select: { id: true },
+      });
+      if (!exists) break;
+      plainCode = generatePasswordResetCode();
+      tokenHash = hashPasswordResetCode(plainCode);
+    }
 
     await this.prisma.passwordResetToken.create({
       data: {
         userId: user.id,
-        token,
+        token: tokenHash,
         expiresAt,
       },
     });
 
-    const base =
-      process.env.FRONTEND_URL?.replace(/\/$/, '') ?? 'http://localhost:3000';
-    const resetUrl = `${base}/redefinir-senha?token=${encodeURIComponent(token)}`;
+    const resetPageUrl = `${getFrontendBaseUrl()}/redefinir-senha`;
 
-    await this.authMail.sendResetPassword({
+    const sent = await this.authMail.sendResetPassword({
       to: user.email,
       name: user.name?.trim() || 'usuário',
-      resetUrl,
+      resetCode: plainCode,
+      resetPageUrl,
+      expiresMinutes: ttlMinutes,
     });
 
+    if (!sent) {
+      throw new ServiceUnavailableException(
+        'Não foi possível enviar o e-mail. Verifique a configuração SMTP do servidor ou tente mais tarde.',
+      );
+    }
+
+    const cooldownSeconds = Number.isFinite(RESEND_COOLDOWN_SECONDS)
+      ? Math.max(30, RESEND_COOLDOWN_SECONDS)
+      : 60;
+
+    const exposeDevCode =
+      process.env.NODE_ENV !== 'production' &&
+      process.env.PASSWORD_RESET_EXPOSE_CODE_IN_DEV !== 'false';
+
     return {
-      message: FORGOT_PASSWORD_GENERIC_MESSAGE,
+      message: 'Código enviado com sucesso.',
+      email: user.email,
+      resendCooldownSeconds: cooldownSeconds,
+      ...(exposeDevCode ? { devCode: plainCode } : {}),
     };
   }
 
+  async validateResetToken(data: ValidateResetTokenDto) {
+    const passwordReset = await this.findActivePasswordReset(data.token);
+    if (!passwordReset) {
+      await delayResetGuard();
+      throw new BadRequestException('Código inválido ou expirado.');
+    }
+    return { message: 'Código válido' };
+  }
+
   async resetPassword(data: ResetPasswordDto) {
-    const passwordReset = await this.prisma.passwordResetToken.findFirst({
-      where: {
-        token: data.token,
-        usedAt: null,
-      },
-      include: {
-        user: true,
-      },
-      orderBy: {
-        expiresAt: 'desc',
-      },
-    });
+    const passwordReset = await this.findActivePasswordReset(data.token);
 
     if (!passwordReset) {
-      throw new BadRequestException('Token inválido');
-    }
-
-    if (passwordReset.expiresAt < new Date()) {
-      throw new BadRequestException('Token expirado');
+      await delayResetGuard();
+      throw new BadRequestException('Código inválido ou expirado.');
     }
 
     const newPasswordHash = await bcrypt.hash(data.newPassword, 10);
@@ -237,5 +299,28 @@ export class AuthService {
     return {
       message: 'Senha redefinida com sucesso',
     };
+  }
+
+  private async findActivePasswordReset(rawToken: string) {
+    const code = normalizeResetTokenInput(rawToken);
+    if (!code || code.length < 6) return null;
+
+    const tokenHash = hashPasswordResetCode(code);
+
+    const passwordReset = await this.prisma.passwordResetToken.findFirst({
+      where: {
+        token: tokenHash,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+        user: {
+          deletedAt: null,
+          status: UserStatus.ACTIVE,
+        },
+      },
+      include: { user: true },
+      orderBy: { expiresAt: 'desc' },
+    });
+
+    return passwordReset;
   }
 }

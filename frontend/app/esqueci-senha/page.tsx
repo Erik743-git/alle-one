@@ -3,23 +3,30 @@
 import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  DEFAULT_RESEND_COOLDOWN_SECONDS,
+  requestPasswordResetCode,
+  saveDevResetCode,
+  saveResetEmail,
+  setResendCooldown,
+} from "@/lib/password-reset-flow";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export default function EsqueciSenhaPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
-  const [enviado, setEnviado] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro("");
-    setEnviado(false);
 
     if (!email.trim()) {
       setErro("Informe seu e-mail.");
@@ -28,27 +35,20 @@ export default function EsqueciSenhaPage() {
 
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/auth/esqueci-senha`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-
-      const data = (await response.json()) as { message?: string };
-
-      if (!response.ok) {
-        setErro(
-          typeof data.message === "string"
-            ? data.message
-            : "Não foi possível processar o pedido.",
-        );
-        return;
-      }
-
-      setEnviado(true);
-    } catch {
-      setErro("Erro ao conectar com o servidor.");
+      const data = await requestPasswordResetCode(API_URL, email.trim());
+      const normalized = (data.email ?? email).trim().toLowerCase();
+      saveResetEmail(normalized);
+      saveDevResetCode(data.devCode);
+      setResendCooldown(
+        data.resendCooldownSeconds ?? DEFAULT_RESEND_COOLDOWN_SECONDS,
+      );
+      router.push("/redefinir-senha");
+    } catch (err) {
+      setErro(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível processar o pedido.",
+      );
     } finally {
       setLoading(false);
     }
@@ -80,8 +80,8 @@ export default function EsqueciSenhaPage() {
             <div className="space-y-2 text-center">
               <h1 className="text-3xl font-bold text-white">Esqueci a senha</h1>
               <p className="text-sm text-slate-400">
-                Informe o e-mail da sua conta. Se ele estiver cadastrado,
-                enviaremos um link para redefinir a senha.
+                Informe o e-mail da sua conta. Enviaremos um código de 6 dígitos
+                para redefinir a senha.
               </p>
             </div>
           </CardHeader>
@@ -97,26 +97,21 @@ export default function EsqueciSenhaPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu.email@empresa.com"
-                  disabled={loading || enviado}
+                  disabled={loading}
                   autoComplete="email"
                   className="h-12 rounded-xl border-white/15 bg-[#020b1b] text-white"
                 />
               </div>
 
               {erro ? (
-                <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">{erro}</div>
-              ) : null}
-
-              {enviado ? (
-                <div className="alle-alert-success rounded-xl px-3 py-2 text-sm">
-                  Se o e-mail estiver cadastrado, você receberá um link para
-                  redefinir a senha. Verifique também a caixa de spam.
+                <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">
+                  {erro}
                 </div>
               ) : null}
 
               <Button
                 type="submit"
-                disabled={loading || enviado}
+                disabled={loading}
                 className="h-12 w-full bg-[#12b5d9] text-white hover:bg-[#0ea5c6]"
               >
                 {loading ? (
@@ -124,10 +119,8 @@ export default function EsqueciSenhaPage() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Enviando...
                   </>
-                ) : enviado ? (
-                  "Pedido registrado"
                 ) : (
-                  "Enviar link"
+                  "Enviar código"
                 )}
               </Button>
 

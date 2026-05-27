@@ -22,6 +22,7 @@ import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 import { GmudStatusBadge } from "../_components/gmud-status-badge";
 import { GmudForm } from "../_components/gmud-form";
 import { Input } from "@/components/ui/input";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 
 function approverStatusLabel(status: "PENDING" | "APPROVED" | "REJECTED") {
   if (status === "APPROVED") return "Aprovou";
@@ -171,20 +172,17 @@ export default function GmudDetailPage() {
               <div className="space-y-3">
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Aprovador alvo</div>
-                  <select
+                  <SearchableSelectField
                     value={onBehalfUserId}
-                    onChange={(e) => setOnBehalfUserId(e.target.value)}
-                    className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                  >
-                    <option value="">Selecione...</option>
-                    {(gmud?.approvers ?? [])
+                    onChange={setOnBehalfUserId}
+                    options={(gmud?.approvers ?? [])
                       .filter((a) => a.status === "PENDING")
-                      .map((a) => (
-                        <option key={a.user.id} value={a.user.id}>
-                          {a.user.name} ({a.user.email})
-                        </option>
-                      ))}
-                  </select>
+                      .map((a) => ({
+                        value: a.user.id,
+                        label: `${a.user.name} (${a.user.email})`,
+                      }))}
+                    emptyLabel="Selecione..."
+                  />
                 </div>
 
                 <div className="space-y-2">

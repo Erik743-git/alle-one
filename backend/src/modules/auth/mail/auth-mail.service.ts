@@ -4,43 +4,37 @@ import { MailService } from '../../mail/mail.service';
 type ResetPasswordMailPayload = {
   to: string;
   name: string;
-  resetUrl: string;
+  resetCode: string;
+  resetPageUrl: string;
+  expiresMinutes: number;
 };
-
-function envTrim(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const t = value.trim();
-  if (
-    (t.startsWith('"') && t.endsWith('"')) ||
-    (t.startsWith("'") && t.endsWith("'"))
-  ) {
-    return t.slice(1, -1).trim();
-  }
-  return t;
-}
-
-function redact(value: string | undefined): string {
-  if (!value) return '(vazio)';
-  if (value.length <= 6) return '***';
-  return `${value.slice(0, 3)}***${value.slice(-3)}`;
-}
 
 @Injectable()
 export class AuthMailService {
   private readonly logger = new Logger(AuthMailService.name);
   constructor(private readonly mail: MailService) {}
 
-  async sendResetPassword(payload: ResetPasswordMailPayload) {
-    const subject = 'Redefinição de senha — Alle One';
-    const text = `Olá, ${payload.name}.\n\nRecebemos uma solicitação para redefinir sua senha.\n\nAcesse o link para criar uma nova senha:\n${payload.resetUrl}\n\nSe você não solicitou isso, ignore este e-mail.\n`;
+  async sendResetPassword(payload: ResetPasswordMailPayload): Promise<boolean> {
+    const subject = 'Código para redefinir senha — Alle One';
+    const text =
+      `Olá, ${payload.name}.\n\n` +
+      `Seu código para redefinir a senha no Alle One é: ${payload.resetCode}\n\n` +
+      `Válido por ${payload.expiresMinutes} minutos.\n` +
+      `Acesse ${payload.resetPageUrl}, informe o código e defina uma nova senha.\n\n` +
+      `Se você não solicitou isso, ignore este e-mail.\n`;
 
     const html = `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+      <div style="font-family: Arial, sans-serif; line-height: 1.5; color:#0f172a;">
         <p>Olá, <strong>${payload.name}</strong>.</p>
-        <p>Recebemos uma solicitação para redefinir sua senha.</p>
+        <p>Recebemos uma solicitação para redefinir sua senha no <strong>Alle One</strong>.</p>
+        <p style="margin:20px 0;font-size:14px;color:#475569;">Use o código abaixo no portal:</p>
+        <p style="margin:0 0 20px;font-size:32px;font-weight:800;letter-spacing:6px;color:#08182f;">
+          ${payload.resetCode}
+        </p>
+        <p style="font-size:13px;color:#64748b;">Válido por ${payload.expiresMinutes} minutos.</p>
         <p>
-          <a href="${payload.resetUrl}" style="display:inline-block;padding:10px 14px;background:#12b5d9;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;">
-            Redefinir senha
+          <a href="${payload.resetPageUrl}" style="display:inline-block;padding:10px 14px;background:#12b5d9;color:#fff;text-decoration:none;border-radius:10px;font-weight:700;">
+            Informar código e nova senha
           </a>
         </p>
         <p style="color:#666;font-size:12px">Se você não solicitou isso, ignore este e-mail.</p>
@@ -48,29 +42,21 @@ export class AuthMailService {
     `;
 
     try {
-      await this.mail.sendMail({ to: payload.to, subject, text, html });
-      this.logger.log(`E-mail de redefinição processado para ${payload.to}`);
-    } catch (err) {
-      const anyErr = err;
-      if (process.env.NODE_ENV !== 'production') {
+      const sent = await this.mail.sendMail({ to: payload.to, subject, text, html });
+      if (!sent) {
         this.logger.error(
-          `[DEV] Detalhes do erro SMTP/OAuth: ` +
-            `name=${anyErr?.name ?? 'n/d'} ` +
-            `code=${anyErr?.code ?? 'n/d'} ` +
-            `responseCode=${anyErr?.responseCode ?? 'n/d'} ` +
-            `command=${anyErr?.command ?? 'n/d'} ` +
-            `response=${anyErr?.response ?? 'n/d'}`,
+          `E-mail de redefinição não enviado (SMTP indisponível) para ${payload.to}.`,
         );
+        return false;
       }
+      this.logger.log(`E-mail de redefinição enviado para ${payload.to}`);
+      return true;
+    } catch (err) {
       this.logger.error(
-        `Falha ao enviar e-mail para ${payload.to}. Verifique SMTP_HOST/PORTA/USUÁRIO/SENHA e firewall.`,
-        err instanceof Error ? err.stack : String(err),
+        `Falha ao enviar e-mail de redefinição para ${payload.to}.`,
+        err instanceof Error ? err.message : String(err),
       );
-      if (process.env.NODE_ENV !== 'production') {
-        this.logger.warn(
-          `[DEV] Link de redefinição (use manualmente): ${payload.resetUrl}`,
-        );
-      }
+      return false;
     }
   }
 }

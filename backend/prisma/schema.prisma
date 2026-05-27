@@ -73,6 +73,7 @@ model User {
   role                UserRole
   status              UserStatus           @default(ACTIVE)
   firstAccess         Boolean              @default(true) @map("first_access")
+  responsible         Boolean              @default(false)
   companyId           String?              @map("company_id")
   googleId            String?              @unique @map("google_id")
   provider            String?
@@ -92,6 +93,7 @@ model User {
   gmudActivityExecutions GmudActivity[]    @relation("GmudActivityExecutor")
   gmudAttachmentUploads GmudAttachment[]   @relation("GmudAttachmentUploader")
   auditLogs           AuditLog[]
+  serviceDeskLinks    UserServiceDesk[]
 
   @@index([companyId])
   @@map("users")
@@ -102,6 +104,8 @@ model Company {
   name                 String
   responsibleName      String                    @map("responsible_name")
   email                String
+  cnpj                 String?
+  address              String?
   status               Boolean                   @default(true)
 
   zabbixGroupName      String?                   @map("zabbix_group_name")
@@ -123,7 +127,35 @@ model Company {
   tifluxAccounts       IntegrationTiFluxAccount[]
   usageAlertRules      UsageAlertRule[]
 
+  @@unique([cnpj])
   @@map("companies")
+}
+
+model ServiceDesk {
+  id           String            @id @default(uuid())
+  externalId   Int?              @unique @map("external_id")
+  name         String            @unique
+  active       Boolean           @default(true)
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+  deletedAt    DateTime?         @map("deleted_at")
+
+  userLinks    UserServiceDesk[]
+
+  @@map("service_desks")
+}
+
+model UserServiceDesk {
+  userId        String      @map("user_id")
+  serviceDeskId String      @map("service_desk_id")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceDesk   ServiceDesk @relation(fields: [serviceDeskId], references: [id], onDelete: Cascade)
+
+  @@id([userId, serviceDeskId])
+  @@index([serviceDeskId])
+  @@map("user_service_desks")
 }
 
 model Permission {
@@ -200,15 +232,18 @@ model File {
 }
 
 model PasswordResetToken {
-  id         String    @id @default(uuid())
-  userId     String    @map("user_id")
-  token      String    @unique
-  expiresAt  DateTime  @map("expires_at")
-  usedAt     DateTime? @map("used_at")
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  /// SHA-256 HMAC do código (nunca armazenar o código em claro).
+  token           String    @unique
+  expiresAt       DateTime  @map("expires_at")
+  usedAt          DateTime? @map("used_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([userId, createdAt])
   @@map("password_reset_tokens")
 }
 

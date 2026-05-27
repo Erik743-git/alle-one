@@ -13,6 +13,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { DeferredResponsiveContainer } from "@/components/charts/deferred-responsive-container";
 import { useChartTheme, useChartTooltipProps } from "@/lib/chart-theme";
 import { getStoredUser } from "@/lib/session";
@@ -20,6 +21,7 @@ import {
   companiesService,
   type Company,
 } from "@/lib/services/companies.service";
+import { isMonitoringPeriodWeekly } from "@/lib/monitoring-period";
 import {
   getCompleteDashboard,
   refreshCompleteDashboard,
@@ -56,6 +58,10 @@ import {
 
 const MANUAL_REFRESH_COOLDOWN_MS = 20000;
 const AUTO_REFRESH_INTERVAL_MS = 120000;
+
+function sortByName<T extends { name: string }>(rows: T[]) {
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+}
 
 function MetricCard({
   title,
@@ -314,7 +320,7 @@ export default function DashboardPage() {
           return;
         }
 
-        const normalized = Array.isArray(list) ? list : [];
+        const normalized = Array.isArray(list) ? sortByName(list) : [];
         setCompanies(normalized);
 
         if (!selectedCompanyId && normalized.length > 0) {
@@ -379,7 +385,9 @@ export default function DashboardPage() {
         let groupName = companyFromList?.zabbixGroupName?.trim() ?? "";
 
         if (!groupName) {
-          const company = await companiesService.getById(effectiveCompanyId);
+          const company = isAdmin
+            ? await companiesService.getById(effectiveCompanyId)
+            : await companiesService.getSessionCompany();
           groupName = company.zabbixGroupName?.trim() ?? "";
         }
 
@@ -541,6 +549,47 @@ export default function DashboardPage() {
     }));
   }, [dashboard]);
 
+  const monitoringUseWeekly = useMemo(() => {
+    if (!isValidDateInput(startDate) || !isValidDateInput(endDate)) {
+      return true;
+    }
+    const start = new Date(toRangeDateString(startDate, false));
+    const end = new Date(toRangeDateString(endDate, true));
+    return isMonitoringPeriodWeekly(start, end);
+  }, [startDate, endDate]);
+
+  const alertasMonitoringTableRows = useMemo(() => {
+    if (monitoringUseWeekly) {
+      return alertasChartWeeklyData.map((row) => ({
+        key: row.weekKey,
+        label: row.weekLabel,
+        High: row.High,
+        Disaster: row.Disaster,
+        Total: row.Total,
+      }));
+    }
+    return alertasChartData.map((row) => ({
+      key: row.monthKey,
+      label: row.monthLabel,
+      High: row.High,
+      Disaster: row.Disaster,
+      Total: row.Total,
+    }));
+  }, [monitoringUseWeekly, alertasChartWeeklyData, alertasChartData]);
+
+  const alertasMonitoringChartRows = useMemo(() => {
+    if (monitoringUseWeekly) {
+      return alertasChartWeeklyData;
+    }
+    return alertasChartData.map((row) => ({
+      weekKey: row.monthKey,
+      weekLabel: row.monthLabel,
+      High: row.High,
+      Disaster: row.Disaster,
+      Total: row.Total,
+    }));
+  }, [monitoringUseWeekly, alertasChartWeeklyData, alertasChartData]);
+
   const hostsPorMes = useMemo<DashboardTopHostsMes[]>(() => {
     return dashboard?.principaisHostsPorMes ?? [];
   }, [dashboard]);
@@ -551,6 +600,10 @@ export default function DashboardPage() {
 
   const refreshButtonDisabled =
     initialLoading || manualRefreshing || cooldownRemainingMs > 0;
+  const companyOptions = useMemo(
+    () => companies.map((company) => ({ value: company.id, label: company.name })),
+    [companies],
+  );
 
   const refreshButtonLabel = manualRefreshing
     ? "Atualizando..."
@@ -575,25 +628,16 @@ export default function DashboardPage() {
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Empresa
                   </p>
-                  <select
+                  <SearchableSelectField
                     value={selectedCompanyId ?? ""}
-                    onChange={(e) =>
-                      setSelectedCompanyId(e.target.value ? e.target.value : null)
+                    onChange={(next) => setSelectedCompanyId(next || null)}
+                    options={companyOptions}
+                    loading={companies.length === 0}
+                    emptyLabel={
+                      companies.length === 0 ? "Carregando..." : "Selecione uma empresa"
                     }
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none ring-1 ring-transparent transition focus:ring-ring/50"
-                  >
-                    <option value="">
-                      {companies.length === 0 ? "Carregando..." : "Selecione uma empresa"}
-                    </option>
-                    {companies.map((company) => (
-                      <option
-                        key={company.id}
-                        value={company.id}
-                      >
-                        {company.name}
-                      </option>
-                    ))}
-                  </select>
+                    className="h-10"
+                  />
                 </div>
               ) : null}
 
@@ -934,16 +978,18 @@ export default function DashboardPage() {
                 <table className="min-w-[760px] w-full text-left text-sm">
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
-                      <th className="px-4 py-3">Mês</th>
+                      <th className="px-4 py-3">
+                        {monitoringUseWeekly ? "Semana" : "Mês"}
+                      </th>
                       <th className="px-4 py-3">High</th>
                       <th className="px-4 py-3">Disaster</th>
                       <th className="px-4 py-3">Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {alertasChartData.map((row) => (
-                      <tr key={row.monthKey} className="border-t border-border/60">
-                        <td className="px-4 py-3">{row.monthLabel}</td>
+                    {alertasMonitoringTableRows.map((row) => (
+                      <tr key={row.key} className="border-t border-border/60">
+                        <td className="px-4 py-3">{row.label}</td>
                         <td className="px-4 py-3">{row.High}</td>
                         <td className="px-4 py-3">{row.Disaster}</td>
                         <td className="px-4 py-3 font-bold text-primary">
@@ -957,7 +1003,7 @@ export default function DashboardPage() {
 
               <div className="h-[360px]">
                 <DeferredResponsiveContainer width="100%" height="100%">
-                  <LineChart data={alertasChartWeeklyData}>
+                  <LineChart data={alertasMonitoringChartRows}>
                     <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
                     <XAxis
                       dataKey="weekLabel"
@@ -966,11 +1012,11 @@ export default function DashboardPage() {
                       tickLine={{ stroke: chartTheme.tick }}
                       axisLine={{ stroke: chartTheme.grid }}
                       interval={0}
-                      angle={alertasChartWeeklyData.length > 4 ? -25 : 0}
+                      angle={alertasMonitoringChartRows.length > 4 ? -25 : 0}
                       textAnchor={
-                        alertasChartWeeklyData.length > 4 ? "end" : "middle"
+                        alertasMonitoringChartRows.length > 4 ? "end" : "middle"
                       }
-                      height={alertasChartWeeklyData.length > 4 ? 56 : 30}
+                      height={alertasMonitoringChartRows.length > 4 ? 56 : 30}
                     />
                     <YAxis
                       stroke={chartTheme.tick}
