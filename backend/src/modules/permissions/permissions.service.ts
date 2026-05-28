@@ -75,6 +75,13 @@ const ROLE_FALLBACK: Record<
       canDelete: false,
       canApprove: false,
     },
+    RENDIMENTO: {
+      canView: true,
+      canCreate: false,
+      canEdit: true,
+      canDelete: false,
+      canApprove: false,
+    },
   },
   CLIENT: {
     DASHBOARD: {

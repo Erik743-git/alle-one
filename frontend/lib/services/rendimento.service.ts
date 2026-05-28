@@ -25,6 +25,7 @@ export type RendimentoGap = {
     id: string;
     kind: "ALERT" | "VOLUNTARY";
     status: "PENDING" | "APPROVED" | "REJECTED";
+    gapType?: "idle" | "lunch";
     reason: string;
     debitOvertime: boolean;
     overtimeMinutes: number;
@@ -55,6 +56,8 @@ export type RendimentoEntry = {
   clientName: string | null;
   description: string | null;
   isOvertime: boolean;
+  overtimeKind?: "EXTRA" | "PLANTAO" | null;
+  valorizationServiceName?: string | null;
 };
 
 export type RendimentoDaySummary = {

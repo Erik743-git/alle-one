@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CalendarDays, Loader2, Search, Users } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -10,6 +11,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { getStoredUser } from "@/lib/session";
 import {
   rendimentoService,
   type RendimentoCollaborator,
@@ -22,6 +24,8 @@ function roleLabel(role: RendimentoCollaborator["role"]) {
 }
 
 export default function RendimentoPage() {
+  const router = useRouter();
+  const authUser = getStoredUser();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
@@ -32,6 +36,10 @@ export default function RendimentoPage() {
   useEffect(() => {
     void (async () => {
       try {
+        if (authUser?.role === "COLLABORATOR" && authUser.id) {
+          router.replace(`/rendimento/${authUser.id}`);
+          return;
+        }
         setLoading(true);
         setError("");
         const data = await rendimentoService.listCollaborators();
@@ -46,7 +54,7 @@ export default function RendimentoPage() {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [authUser?.id, authUser?.role, router]);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();

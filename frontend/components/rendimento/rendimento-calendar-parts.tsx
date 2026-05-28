@@ -2,6 +2,11 @@
 
 import { AlertTriangle, CheckCircle2, Coffee, Clock, Hourglass, XCircle } from "lucide-react";
 
+import { RendimentoOvertimeBadge } from "@/components/rendimento/rendimento-overtime-badge";
+import {
+  rendimentoOvertimeCardClass,
+  resolveRendimentoOvertimeDisplay,
+} from "@/lib/rendimento/entry-overtime";
 import { cn } from "@/lib/utils";
 import type {
   RendimentoDaySummary,
@@ -16,6 +21,10 @@ export function RendimentoLegend() {
       <span className="inline-flex items-center gap-1.5">
         <span className="size-2.5 rounded-sm bg-amber-500" />
         Hora extra
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <span className="size-2.5 rounded-sm bg-violet-600" />
+        Plantão
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className="size-2.5 rounded-sm bg-orange-500" />
@@ -37,8 +46,8 @@ export function RendimentoDayIndicators({
   summary?: RendimentoDaySummary;
   compact?: boolean;
 }) {
-  if (!summary?.insights) return null;
-  const { insights } = summary;
+  const insights = dayInsightsForDisplay(summary);
+  if (!insights) return null;
 
   return (
     <div className={cn("flex flex-wrap gap-1", compact ? "mt-1" : "mt-2")}>
@@ -167,23 +176,20 @@ export function RendimentoEntryCard({
   entry: RendimentoEntry;
   dense?: boolean;
 }) {
+  const overtime = resolveRendimentoOvertimeDisplay(entry);
   return (
     <li
       className={cn(
         "rounded-md border px-2 py-1 text-[10px]",
-        entry.isOvertime
-          ? "border-amber-500/50 bg-amber-500/15 text-foreground"
+        overtime.kind
+          ? rendimentoOvertimeCardClass(overtime.kind)
           : "border-primary/20 bg-primary/10 text-foreground",
       )}
     >
       <div className="flex items-center justify-between gap-1">
         <span className="font-semibold">
           {entry.initTime?.slice(0, 5) ?? "—"}
-          {entry.isOvertime ? (
-            <span className="ml-1 rounded bg-amber-600 px-1 text-[8px] font-bold text-white">
-              HE
-            </span>
-          ) : null}
+          <RendimentoOvertimeBadge entry={entry} size="sm" />
         </span>
         <span className="font-bold">{entry.hoursFormatted}</span>
       </div>
@@ -203,29 +209,68 @@ function sortEntriesByStart(entries: RendimentoEntry[]) {
   });
 }
 
-/** Apontamentos e intervalos (alertas / almoço) na ordem do dia. */
+function timeKey(value: string | null | undefined): string {
+  return String(value ?? "").trim().slice(0, 5);
+}
+
+/**
+ * Mesma fonte da visão mensal (`insights.gaps`): mescla apontamentos + todos os gaps
+ * (inclui alerta no fim do dia, que não fica entre dois tickets).
+ */
 export function buildDayTimeline(summary: RendimentoDaySummary) {
   type TimelineItem =
     | { kind: "entry"; entry: RendimentoEntry }
     | { kind: "gap"; gap: RendimentoGap };
 
   const entries = sortEntriesByStart(summary.entries);
-  const gaps = summary.insights?.gaps ?? [];
-  const items: TimelineItem[] = [];
+  const gaps = [...(summary.insights?.gaps ?? [])].sort((a, b) =>
+    timeKey(a.fromTime).localeCompare(timeKey(b.fromTime)),
+  );
 
-  for (let index = 0; index < entries.length; index += 1) {
-    items.push({ kind: "entry", entry: entries[index] });
-    if (index < entries.length - 1) {
-      const fromTime = entries[index].endTime?.slice(0, 5);
-      const toTime = entries[index + 1].initTime?.slice(0, 5);
-      const gap = gaps.find(
-        (g) => g.fromTime === fromTime && g.toTime === toTime,
-      );
-      if (gap) {
-        items.push({ kind: "gap", gap });
-      }
+  const items: TimelineItem[] = [];
+  let entryIndex = 0;
+  let gapIndex = 0;
+
+  while (entryIndex < entries.length || gapIndex < gaps.length) {
+    const entry = entries[entryIndex];
+    const gap = gaps[gapIndex];
+    const entryAt = timeKey(entry?.initTime);
+    const gapAt = timeKey(gap?.fromTime);
+
+    if (gap && (!entry || gapAt < entryAt)) {
+      items.push({ kind: "gap", gap });
+      gapIndex += 1;
+      continue;
     }
+
+    if (entry) {
+      items.push({ kind: "entry", entry });
+      entryIndex += 1;
+      continue;
+    }
+
+    items.push({ kind: "gap", gap: gap! });
+    gapIndex += 1;
   }
 
   return items;
+}
+
+/** Indicadores do dia alinhados com o que a timeline do dia exibe. */
+export function dayInsightsForDisplay(summary?: RendimentoDaySummary) {
+  if (!summary?.insights) return null;
+  const gaps = summary.insights.gaps ?? [];
+  const idleGaps = gaps.filter((g) => g.type === "idle");
+  const hasPendingIdleAlert = idleGaps.some((g) => {
+    const j = g.justification;
+    if (!j) return true;
+    if (j.kind === "VOLUNTARY") return false;
+    return j.status !== "APPROVED";
+  });
+
+  return {
+    ...summary.insights,
+    hasIdleGapAlert: hasPendingIdleAlert,
+    hasExpectedLunch: gaps.some((g) => g.type === "lunch"),
+  };
 }

@@ -27,6 +27,7 @@ export type RendimentoGapDto = {
     id: string;
     kind: 'ALERT' | 'VOLUNTARY';
     status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    gapType?: 'idle' | 'lunch';
     reason: string;
     debitOvertime: boolean;
     overtimeMinutes: number;
@@ -48,6 +49,10 @@ export type RendimentoDayInsightsDto = {
 
 export type RendimentoEntryEnriched = RendimentoEntryInput & {
   isOvertime: boolean;
+  /** Hora extra diferenciada (ex.: plantão). */
+  overtimeKind?: 'EXTRA' | 'PLANTAO' | null;
+  /** Nome do tipo de serviço no TiFlux (ex.: "Plantão", "HORA EXTRA"). */
+  valorizationServiceName?: string | null;
 };
 
 function parseTimeToMinutes(value: string | null): number | null {
@@ -77,35 +82,59 @@ function formatMinutesAsTime(totalMinutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-function getValorizationServiceName(raw: unknown): string | null {
+export function getValorizationServiceName(raw: unknown): string | null {
   if (!raw || typeof raw !== 'object') return null;
   const v = raw as Record<string, unknown>;
-  const loose = v.loose_service as { name?: unknown } | undefined;
-  const contract = v.contract as { name?: unknown } | undefined;
-  const name = String(loose?.name ?? contract?.name ?? '').trim();
-  return name || null;
+  const candidates = [
+    (v.loose_service as { name?: unknown } | undefined)?.name,
+    (v.contract as { name?: unknown } | undefined)?.name,
+    (v.service as { name?: unknown } | undefined)?.name,
+    (v.way as { name?: unknown } | undefined)?.name,
+    v.name,
+  ];
+  for (const candidate of candidates) {
+    const name = String(candidate ?? '').trim();
+    if (name) return name;
+  }
+  return null;
+}
+
+function normalizeHaystack(raw: unknown): string {
+  if (raw == null) return '';
+  try {
+    return JSON.stringify(raw).toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function overtimeKindFromValorization(
+  raw: unknown,
+): 'EXTRA' | 'PLANTAO' | null {
+  const serviceName = getValorizationServiceName(raw);
+  const upper = serviceName?.toUpperCase() ?? '';
+
+  // Plantão deve seguir as MESMAS regras de HE (fica fora da jornada regular),
+  // mas com visual diferente no calendário.
+  if (upper.includes('PLANTAO') || upper.includes('PLANTÃO')) {
+    return 'PLANTAO';
+  }
+  if (upper.includes('HORA EXTRA') || upper.includes('HORAS EXTRA')) {
+    return 'EXTRA';
+  }
+  if (upper.includes('HORA NORMAL')) {
+    return null;
+  }
+
+  const hay = normalizeHaystack(raw);
+  if (hay.includes('plantao') || hay.includes('plantão')) return 'PLANTAO';
+  if (hay.includes('hora extra') || hay.includes('horas extra')) return 'EXTRA';
+  return null;
 }
 
 /** Hora extra vem do tipo de serviço no TiFlux (valorization), não da soma do dia. */
 export function isOvertimeValorization(raw: unknown): boolean {
-  const serviceName = getValorizationServiceName(raw);
-  if (serviceName) {
-    const upper = serviceName.toUpperCase();
-    if (upper.includes('HORA EXTRA') || upper.includes('HORAS EXTRA')) {
-      return true;
-    }
-    if (upper.includes('HORA NORMAL')) {
-      return false;
-    }
-  }
-
-  if (raw == null) return false;
-  try {
-    const hay = JSON.stringify(raw).toLowerCase();
-    return hay.includes('hora extra') || hay.includes('horas extra');
-  } catch {
-    return false;
-  }
+  return overtimeKindFromValorization(raw) != null;
 }
 
 function sortEntriesByStart(entries: RendimentoEntryInput[]) {
@@ -241,8 +270,14 @@ export function analyzeRendimentoDay(
   // Enriquecimento (hora extra vem do TiFlux, não da soma).
   const enriched: RendimentoEntryEnriched[] = sorted.map((entry) => {
     const valorization = valorizationById?.get(entry.id);
-    const isOvertime = isOvertimeValorization(valorization);
-    return { ...entry, isOvertime };
+    const valorizationServiceName = getValorizationServiceName(valorization);
+    const overtimeKind = overtimeKindFromValorization(valorization);
+    return {
+      ...entry,
+      isOvertime: overtimeKind != null,
+      overtimeKind,
+      valorizationServiceName,
+    };
   });
 
   // Para alertas/almoço, consideramos apenas jornada regular (HORA NORMAL),

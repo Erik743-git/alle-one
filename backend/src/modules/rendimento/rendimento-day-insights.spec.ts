@@ -7,6 +7,11 @@ describe('rendimento-day-insights', () => {
   it('marca hora extra apenas pelo tipo de valorization', () => {
     expect(
       isOvertimeValorization({
+        loose_service: { name: 'PLANTÃO' },
+      }),
+    ).toBe(true);
+    expect(
+      isOvertimeValorization({
         loose_service: { name: 'HORA EXTRA' },
       }),
     ).toBe(true);
@@ -61,6 +66,29 @@ describe('rendimento-day-insights', () => {
     expect(enriched.every((e) => !e.isOvertime)).toBe(true);
     expect(insights.hasOvertime).toBe(false);
     expect(insights.overtimeMinutes).toBe(0);
+  });
+
+  it('classifica plantão com overtimeKind e nome do serviço TiFlux', () => {
+    const { entries } = analyzeRendimentoDay(
+      [
+        {
+          id: 99,
+          date: '2026-05-27',
+          initTime: '00:00:00',
+          endTime: '00:50:00',
+          minutes: 50,
+          hoursFormatted: '00:50',
+          ticketNumber: 70072,
+          clientName: 'TUPER',
+          description: 'Reset RDP',
+        },
+      ],
+      new Map([[99, { loose_service: { name: 'PLANTÃO' } }]]),
+    );
+
+    expect(entries[0].overtimeKind).toBe('PLANTAO');
+    expect(entries[0].valorizationServiceName).toBe('PLANTÃO');
+    expect(entries[0].isOvertime).toBe(true);
   });
 
   it('sem intervalo > 1h entre apontamentos não gera alerta entre eles, mas alerta no fim do dia', () => {

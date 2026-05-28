@@ -38,6 +38,7 @@ export class RendimentoController {
 
   @Get('collaborators')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN')
   listCollaborators() {
     return this.rendimentoService.listCollaborators();
   }
@@ -45,10 +46,12 @@ export class RendimentoController {
   @Get('users/:userId/timesheet')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   getTimesheet(
+    @Req() req: AuthenticatedRequest,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Query() query: RendimentoTimesheetQueryDto,
   ) {
     return this.rendimentoService.getTimesheet({
+      actor: req.user,
       userId,
       view: query.view,
       date: query.date,

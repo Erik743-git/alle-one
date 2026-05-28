@@ -29,6 +29,8 @@ export type RendimentoEntryDto = {
   clientName: string | null;
   description: string | null;
   isOvertime: boolean;
+  overtimeKind?: 'EXTRA' | 'PLANTAO' | null;
+  valorizationServiceName?: string | null;
 };
 
 type RendimentoJustificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -38,6 +40,8 @@ export type RendimentoGapJustificationDto = {
   id: string;
   kind: RendimentoJustificationKind;
   status: RendimentoJustificationStatus;
+  /** Tipo informado pelo colaborador (pode corrigir almoço vs alerta). */
+  gapType: 'idle' | 'lunch';
   reason: string;
   debitOvertime: boolean;
   overtimeMinutes: number;
@@ -500,6 +504,7 @@ export class RendimentoService {
       id: row.id,
       kind: row.kind,
       status: row.status,
+      gapType: row.gap_type,
       reason: row.reason,
       debitOvertime: Boolean(row.debit_overtime),
       overtimeMinutes: Number(row.overtime_minutes) || 0,
@@ -508,6 +513,19 @@ export class RendimentoService {
       approvedBy: row.approved_by,
       approvedAt: row.approved_at,
     };
+  }
+
+  private gapLabelForType(
+    type: 'idle' | 'lunch',
+    gapMinutes: number,
+  ): string {
+    if (type === 'lunch') {
+      const h = Math.floor(gapMinutes / 60);
+      const m = gapMinutes % 60;
+      const formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      return `Almoço (${formatted})`;
+    }
+    return `${gapMinutes} min sem apontamento`;
   }
 
   private overlaps(
@@ -530,20 +548,28 @@ export class RendimentoService {
   ): RendimentoDayInsightsDto {
     const gaps = insights.gaps.map((gap) => {
       const matched = dayJustifications.find((j) => {
-        if (j.gap_type !== gap.type) return false;
         if (j.from_time === gap.fromTime && j.to_time === gap.toTime) return true;
         return this.overlaps(gap.fromTime, gap.toTime, j.from_time, j.to_time);
       });
       if (!matched) return gap;
+
+      const justification = this.mapJustificationDto(matched);
+      const suffix =
+        matched.status === 'APPROVED'
+          ? ' · justificado'
+          : matched.status === 'PENDING'
+            ? ' · justificativa pendente'
+            : ' · justificativa rejeitada';
+
+      const userGapType = matched.gap_type as 'idle' | 'lunch';
+      const effectiveType =
+        matched.status === 'APPROVED' ? userGapType : gap.type;
+
       return {
         ...gap,
-        label:
-          matched.status === 'APPROVED'
-            ? `${gap.label} · justificado`
-            : matched.status === 'PENDING'
-              ? `${gap.label} · justificativa pendente`
-              : `${gap.label} · justificativa rejeitada`,
-        justification: this.mapJustificationDto(matched),
+        type: effectiveType,
+        label: `${this.gapLabelForType(effectiveType, gap.gapMinutes)}${suffix}`,
+        justification,
       };
     });
 
@@ -558,6 +584,7 @@ export class RendimentoService {
     return {
       ...insights,
       hasIdleGapAlert,
+      hasExpectedLunch: gaps.some((g) => g.type === 'lunch'),
       gaps,
     };
   }
@@ -574,6 +601,8 @@ export class RendimentoService {
       clientName: row.client_name,
       description: row.description,
       isOvertime: false,
+      overtimeKind: null,
+      valorizationServiceName: null,
     }));
   }
 
@@ -682,10 +711,12 @@ export class RendimentoService {
   }
 
   async getTimesheet(params: {
+    actor: AuthenticatedRequestUser;
     userId: string;
     view: RendimentoCalendarView;
     date?: string;
   }): Promise<RendimentoTimesheetDto> {
+    this.assertCanManageTargetUser(params.actor, params.userId);
     const user = await this.prisma.user.findFirst({
       where: {
         id: params.userId,

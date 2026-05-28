@@ -45,11 +45,9 @@ export default function RendimentoAgendaPage() {
   const [justDate, setJustDate] = useState("");
   const [justFrom, setJustFrom] = useState("");
   const [justTo, setJustTo] = useState("");
-  const [justGapType, setJustGapType] = useState<"idle" | "lunch">("idle");
-  const [justGapMinutes, setJustGapMinutes] = useState(60);
+  const [defineLunch, setDefineLunch] = useState(false);
   const [justReason, setJustReason] = useState("");
   const [debitOvertime, setDebitOvertime] = useState(false);
-  const [debitMinutes, setDebitMinutes] = useState(60);
   const authUser = getStoredUser();
   const canApprove = authUser?.role === "ADMIN";
 
@@ -80,6 +78,15 @@ export default function RendimentoAgendaPage() {
     void loadTimesheet();
   }, [loadTimesheet]);
 
+  function minutesBetweenTimes(from: string, to: string): number {
+    const parse = (value: string) => {
+      const [h, m] = value.split(":").map((part) => Number(part));
+      return (h || 0) * 60 + (m || 0);
+    };
+    const diff = parse(to) - parse(from);
+    return diff > 0 ? diff : 1;
+  }
+
   function openAlertJustification(params: {
     date: string;
     fromTime: string;
@@ -91,9 +98,7 @@ export default function RendimentoAgendaPage() {
     setJustDate(params.date);
     setJustFrom(params.fromTime);
     setJustTo(params.toTime);
-    setJustGapType(params.gapType);
-    setJustGapMinutes(params.gapMinutes);
-    setDebitMinutes(params.gapMinutes);
+    setDefineLunch(params.gapType === "lunch");
     setJustReason("");
     setDebitOvertime(false);
     setJustModalOpen(true);
@@ -104,9 +109,7 @@ export default function RendimentoAgendaPage() {
     setJustDate(params.date);
     setJustFrom("12:00");
     setJustTo("13:30");
-    setJustGapType("idle");
-    setJustGapMinutes(90);
-    setDebitMinutes(90);
+    setDefineLunch(true);
     setJustReason("");
     setDebitOvertime(false);
     setJustModalOpen(true);
@@ -121,17 +124,17 @@ export default function RendimentoAgendaPage() {
     try {
       setSaving(true);
       setError("");
+      const gapMinutes = minutesBetweenTimes(justFrom, justTo);
       await rendimentoService.createJustification({
         userId,
         date: justDate,
         fromTime: justFrom,
         toTime: justTo,
-        gapType: justGapType,
-        gapMinutes: justGapMinutes,
+        gapType: defineLunch ? "lunch" : "idle",
+        gapMinutes,
         kind: justMode,
         reason: justReason.trim(),
         debitOvertime,
-        overtimeMinutes: debitOvertime ? debitMinutes : 0,
       });
       setJustModalOpen(false);
       await loadTimesheet();
@@ -226,20 +229,27 @@ export default function RendimentoAgendaPage() {
                       onChange={(e) => setJustTo(e.target.value)}
                     />
                   </div>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={1440}
-                    value={justGapMinutes}
-                    onChange={(e) => setJustGapMinutes(Number(e.target.value) || 0)}
-                    placeholder="Minutos da lacuna"
-                  />
                   <Textarea
                     value={justReason}
                     onChange={(e) => setJustReason(e.target.value)}
                     placeholder="Descreva a justificativa (ex.: consulta médica)."
                     className="min-h-[120px]"
                   />
+                  {justMode === "ALERT" ? (
+                    <label className="flex items-start gap-2 text-sm text-foreground">
+                      <FlipCheckbox
+                        checked={defineLunch}
+                        onChange={(e) => setDefineLunch(e.target.checked)}
+                      />
+                      <span>
+                        Definir almoço
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Marque se este intervalo é almoço e o sistema marcou como alerta por engano.
+                          Desmarque se não for almoço.
+                        </span>
+                      </span>
+                    </label>
+                  ) : null}
                   <label className="flex items-center gap-2 text-sm text-foreground">
                     <FlipCheckbox
                       checked={debitOvertime}
@@ -247,16 +257,6 @@ export default function RendimentoAgendaPage() {
                     />
                     Debitar horas extras
                   </label>
-                  {debitOvertime ? (
-                    <Input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={debitMinutes}
-                      onChange={(e) => setDebitMinutes(Number(e.target.value) || 0)}
-                      placeholder="Minutos para debitar de HE"
-                    />
-                  ) : null}
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"

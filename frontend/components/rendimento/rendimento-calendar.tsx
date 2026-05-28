@@ -23,12 +23,21 @@ import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 
 import {
   buildDayTimeline,
+  dayInsightsForDisplay,
   RendimentoDayIndicators,
   RendimentoEntryCard,
   RendimentoGapBlock,
   RendimentoLegend,
 } from "@/components/rendimento/rendimento-calendar-parts";
+import {
+  RendimentoOvertimeBadge,
+  RendimentoOvertimeServiceLine,
+} from "@/components/rendimento/rendimento-overtime-badge";
 import { Button } from "@/components/ui/button";
+import {
+  rendimentoOvertimeCardClass,
+  resolveRendimentoOvertimeDisplay,
+} from "@/lib/rendimento/entry-overtime";
 import { cn } from "@/lib/utils";
 import type {
   RendimentoCalendarView,
@@ -226,7 +235,7 @@ export function RendimentoCalendar({
                   className={cn(
                     "min-h-[96px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
                     !inMonth && "bg-muted/20 text-muted-foreground",
-                    summary?.insights?.hasIdleGapAlert &&
+                    dayInsightsForDisplay(summary)?.hasIdleGapAlert &&
                       "ring-1 ring-inset ring-orange-500/50",
                   )}
                 >
@@ -266,7 +275,7 @@ export function RendimentoCalendar({
                 className={cn(
                   "flex min-h-[220px] flex-col rounded-xl border border-border bg-card p-2",
                   isToday && "ring-2 ring-primary/40",
-                  summary?.insights?.hasIdleGapAlert && "border-orange-500/50",
+                  dayInsightsForDisplay(summary)?.hasIdleGapAlert && "border-orange-500/50",
                 )}
               >
                 <div className="mb-2 border-b border-border pb-2">
@@ -389,25 +398,27 @@ export function RendimentoCalendar({
                     key={item.entry.id}
                     className={cn(
                       "flex flex-col gap-1 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
-                      item.entry.isOvertime
-                        ? "border-amber-500/50 bg-amber-500/10"
-                        : "border-border bg-muted/20",
+                      (() => {
+                        const overtime = resolveRendimentoOvertimeDisplay(item.entry);
+                        return overtime.kind
+                          ? rendimentoOvertimeCardClass(overtime.kind)
+                          : "border-border bg-muted/20";
+                      })(),
                     )}
                   >
                     <div>
                       <p className="font-semibold text-foreground">
                         {item.entry.initTime?.slice(0, 5) ?? "—"} –{" "}
                         {item.entry.endTime?.slice(0, 5) ?? "—"}
-                        {item.entry.isOvertime ? (
-                          <span className="ml-2 rounded bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                            HORA EXTRA
-                          </span>
-                        ) : null}
+                        <span className="ml-2">
+                          <RendimentoOvertimeBadge entry={item.entry} />
+                        </span>
                       </p>
                       <p className="text-sm text-muted-foreground">
                         Ticket #{item.entry.ticketNumber}
                         {item.entry.clientName ? ` · ${item.entry.clientName}` : ""}
                       </p>
+                      <RendimentoOvertimeServiceLine entry={item.entry} />
                       {item.entry.description ? (
                         <p className="mt-1 text-sm text-foreground/80">
                           {item.entry.description}
@@ -417,9 +428,16 @@ export function RendimentoCalendar({
                     <span
                       className={cn(
                         "shrink-0 rounded-lg px-3 py-1 text-sm font-bold",
-                        item.entry.isOvertime
-                          ? "bg-amber-500/25 text-amber-800 dark:text-amber-200"
-                          : "bg-primary/15 text-primary",
+                        (() => {
+                          const overtime = resolveRendimentoOvertimeDisplay(item.entry);
+                          if (overtime.kind === "PLANTAO") {
+                            return "bg-violet-500/25 text-violet-900 dark:text-violet-100";
+                          }
+                          if (overtime.kind === "EXTRA") {
+                            return "bg-amber-500/25 text-amber-800 dark:text-amber-200";
+                          }
+                          return "bg-primary/15 text-primary";
+                        })(),
                       )}
                     >
                       {item.entry.hoursFormatted}
