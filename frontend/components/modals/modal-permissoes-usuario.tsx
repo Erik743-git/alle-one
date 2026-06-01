@@ -21,7 +21,6 @@ const MODULOS: { label: string; key: PermissionModuleKey }[] = [
   { label: "Dashboard", key: "DASHBOARD" },
   { label: "Financeiro", key: "FINANCIAL" },
   { label: "GMUD", key: "GMUD" },
-  { label: "Relatórios", key: "REPORTS" },
   { label: "Rendimento", key: "RENDIMENTO" },
   { label: "Correio", key: "CORREIO" },
   { label: "Inventário", key: "INVENTARIO" },

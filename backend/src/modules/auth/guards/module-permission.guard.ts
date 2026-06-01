@@ -38,6 +38,12 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
+    if (meta.module === ('REPORTS' as PermissionModule)) {
+      throw new ForbiddenException(
+        'Relatórios disponíveis apenas para administradores.',
+      );
+    }
+
     // Regra de produto: Dashboard é sempre visível para usuários não-admin autenticados.
     // (O backend ainda aplica o escopo por empresa para CLIENT via DashboardService.)
     if (

@@ -50,7 +50,6 @@ function getModuleEntry(module: PermissionModuleKey) {
 const COLLABORATOR_DEFAULT_VIEW: PermissionModuleKey[] = [
   "DASHBOARD",
   "GMUD",
-  "REPORTS",
   "CORREIO",
   "INVENTARIO",
 ];
@@ -58,7 +57,6 @@ const COLLABORATOR_DEFAULT_VIEW: PermissionModuleKey[] = [
 const PJ_DEFAULT_VIEW: PermissionModuleKey[] = [
   "DASHBOARD",
   "GMUD",
-  "REPORTS",
   "CORREIO",
 ];
 
@@ -109,7 +107,7 @@ export function canAccessGmud() {
 }
 
 export function canAccessRelatorios() {
-  return canViewModule("REPORTS");
+  return isAdmin();
 }
 
 export function canAccessDashboard() {

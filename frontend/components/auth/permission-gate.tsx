@@ -7,7 +7,7 @@ import type {
   PermissionFlag,
   PermissionModuleKey,
 } from "@/lib/permission-modules";
-import { hasPermission } from "@/lib/access-control";
+import { canAccessRelatorios, hasPermission } from "@/lib/access-control";
 
 type Props = {
   module: PermissionModuleKey;
@@ -22,7 +22,10 @@ export default function PermissionGate({
   children,
 }: Props) {
   const router = useRouter();
-  const allowed = hasPermission(module, flag);
+  const allowed =
+    module === "REPORTS" && flag === "canView"
+      ? canAccessRelatorios()
+      : hasPermission(module, flag);
 
   useEffect(() => {
     if (!allowed) {

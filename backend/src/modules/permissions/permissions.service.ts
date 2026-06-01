@@ -47,13 +47,6 @@ const ROLE_FALLBACK: Record<
       canDelete: false,
       canApprove: true,
     },
-    REPORTS: {
-      canView: true,
-      canCreate: false,
-      canEdit: false,
-      canDelete: false,
-      canApprove: false,
-    },
     MONITORING: {
       canView: true,
       canCreate: false,
@@ -112,13 +105,6 @@ const ROLE_FALLBACK: Record<
       canDelete: false,
       canApprove: true,
     },
-    REPORTS: {
-      canView: true,
-      canCreate: false,
-      canEdit: false,
-      canDelete: false,
-      canApprove: false,
-    },
     MONITORING: {
       canView: true,
       canCreate: false,
@@ -169,13 +155,6 @@ const ROLE_FALLBACK: Record<
       canEdit: true,
       canDelete: false,
       canApprove: true,
-    },
-    REPORTS: {
-      canView: true,
-      canCreate: false,
-      canEdit: false,
-      canDelete: false,
-      canApprove: false,
     },
     MONITORING: {
       canView: true,
