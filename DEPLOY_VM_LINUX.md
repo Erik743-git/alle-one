@@ -97,6 +97,10 @@ CORS_ORIGINS="http://alleone.alletecnologia.com:8000"
 
 FRONTEND_URL=http://alleone.alletecnologia.com:8000
 
+# HTTP sem HTTPS na porta 8000: cookie não pode ser Secure (senão login “reinicia” a página)
+AUTH_COOKIE_SECURE=false
+# Não defina AUTH_COOKIE_DOMAIN enquanto usar host:porta (deixe vazio/comentado)
+
 # TiFlux / SMTP / Zabbix — copie do .env de desenvolvimento se usar
 TIFLUX_API_URL=https://api.tiflux.com/api/v2
 TIFLUX_TOKEN=
@@ -251,6 +255,8 @@ pm2 restart alleone-api alleone-web
 | Prisma P1001 | Postgres rodando; `DATABASE_URL` com senha encoded |
 | Porta 3000 ocupada | `pm2 delete site-node`; só `alleone-web` na 3000 |
 | CORS | `CORS_ORIGINS` = URL exata do browser (`http://alleone...:8000`) |
+| Login “reinicia” / volta ao login sem erro | HTTP + cookie `Secure` → `AUTH_COOKIE_SECURE=false` e `pm2 restart alleone-api` |
+| `must be owner of table` após restore | `ALTER TABLE ... OWNER TO uportal` em `public` e `tiflux` |
 
 ---
 
@@ -261,6 +267,7 @@ Quando tiver certificado ou proxy TLS na frente, atualize:
 - `CORS_ORIGINS` → `https://alleone.alletecnologia.com`
 - `NEXT_PUBLIC_API_URL` → `https://alleone.alletecnologia.com`  
   (rebuild do frontend obrigatório)
+- `AUTH_COOKIE_SECURE=true` (ou remova a linha; padrão em HTTPS)
 
 ---
 

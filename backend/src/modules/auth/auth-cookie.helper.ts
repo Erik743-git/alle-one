@@ -11,6 +11,19 @@ function parseSameSite(
   return 'lax';
 }
 
+/** Em HTTP (ex.: :8000 sem TLS) use AUTH_COOKIE_SECURE=false no .env */
+function cookieSecure(sameSite: 'strict' | 'lax' | 'none' | boolean): boolean {
+  const raw = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
+  if (raw === 'false' || raw === '0' || raw === 'no') {
+    return false;
+  }
+  if (raw === 'true' || raw === '1' || raw === 'yes') {
+    return true;
+  }
+  const isProd = process.env.NODE_ENV === 'production';
+  return isProd || sameSite === 'none';
+}
+
 export function jwtCookieMaxAgeMs(): number {
   const raw = process.env.JWT_EXPIRES_IN?.trim() || '1d';
   const m = /^(\d+)([smhd])$/i.exec(raw);
@@ -28,10 +41,9 @@ export function attachAccessTokenCookie(
   res: Response,
   accessToken: string,
 ): void {
-  const isProd = process.env.NODE_ENV === 'production';
   const domain = process.env.AUTH_COOKIE_DOMAIN?.trim();
   const sameSite = parseSameSite(process.env.AUTH_COOKIE_SAMESITE);
-  const secure = isProd || sameSite === 'none';
+  const secure = cookieSecure(sameSite);
 
   res.cookie(ACCESS_TOKEN_COOKIE, accessToken, {
     httpOnly: true,
@@ -44,10 +56,9 @@ export function attachAccessTokenCookie(
 }
 
 export function clearAccessTokenCookie(res: Response): void {
-  const isProd = process.env.NODE_ENV === 'production';
   const domain = process.env.AUTH_COOKIE_DOMAIN?.trim();
   const sameSite = parseSameSite(process.env.AUTH_COOKIE_SAMESITE);
-  const secure = isProd || sameSite === 'none';
+  const secure = cookieSecure(sameSite);
 
   res.clearCookie(ACCESS_TOKEN_COOKIE, {
     httpOnly: true,
