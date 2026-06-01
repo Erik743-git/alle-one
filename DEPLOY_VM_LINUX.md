@@ -79,7 +79,7 @@ DATABASE_URL="postgresql://uportal:All3%402026%21%40%23@127.0.0.1:5432/portal?sc
 nano /home/alleone/producao/backend/.env
 ```
 
-Conteúdo mínimo (ajuste segredos e integrações):
+Conteúdo mínimo com **HTTPS na 443** (Nginx → front `3000`, API `3002`). Modelo completo: `backend/.env.production.vm.example`.
 
 ```env
 NODE_ENV=production
@@ -92,21 +92,18 @@ DATABASE_URL="postgresql://uportal:SENHA_URL_ENCODED@127.0.0.1:5432/portal?schem
 JWT_SECRET="gere_um_segredo_longo_aleatorio_32_chars_minimo"
 JWT_EXPIRES_IN=1d
 
-# Mesma origem pública do navegador (porta 8000)
-CORS_ORIGINS="http://alleone.alletecnologia.com:8000"
+# Domínio público (sem porta — o certificado SSL está na 443)
+CORS_ORIGINS="https://alleone.alletecnologia.com"
+FRONTEND_URL=https://alleone.alletecnologia.com
 
-FRONTEND_URL=http://alleone.alletecnologia.com:8000
-
-# HTTP sem HTTPS na porta 8000: cookie não pode ser Secure (senão login “reinicia” a página)
-AUTH_COOKIE_SECURE=false
-# Não defina AUTH_COOKIE_DOMAIN enquanto usar host:porta (deixe vazio/comentado)
+# Em HTTPS: NÃO use AUTH_COOKIE_SECURE=false
 
 # TiFlux / SMTP / Zabbix — copie do .env de desenvolvimento se usar
 TIFLUX_API_URL=https://api.tiflux.com/api/v2
 TIFLUX_TOKEN=
 TIFLUX_RUNTIME_API=false
 TIFLUX_UNSAFE_ENDPOINTS=false
-# Sincronização do schema tiflux.*: projeto separado alleone-tiflux-sync (ver docs na VM em /home/alleone/docs/)
+# Sync schema tiflux.*: projeto alleone-tiflux-sync (não use TIFLUX_SYNC_* no portal)
 ```
 
 Build e migrations:
@@ -140,9 +137,11 @@ Crie `.env.production` (ou exporte antes do build):
 
 ```bash
 cat > .env.production << 'EOF'
-NEXT_PUBLIC_API_URL=http://alleone.alletecnologia.com:8000
+NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com
 EOF
 ```
+
+Modelo: `frontend/.env.production.example`.
 
 ```bash
 npm ci
