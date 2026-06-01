@@ -175,24 +175,61 @@ curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3002/
 
 ---
 
-## 7. Nginx — porta 8000 (proxy + API no mesmo host)
+## 7. Nginx — portas 80 / 443 (recomendado) ou 8000
 
-Como o NAT/proxy público aponta para **8000**, o Nginx escuta 8000 e:
+O Nginx na VM encaminha:
 
-- envia **páginas** → frontend `3000`
-- envia **rotas da API** → backend `3002`
+- **páginas** → frontend `3000`
+- **rotas da API** → backend `3002`
+
+Arquivo versionado: `deploy/nginx-alleone.conf` (escuta **80**; **8000** só redireciona para 80).
 
 ```bash
-# Copie o arquivo versionado (evita mandar /dashboard para a API → JSON 404)
+# Desative site antigo na 80 se existir (ex.: node3000)
+sudo rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/node3000 2>/dev/null || true
+
 sudo cp /home/alleone/producao/deploy/nginx-alleone.conf /etc/nginx/sites-available/alleone
 sudo ln -sf /etc/nginx/sites-available/alleone /etc/nginx/sites-enabled/alleone
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-O arquivo `deploy/nginx-alleone.conf` separa **páginas** (`/login`, `/dashboard`, `/admin`, `/rendimento`) → Next **3000** e **endpoints** da API (`/dashboard/complete`, `/admin/overview-stats`, etc.) → Nest **3002**.
+Acesso: **http://alleone.alletecnologia.com/** (sem porta).
 
-Acesso: **http://alleone.alletecnologia.com:8000/**
+### URLs e `.env` (obrigatório ao mudar de :8000)
+
+**Backend** `backend/.env`:
+
+```env
+CORS_ORIGINS="http://alleone.alletecnologia.com"
+FRONTEND_URL=http://alleone.alletecnologia.com
+AUTH_COOKIE_SECURE=false
+```
+
+**Frontend** `frontend/.env.production`:
+
+```env
+NEXT_PUBLIC_API_URL=http://alleone.alletecnologia.com
+```
+
+```bash
+sudo -u alleone bash -lc 'cd /home/alleone/producao/backend && npm run build'
+sudo -u alleone bash -lc 'cd /home/alleone/producao/frontend && npm run build'
+sudo -u alleone pm2 restart alleone-api alleone-web
+```
+
+### HTTPS na 443 (quando tiver certificado)
+
+Com Let's Encrypt (domínio público resolvendo para a VM):
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d alleone.alletecnologia.com
+```
+
+Ou copie `deploy/nginx-alleone-ssl.conf.example`, ajuste caminhos do certificado e habilite o site.
+
+Depois use **https** em `CORS_ORIGINS`, `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, remova `AUTH_COOKIE_SECURE=false` (cookies Secure em HTTPS), rebuild front + `pm2 restart alleone-api`.
 
 ---
 
@@ -226,7 +263,7 @@ pm2 restart alleone-api alleone-web
 | `JWT_SECRET é obrigatório` | `backend/.env` com `JWT_SECRET` |
 | Prisma P1001 | Postgres rodando; `DATABASE_URL` com senha encoded |
 | Porta 3000 ocupada | `pm2 delete site-node`; só `alleone-web` na 3000 |
-| CORS | `CORS_ORIGINS` = URL exata do browser (`http://alleone...:8000`) |
+| CORS | `CORS_ORIGINS` = URL exata do browser (sem barra no final; ex. `http://alleone.alletecnologia.com`) |
 | Login “reinicia” / volta ao login sem erro | HTTP + cookie `Secure` → `AUTH_COOKIE_SECURE=false` e `pm2 restart alleone-api` |
 | `Cannot GET /dashboard` (JSON 404) | Nginx antigo mandava `/dashboard` para a API → `sudo cp deploy/nginx-alleone.conf /etc/nginx/sites-available/alleone` e `reload` |
 | Login/páginas “off” ou 502 | `pm2 status`; `curl -I http://127.0.0.1:3000/login`; subir `alleone-web` |
@@ -234,14 +271,9 @@ pm2 restart alleone-api alleone-web
 
 ---
 
-## 10. HTTPS (depois)
+## 10. HTTPS (443)
 
-Quando tiver certificado ou proxy TLS na frente, atualize:
-
-- `CORS_ORIGINS` → `https://alleone.alletecnologia.com`
-- `NEXT_PUBLIC_API_URL` → `https://alleone.alletecnologia.com`  
-  (rebuild do frontend obrigatório)
-- `AUTH_COOKIE_SECURE=true` (ou remova a linha; padrão em HTTPS)
+Ver seção 7 (`certbot` ou `nginx-alleone-ssl.conf.example`).
 
 ---
 
@@ -252,5 +284,5 @@ Quando tiver certificado ou proxy TLS na frente, atualize:
 - [ ] `npm run build` + `prisma migrate deploy` no backend
 - [ ] `NEXT_PUBLIC_API_URL` + `npm run build` no frontend
 - [ ] `pm2 start deploy/ecosystem.config.cjs`
-- [ ] Nginx na 8000 apontando 3000 + 3002
+- [ ] Nginx na **80** (e **443** se HTTPS) apontando 3000 + 3002
 - [ ] Teste login no navegador

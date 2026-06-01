@@ -1,13 +1,18 @@
-# Alle One — Nginx (VM Linux)
-# Páginas Next → 3000 | API Nest → 3002
+# Alle One — HTTPS (porta 443)
+# Copie para /etc/nginx/sites-available/alleone-ssl e ajuste os caminhos do certificado.
+# Ou use: sudo certbot --nginx -d alleone.alletecnologia.com
 #
-# Portas públicas recomendadas: 80 (HTTP) e/ou 443 (HTTPS).
-# A 8000 abaixo só redireciona para quem ainda usa links antigos.
+# Depois de ativar 443, use URLs https:// sem porta e:
+#   CORS_ORIGINS / NEXT_PUBLIC_API_URL / FRONTEND_URL → https://alleone.alletecnologia.com
+#   AUTH_COOKIE_SECURE=true (ou remova AUTH_COOKIE_SECURE=false)
+#   rebuild frontend + pm2 restart alleone-api
 
-# --- HTTP (porta 80) ---
 server {
-    listen 80;
+    listen 443 ssl http2;
     server_name alleone.alletecnologia.com;
+
+    ssl_certificate     /etc/letsencrypt/live/alleone.alletecnologia.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/alleone.alletecnologia.com/privkey.pem;
 
     client_max_body_size 25m;
 
@@ -57,9 +62,9 @@ server {
     }
 }
 
-# Redireciona links antigos :8000 → :80
+# HTTP → HTTPS (opcional, após 443 ativo)
 server {
-    listen 8000;
+    listen 80;
     server_name alleone.alletecnologia.com;
-    return 301 http://$host$request_uri;
+    return 301 https://$host$request_uri;
 }
