@@ -20,7 +20,7 @@ export function RendimentoLegend() {
       <span className="font-semibold text-foreground">Legenda:</span>
       <span className="inline-flex items-center gap-1.5">
         <span className="size-2.5 rounded-sm bg-amber-500" />
-        Hora extra (do dia 25 ao dia 24)
+        Hora extra (do dia 26 ao dia 25)
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className="size-2.5 rounded-sm bg-violet-600" />

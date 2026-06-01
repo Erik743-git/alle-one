@@ -200,11 +200,11 @@ export function RendimentoCalendar({
               Horas extras
               {!loading && timesheet?.periodOvertimeRangeLabel ? (
                 <span className="block text-[11px] font-normal">
-                  Período {timesheet.periodOvertimeRangeLabel} (dia 25 ao 24)
+                  Período {timesheet.periodOvertimeRangeLabel} (dia 26 ao 25)
                 </span>
               ) : (
                 <span className="block text-[11px] font-normal">
-                  Período dia 25 ao dia 24
+                  Período dia 26 ao dia 25
                 </span>
               )}
             </p>

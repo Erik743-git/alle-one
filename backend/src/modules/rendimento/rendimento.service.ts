@@ -338,9 +338,8 @@ export class RendimentoService {
       return { start, end };
     }
 
-    start.setDate(1);
-    end.setMonth(end.getMonth() + 1, 0);
-    return { start, end };
+    const payroll = resolvePayrollPeriodRange(reference);
+    return { start: payroll.start, end: payroll.end };
   }
 
   private normalizeEmail(email: string): string {

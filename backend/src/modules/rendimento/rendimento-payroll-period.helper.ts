@@ -1,4 +1,4 @@
-/** Período de referência do rendimento: dia 25 até dia 24 do mês seguinte. */
+/** Período de referência do rendimento: dia 26 até dia 25 do mês seguinte. */
 
 export type PayrollPeriodRange = {
   start: Date;
@@ -22,7 +22,7 @@ function formatShortPtBr(date: Date): string {
   });
 }
 
-/** Retorna o intervalo 25→24 que contém a data de referência. */
+/** Retorna o intervalo 26→25 que contém a data de referência. */
 export function resolvePayrollPeriodRange(reference: Date): PayrollPeriodRange {
   const ref = new Date(reference);
   ref.setHours(0, 0, 0, 0);
@@ -34,12 +34,12 @@ export function resolvePayrollPeriodRange(reference: Date): PayrollPeriodRange {
   let start: Date;
   let end: Date;
 
-  if (day >= 25) {
-    start = new Date(year, month, 25);
-    end = new Date(year, month + 1, 24);
+  if (day >= 26) {
+    start = new Date(year, month, 26);
+    end = new Date(year, month + 1, 25);
   } else {
-    start = new Date(year, month - 1, 25);
-    end = new Date(year, month, 24);
+    start = new Date(year, month - 1, 26);
+    end = new Date(year, month, 25);
   }
 
   start.setHours(0, 0, 0, 0);
