@@ -131,17 +131,20 @@ export function canAccessCorreio() {
 }
 
 export function canAccessInventario() {
-  if (isClient() || isPj()) return false;
+  if (isPj()) return false;
+  if (isClient()) return true;
   return isAdmin() || isCollaborator() || canViewModule("INVENTARIO");
 }
 
 export function canEditInventario() {
+  if (isClient() || isPj()) return false;
   if (isAdmin()) return true;
   if (hasPermission("INVENTARIO", "canEdit")) return true;
   return isCollaborator() && canAccessInventario();
 }
 
 export function canDeleteInventario() {
+  if (isClient() || isPj()) return false;
   if (isAdmin()) return true;
   if (hasPermission("INVENTARIO", "canDelete")) return true;
   return isCollaborator() && canAccessInventario();

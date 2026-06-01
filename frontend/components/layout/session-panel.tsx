@@ -3,22 +3,8 @@
 import { useRouter } from "next/navigation";
 import { LogOut, Shield, User2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { roleDisplayLabel } from "@/lib/app-roles";
 import { clearSession, getStoredUser } from "@/lib/session";
-
-function getRoleLabel(role?: string) {
-  switch (role) {
-    case "ADMIN":
-      return "Admin";
-    case "COLLABORATOR":
-      return "Colaborador";
-    case "PJ":
-      return "PJ";
-    case "CLIENT":
-      return "Cliente";
-    default:
-      return "Usuário";
-  }
-}
 
 export default function SessionPanel({ collapsed = false }: { collapsed?: boolean }) {
   const router = useRouter();
@@ -69,7 +55,7 @@ export default function SessionPanel({ collapsed = false }: { collapsed?: boolea
           <p className="truncate text-xs text-muted-foreground">{user.email}</p>
           <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             <Shield size={12} />
-            {getRoleLabel(user.role)}
+            {roleDisplayLabel(user.role)}
           </div>
         </div>
       </div>

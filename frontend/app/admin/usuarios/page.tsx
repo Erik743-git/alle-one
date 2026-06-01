@@ -65,7 +65,7 @@ type UsuarioUI = {
   id: string;
   nome: string;
   email: string;
-  perfil: "Admin" | "Colaborador" | "PJ" | "Cliente";
+  perfil: "Admin" | "Colaborador" | "Terceiro" | "Cliente";
   status: "Ativo" | "Inativo";
 };
 
@@ -105,7 +105,7 @@ function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
     case "COLLABORATOR":
       return "Colaborador";
     case "PJ":
-      return "PJ";
+      return "Terceiro";
     case "CLIENT":
       return "Cliente";
     default:
@@ -927,7 +927,7 @@ export default function AdminUsuariosPage() {
                       { value: "ADMIN", label: "Administrador" },
                       { value: "CLIENT", label: "Cliente" },
                       { value: "COLLABORATOR", label: "Colaborador" },
-                      { value: "PJ", label: "PJ" },
+                      { value: "PJ", label: "Terceiro" },
                     ]}
                   />
                 </div>
@@ -953,7 +953,7 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-2">
                   <Label className="text-sm font-semibold text-foreground">
-                    Primeiro acesso
+                    Redefinir senha / primeiro acesso
                   </Label>
                   <SearchableSelectField
                     value={formEdicao.firstAccess ? "true" : "false"}

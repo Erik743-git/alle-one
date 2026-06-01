@@ -28,6 +28,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   canDeleteInventario,
   canEditInventario,
+  isClient,
 } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,11 @@ function formatDueDate(value: string | null) {
   return d.toLocaleDateString("pt-BR");
 }
 
+function formatReminder(days: number | null) {
+  if (days == null) return "—";
+  return `${days} dias antes`;
+}
+
 function isOverdue(value: string | null) {
   if (!value) return false;
   const due = new Date(`${value.slice(0, 10)}T12:00:00`);
@@ -56,6 +62,7 @@ function isOverdue(value: string | null) {
 export default function InventarioEmpresaPage() {
   const params = useParams<{ companyId: string }>();
   const companyId = params.companyId;
+  const clientUser = isClient();
 
   const [loading, setLoading] = useState(true);
   const [companyName, setCompanyName] = useState("");
@@ -111,13 +118,14 @@ export default function InventarioEmpresaPage() {
   }
 
   async function handleSave(payload: {
-    name: string;
-    unit: string;
+    assetTypeId: string;
+    description: string;
     dueDate: string;
-    notes: string;
+    reminderDaysBefore: string;
     file: File | null;
     removeAttachment: boolean;
     clearDueDate: boolean;
+    clearReminder: boolean;
   }) {
     if (!companyId) return;
     try {
@@ -126,10 +134,10 @@ export default function InventarioEmpresaPage() {
         await inventarioService.createAsset(
           companyId,
           {
-            name: payload.name,
-            unit: payload.unit || undefined,
+            assetTypeId: payload.assetTypeId,
+            description: payload.description || undefined,
             dueDate: payload.dueDate || undefined,
-            notes: payload.notes || undefined,
+            reminderDaysBefore: payload.reminderDaysBefore || undefined,
           },
           payload.file,
         );
@@ -138,11 +146,12 @@ export default function InventarioEmpresaPage() {
         await inventarioService.updateAsset(
           editing.id,
           {
-            name: payload.name,
-            unit: payload.unit,
+            assetTypeId: payload.assetTypeId,
+            description: payload.description,
             dueDate: payload.dueDate,
-            notes: payload.notes,
+            reminderDaysBefore: payload.reminderDaysBefore,
             clearDueDate: payload.clearDueDate,
+            clearReminder: payload.clearReminder,
             removeAttachment: payload.removeAttachment,
           },
           payload.file,
@@ -159,7 +168,8 @@ export default function InventarioEmpresaPage() {
   }
 
   async function handleDelete(asset: InventoryAsset) {
-    if (!window.confirm(`Excluir o ativo "${asset.name}"?`)) return;
+    const label = asset.assetTypeName || asset.name;
+    if (!window.confirm(`Excluir o ativo "${label}"?`)) return;
     try {
       setDeletingId(asset.id);
       await inventarioService.deleteAsset(asset.id);
@@ -179,12 +189,14 @@ export default function InventarioEmpresaPage() {
           <div className="font-sans w-full space-y-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-2 min-w-0">
-                <Button variant="ghost" size="sm" className="-ml-2 w-fit" asChild>
-                  <Link href="/inventario">
-                    <ArrowLeft className="h-4 w-4 mr-1" />
-                    Empresas
-                  </Link>
-                </Button>
+                {!clientUser ? (
+                  <Button variant="ghost" size="sm" className="-ml-2 w-fit" asChild>
+                    <Link href="/inventario">
+                      <ArrowLeft className="h-4 w-4 mr-1" />
+                      Empresas
+                    </Link>
+                  </Button>
+                ) : null}
                 <h1 className="text-2xl font-semibold tracking-tight truncate">
                   {companyName || "Inventário"}
                 </h1>
@@ -228,11 +240,12 @@ export default function InventarioEmpresaPage() {
               <Accordion type="multiple" className="rounded-lg border bg-card px-4">
                 {sortedAssets.map((asset) => {
                   const overdue = isOverdue(asset.dueDate);
+                  const title = asset.assetTypeName || asset.name;
                   return (
                     <AccordionItem key={asset.id} value={asset.id}>
                       <AccordionTrigger className="hover:no-underline py-3">
                         <div className="flex flex-1 min-w-0 items-center justify-between gap-3 pr-2">
-                          <span className="font-medium truncate">{asset.name}</span>
+                          <span className="font-medium truncate">{title}</span>
                           <span
                             className={cn(
                               "shrink-0 text-sm tabular-nums",
@@ -248,8 +261,12 @@ export default function InventarioEmpresaPage() {
                       <AccordionContent>
                         <dl className="grid gap-3 text-sm sm:grid-cols-2 pb-2">
                           <div>
-                            <dt className="text-muted-foreground">UN</dt>
-                            <dd>{asset.unit?.trim() || "—"}</dd>
+                            <dt className="text-muted-foreground">Tipo</dt>
+                            <dd>{asset.assetTypeName || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Lembrete</dt>
+                            <dd>{formatReminder(asset.reminderDaysBefore)}</dd>
                           </div>
                           <div>
                             <dt className="text-muted-foreground">Vencimento</dt>
@@ -258,9 +275,9 @@ export default function InventarioEmpresaPage() {
                             </dd>
                           </div>
                           <div className="sm:col-span-2">
-                            <dt className="text-muted-foreground">Observações</dt>
+                            <dt className="text-muted-foreground">Descrição</dt>
                             <dd className="whitespace-pre-wrap">
-                              {asset.notes?.trim() || "—"}
+                              {asset.description?.trim() || "—"}
                             </dd>
                           </div>
                           <div className="sm:col-span-2">
@@ -330,6 +347,7 @@ export default function InventarioEmpresaPage() {
             mode={modalMode}
             asset={editing}
             saving={saving}
+            canManageTypes={canEdit}
             onSubmit={handleSave}
           />
 

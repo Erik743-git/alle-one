@@ -65,7 +65,7 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('INVENTARIO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role === 'COLLABORATOR'
+      (user.role === 'COLLABORATOR' || user.role === 'CLIENT')
     ) {
       return true;
     }

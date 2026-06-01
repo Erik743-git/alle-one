@@ -58,7 +58,11 @@ const ModalAplicativos = dynamic(
 type MenuItem = {
   name: string;
   href?: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{
+    size?: number;
+    className?: string;
+    strokeWidth?: number;
+  }>;
   visible: boolean;
   action?: () => void;
   active?: boolean;

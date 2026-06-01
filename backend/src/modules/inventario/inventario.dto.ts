@@ -1,11 +1,17 @@
 import {
   IsDateString,
+  IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
   MinLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export const INVENTORY_REMINDER_DAYS = [90, 30, 15, 7] as const;
+export type InventoryReminderDays = (typeof INVENTORY_REMINDER_DAYS)[number];
 
 export class InventarioCompanyIdParamDto {
   @IsUUID()
@@ -17,53 +23,59 @@ export class InventarioAssetIdParamDto {
   id!: string;
 }
 
-export class CreateInventoryAssetDto {
+export class CreateInventoryAssetTypeDto {
   @IsString()
   @MinLength(1)
-  @MaxLength(255)
+  @MaxLength(120)
   name!: string;
+}
+
+export class CreateInventoryAssetDto {
+  @IsUUID()
+  assetTypeId!: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(120)
-  unit?: string;
+  @MaxLength(4000)
+  description?: string;
 
   @IsOptional()
   @IsDateString()
   dueDate?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(4000)
-  notes?: string;
+  @Type(() => Number)
+  @IsInt()
+  @IsIn(INVENTORY_REMINDER_DAYS)
+  reminderDaysBefore?: InventoryReminderDays;
 }
 
 export class UpdateInventoryAssetDto {
   @IsOptional()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(255)
-  name?: string;
+  @IsUUID()
+  assetTypeId?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(120)
-  unit?: string;
+  @MaxLength(4000)
+  description?: string;
 
   @IsOptional()
   @IsDateString()
   dueDate?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(4000)
-  notes?: string;
+  @Type(() => Number)
+  @IsInt()
+  @IsIn(INVENTORY_REMINDER_DAYS)
+  reminderDaysBefore?: InventoryReminderDays;
 
-  /** Envie string vazia para remover a data de vencimento. */
+  @IsOptional()
+  clearReminder?: string;
+
   @IsOptional()
   clearDueDate?: string;
 
-  /** Envie "true" para remover o anexo atual. */
   @IsOptional()
   removeAttachment?: string;
 }

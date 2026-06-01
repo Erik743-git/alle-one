@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   ChevronRight,
@@ -17,6 +18,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { isClient } from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -24,7 +26,23 @@ import {
   type InventoryCompany,
 } from "@/lib/services/inventario.service";
 
+function formatAssetsLabel(company: InventoryCompany) {
+  const countLabel = `${company.assetsCount} ${
+    company.assetsCount === 1 ? "ativo" : "ativos"
+  }`;
+  if (company.expiredCount <= 0) {
+    return { countLabel, expiredSuffix: null as string | null };
+  }
+  const expiredSuffix =
+    company.expiredCount === 1
+      ? "(vencido)"
+      : `(${company.expiredCount} vencidos)`;
+  return { countLabel, expiredSuffix };
+}
+
 export default function InventarioPage() {
+  const router = useRouter();
+  const clientUser = isClient();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [companies, setCompanies] = useState<InventoryCompany[]>([]);
@@ -36,6 +54,9 @@ export default function InventarioPage() {
       else setLoading(true);
       const data = await inventarioService.listCompanies();
       setCompanies(data);
+      if (clientUser && data.length === 1) {
+        router.replace(`/inventario/${data[0].id}`);
+      }
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível carregar as empresas.",
@@ -44,7 +65,7 @@ export default function InventarioPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [clientUser, router]);
 
   useEffect(() => {
     void load();
@@ -55,6 +76,9 @@ export default function InventarioPage() {
     if (!q) return companies;
     return companies.filter((c) => c.name.toLowerCase().includes(q));
   }, [companies, search]);
+
+  const redirectingClient =
+    clientUser && (loading || (companies.length === 1 && !search.trim()));
 
   return (
     <ProtectedPage>
@@ -68,36 +92,42 @@ export default function InventarioPage() {
                   Inventário
                 </h1>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Selecione uma empresa para ver e gerenciar os ativos do inventário.
+                  {clientUser
+                    ? "Visualize os ativos da sua empresa."
+                    : "Selecione uma empresa para ver e gerenciar os ativos do inventário."}
                 </p>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void load(true)}
-                disabled={refreshing || loading}
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")}
+              {!clientUser ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void load(true)}
+                  disabled={refreshing || loading}
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4 mr-2", refreshing && "animate-spin")}
+                  />
+                  Atualizar
+                </Button>
+              ) : null}
+            </div>
+
+            {!clientUser ? (
+              <div className="relative max-w-md">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="pl-9"
+                  placeholder="Buscar empresa…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
                 />
-                Atualizar
-              </Button>
-            </div>
+              </div>
+            ) : null}
 
-            <div className="relative max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Buscar empresa…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-
-            {loading ? (
+            {loading || redirectingClient ? (
               <div className="flex min-h-[30vh] items-center justify-center gap-2 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin" />
-                Carregando empresas…
+                Carregando inventário…
               </div>
             ) : filtered.length === 0 ? (
               <Card>
@@ -107,25 +137,33 @@ export default function InventarioPage() {
               </Card>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {filtered.map((company) => (
-                  <Link key={company.id} href={`/inventario/${company.id}`}>
-                    <Card className="h-full transition-colors hover:border-primary/40 hover:bg-muted/30">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Building2 className="h-4 w-4 shrink-0 text-primary" />
-                          <span className="truncate">{company.name}</span>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="flex items-center justify-between text-sm text-muted-foreground">
-                        <span>
-                          {company.assetsCount}{" "}
-                          {company.assetsCount === 1 ? "ativo" : "ativos"}
-                        </span>
-                        <ChevronRight className="h-4 w-4" />
-                      </CardContent>
-                    </Card>
-                  </Link>
-                ))}
+                {filtered.map((company) => {
+                  const { countLabel, expiredSuffix } = formatAssetsLabel(company);
+                  return (
+                    <Link key={company.id} href={`/inventario/${company.id}`}>
+                      <Card className="h-full transition-colors hover:border-primary/40 hover:bg-muted/30">
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            <Building2 className="h-4 w-4 shrink-0 text-primary" />
+                            <span className="truncate">{company.name}</span>
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="flex items-center justify-between text-sm text-muted-foreground">
+                          <span>
+                            {countLabel}
+                            {expiredSuffix ? (
+                              <span className="text-destructive font-medium">
+                                {" "}
+                                {expiredSuffix}
+                              </span>
+                            ) : null}
+                          </span>
+                          <ChevronRight className="h-4 w-4" />
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>

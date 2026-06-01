@@ -25,6 +25,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import {
   CreateInventoryAssetDto,
+  CreateInventoryAssetTypeDto,
   InventarioAssetIdParamDto,
   InventarioAttachmentQueryDto,
   InventarioCompanyIdParamDto,
@@ -36,17 +37,32 @@ import { InventarioService } from './inventario.service';
 @ApiBearerAuth()
 @Controller('inventario')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
-@Roles('ADMIN', 'COLLABORATOR')
 export class InventarioController {
   constructor(private readonly inventario: InventarioService) {}
 
+  @Get('asset-types')
+  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @RequirePermission(PermissionModule.INVENTARIO, 'canView')
+  listAssetTypes() {
+    return this.inventario.listAssetTypes();
+  }
+
+  @Post('asset-types')
+  @Roles('ADMIN', 'COLLABORATOR')
+  @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
+  createAssetType(@Body() body: CreateInventoryAssetTypeDto) {
+    return this.inventario.createAssetType(body);
+  }
+
   @Get('companies')
+  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
   @RequirePermission(PermissionModule.INVENTARIO, 'canView')
   listCompanies(@CurrentUser() user: AuthenticatedRequestUser) {
     return this.inventario.listCompanies(user);
   }
 
   @Get('companies/:companyId/assets')
+  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
   @RequirePermission(PermissionModule.INVENTARIO, 'canView')
   listAssets(
     @CurrentUser() user: AuthenticatedRequestUser,
@@ -56,6 +72,7 @@ export class InventarioController {
   }
 
   @Post('companies/:companyId/assets')
+  @Roles('ADMIN', 'COLLABORATOR')
   @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
   @UseInterceptors(FileInterceptor('file'))
   createAsset(
@@ -68,6 +85,7 @@ export class InventarioController {
   }
 
   @Patch('assets/:id')
+  @Roles('ADMIN', 'COLLABORATOR')
   @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
   @UseInterceptors(FileInterceptor('file'))
   updateAsset(
@@ -80,6 +98,7 @@ export class InventarioController {
   }
 
   @Delete('assets/:id')
+  @Roles('ADMIN', 'COLLABORATOR')
   @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
   deleteAsset(
     @CurrentUser() user: AuthenticatedRequestUser,
@@ -89,6 +108,7 @@ export class InventarioController {
   }
 
   @Get('attachments/:fileId')
+  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
   @RequirePermission(PermissionModule.INVENTARIO, 'canView')
   async downloadAttachment(
     @CurrentUser() user: AuthenticatedRequestUser,

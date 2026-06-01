@@ -80,7 +80,9 @@ export default function LoginPage() {
           const data = (await res.json()) as LoginResponse;
           if (data?.user) {
             setStoredUser(data.user);
-            router.replace("/dashboard");
+            router.replace(
+              data.user.firstAccess ? "/primeiro-acesso" : "/dashboard",
+            );
           }
         }
       } catch {

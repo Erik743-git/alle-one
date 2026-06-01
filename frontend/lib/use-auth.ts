@@ -64,14 +64,17 @@ export function useAuth() {
     if (!hydrated) {
       return;
     }
-    if (authenticated) {
+    if (!authenticated) {
+      clearSession();
+      if (!isPublicRoute(pathname)) {
+        router.replace("/login");
+      }
       return;
     }
-    clearSession();
-    if (!isPublicRoute(pathname)) {
-      router.replace("/login");
+    if (user?.firstAccess && pathname !== "/primeiro-acesso") {
+      router.replace("/primeiro-acesso");
     }
-  }, [hydrated, authenticated, pathname, router]);
+  }, [hydrated, authenticated, user, pathname, router]);
 
   return {
     loading,

@@ -13,16 +13,20 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type {
   CreateInventoryAssetDto,
+  CreateInventoryAssetTypeDto,
+  INVENTORY_REMINDER_DAYS,
   UpdateInventoryAssetDto,
 } from './inventario.dto';
 
 export type InventoryAssetDto = {
   id: string;
   companyId: string;
+  assetTypeId: string;
+  assetTypeName: string;
   name: string;
-  unit: string | null;
+  description: string | null;
   dueDate: string | null;
-  notes: string | null;
+  reminderDaysBefore: number | null;
   file: {
     id: string;
     originalName: string;
@@ -36,6 +40,12 @@ export type InventoryAssetDto = {
 @Injectable()
 export class InventarioService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private assertCanMutate(user: AuthenticatedRequestUser) {
+    if (user.role === UserRole.CLIENT) {
+      throw new ForbiddenException('Cliente pode apenas visualizar o inventário.');
+    }
+  }
 
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
@@ -60,15 +70,47 @@ export class InventarioService {
     }
   }
 
+  private startOfDay(date = new Date()) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private parseReminderDays(
+    value?: number | null,
+  ): (typeof INVENTORY_REMINDER_DAYS)[number] | null {
+    if (value === undefined || value === null) return null;
+    const n = Number(value);
+    if (![90, 30, 15, 7].includes(n)) {
+      throw new BadRequestException(
+        'Lembrete inválido. Use 90, 30, 15 ou 7 dias antes do vencimento.',
+      );
+    }
+    return n as (typeof INVENTORY_REMINDER_DAYS)[number];
+  }
+
+  private async resolveAssetType(assetTypeId: string) {
+    const type = await this.prisma.inventoryAssetType.findFirst({
+      where: { id: assetTypeId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!type) {
+      throw new BadRequestException('Tipo de ativo inválido.');
+    }
+    return type;
+  }
+
   private mapAsset(row: {
     id: string;
     companyId: string;
+    assetTypeId: string;
     name: string;
-    unit: string | null;
+    description: string | null;
     dueDate: Date | null;
-    notes: string | null;
+    reminderDaysBefore: number | null;
     createdAt: Date;
     updatedAt: Date;
+    assetType: { name: string };
     file: {
       id: string;
       originalName: string;
@@ -79,12 +121,12 @@ export class InventarioService {
     return {
       id: row.id,
       companyId: row.companyId,
+      assetTypeId: row.assetTypeId,
+      assetTypeName: row.assetType.name,
       name: row.name,
-      unit: row.unit,
-      dueDate: row.dueDate
-        ? row.dueDate.toISOString().slice(0, 10)
-        : null,
-      notes: row.notes,
+      description: row.description,
+      dueDate: row.dueDate ? row.dueDate.toISOString().slice(0, 10) : null,
+      reminderDaysBefore: row.reminderDaysBefore,
       file: row.file,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -93,6 +135,7 @@ export class InventarioService {
 
   private assetInclude() {
     return {
+      assetType: { select: { id: true, name: true } },
       file: {
         select: {
           id: true,
@@ -116,17 +159,24 @@ export class InventarioService {
     return parsed;
   }
 
+  private validateReminderWithDueDate(
+    dueDate: Date | null | undefined,
+    reminderDaysBefore: number | null | undefined,
+  ) {
+    if (reminderDaysBefore != null && !dueDate) {
+      throw new BadRequestException(
+        'Informe a data de vencimento para configurar o lembrete.',
+      );
+    }
+  }
+
   private async saveUploadedFile(
     user: AuthenticatedRequestUser,
     file: Express.Multer.File,
   ) {
-    if (!file?.buffer?.length) {
-      throw new BadRequestException('Arquivo inválido.');
-    }
-
     const uploadsDir = join(process.cwd(), 'uploads', 'inventory');
     mkdirSync(uploadsDir, { recursive: true });
-    const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_');
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const targetName = `${Date.now()}-${randomUUID()}-${safeName}`;
     const targetPath = join(uploadsDir, targetName);
     writeFileSync(targetPath, file.buffer);
@@ -142,8 +192,32 @@ export class InventarioService {
     });
   }
 
+  async listAssetTypes() {
+    return this.prisma.inventoryAssetType.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createAssetType(body: CreateInventoryAssetTypeDto) {
+    const name = body.name.trim();
+    const existing = await this.prisma.inventoryAssetType.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' }, deletedAt: null },
+    });
+    if (existing) {
+      throw new BadRequestException('Já existe um tipo de ativo com este nome.');
+    }
+    return this.prisma.inventoryAssetType.create({
+      data: { name },
+      select: { id: true, name: true },
+    });
+  }
+
   async listCompanies(user: AuthenticatedRequestUser) {
     const scope = await this.getAccessibleCompanyIds(user);
+    const today = this.startOfDay();
+
     const companies = await this.prisma.company.findMany({
       where: { id: { in: scope }, deletedAt: null },
       select: {
@@ -158,10 +232,24 @@ export class InventarioService {
       orderBy: { name: 'asc' },
     });
 
+    const expiredGroups = await this.prisma.inventoryAsset.groupBy({
+      by: ['companyId'],
+      where: {
+        companyId: { in: scope },
+        deletedAt: null,
+        dueDate: { not: null, lt: today },
+      },
+      _count: { _all: true },
+    });
+    const expiredMap = new Map(
+      expiredGroups.map((g) => [g.companyId, g._count._all]),
+    );
+
     return companies.map((c) => ({
       id: c.id,
       name: c.name,
       assetsCount: c._count.inventoryAssets,
+      expiredCount: expiredMap.get(c.id) ?? 0,
     }));
   }
 
@@ -206,6 +294,7 @@ export class InventarioService {
     body: CreateInventoryAssetDto,
     file?: Express.Multer.File,
   ) {
+    this.assertCanMutate(user);
     const scope = await this.getAccessibleCompanyIds(user);
     this.ensureCompanyInScope(companyId, scope);
 
@@ -215,16 +304,24 @@ export class InventarioService {
     });
     if (!company) throw new NotFoundException('Empresa não encontrada.');
 
-    const savedFile = file ? await this.saveUploadedFile(user, file) : null;
+    const assetType = await this.resolveAssetType(body.assetTypeId);
     const dueDate = this.parseDueDate(body.dueDate);
+    const reminderDaysBefore = this.parseReminderDays(body.reminderDaysBefore);
+    this.validateReminderWithDueDate(
+      dueDate === undefined ? null : dueDate,
+      reminderDaysBefore,
+    );
+
+    const savedFile = file ? await this.saveUploadedFile(user, file) : null;
 
     const created = await this.prisma.inventoryAsset.create({
       data: {
         companyId,
-        name: body.name.trim(),
-        unit: body.unit?.trim() || null,
+        assetTypeId: assetType.id,
+        name: assetType.name,
+        description: body.description?.trim() || null,
         dueDate: dueDate === undefined ? null : dueDate,
-        notes: body.notes?.trim() || null,
+        reminderDaysBefore,
         fileId: savedFile?.id ?? null,
         createdBy: user.userId,
       },
@@ -250,6 +347,7 @@ export class InventarioService {
     body: UpdateInventoryAssetDto,
     file?: Express.Multer.File,
   ) {
+    this.assertCanMutate(user);
     const scope = await this.getAccessibleCompanyIds(user);
     const existing = await this.prisma.inventoryAsset.findFirst({
       where: { id: assetId, deletedAt: null },
@@ -276,15 +374,39 @@ export class InventarioService {
       dueDate = this.parseDueDate(body.dueDate);
     }
 
+    let reminderDaysBefore: number | null | undefined = undefined;
+    if (body.clearReminder === 'true' || body.clearReminder === '1') {
+      reminderDaysBefore = null;
+    } else if (body.reminderDaysBefore !== undefined) {
+      reminderDaysBefore = this.parseReminderDays(body.reminderDaysBefore);
+    }
+
+    const nextDueDate = dueDate !== undefined ? dueDate : existing.dueDate;
+    const nextReminder =
+      reminderDaysBefore !== undefined
+        ? reminderDaysBefore
+        : existing.reminderDaysBefore;
+    this.validateReminderWithDueDate(nextDueDate, nextReminder);
+
+    let assetTypeId = existing.assetTypeId;
+    let name = existing.name;
+    if (body.assetTypeId) {
+      const assetType = await this.resolveAssetType(body.assetTypeId);
+      assetTypeId = assetType.id;
+      name = assetType.name;
+    }
+
     const updated = await this.prisma.inventoryAsset.update({
       where: { id: assetId },
       data: {
-        name: body.name?.trim(),
-        unit:
-          body.unit !== undefined ? body.unit.trim() || null : undefined,
-        notes:
-          body.notes !== undefined ? body.notes.trim() || null : undefined,
+        assetTypeId,
+        name,
+        description:
+          body.description !== undefined
+            ? body.description.trim() || null
+            : undefined,
         dueDate,
+        reminderDaysBefore,
         fileId,
       },
       include: this.assetInclude(),
@@ -304,6 +426,7 @@ export class InventarioService {
   }
 
   async deleteAsset(user: AuthenticatedRequestUser, assetId: string) {
+    this.assertCanMutate(user);
     const scope = await this.getAccessibleCompanyIds(user);
     const existing = await this.prisma.inventoryAsset.findFirst({
       where: { id: assetId, deletedAt: null },
@@ -353,14 +476,18 @@ export class InventarioService {
     };
   }
 
-  /** Alertas de vencimento para o correio (próximos 30 dias ou vencidos). */
+  /** Alertas de lembrete e vencimento para o correio. */
   async listExpiryAlertsForUser(userId: string) {
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       select: { id: true, role: true, companyId: true },
     });
     if (!user) return [];
-    if (user.role !== UserRole.ADMIN && user.role !== UserRole.COLLABORATOR) {
+    if (
+      user.role !== UserRole.ADMIN &&
+      user.role !== UserRole.COLLABORATOR &&
+      user.role !== UserRole.CLIENT
+    ) {
       return [];
     }
 
@@ -372,42 +499,77 @@ export class InventarioService {
       permissions: [],
     });
 
-    const horizon = new Date();
-    horizon.setDate(horizon.getDate() + 30);
-    horizon.setHours(23, 59, 59, 999);
-
     const rows = await this.prisma.inventoryAsset.findMany({
       where: {
         companyId: { in: scope },
         deletedAt: null,
-        dueDate: { not: null, lte: horizon },
+        dueDate: { not: null },
       },
-      include: { company: { select: { id: true, name: true } } },
+      include: {
+        company: { select: { id: true, name: true } },
+        assetType: { select: { name: true } },
+      },
       orderBy: { dueDate: 'asc' },
-      take: 40,
+      take: 80,
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = this.startOfDay();
+    const alerts: Array<{
+      assetId: string;
+      companyId: string;
+      companyName: string;
+      name: string;
+      dueDate: string;
+      overdue: boolean;
+      title: string;
+      body: string;
+      href: string;
+      dedupeKey: string;
+    }> = [];
 
-    return rows.map((row) => {
+    for (const row of rows) {
       const due = row.dueDate!;
-      const dueOnly = new Date(due);
-      dueOnly.setHours(0, 0, 0, 0);
+      const dueOnly = this.startOfDay(due);
       const overdue = dueOnly.getTime() < today.getTime();
       const label = due.toLocaleDateString('pt-BR');
-      return {
+      const displayName = row.assetType?.name ?? row.name;
+
+      if (overdue) {
+        alerts.push({
+          assetId: row.id,
+          companyId: row.companyId,
+          companyName: row.company.name,
+          name: displayName,
+          dueDate: due.toISOString().slice(0, 10),
+          overdue: true,
+          title: 'Inventário vencido',
+          body: `${row.company.name}: ${displayName} — vencido em ${label}.`,
+          href: `/inventario/${row.companyId}`,
+          dedupeKey: `inventory:expiry:${row.id}`,
+        });
+        continue;
+      }
+
+      if (row.reminderDaysBefore == null) continue;
+
+      const reminderStart = new Date(dueOnly);
+      reminderStart.setDate(reminderStart.getDate() - row.reminderDaysBefore);
+      if (today.getTime() < reminderStart.getTime()) continue;
+
+      alerts.push({
         assetId: row.id,
         companyId: row.companyId,
         companyName: row.company.name,
-        name: row.name,
+        name: displayName,
         dueDate: due.toISOString().slice(0, 10),
-        overdue,
-        title: overdue ? 'Inventário vencido' : 'Inventário a vencer',
-        body: `${row.company.name}: ${row.name} — vencimento ${label}.`,
+        overdue: false,
+        title: 'Lembrete de inventário',
+        body: `${row.company.name}: ${displayName} — vence em ${label} (lembrete ${row.reminderDaysBefore} dias antes).`,
         href: `/inventario/${row.companyId}`,
-        dedupeKey: `inventory:expiry:${row.id}`,
-      };
-    });
+        dedupeKey: `inventory:reminder:${row.id}:${row.reminderDaysBefore}`,
+      });
+    }
+
+    return alerts.slice(0, 40);
   }
 }

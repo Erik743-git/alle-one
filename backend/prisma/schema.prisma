@@ -168,24 +168,41 @@ model Company {
   @@map("companies")
 }
 
-model InventoryAsset {
+model InventoryAssetType {
   id        String    @id @default(uuid())
-  companyId String    @map("company_id")
-  name      String
-  unit      String?
-  dueDate   DateTime? @map("due_date") @db.Date
-  notes     String?
-  fileId    String?   @map("file_id")
-  createdBy String    @map("created_by")
+  name      String    @unique
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  file    File?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
-  creator User    @relation("InventoryAssetCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  assets InventoryAsset[]
+
+  @@map("inventory_asset_types")
+}
+
+model InventoryAsset {
+  id                 String    @id @default(uuid())
+  companyId          String    @map("company_id")
+  assetTypeId        String    @map("asset_type_id")
+  name               String
+  unit               String?
+  dueDate            DateTime? @map("due_date") @db.Date
+  description        String?
+  reminderDaysBefore Int?      @map("reminder_days_before")
+  notes              String?
+  fileId             String?   @map("file_id")
+  createdBy          String    @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assetType InventoryAssetType @relation(fields: [assetTypeId], references: [id], onDelete: Restrict)
+  file      File?              @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  creator   User               @relation("InventoryAssetCreator", fields: [createdBy], references: [id], onDelete: Restrict)
 
   @@index([companyId])
+  @@index([assetTypeId])
   @@index([dueDate])
   @@map("inventory_assets")
 }

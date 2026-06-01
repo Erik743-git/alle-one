@@ -25,7 +25,7 @@ export function roleDisplayLabel(role?: string | null): string {
     case "COLLABORATOR":
       return "Colaborador";
     case "PJ":
-      return "PJ";
+      return "Terceiro";
     case "CLIENT":
       return "Cliente";
     default:

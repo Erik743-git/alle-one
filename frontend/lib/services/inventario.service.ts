@@ -7,6 +7,12 @@ export type InventoryCompany = {
   id: string;
   name: string;
   assetsCount: number;
+  expiredCount: number;
+};
+
+export type InventoryAssetType = {
+  id: string;
+  name: string;
 };
 
 export type InventoryAssetFile = {
@@ -19,10 +25,12 @@ export type InventoryAssetFile = {
 export type InventoryAsset = {
   id: string;
   companyId: string;
+  assetTypeId: string;
+  assetTypeName: string;
   name: string;
-  unit: string | null;
+  description: string | null;
   dueDate: string | null;
-  notes: string | null;
+  reminderDaysBefore: number | null;
   file: InventoryAssetFile | null;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +40,13 @@ export type InventoryAssetsResponse = {
   company: { id: string; name: string };
   assets: InventoryAsset[];
 };
+
+export const INVENTORY_REMINDER_OPTIONS = [
+  { value: "90", label: "90 dias antes" },
+  { value: "30", label: "30 dias antes" },
+  { value: "15", label: "15 dias antes" },
+  { value: "7", label: "7 dias antes" },
+] as const;
 
 async function parseError(response: Response, fallback: string) {
   const data = (await response.json().catch(() => null)) as {
@@ -50,23 +65,40 @@ async function parseError(response: Response, fallback: string) {
 function appendAssetFields(
   form: FormData,
   data: {
-    name: string;
-    unit?: string;
+    assetTypeId: string;
+    description?: string;
     dueDate?: string;
-    notes?: string;
+    reminderDaysBefore?: string;
     clearDueDate?: boolean;
+    clearReminder?: boolean;
     removeAttachment?: boolean;
   },
 ) {
-  form.append("name", data.name.trim());
-  if (data.unit !== undefined) form.append("unit", data.unit.trim());
+  form.append("assetTypeId", data.assetTypeId);
+  if (data.description !== undefined) {
+    form.append("description", data.description);
+  }
   if (data.dueDate !== undefined) form.append("dueDate", data.dueDate);
-  if (data.notes !== undefined) form.append("notes", data.notes);
+  if (data.reminderDaysBefore !== undefined && data.reminderDaysBefore !== "") {
+    form.append("reminderDaysBefore", data.reminderDaysBefore);
+  }
   if (data.clearDueDate) form.append("clearDueDate", "true");
+  if (data.clearReminder) form.append("clearReminder", "true");
   if (data.removeAttachment) form.append("removeAttachment", "true");
 }
 
 export const inventarioService = {
+  listAssetTypes() {
+    return apiRequest<InventoryAssetType[]>("/inventario/asset-types");
+  },
+
+  createAssetType(name: string) {
+    return apiRequest<InventoryAssetType>("/inventario/asset-types", {
+      method: "POST",
+      body: { name: name.trim() },
+    });
+  },
+
   listCompanies() {
     return apiRequest<InventoryCompany[]>("/inventario/companies");
   },
@@ -80,10 +112,10 @@ export const inventarioService = {
   async createAsset(
     companyId: string,
     data: {
-      name: string;
-      unit?: string;
+      assetTypeId: string;
+      description?: string;
       dueDate?: string;
-      notes?: string;
+      reminderDaysBefore?: string;
     },
     file?: File | null,
   ) {
@@ -104,21 +136,25 @@ export const inventarioService = {
   async updateAsset(
     assetId: string,
     data: {
-      name?: string;
-      unit?: string;
+      assetTypeId?: string;
+      description?: string;
       dueDate?: string;
-      notes?: string;
+      reminderDaysBefore?: string;
       clearDueDate?: boolean;
+      clearReminder?: boolean;
       removeAttachment?: boolean;
     },
     file?: File | null,
   ) {
     const form = new FormData();
-    if (data.name !== undefined) form.append("name", data.name.trim());
-    if (data.unit !== undefined) form.append("unit", data.unit.trim());
+    if (data.assetTypeId) form.append("assetTypeId", data.assetTypeId);
+    if (data.description !== undefined) form.append("description", data.description);
     if (data.dueDate !== undefined) form.append("dueDate", data.dueDate);
-    if (data.notes !== undefined) form.append("notes", data.notes);
+    if (data.reminderDaysBefore !== undefined) {
+      form.append("reminderDaysBefore", data.reminderDaysBefore);
+    }
     if (data.clearDueDate) form.append("clearDueDate", "true");
+    if (data.clearReminder) form.append("clearReminder", "true");
     if (data.removeAttachment) form.append("removeAttachment", "true");
     if (file) form.append("file", file);
 
@@ -156,9 +192,7 @@ export const inventarioService = {
     const blob = await response.blob();
     const disposition = response.headers.get("Content-Disposition") ?? "";
     const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"/i.exec(disposition);
-    const filename = decodeURIComponent(
-      match?.[1] ?? match?.[2] ?? "anexo",
-    );
+    const filename = decodeURIComponent(match?.[1] ?? match?.[2] ?? "anexo");
     const mimeType =
       response.headers.get("Content-Type") ??
       blob.type ??
