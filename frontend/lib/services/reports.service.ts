@@ -30,6 +30,12 @@ export const reportsService = {
     return apiRequest<ReportCompanyOption[]>("/reports/companies");
   },
 
+  async listRendimentoCollaborators() {
+    return apiRequest<Array<{ id: string; name: string }>>(
+      "/reports/rendimento-collaborators",
+    );
+  },
+
   async list(params?: {
     companyId?: string;
     type?: string;
@@ -59,6 +65,7 @@ export const reportsService = {
     format: ReportFormat;
     start: string;
     end: string;
+    userId?: string;
   }) {
     return apiRequest<ReportRow>("/reports/generate", {
       method: "POST",

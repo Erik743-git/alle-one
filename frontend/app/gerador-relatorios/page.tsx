@@ -29,6 +29,11 @@ export default function GeradorRelatoriosPage() {
     []
   );
   const [companyId, setCompanyId] = useState<string>("");
+  const [collaboratorId, setCollaboratorId] = useState<string>("");
+  const [collaborators, setCollaborators] = useState<
+    Array<{ id: string; name: string }>
+  >([]);
+  const [loadingCollaborators, setLoadingCollaborators] = useState(false);
   const [type, setType] = useState<string>("1");
   const [format, setFormat] = useState<ReportFormatOption>("XLSX");
   const [start, setStart] = useState<string>(() => {
@@ -46,13 +51,13 @@ export default function GeradorRelatoriosPage() {
     [type],
   );
   const isRendimento = type === "1";
+  const isEstatisticaGeral = type === "4";
   const alleCompanyId = useMemo(
     () =>
       companies.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "",
     [companies],
   );
-  const effectiveCompanyId =
-    isRendimento && alleCompanyId ? alleCompanyId : companyId;
+  const effectiveCompanyId = companyId;
   const companyOptions = useMemo(
     () => companies.map((c) => ({ value: c.id, label: c.name })),
     [companies],
@@ -65,6 +70,13 @@ export default function GeradorRelatoriosPage() {
     () => formatOptions.map((item) => ({ value: item, label: item })),
     [formatOptions],
   );
+  const collaboratorOptions = useMemo(
+    () => [
+      { value: "", label: "Todos os colaboradores" },
+      ...collaborators.map((c) => ({ value: c.id, label: c.name })),
+    ],
+    [collaborators],
+  );
 
   useEffect(() => {
     const allowed = getFormatsForReportType(type);
@@ -74,10 +86,30 @@ export default function GeradorRelatoriosPage() {
   }, [type, format]);
 
   useEffect(() => {
-    if (isRendimento && alleCompanyId && companyId !== alleCompanyId) {
-      setCompanyId(alleCompanyId);
+    if (isEstatisticaGeral) {
+      setCollaboratorId("");
     }
-  }, [alleCompanyId, companyId, isRendimento]);
+  }, [isEstatisticaGeral]);
+
+  useEffect(() => {
+    if (!isRendimento) return;
+    let cancelled = false;
+    setLoadingCollaborators(true);
+    void reportsService
+      .listRendimentoCollaborators()
+      .then((items) => {
+        if (!cancelled) setCollaborators(items ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCollaborators([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingCollaborators(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRendimento]);
 
   async function loadAll() {
     setErro("");
@@ -88,10 +120,10 @@ export default function GeradorRelatoriosPage() {
         [...comps].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
       );
 
+      const alleId =
+        comps.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "";
       const defaultCompanyId =
-        (isRendimento
-          ? comps.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? ""
-          : companyId) ||
+        alleId ||
         (user?.role === "CLIENT" && user.companyId ? user.companyId : "") ||
         comps[0]?.id ||
         "";
@@ -169,6 +201,7 @@ export default function GeradorRelatoriosPage() {
         format,
         start: startDate.toISOString(),
         end: endDate.toISOString(),
+        ...(isRendimento && collaboratorId ? { userId: collaboratorId } : {}),
       });
       await refreshList();
     } catch (e) {
@@ -234,7 +267,7 @@ export default function GeradorRelatoriosPage() {
             </CardHeader>
 
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
                     Data inicial
@@ -266,12 +299,32 @@ export default function GeradorRelatoriosPage() {
                     onChange={setCompanyId}
                     options={companyOptions}
                     loading={carregando}
-                    disabled={
-                      carregando ||
-                      companies.length === 0 ||
-                      (isRendimento && !!alleCompanyId)
-                    }
+                    disabled={carregando || companies.length === 0}
                     emptyLabel={carregando ? "Carregando..." : "Selecione"}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground">
+                    Colaborador
+                  </label>
+                  <SearchableSelectField
+                    value={collaboratorId}
+                    onChange={setCollaboratorId}
+                    options={collaboratorOptions}
+                    loading={loadingCollaborators}
+                    disabled={
+                      !isRendimento ||
+                      isEstatisticaGeral ||
+                      loadingCollaborators
+                    }
+                    emptyLabel={
+                      !isRendimento
+                        ? "Só no relatório Rendimento"
+                        : loadingCollaborators
+                          ? "Carregando..."
+                          : "Todos"
+                    }
                   />
                 </div>
 
@@ -301,9 +354,9 @@ export default function GeradorRelatoriosPage() {
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Permissões: CLIENT vê apenas sua empresa. ADMIN vê todas.
-                  COLLABORATOR pode escolher qualquer empresa. Para Rendimento,
-                  a empresa Alle é aplicada automaticamente.
+                  Rendimento: empresa padrão Alle (alterável); apontamentos dos
+                  tickets da empresa no período; colaborador opcional. Estatística
+                  Geral: visão da empresa (sem filtro por colaborador).
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

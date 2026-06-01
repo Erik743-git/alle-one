@@ -31,6 +31,12 @@ export class ReportsController {
     return this.reports.listCompaniesForReports(user);
   }
 
+  @Get('rendimento-collaborators')
+  @RequirePermission(PermissionModule.REPORTS, 'canView')
+  listRendimentoCollaborators(@CurrentUser() user: AuthenticatedRequestUser) {
+    return this.reports.listRendimentoCollaborators(user);
+  }
+
   @Get()
   @RequirePermission(PermissionModule.REPORTS, 'canView')
   list(
@@ -64,6 +70,7 @@ export class ReportsController {
       format: 'CSV' | 'XLSX';
       start: string;
       end: string;
+      userId?: string | null;
     },
   ) {
     return this.reports.generateReport(user, body);
