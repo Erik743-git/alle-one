@@ -31,7 +31,7 @@ export default function GeradorRelatoriosPage() {
   const [companyId, setCompanyId] = useState<string>("");
   const [collaboratorId, setCollaboratorId] = useState<string>("");
   const [collaborators, setCollaborators] = useState<
-    Array<{ id: string; name: string }>
+    Array<{ id: string; name: string; hasTifluxLink?: boolean }>
   >([]);
   const [loadingCollaborators, setLoadingCollaborators] = useState(false);
   const [type, setType] = useState<string>("1");
@@ -73,7 +73,10 @@ export default function GeradorRelatoriosPage() {
   const collaboratorOptions = useMemo(
     () => [
       { value: "", label: "Todos os colaboradores" },
-      ...collaborators.map((c) => ({ value: c.id, label: c.name })),
+      ...collaborators.map((c) => ({
+        value: c.id,
+        label: c.hasTifluxLink === false ? `${c.name} (sem TiFlux)` : c.name,
+      })),
     ],
     [collaborators],
   );
@@ -92,15 +95,26 @@ export default function GeradorRelatoriosPage() {
   }, [isEstatisticaGeral]);
 
   useEffect(() => {
-    if (!isRendimento) return;
+    if (!isRendimento) {
+      setCollaborators([]);
+      setCollaboratorId("");
+      return;
+    }
     let cancelled = false;
     setLoadingCollaborators(true);
     void reportsService
       .listRendimentoCollaborators()
       .then((items) => {
         if (!cancelled) {
+          const list = [...(items ?? [])].sort((a, b) =>
+            a.name.localeCompare(b.name, "pt-BR"),
+          );
           setCollaborators(
-            (items ?? []).map((c) => ({ id: c.id, name: c.name })),
+            list.map((c) => ({
+              id: c.id,
+              name: c.name,
+              hasTifluxLink: c.hasTifluxLink,
+            })),
           );
         }
       })
@@ -120,7 +134,7 @@ export default function GeradorRelatoriosPage() {
     return () => {
       cancelled = true;
     };
-  }, [isRendimento]);
+  }, [isRendimento, type]);
 
   async function loadAll() {
     setErro("");

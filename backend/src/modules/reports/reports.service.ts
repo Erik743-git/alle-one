@@ -1818,9 +1818,11 @@ export class ReportsService {
     return companies;
   }
 
-  /** Mesma base da agenda de Rendimento (ADMIN/COLLABORATOR ativos). */
+  /** Colaboradores ativos do portal (ADMIN, COLLABORATOR e Terceiro/PJ). */
   async listRendimentoCollaborators(_user: AuthenticatedRequestUser) {
-    const collaborators = await this.rendimento.listCollaborators();
+    const collaborators = await this.rendimento.listCollaboratorsForSelect({
+      includePj: true,
+    });
     return collaborators.map((c) => ({
       id: c.id,
       name: c.name,
@@ -1859,7 +1861,9 @@ export class ReportsService {
       return { tifluxUserExternalId: null, attendantName: null };
     }
 
-    const collaborators = await this.rendimento.listCollaborators();
+    const collaborators = await this.rendimento.listCollaboratorsForSelect({
+      includePj: true,
+    });
     const match = collaborators.find((c) => c.id === id);
     if (!match) {
       throw new BadRequestException('Colaborador não encontrado.');

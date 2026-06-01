@@ -16,8 +16,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { DatePickerField } from "@/components/ui/date-picker-field";
+import { TimePickerField } from "@/components/ui/datetime-picker-field";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { isPjRole } from "@/lib/app-roles";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -272,21 +274,36 @@ export default function RendimentoAgendaPage() {
                 </DialogHeader>
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Input
-                      type="date"
-                      value={justDate}
-                      onChange={(e) => setJustDate(e.target.value)}
-                    />
-                    <Input
-                      type="time"
-                      value={justFrom}
-                      onChange={(e) => setJustFrom(e.target.value)}
-                    />
-                    <Input
-                      type="time"
-                      value={justTo}
-                      onChange={(e) => setJustTo(e.target.value)}
-                    />
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">
+                        Data
+                      </Label>
+                      <DatePickerField
+                        value={justDate}
+                        onChange={setJustDate}
+                        modal
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">
+                        Início
+                      </Label>
+                      <TimePickerField
+                        value={justFrom}
+                        onChange={setJustFrom}
+                        disabled={!justDate}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">
+                        Fim
+                      </Label>
+                      <TimePickerField
+                        value={justTo}
+                        onChange={setJustTo}
+                        disabled={!justDate}
+                      />
+                    </div>
                   </div>
                   {lunchTooLong ? (
                     <p className="text-xs font-medium text-rose-500">

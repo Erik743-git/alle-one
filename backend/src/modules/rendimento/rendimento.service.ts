@@ -1050,6 +1050,43 @@ export class RendimentoService {
     return { start, end };
   }
 
+  /** Lista rápida para selects (relatórios) — sem totais do mês. */
+  async listCollaboratorsForSelect(options?: {
+    includePj?: boolean;
+  }): Promise<RendimentoCollaboratorDto[]> {
+    const roles = options?.includePj
+      ? [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ]
+      : [UserRole.ADMIN, UserRole.COLLABORATOR];
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+        role: { in: roles },
+      },
+      include: { company: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
+
+    return users.map((user) => {
+      const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
+      return {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        companyName: user.company?.name ?? null,
+        status: user.status,
+        tifluxUserId: tifluxUser?.id ?? null,
+        tifluxUserName: tifluxUser?.name ?? null,
+        monthTotalMinutes: 0,
+        monthTotalHoursFormatted: this.formatMinutes(0),
+      };
+    });
+  }
+
   async listCollaborators(): Promise<RendimentoCollaboratorDto[]> {
     const users = await this.prisma.user.findMany({
       where: {

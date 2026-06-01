@@ -127,18 +127,21 @@ function buildMenuItems(): MenuItem[] {
   ];
 }
 
-/** Caixa fixa para ícones — mantém alinhamento vertical no menu recolhido. */
+/** Caixa fixa para ícones — mesma medida dos botões recolhidos (40×40). */
 function NavIconSlot({
   children,
+  collapsed,
   className,
 }: {
   children: React.ReactNode;
+  collapsed?: boolean;
   className?: string;
 }) {
   return (
     <span
       className={cn(
-        "relative flex size-9 shrink-0 items-center justify-center",
+        "relative flex shrink-0 items-center justify-center",
+        collapsed ? "h-10 w-10" : "size-9",
         className,
       )}
     >
@@ -180,7 +183,7 @@ const SidebarNav = memo(function SidebarNav({
       <nav
         className={cn(
           "sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-2 pt-2",
-          collapsed ? "items-center px-2" : "px-2.5 md:px-3",
+          collapsed ? "items-center px-0" : "px-2.5 md:px-3",
         )}
         aria-label="Módulos do portal"
       >
@@ -209,7 +212,7 @@ const SidebarNav = memo(function SidebarNav({
                     !collapsed && "w-full text-left",
                   )}
                 >
-                  <NavIconSlot>
+                  <NavIconSlot collapsed={collapsed}>
                     <Icon size={iconSize} className="shrink-0" strokeWidth={2} />
                   </NavIconSlot>
                   {!collapsed ? (
@@ -231,7 +234,7 @@ const SidebarNav = memo(function SidebarNav({
                 onClick={() => onNavigate?.()}
                 className={cn(itemClass(!!active), !collapsed && "w-full")}
               >
-                <NavIconSlot>
+                <NavIconSlot collapsed={collapsed}>
                   <Icon size={iconSize} className="shrink-0" strokeWidth={2} />
                   {isCorreio && collapsed ? (
                     <MailboxUnreadBadge variant="collapsed" />
@@ -267,20 +270,21 @@ const SidebarBrand = memo(function SidebarBrand({
 }) {
   if (collapsed) {
     return (
-      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border px-2 py-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#08182f] p-1.5">
+      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border py-3">
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#08182f]"
+          title="Alle One"
+        >
           <Image
             src="/alle-simbolo.png"
             alt="Alle"
-            width={28}
-            height={28}
-            className="h-7 w-7 object-contain"
+            width={24}
+            height={24}
+            className="h-6 w-6 object-contain"
             priority
           />
         </div>
-        <div className="flex h-10 w-10 items-center justify-center">
-          <ThemeToggle />
-        </div>
+        <ThemeToggle collapsed />
       </div>
     );
   }
@@ -346,7 +350,7 @@ function DesktopSidebar() {
       <div
         className={cn(
           "shrink-0 border-t border-sidebar-border",
-          collapsed ? "px-2 py-2" : "px-2 py-3 md:px-3",
+          collapsed ? "flex justify-center px-0 py-2" : "px-2 py-3 md:px-3",
         )}
       >
         <SessionPanel collapsed={collapsed} />

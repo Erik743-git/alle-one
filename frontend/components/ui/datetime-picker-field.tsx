@@ -42,6 +42,31 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+export function TimePickerField({
+  value,
+  onChange,
+  disabled,
+  className,
+}: {
+  value: string;
+  onChange: (time: string) => void;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const time = value?.trim() ? value.slice(0, 5) : "09:00";
+  return (
+    <div
+      className={cn(
+        "flex h-10 w-full items-center justify-center rounded-xl border border-input bg-background px-2 shadow-sm",
+        disabled && "opacity-50",
+        className,
+      )}
+    >
+      <TimeInputs time={time} disabled={disabled} onTimeChange={onChange} />
+    </div>
+  );
+}
+
 function TimeInputs({
   time,
   disabled,
