@@ -47,6 +47,12 @@ type ErrorResponse = {
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 const SUPPORT_EMAIL = "contato@alletecnologia.com";
 
+const LOGIN_CONNECTION_ERROR =
+  "Não foi possível conectar ao sistema. Tente novamente em instantes ou entre em contato com um administrador.";
+
+const LOGIN_SESSION_ERROR =
+  "Não foi possível concluir o login. Tente novamente ou entre em contato com um administrador.";
+
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
@@ -131,9 +137,7 @@ export default function LoginPage() {
           setStoredUser(user);
         }
       } catch {
-        setErro(
-          "Senha aceita, mas a sessão não foi validada. Use http://localhost:3000 e http://localhost:3002 (reinicie front e backend).",
-        );
+        setErro(LOGIN_SESSION_ERROR);
         return;
       }
 
@@ -144,9 +148,7 @@ export default function LoginPage() {
 
       router.push("/dashboard");
     } catch {
-      setErro(
-        `Erro ao conectar com a API (${API_URL}). Confira se o backend está rodando na porta 3002.`,
-      );
+      setErro(LOGIN_CONNECTION_ERROR);
     } finally {
       setCarregando(false);
     }
