@@ -38,14 +38,16 @@ export function InventoryAttachmentPreviewDialog({
   useEffect(() => {
     if (!open || !fileId || !companyId) return;
 
+    const attachmentFileId = fileId;
+    const attachmentCompanyId = companyId;
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       try {
         const res = await inventarioService.fetchAttachment({
-          fileId,
-          companyId,
+          fileId: attachmentFileId,
+          companyId: attachmentCompanyId,
           inline: true,
         });
         if (cancelled) return;

@@ -69,22 +69,22 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
   }
 
   const user = getStoredUser();
-  if (
-    flag === "canView" &&
-    isCollaboratorRole(user?.role) &&
-    (!user.permissions?.length ||
-      !user.permissions.some((p) => p.module === module))
-  ) {
-    return COLLABORATOR_DEFAULT_VIEW.includes(module);
+  if (flag === "canView" && user && isCollaboratorRole(user.role)) {
+    const lacksExplicit =
+      !user.permissions?.length ||
+      !user.permissions.some((p) => p.module === module);
+    if (lacksExplicit) {
+      return COLLABORATOR_DEFAULT_VIEW.includes(module);
+    }
   }
 
-  if (
-    flag === "canView" &&
-    isPjRole(user?.role) &&
-    (!user.permissions?.length ||
-      !user.permissions.some((p) => p.module === module))
-  ) {
-    return PJ_DEFAULT_VIEW.includes(module);
+  if (flag === "canView" && user && isPjRole(user.role)) {
+    const lacksExplicit =
+      !user.permissions?.length ||
+      !user.permissions.some((p) => p.module === module);
+    if (lacksExplicit) {
+      return PJ_DEFAULT_VIEW.includes(module);
+    }
   }
 
   const entry = getModuleEntry(module);
