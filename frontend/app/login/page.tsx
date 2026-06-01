@@ -16,6 +16,7 @@ import {
   Phone,
   Send,
 } from "lucide-react";
+import { AlleOneTitle } from "@/components/brand/alle-one-title";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -205,9 +206,7 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2 text-center">
-              <h1 className="font-sans text-3xl font-extrabold tracking-[-0.03em] text-white sm:text-[2.1rem] lg:text-4xl">
-                Alle One
-              </h1>
+              <AlleOneTitle />
 
               <p className="font-sans text-sm font-medium text-slate-300 sm:text-[15px]">
                 Acesse o portal da sua empresa

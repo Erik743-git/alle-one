@@ -38,17 +38,17 @@ export default function SessionPanel({ collapsed = false }: { collapsed?: boolea
 
   if (collapsed) {
     return (
-      <div className="flex justify-center">
+      <div className="flex w-full justify-center">
         <Button
           type="button"
           onClick={handleLogout}
           variant="destructive"
           size="icon"
-          className="h-10 w-10 rounded-xl"
+          className="h-10 w-10 shrink-0 rounded-xl"
           aria-label={`Sair (${user.name})`}
           title={`Sair — ${user.name}`}
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="size-[18px]" strokeWidth={2} />
         </Button>
       </div>
     );

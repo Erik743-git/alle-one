@@ -159,6 +159,8 @@ export default function AdminUsuariosPage() {
     responsible: false,
     serviceDeskIds: [],
   });
+  const [senhaProvisoriaEdicao, setSenhaProvisoriaEdicao] = useState("");
+  const [firstAccessInicialEdicao, setFirstAccessInicialEdicao] = useState(false);
 
   async function buscarUsuarios() {
     try {
@@ -356,6 +358,8 @@ export default function AdminUsuariosPage() {
       responsible: usuario.responsible,
       serviceDeskIds: usuario.serviceDesks.map((desk) => desk.id),
     });
+    setSenhaProvisoriaEdicao("");
+    setFirstAccessInicialEdicao(usuario.firstAccess);
 
     setModalEditarUsuario(true);
   }
@@ -385,25 +389,50 @@ export default function AdminUsuariosPage() {
       return;
     }
 
+    const habilitandoPrimeiroAcesso =
+      formEdicao.firstAccess && !firstAccessInicialEdicao;
+
+    if (habilitandoPrimeiroAcesso && !senhaProvisoriaEdicao.trim()) {
+      setErroEdicao(
+        "Defina a senha provisória para o usuário concluir o primeiro acesso.",
+      );
+      return;
+    }
+
+    if (
+      formEdicao.firstAccess &&
+      senhaProvisoriaEdicao.trim() &&
+      senhaProvisoriaEdicao.trim().length < 6
+    ) {
+      setErroEdicao("A senha provisória deve ter pelo menos 6 caracteres.");
+      return;
+    }
+
     try {
       setSalvandoEdicao(true);
       setErroEdicao("");
+
+      const payload: Record<string, unknown> = {
+        name: formEdicao.name,
+        email: formEdicao.email,
+        role: formEdicao.role,
+        status: formEdicao.status,
+        companyId: formEdicao.companyId || null,
+        firstAccess: formEdicao.firstAccess,
+        responsible: formEdicao.responsible,
+        serviceDeskIds: formEdicao.serviceDeskIds,
+      };
+
+      if (senhaProvisoriaEdicao.trim()) {
+        payload.password = senhaProvisoriaEdicao.trim();
+      }
 
       const response = await authFetch(`${API_URL}/users/${formEdicao.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          name: formEdicao.name,
-          email: formEdicao.email,
-          role: formEdicao.role,
-          status: formEdicao.status,
-          companyId: formEdicao.companyId || null,
-          firstAccess: formEdicao.firstAccess,
-          responsible: formEdicao.responsible,
-          serviceDeskIds: formEdicao.serviceDeskIds,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = (await response.json()) as
@@ -794,7 +823,15 @@ export default function AdminUsuariosPage() {
           onSaved={() => void buscarUsuarios()}
         />
 
-        <Dialog open={modalEditarUsuario} onOpenChange={setModalEditarUsuario}>
+        <Dialog
+          open={modalEditarUsuario}
+          onOpenChange={(open) => {
+            setModalEditarUsuario(open);
+            if (!open) {
+              setSenhaProvisoriaEdicao("");
+            }
+          }}
+        >
           <DialogContent
             className="
               font-sans
@@ -931,7 +968,35 @@ export default function AdminUsuariosPage() {
                       { value: "true", label: "Sim" },
                     ]}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Com &quot;Sim&quot;, o usuário entra com a senha provisória e
+                    é direcionado a definir a senha definitiva no primeiro acesso.
+                  </p>
                 </div>
+
+                {formEdicao.firstAccess ? (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label className="text-sm font-semibold text-foreground">
+                      Senha provisória
+                      {formEdicao.firstAccess && !firstAccessInicialEdicao ? (
+                        <span className="text-destructive"> *</span>
+                      ) : null}
+                    </Label>
+                    <Input
+                      type="password"
+                      value={senhaProvisoriaEdicao}
+                      onChange={(e) => setSenhaProvisoriaEdicao(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      autoComplete="new-password"
+                      className="h-11"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {firstAccessInicialEdicao
+                        ? "Deixe em branco para manter a senha atual. Preencha apenas se quiser gerar uma nova senha provisória."
+                        : "Obrigatória ao ativar primeiro acesso. O usuário usará esta senha no login e depois criará a senha definitiva."}
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2 sm:col-span-2">
                   <Label className="text-sm font-semibold text-foreground">

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Nunito, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Montserrat, Nunito } from "next/font/google";
 
 import { ClientProviders } from "@/components/providers/client-providers";
 import "./globals.css";
@@ -7,6 +7,13 @@ import "./globals.css";
 const nunito = Nunito({
   variable: "--font-nunito",
   subsets: ["latin"],
+});
+
+/** Tipografia da marca Alle (logo “alle” — geométrica, sem arredondamento). */
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -35,7 +42,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="dark" suppressHydrationWarning>
       <body
-        className={`${nunito.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${nunito.variable} ${montserrat.variable} ${geistMono.variable} font-sans antialiased`}
       >
         <script
           // Define o tema antes do React hidratar (evita flash).

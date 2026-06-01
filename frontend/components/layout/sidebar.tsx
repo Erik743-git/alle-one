@@ -123,26 +123,25 @@ function buildMenuItems(): MenuItem[] {
   ];
 }
 
-const NavLabel = memo(function NavLabel({
+/** Caixa fixa para ícones — mantém alinhamento vertical no menu recolhido. */
+function NavIconSlot({
   children,
-  collapsed,
+  className,
 }: {
-  children: string;
-  collapsed: boolean;
+  children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <span
       className={cn(
-        "truncate transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
-        collapsed
-          ? "pointer-events-none w-0 scale-x-0 opacity-0"
-          : "w-auto scale-x-100 opacity-100",
+        "relative flex size-9 shrink-0 items-center justify-center",
+        className,
       )}
     >
       {children}
     </span>
   );
-});
+}
 
 type SidebarNavProps = {
   collapsed: boolean;
@@ -163,30 +162,22 @@ const SidebarNav = memo(function SidebarNav({
 
   const itemClass = (active: boolean) =>
     cn(
-      "flex w-full items-center overflow-hidden rounded-xl text-sm font-semibold transition-colors duration-150",
+      "flex items-center overflow-hidden rounded-xl text-sm font-semibold transition-colors duration-150",
       collapsed
-        ? "justify-center gap-0 px-2 py-3"
-        : "min-h-[2.875rem] gap-3 px-3.5 py-3",
+        ? "mx-auto h-10 w-10 shrink-0 justify-center gap-0 p-0"
+        : "min-h-[2.875rem] w-full gap-3 px-3.5 py-3",
       active
         ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
         : "text-sidebar-foreground/80 hover:bg-muted",
     );
 
-  function renderNavLabel(name: string) {
-    if (collapsed) {
-      return <NavLabel collapsed>{name}</NavLabel>;
-    }
-    return (
-      <span className="min-w-0 flex-1 truncate text-left tracking-tight">
-        {name}
-      </span>
-    );
-  }
-
   return (
     <>
       <nav
-        className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2.5 pb-2 pt-2 md:px-3"
+        className={cn(
+          "sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-2 pt-2",
+          collapsed ? "items-center px-2" : "px-2.5 md:px-3",
+        )}
         aria-label="Módulos do portal"
       >
         {menu
@@ -211,11 +202,17 @@ const SidebarNav = memo(function SidebarNav({
                   }}
                   className={cn(
                     itemClass(modalAplicativos),
-                    !collapsed && "text-left",
+                    !collapsed && "w-full text-left",
                   )}
                 >
-                  <Icon size={iconSize} className="shrink-0" />
-                  {renderNavLabel(item.name)}
+                  <NavIconSlot>
+                    <Icon size={iconSize} className="shrink-0" strokeWidth={2} />
+                  </NavIconSlot>
+                  {!collapsed ? (
+                    <span className="min-w-0 flex-1 truncate text-left tracking-tight">
+                      {item.name}
+                    </span>
+                  ) : null}
                 </button>
               );
             }
@@ -228,17 +225,23 @@ const SidebarNav = memo(function SidebarNav({
                 href={item.href!}
                 title={collapsed ? item.name : undefined}
                 onClick={() => onNavigate?.()}
-                className={itemClass(!!active)}
+                className={cn(itemClass(!!active), !collapsed && "w-full")}
               >
-                <span className="relative flex size-6 shrink-0 items-center justify-center">
-                  <Icon size={iconSize} />
+                <NavIconSlot>
+                  <Icon size={iconSize} className="shrink-0" strokeWidth={2} />
                   {isCorreio && collapsed ? (
                     <MailboxUnreadBadge variant="collapsed" />
                   ) : null}
-                </span>
-                {renderNavLabel(item.name)}
-                {isCorreio && !collapsed ? (
-                  <MailboxUnreadBadge variant="inline" />
+                </NavIconSlot>
+                {!collapsed ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate text-left tracking-tight">
+                      {item.name}
+                    </span>
+                    {isCorreio ? (
+                      <MailboxUnreadBadge variant="inline" />
+                    ) : null}
+                  </>
                 ) : null}
               </Link>
             );
@@ -260,7 +263,7 @@ const SidebarBrand = memo(function SidebarBrand({
 }) {
   if (collapsed) {
     return (
-      <div className="flex shrink-0 flex-col items-center gap-2 border-b border-sidebar-border px-2 py-4">
+      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border px-2 py-4">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#08182f] p-1.5">
           <Image
             src="/alle-simbolo.png"
@@ -271,7 +274,9 @@ const SidebarBrand = memo(function SidebarBrand({
             priority
           />
         </div>
-        <ThemeToggle />
+        <div className="flex h-10 w-10 items-center justify-center">
+          <ThemeToggle />
+        </div>
       </div>
     );
   }
@@ -353,14 +358,16 @@ function DesktopSidebar() {
           variant="ghost"
           size={collapsed ? "icon" : "sm"}
           className={cn(
-            "w-full overflow-hidden text-sidebar-foreground/80",
-            !collapsed && "justify-start gap-2",
+            "overflow-hidden text-sidebar-foreground/80",
+            collapsed
+              ? "mx-auto h-10 w-10 shrink-0"
+              : "w-full justify-start gap-2",
           )}
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
         >
           {collapsed ? (
-            <PanelLeftOpen className="size-4 shrink-0" />
+            <PanelLeftOpen className="size-[18px] shrink-0" strokeWidth={2} />
           ) : (
             <>
               <PanelLeftClose className="size-4 shrink-0" />

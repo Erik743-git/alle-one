@@ -202,10 +202,25 @@ export class UsersService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
+    const enablingFirstAccess =
+      data.firstAccess === true && existingUser.firstAccess === false;
+
+    if (enablingFirstAccess && !data.password?.trim()) {
+      throw new BadRequestException(
+        'Informe uma senha provisória ao marcar primeiro acesso.',
+      );
+    }
+
     let passwordHash = existingUser.passwordHash;
 
-    if (data.password) {
-      passwordHash = await bcrypt.hash(data.password, 10);
+    if (data.password?.trim()) {
+      passwordHash = await bcrypt.hash(data.password.trim(), 10);
+    }
+
+    if (data.firstAccess === true && !passwordHash) {
+      throw new BadRequestException(
+        'Usuário em primeiro acesso precisa de senha provisória definida.',
+      );
     }
 
     const serviceDeskIds =
