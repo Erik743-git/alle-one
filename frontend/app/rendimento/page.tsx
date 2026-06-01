@@ -39,7 +39,11 @@ export default function RendimentoPage() {
           router.replace("/dashboard");
           return;
         }
-        if (isCollaboratorRole(authUser?.role) && authUser.id) {
+        if (
+          authUser &&
+          isCollaboratorRole(authUser.role) &&
+          authUser.id
+        ) {
           router.replace(`/rendimento/${authUser.id}`);
           return;
         }
