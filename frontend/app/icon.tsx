@@ -1,9 +1,13 @@
 import { ImageResponse } from "next/og";
 
+import { getAlleSimboloDataUrl } from "@/lib/alle-brand-icon";
+
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
-export default function Icon() {
+export default async function Icon() {
+  const src = await getAlleSimboloDataUrl();
+
   return new ImageResponse(
     (
       <div
@@ -14,20 +18,16 @@ export default function Icon() {
           alignItems: "center",
           justifyContent: "center",
           background: "#08182f",
-          borderRadius: 6,
         }}
       >
-        <div
-          style={{
-            color: "#12b5d9",
-            fontSize: 22,
-            fontWeight: 800,
-            fontFamily: "system-ui, sans-serif",
-            letterSpacing: -1,
-          }}
-        >
-          A
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          width={28}
+          height={28}
+          style={{ objectFit: "contain" }}
+        />
       </div>
     ),
     { ...size },

@@ -261,8 +261,15 @@ const SidebarBrand = memo(function SidebarBrand({
   if (collapsed) {
     return (
       <div className="flex shrink-0 flex-col items-center gap-2 border-b border-sidebar-border px-2 py-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/15 text-xs font-black text-primary">
-          A1
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#08182f] p-1.5">
+          <Image
+            src="/alle-simbolo.png"
+            alt="Alle"
+            width={28}
+            height={28}
+            className="h-7 w-7 object-contain"
+            priority
+          />
         </div>
         <ThemeToggle />
       </div>

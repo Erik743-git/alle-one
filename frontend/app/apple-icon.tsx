@@ -1,9 +1,13 @@
 import { ImageResponse } from "next/og";
 
+import { getAlleSimboloDataUrl } from "@/lib/alle-brand-icon";
+
 export const size = { width: 180, height: 180 };
 export const contentType = "image/png";
 
-export default function AppleIcon() {
+export default async function AppleIcon() {
+  const src = await getAlleSimboloDataUrl();
+
   return new ImageResponse(
     (
       <div
@@ -14,20 +18,17 @@ export default function AppleIcon() {
           alignItems: "center",
           justifyContent: "center",
           background: "#08182f",
-          borderRadius: 32,
+          borderRadius: 36,
         }}
       >
-        <div
-          style={{
-            color: "#12b5d9",
-            fontSize: 96,
-            fontWeight: 800,
-            fontFamily: "system-ui, sans-serif",
-            letterSpacing: -4,
-          }}
-        >
-          A
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          width={140}
+          height={140}
+          style={{ objectFit: "contain" }}
+        />
       </div>
     ),
     { ...size },

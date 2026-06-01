@@ -18,8 +18,11 @@ export const metadata: Metadata = {
   title: "Alle One",
   description: "Portal Alle One",
   icons: {
-    icon: [{ url: "/icon", type: "image/png", sizes: "32x32" }],
-    shortcut: "/icon",
+    icon: [
+      { url: "/icon", type: "image/png", sizes: "32x32" },
+      { url: "/alle-simbolo.png", type: "image/png", sizes: "512x512" },
+    ],
+    shortcut: "/alle-simbolo.png",
     apple: [{ url: "/apple-icon", type: "image/png", sizes: "180x180" }],
   },
 };
