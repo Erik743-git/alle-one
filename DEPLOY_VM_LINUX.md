@@ -183,42 +183,14 @@ Como o NAT/proxy público aponta para **8000**, o Nginx escuta 8000 e:
 - envia **rotas da API** → backend `3002`
 
 ```bash
-sudo nano /etc/nginx/sites-available/alleone
-```
-
-```nginx
-server {
-    listen 8000;
-    server_name alleone.alletecnologia.com;
-
-    client_max_body_size 25m;
-
-    # Rotas NestJS (ajuste se adicionar módulos novos)
-    location ~ ^/(auth|permissions|users|companies|contracts|financial|admin|dashboard|gmuds|rendimento|reports|usage-alerts|tiflux|zabbix)(/|$) {
-        proxy_pass http://127.0.0.1:3002;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-```bash
+# Copie o arquivo versionado (evita mandar /dashboard para a API → JSON 404)
+sudo cp /home/alleone/producao/deploy/nginx-alleone.conf /etc/nginx/sites-available/alleone
 sudo ln -sf /etc/nginx/sites-available/alleone /etc/nginx/sites-enabled/alleone
 sudo nginx -t
 sudo systemctl reload nginx
 ```
+
+O arquivo `deploy/nginx-alleone.conf` separa **páginas** (`/login`, `/dashboard`, `/admin`, `/rendimento`) → Next **3000** e **endpoints** da API (`/dashboard/complete`, `/admin/overview-stats`, etc.) → Nest **3002**.
 
 Acesso: **http://alleone.alletecnologia.com:8000/**
 
@@ -256,6 +228,8 @@ pm2 restart alleone-api alleone-web
 | Porta 3000 ocupada | `pm2 delete site-node`; só `alleone-web` na 3000 |
 | CORS | `CORS_ORIGINS` = URL exata do browser (`http://alleone...:8000`) |
 | Login “reinicia” / volta ao login sem erro | HTTP + cookie `Secure` → `AUTH_COOKIE_SECURE=false` e `pm2 restart alleone-api` |
+| `Cannot GET /dashboard` (JSON 404) | Nginx antigo mandava `/dashboard` para a API → `sudo cp deploy/nginx-alleone.conf /etc/nginx/sites-available/alleone` e `reload` |
+| Login/páginas “off” ou 502 | `pm2 status`; `curl -I http://127.0.0.1:3000/login`; subir `alleone-web` |
 | `must be owner of table` após restore | `ALTER TABLE ... OWNER TO uportal` em `public` e `tiflux` |
 
 ---
