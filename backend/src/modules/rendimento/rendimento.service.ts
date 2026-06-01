@@ -338,8 +338,23 @@ export class RendimentoService {
       return { start, end };
     }
 
-    const payroll = resolvePayrollPeriodRange(reference);
-    return { start: payroll.start, end: payroll.end };
+    // Mês: grade Dom–Sáb (inclui dias 26–30 do mês anterior na mesma tela)
+    const monthStart = new Date(reference.getFullYear(), reference.getMonth(), 1);
+    const monthEnd = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    start.setTime(monthStart.getTime());
+    start.setDate(start.getDate() - start.getDay());
+    end.setTime(monthEnd.getTime());
+    end.setDate(end.getDate() + (6 - end.getDay()));
+    return { start, end };
+  }
+
+  /** Limites do mês civil (só o mês exibido no título), para totais da grade. */
+  private resolveCalendarMonthBounds(reference: Date): { start: Date; end: Date } {
+    const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
+    const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    return { start, end };
   }
 
   private normalizeEmail(email: string): string {
@@ -1157,12 +1172,23 @@ export class RendimentoService {
       end: payrollPeriod.end,
     });
 
-    const totalMinutes = computeUnionWorkedMinutes(rows, 'ALL');
+    let totalMinutes = computeUnionWorkedMinutes(rows, 'ALL');
+    if (params.view === 'month') {
+      const cal = this.resolveCalendarMonthBounds(reference);
+      const calStart = this.toDateOnlyString(cal.start);
+      const calEnd = this.toDateOnlyString(cal.end);
+      const monthRows = rows.filter((row) => {
+        const day = String(row.appointment_date).slice(0, 10);
+        return day >= calStart && day <= calEnd;
+      });
+      totalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
+    }
+
     const periodOvertimeMinutes = computeUnionWorkedMinutes(
       payrollRows,
       'EXTRA',
     );
-    const periodPlantaoMinutes = computeUnionWorkedMinutes(rows, 'PLANTAO');
+    const periodPlantaoMinutes = computeUnionWorkedMinutes(payrollRows, 'PLANTAO');
     const overtimeBalanceMinutes = await this.refreshOvertimeBalance(
       user.id,
       periodOvertimeMinutes,

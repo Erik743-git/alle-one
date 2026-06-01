@@ -52,6 +52,7 @@ type RendimentoCalendarProps = {
   view: RendimentoCalendarView;
   referenceDate: Date;
   loading?: boolean;
+  refreshing?: boolean;
   canApproveJustification?: boolean;
   onOpenAlertJustification?: (params: {
     date: string;
@@ -95,6 +96,7 @@ export function RendimentoCalendar({
   view,
   referenceDate,
   loading = false,
+  refreshing = false,
   canApproveJustification = false,
   onOpenAlertJustification,
   onOpenVoluntaryJustification,
@@ -110,9 +112,13 @@ export function RendimentoCalendar({
   function navigate(delta: -1 | 1) {
     const next =
       view === "month"
-        ? delta === 1
-          ? addMonths(referenceDate, 1)
-          : subMonths(referenceDate, 1)
+        ? (() => {
+            const anchor = startOfMonth(referenceDate);
+            const shifted =
+              delta === 1 ? addMonths(anchor, 1) : subMonths(anchor, 1);
+            shifted.setDate(15);
+            return shifted;
+          })()
         : view === "week"
           ? delta === 1
             ? addWeeks(referenceDate, 1)
@@ -192,13 +198,13 @@ export function RendimentoCalendar({
           <div>
             <p className="text-sm text-muted-foreground">Horas trabalhadas</p>
             <p className="text-2xl font-bold text-foreground">
-              {loading ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
+              {loading && !timesheet ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">
               Horas extras
-              {!loading && timesheet?.periodOvertimeRangeLabel ? (
+              {timesheet?.periodOvertimeRangeLabel ? (
                 <span className="block text-[11px] font-normal">
                   Período {timesheet.periodOvertimeRangeLabel} (dia 26 ao 25)
                 </span>
@@ -209,29 +215,41 @@ export function RendimentoCalendar({
               )}
             </p>
             <p className="text-2xl font-bold text-amber-600 dark:text-amber-300">
-              {loading ? "—" : timesheet?.periodOvertimeFormatted ?? "00:00"}
+              {loading && !timesheet
+                ? "—"
+                : timesheet?.periodOvertimeFormatted ?? "00:00"}
             </p>
             <p className="text-xs text-muted-foreground">
-              Saldo debitável: {loading ? "—" : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+              Saldo debitável:{" "}
+              {loading && !timesheet
+                ? "—"
+                : timesheet?.overtimeBalanceFormatted ?? "00:00"}
             </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Horas de plantão</p>
             <p className="text-2xl font-bold text-violet-600 dark:text-violet-300">
-              {loading ? "—" : timesheet?.periodPlantaoFormatted ?? "00:00"}
+              {loading && !timesheet
+                ? "—"
+                : timesheet?.periodPlantaoFormatted ?? "00:00"}
             </p>
           </div>
         </div>
       </div>
 
-      {loading ? (
+      {loading && !timesheet ? (
         <div className="flex min-h-[280px] items-center justify-center">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : null}
 
-      {!loading && view === "month" ? (
-        <div className="overflow-hidden rounded-xl border border-border">
+      {timesheet && view === "month" ? (
+        <div className="relative overflow-hidden rounded-xl border border-border">
+          {refreshing ? (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
+              <Loader2 className="size-8 animate-spin text-primary" />
+            </div>
+          ) : null}
           <div className="grid grid-cols-7 border-b border-border bg-muted/40">
             {WEEKDAY_LABELS.map((label) => (
               <div
@@ -287,7 +305,7 @@ export function RendimentoCalendar({
         </div>
       ) : null}
 
-      {!loading && view === "week" ? (
+      {timesheet && view === "week" ? (
         <div className="grid gap-3 md:grid-cols-7">
           {weekDays.map((day) => {
             const key = format(day, "yyyy-MM-dd");
@@ -339,7 +357,7 @@ export function RendimentoCalendar({
         </div>
       ) : null}
 
-      {!loading && view === "day" ? (
+      {timesheet && view === "day" ? (
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-4 py-3">
             <p className="text-sm text-muted-foreground">Dia selecionado</p>

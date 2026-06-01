@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -54,6 +54,9 @@ export default function RendimentoAgendaPage() {
   const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [timesheet, setTimesheet] = useState<RendimentoTimesheet | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const loadSeqRef = useRef(0);
+  const hasTimesheetRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [justModalOpen, setJustModalOpen] = useState(false);
   const [justMode, setJustMode] = useState<"ALERT" | "VOLUNTARY">("ALERT");
@@ -76,23 +79,37 @@ export default function RendimentoAgendaPage() {
 
   const loadTimesheet = useCallback(async () => {
     if (!userId) return;
+    const seq = ++loadSeqRef.current;
+    const isFirstLoad = !hasTimesheetRef.current;
     try {
-      setLoading(true);
+      if (isFirstLoad) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
       const data = await rendimentoService.getTimesheet({
         userId,
         view,
         date: toDateInputValue(referenceDate),
       });
+      if (seq !== loadSeqRef.current) return;
       setTimesheet(data);
+      hasTimesheetRef.current = true;
     } catch (err) {
+      if (seq !== loadSeqRef.current) return;
       notifyError(
         err instanceof Error
           ? err.message
           : "Não foi possível carregar a agenda de horas.",
       );
-      setTimesheet(null);
+      if (isFirstLoad) {
+        setTimesheet(null);
+        hasTimesheetRef.current = false;
+      }
     } finally {
+      if (seq !== loadSeqRef.current) return;
       setLoading(false);
+      setRefreshing(false);
     }
   }, [referenceDate, userId, view]);
 
@@ -229,6 +246,7 @@ export default function RendimentoAgendaPage() {
               view={view}
               referenceDate={referenceDate}
               loading={loading}
+              refreshing={refreshing}
               canApproveJustification={canApprove}
               onOpenAlertJustification={openAlertJustification}
               onOpenVoluntaryJustification={openVoluntaryJustification}
