@@ -294,27 +294,6 @@ export default function LoginPage() {
                   "Entrar"
                 )}
               </Button>
-
-              <div className="relative py-1">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-white/10" />
-                </div>
-
-                <div className="relative flex justify-center">
-                  <span className="bg-[#08182f] px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 sm:text-xs">
-                    ou continue com
-                  </span>
-                </div>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                disabled
-                className="font-sans h-11 w-full rounded-xl border-white/15 bg-white/5 text-sm font-bold text-white hover:bg-white/10 hover:text-white sm:h-12 sm:text-[15px]"
-              >
-                Entrar com Google
-              </Button>
             </form>
 
             <Dialog>
