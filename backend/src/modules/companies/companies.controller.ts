@@ -18,7 +18,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
-import { CurrentUser } from '../gmud/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';

@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
-import { CurrentUser } from '../gmud/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { ListContractsQueryDto } from './contracts.dto';
 import { ContractsService } from './contracts.service';

@@ -23,6 +23,8 @@ const MODULOS: { label: string; key: PermissionModuleKey }[] = [
   { label: "GMUD", key: "GMUD" },
   { label: "Relatórios", key: "REPORTS" },
   { label: "Rendimento", key: "RENDIMENTO" },
+  { label: "Correio", key: "CORREIO" },
+  { label: "Inventário", key: "INVENTARIO" },
   { label: "Administração", key: "ADMIN" },
 ];
 
@@ -35,6 +37,16 @@ function presetAtivo(module: PermissionModuleKey): UserPermissionsPayload {
       canEdit: true,
       canDelete: false,
       canApprove: true,
+    };
+  }
+  if (module === "INVENTARIO") {
+    return {
+      module,
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: false,
+      canApprove: false,
     };
   }
   if (module === "ADMIN") {
@@ -73,7 +85,7 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   usuarioNome?: string;
   userId: string | null;
-  userRole?: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  userRole?: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
   onSaved?: () => void;
 };
 

@@ -10,6 +10,7 @@ datasource db {
 enum UserRole {
   ADMIN
   COLLABORATOR
+  PJ
   CLIENT
 }
 
@@ -41,6 +42,19 @@ enum PermissionModule {
   SLA
   BILLING
   RENDIMENTO
+  CORREIO
+  INVENTARIO
+}
+
+enum MailboxNotificationKind {
+  RENDIMENTO_ALERT
+  RENDIMENTO_APPROVAL_PENDING
+  CONTRACT_USAGE
+  GMUD_PENDING_APPROVAL
+  TICKET_NO_APPOINTMENT_24H
+  TICKET_STALLED_48H
+  TICKET_STALLED_7D
+  INVENTORY_EXPIRY
 }
 
 enum ContractFileType {
@@ -94,9 +108,31 @@ model User {
   gmudAttachmentUploads GmudAttachment[]   @relation("GmudAttachmentUploader")
   auditLogs           AuditLog[]
   serviceDeskLinks    UserServiceDesk[]
+  mailboxNotifications MailboxNotification[]
+  inventoryAssetsCreated InventoryAsset[] @relation("InventoryAssetCreator")
 
   @@index([companyId])
   @@map("users")
+}
+
+model MailboxNotification {
+  id        String                   @id @default(uuid())
+  userId    String                   @map("user_id")
+  kind      MailboxNotificationKind
+  title     String
+  body      String
+  href      String?
+  payload   Json?
+  dedupeKey String                   @map("dedupe_key")
+  readAt    DateTime?                @map("read_at")
+  createdAt DateTime                 @default(now()) @map("created_at")
+  updatedAt DateTime                 @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt])
+  @@map("mailbox_notifications")
 }
 
 model Company {
@@ -126,9 +162,32 @@ model Company {
   zabbixHosts          IntegrationZabbixHost[]
   tifluxAccounts       IntegrationTiFluxAccount[]
   usageAlertRules      UsageAlertRule[]
+  inventoryAssets      InventoryAsset[]
 
   @@unique([cnpj])
   @@map("companies")
+}
+
+model InventoryAsset {
+  id        String    @id @default(uuid())
+  companyId String    @map("company_id")
+  name      String
+  unit      String?
+  dueDate   DateTime? @map("due_date") @db.Date
+  notes     String?
+  fileId    String?   @map("file_id")
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  file    File?   @relation(fields: [fileId], references: [id], onDelete: SetNull)
+  creator User    @relation("InventoryAssetCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([companyId])
+  @@index([dueDate])
+  @@map("inventory_assets")
 }
 
 model ServiceDesk {
@@ -226,6 +285,7 @@ model File {
   contractFiles      ContractFile[]
   reports            Report[]
   gmudAttachments    GmudAttachment[]
+  inventoryAssets    InventoryAsset[]
 
   @@index([uploadedBy])
   @@map("files")

@@ -63,6 +63,8 @@ type RendimentoCalendarProps = {
   onOpenVoluntaryJustification?: (params: { date: string }) => void;
   onApproveJustification?: (id: string) => void;
   onRejectJustification?: (id: string) => void;
+  onApproveDayEvent?: (id: string) => void;
+  onRejectDayEvent?: (id: string) => void;
   onViewChange: (view: RendimentoCalendarView) => void;
   onReferenceDateChange: (date: Date) => void;
 };
@@ -98,6 +100,8 @@ export function RendimentoCalendar({
   onOpenVoluntaryJustification,
   onApproveJustification,
   onRejectJustification,
+  onApproveDayEvent,
+  onRejectDayEvent,
   onViewChange,
   onReferenceDateChange,
 }: RendimentoCalendarProps) {
@@ -180,20 +184,41 @@ export function RendimentoCalendar({
       <RendimentoLegend />
 
       <div className="rounded-xl border border-border bg-card px-4 py-3">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <p className="mb-3 text-xs text-muted-foreground">
+          Totais do período sem contar horas sobrepostas no mesmo dia. Os apontamentos
+          por dia continuam exibidos normalmente abaixo.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
-            <p className="text-sm text-muted-foreground">Total no período</p>
+            <p className="text-sm text-muted-foreground">Horas trabalhadas</p>
             <p className="text-2xl font-bold text-foreground">
               {loading ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
             </p>
           </div>
           <div>
-            <p className="text-sm text-muted-foreground">Horas extras no período</p>
+            <p className="text-sm text-muted-foreground">
+              Horas extras
+              {!loading && timesheet?.periodOvertimeRangeLabel ? (
+                <span className="block text-[11px] font-normal">
+                  Período {timesheet.periodOvertimeRangeLabel} (dia 25 ao 24)
+                </span>
+              ) : (
+                <span className="block text-[11px] font-normal">
+                  Período dia 25 ao dia 24
+                </span>
+              )}
+            </p>
             <p className="text-2xl font-bold text-amber-600 dark:text-amber-300">
               {loading ? "—" : timesheet?.periodOvertimeFormatted ?? "00:00"}
             </p>
             <p className="text-xs text-muted-foreground">
-              Saldo: {loading ? "—" : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+              Saldo debitável: {loading ? "—" : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">Horas de plantão</p>
+            <p className="text-2xl font-bold text-violet-600 dark:text-violet-300">
+              {loading ? "—" : timesheet?.periodPlantaoFormatted ?? "00:00"}
             </p>
           </div>
         </div>
@@ -254,7 +279,7 @@ export function RendimentoCalendar({
                       </span>
                     ) : null}
                   </div>
-                  <RendimentoDayIndicators summary={summary} compact />
+                  <RendimentoDayIndicators summary={summary} compact showLunch={false} />
                 </button>
               );
             })}
@@ -423,6 +448,36 @@ export function RendimentoCalendar({
                         <p className="mt-1 text-sm text-foreground/80">
                           {item.entry.description}
                         </p>
+                      ) : null}
+                      {item.entry.debitProtected ? (
+                        <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                          Aprovado · não pode ser debitado
+                        </p>
+                      ) : null}
+                      {canApproveJustification &&
+                      item.entry.dayEventId &&
+                      item.entry.dayEventStatus === "PENDING" &&
+                      resolveRendimentoOvertimeDisplay(item.entry).kind ? (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {onApproveDayEvent ? (
+                            <button
+                              type="button"
+                              className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-emerald-500"
+                              onClick={() => onApproveDayEvent(item.entry.dayEventId!)}
+                            >
+                              Aprovar {resolveRendimentoOvertimeDisplay(item.entry).kind === "PLANTAO" ? "plantão" : "HE"}
+                            </button>
+                          ) : null}
+                          {onRejectDayEvent ? (
+                            <button
+                              type="button"
+                              className="rounded bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-rose-500"
+                              onClick={() => onRejectDayEvent(item.entry.dayEventId!)}
+                            >
+                              Rejeitar
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                     <span

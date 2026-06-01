@@ -20,7 +20,8 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsageAlertsModule } from './modules/usage-alerts/usage-alerts.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RendimentoModule } from './modules/rendimento/rendimento.module';
-import { TifluxSyncModule } from './modules/tiflux-sync/tiflux-sync.module';
+import { MailboxModule } from './modules/mailbox/mailbox.module';
+import { InventarioModule } from './modules/inventario/inventario.module';
 
 @Module({
   imports: [
@@ -49,7 +50,8 @@ import { TifluxSyncModule } from './modules/tiflux-sync/tiflux-sync.module';
     UsageAlertsModule,
     ReportsModule,
     RendimentoModule,
-    TifluxSyncModule,
+    MailboxModule,
+    InventarioModule,
   ],
   controllers: [AppController],
   providers: [

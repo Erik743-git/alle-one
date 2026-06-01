@@ -51,7 +51,7 @@ alle-one/
     └── lib/services/       # Clientes HTTP da API
 ```
 
-Projeto auxiliar **fora deste repo**: `alleone-tiflux-sync` (sincronização TiFlux; não é obrigatório para o portal 24/7).
+Projeto auxiliar **fora deste repo**: `alleone-tiflux-sync` — popula o schema PostgreSQL `tiflux.*` (clientes, tickets, apontamentos). O portal **lê** esse cache; o sync **não** roda dentro do `alle-one` (módulo `tiflux-sync` removido para evitar duplicidade).
 
 ## Backend — módulos NestJS
 
@@ -71,7 +71,9 @@ Registrados em `backend/src/app.module.ts`:
 | **Zabbix** | Grupos, hosts, triggers, eventos |
 | **Tiflux** | Clientes, contratos, apontamentos |
 | **UsageAlerts** | Alertas de uso + job agendado |
-| **Rendimento** | Agenda de horas TiFlux por colaborador (mês/semana/dia) |
+| **Rendimento** | Agenda de horas TiFlux por colaborador (período 25→24, HE/plantão) |
+| **Mailbox** | Correio interno (alertas GMUD, tickets, inventário, etc.) |
+| **Inventario** | Ativos por empresa, anexos e vencimentos |
 | **Admin** | Operações administrativas agregadas |
 | **Mail** | Envio de e-mail (compartilhado) |
 
@@ -151,7 +153,7 @@ Autenticação: cookie/httpOnly gerenciado pelo backend; front redireciona rotas
 
 | Workflow | Gatilho | Ação |
 |----------|---------|------|
-| `ci.yml` | push/PR `main` | Build backend + lint/build frontend |
+| `ci.yml` | push/PR `main` | Testes backend + build backend + lint/build frontend |
 | `release.yml` | push tag `v*` | GitHub Release automática |
 
 ## Evolução recomendada

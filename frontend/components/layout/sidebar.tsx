@@ -15,16 +15,21 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CalendarRange,
+  Mail,
+  Package,
 } from "lucide-react";
 import {
   canAccessAdmin,
   canAccessAplicativos,
+  canAccessCorreio,
+  canAccessInventario,
   canAccessDashboard,
   canAccessFinanceiro,
   canAccessGmud,
   canAccessRelatorios,
   canAccessRendimento,
 } from "@/lib/access-control";
+import { MailboxUnreadBadge } from "@/components/layout/mailbox-unread-badge";
 import ThemeToggle from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -93,6 +98,18 @@ function buildMenuItems(): MenuItem[] {
       visible: canAccessRendimento(),
     },
     {
+      name: "Correio",
+      href: "/correio",
+      icon: Mail,
+      visible: canAccessCorreio(),
+    },
+    {
+      name: "Inventário",
+      href: "/inventario",
+      icon: Package,
+      visible: canAccessInventario(),
+    },
+    {
       name: "Aplicativos",
       icon: Boxes,
       visible: canAccessAplicativos(),
@@ -142,18 +159,36 @@ const SidebarNav = memo(function SidebarNav({
 
   const menu = useMemo(() => buildMenuItems(), [user]);
 
+  const iconSize = collapsed ? 18 : 20;
+
   const itemClass = (active: boolean) =>
     cn(
-      "flex items-center overflow-hidden rounded-xl text-sm font-semibold transition-colors duration-150",
-      collapsed ? "justify-center gap-0 px-2 py-3" : "gap-3 px-4 py-3",
+      "flex w-full items-center overflow-hidden rounded-xl text-sm font-semibold transition-colors duration-150",
+      collapsed
+        ? "justify-center gap-0 px-2 py-3"
+        : "min-h-[2.875rem] gap-3 px-3.5 py-3",
       active
         ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
         : "text-sidebar-foreground/80 hover:bg-muted",
     );
 
+  function renderNavLabel(name: string) {
+    if (collapsed) {
+      return <NavLabel collapsed>{name}</NavLabel>;
+    }
+    return (
+      <span className="min-w-0 flex-1 truncate text-left tracking-tight">
+        {name}
+      </span>
+    );
+  }
+
   return (
     <>
-      <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden overscroll-contain px-2 pb-2 pt-2 md:px-3">
+      <nav
+        className="sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain px-2.5 pb-2 pt-2 md:px-3"
+        aria-label="Módulos do portal"
+      >
         {menu
           .filter((item) => item.visible)
           .map((item) => {
@@ -179,11 +214,13 @@ const SidebarNav = memo(function SidebarNav({
                     !collapsed && "text-left",
                   )}
                 >
-                  <Icon size={18} className="shrink-0" />
-                  <NavLabel collapsed={collapsed}>{item.name}</NavLabel>
+                  <Icon size={iconSize} className="shrink-0" />
+                  {renderNavLabel(item.name)}
                 </button>
               );
             }
+
+            const isCorreio = item.name === "Correio";
 
             return (
               <Link
@@ -193,8 +230,16 @@ const SidebarNav = memo(function SidebarNav({
                 onClick={() => onNavigate?.()}
                 className={itemClass(!!active)}
               >
-                <Icon size={18} className="shrink-0" />
-                <NavLabel collapsed={collapsed}>{item.name}</NavLabel>
+                <span className="relative flex size-6 shrink-0 items-center justify-center">
+                  <Icon size={iconSize} />
+                  {isCorreio && collapsed ? (
+                    <MailboxUnreadBadge variant="collapsed" />
+                  ) : null}
+                </span>
+                {renderNavLabel(item.name)}
+                {isCorreio && !collapsed ? (
+                  <MailboxUnreadBadge variant="inline" />
+                ) : null}
               </Link>
             );
           })}
@@ -225,7 +270,7 @@ const SidebarBrand = memo(function SidebarBrand({
   }
 
   return (
-    <div className="shrink-0 border-b border-sidebar-border px-4 py-5">
+    <div className="sidebar-brand shrink-0 border-b border-sidebar-border px-4 py-3 max-h-[min(24vh,10rem)] overflow-hidden">
       <div className="relative">
         <div className="absolute right-0 top-0">
           <ThemeToggle />
@@ -266,7 +311,7 @@ function DesktopSidebar() {
   return (
     <aside
       className={cn(
-        "font-sans fixed left-0 top-0 z-40 hidden h-screen flex-col overflow-hidden",
+        "font-sans fixed left-0 top-0 z-40 hidden h-dvh max-h-dvh flex-col overflow-hidden",
         "border-r border-sidebar-border bg-sidebar shadow-[2px_0_16px_rgba(0,0,0,0.12)]",
         "transition-[width] duration-200 ease-out motion-reduce:transition-none",
         "[contain:layout_style_paint] md:flex",
@@ -328,16 +373,21 @@ function MobileSidebar() {
     <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
       <SheetContent
         side="left"
-        className="w-[min(100vw-2rem,280px)] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+        className="w-[min(100vw-2rem,300px)] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
         showCloseButton
       >
         <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-        <div className="flex h-full flex-col">
+        <div className="flex h-dvh max-h-dvh flex-col overflow-hidden">
           <SidebarBrand collapsed={false} />
-          <SidebarNav
-            collapsed={false}
-            onNavigate={() => setMobileOpen(false)}
-          />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <SidebarNav
+              collapsed={false}
+              onNavigate={() => setMobileOpen(false)}
+            />
+          </div>
+          <div className="shrink-0 border-t border-sidebar-border px-3 py-3">
+            <SessionPanel collapsed={false} />
+          </div>
         </div>
       </SheetContent>
     </Sheet>

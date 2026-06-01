@@ -21,6 +21,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import {
   CreateRendimentoJustificationDto,
+  DecideRendimentoDayEventDto,
   DecideRendimentoJustificationDto,
   RendimentoTimesheetQueryDto,
 } from './rendimento.dto';
@@ -82,6 +83,7 @@ export class RendimentoController {
 
   @Patch('justifications/:id/decision')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
   decideGapJustification(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -92,6 +94,21 @@ export class RendimentoController {
       justificationId: id,
       decision: body.decision,
       note: body.note,
+    });
+  }
+
+  @Patch('events/:id/decision')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  decideDayEvent(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: DecideRendimentoDayEventDto,
+  ) {
+    return this.rendimentoService.decideDayEvent({
+      actor: req.user,
+      eventId: id,
+      decision: body.decision,
     });
   }
 }

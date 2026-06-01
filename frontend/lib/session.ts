@@ -4,7 +4,7 @@ export type AuthUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
   companyId: string | null;
   companyName: string | null;
   firstAccess: boolean;

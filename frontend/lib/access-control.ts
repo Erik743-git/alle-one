@@ -1,7 +1,13 @@
 import type { PermissionFlag, PermissionModuleKey } from "./permission-modules";
+import {
+  isCollaboratorRole,
+  isInternalStaffRole,
+  isPjRole,
+  type AppRole,
+} from "./app-roles";
 import { getStoredUser } from "./session";
 
-export type AppRole = "ADMIN" | "COLLABORATOR" | "CLIENT";
+export type { AppRole };
 
 export function getCurrentRole(): AppRole | null {
   const user = getStoredUser();
@@ -13,7 +19,11 @@ export function isAdmin() {
 }
 
 export function isCollaborator() {
-  return getCurrentRole() === "COLLABORATOR";
+  return isCollaboratorRole(getCurrentRole());
+}
+
+export function isPj() {
+  return isPjRole(getCurrentRole());
 }
 
 export function isClient() {
@@ -41,6 +51,15 @@ const COLLABORATOR_DEFAULT_VIEW: PermissionModuleKey[] = [
   "DASHBOARD",
   "GMUD",
   "REPORTS",
+  "CORREIO",
+  "INVENTARIO",
+];
+
+const PJ_DEFAULT_VIEW: PermissionModuleKey[] = [
+  "DASHBOARD",
+  "GMUD",
+  "REPORTS",
+  "CORREIO",
 ];
 
 export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag) {
@@ -52,11 +71,20 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
   const user = getStoredUser();
   if (
     flag === "canView" &&
-    user?.role === "COLLABORATOR" &&
+    isCollaboratorRole(user?.role) &&
     (!user.permissions?.length ||
       !user.permissions.some((p) => p.module === module))
   ) {
     return COLLABORATOR_DEFAULT_VIEW.includes(module);
+  }
+
+  if (
+    flag === "canView" &&
+    isPjRole(user?.role) &&
+    (!user.permissions?.length ||
+      !user.permissions.some((p) => p.module === module))
+  ) {
+    return PJ_DEFAULT_VIEW.includes(module);
   }
 
   const entry = getModuleEntry(module);
@@ -90,16 +118,38 @@ export function canAccessDashboard() {
 }
 
 export function canAccessRendimento() {
+  if (isPj()) return false;
+  return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
+}
+
+export function canAccessCorreio() {
+  if (isClient()) return false;
   return (
-    (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO")
+    isAdmin() ||
+    isCollaborator() ||
+    isPj() ||
+    canViewModule("CORREIO")
   );
+}
+
+export function canAccessInventario() {
+  if (isClient() || isPj()) return false;
+  return isAdmin() || isCollaborator() || canViewModule("INVENTARIO");
+}
+
+export function canEditInventario() {
+  if (isAdmin()) return true;
+  if (hasPermission("INVENTARIO", "canEdit")) return true;
+  return isCollaborator() && canAccessInventario();
+}
+
+export function canDeleteInventario() {
+  if (isAdmin()) return true;
+  if (hasPermission("INVENTARIO", "canDelete")) return true;
+  return isCollaborator() && canAccessInventario();
 }
 
 export function canAccessAplicativos() {
   const role = getCurrentRole();
-  return (
-    role === "ADMIN" ||
-    role === "COLLABORATOR" ||
-    role === "CLIENT"
-  );
+  return isInternalStaffRole(role) || role === "CLIENT";
 }

@@ -15,7 +15,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import { PermissionModule } from '@prisma/client';
 import type { Response } from 'express';
 import { ReportsService } from './reports.service';
-import { CurrentUser } from '../gmud/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 
 @ApiTags('Reports')

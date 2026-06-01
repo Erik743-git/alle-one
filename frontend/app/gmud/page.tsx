@@ -107,7 +107,8 @@ export default function GmudPage() {
     setError(null);
     try {
       const isClient = user?.role === "CLIENT";
-      const isCollaborator = user?.role === "COLLABORATOR";
+      const isCollaborator =
+        user?.role === "COLLABORATOR" || user?.role === "PJ";
       const [companiesData, gmudsData] = await Promise.all([
         isClient
           ? Promise.resolve([] as Company[])

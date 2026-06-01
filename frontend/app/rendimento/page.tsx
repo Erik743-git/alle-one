@@ -13,21 +13,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getStoredUser } from "@/lib/session";
 import {
+  isCollaboratorRole,
+  isPjRole,
+  roleDisplayLabel,
+} from "@/lib/app-roles";
+import { notifyError } from "@/lib/notify";
+import {
   rendimentoService,
   type RendimentoCollaborator,
 } from "@/lib/services/rendimento.service";
-
-function roleLabel(role: RendimentoCollaborator["role"]) {
-  if (role === "ADMIN") return "Administrador";
-  if (role === "COLLABORATOR") return "Colaborador";
-  return "Cliente";
-}
 
 export default function RendimentoPage() {
   const router = useRouter();
   const authUser = getStoredUser();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [collaborators, setCollaborators] = useState<RendimentoCollaborator[]>(
     [],
@@ -36,16 +35,19 @@ export default function RendimentoPage() {
   useEffect(() => {
     void (async () => {
       try {
-        if (authUser?.role === "COLLABORATOR" && authUser.id) {
+        if (isPjRole(authUser?.role)) {
+          router.replace("/dashboard");
+          return;
+        }
+        if (isCollaboratorRole(authUser?.role) && authUser.id) {
           router.replace(`/rendimento/${authUser.id}`);
           return;
         }
         setLoading(true);
-        setError("");
         const data = await rendimentoService.listCollaborators();
         setCollaborators(data);
       } catch (err) {
-        setError(
+        notifyError(
           err instanceof Error
             ? err.message
             : "Não foi possível carregar os colaboradores.",
@@ -84,8 +86,8 @@ export default function RendimentoPage() {
               <h1 className="text-3xl font-bold text-foreground">Rendimento</h1>
               <p className="text-muted-foreground">
                 Acompanhe os apontamentos de horas dos colaboradores no TiFlux.
-                Horas do mês atual aparecem na lista; abra a agenda para ver mês,
-                semana ou dia.
+                A coluna «Horas no mês» usa total sem sobreposição no mesmo dia; na
+                agenda, cada apontamento continua listado normalmente.
               </p>
             </div>
 
@@ -106,10 +108,6 @@ export default function RendimentoPage() {
                 {loading ? (
                   <div className="flex min-h-[200px] items-center justify-center">
                     <Loader2 className="size-8 animate-spin text-primary" />
-                  </div>
-                ) : error ? (
-                  <div className="alle-alert-error rounded-xl p-4 text-sm">
-                    {error}
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-border">
@@ -148,7 +146,7 @@ export default function RendimentoPage() {
                               <td className="px-4 py-3 text-muted-foreground">
                                 {item.email}
                               </td>
-                              <td className="px-4 py-3">{roleLabel(item.role)}</td>
+                              <td className="px-4 py-3">{roleDisplayLabel(item.role)}</td>
                               <td className="px-4 py-3 font-bold text-primary">
                                 {item.monthTotalHoursFormatted}
                               </td>

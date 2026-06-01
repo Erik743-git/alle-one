@@ -37,7 +37,7 @@ type ApiUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
   status: "ACTIVE" | "INACTIVE";
   firstAccess: boolean;
   responsible: boolean;
@@ -65,7 +65,7 @@ type UsuarioUI = {
   id: string;
   nome: string;
   email: string;
-  perfil: "Admin" | "Colaborador" | "Cliente";
+  perfil: "Admin" | "Colaborador" | "PJ" | "Cliente";
   status: "Ativo" | "Inativo";
 };
 
@@ -78,7 +78,7 @@ type FormEdicao = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
   status: "ACTIVE" | "INACTIVE";
   companyId: string;
   firstAccess: boolean;
@@ -104,6 +104,8 @@ function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
       return "Admin";
     case "COLLABORATOR":
       return "Colaborador";
+    case "PJ":
+      return "PJ";
     case "CLIENT":
       return "Cliente";
     default:
@@ -888,6 +890,7 @@ export default function AdminUsuariosPage() {
                       { value: "ADMIN", label: "Administrador" },
                       { value: "CLIENT", label: "Cliente" },
                       { value: "COLLABORATOR", label: "Colaborador" },
+                      { value: "PJ", label: "PJ" },
                     ]}
                   />
                 </div>

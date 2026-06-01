@@ -15,6 +15,8 @@ import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import ExcelJS from 'exceljs';
 import { isMonitoringPeriodWeekly } from '../../common/monitoring-period';
+import { overtimeKindFromValorization } from '../rendimento/rendimento-day-insights';
+import { computeUnionWorkedMinutes } from '../rendimento/rendimento-worked-minutes.helper';
 
 type ReportFormat = 'CSV' | 'XLSX';
 type ReportStatus = 'READY' | 'FAILED';
@@ -1498,6 +1500,13 @@ export class ReportsService {
     return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
   }
 
+  private formatReportDescription(value?: string | null): string {
+    const text = String(value || '').trim();
+    if (text.length >= 40) return text;
+    if (!text) return '-'.repeat(40);
+    return text.padEnd(40, '·');
+  }
+
   private formatMonthShort(dateOnly: string): string {
     const d = new Date(`${dateOnly}T12:00:00`);
     if (Number.isNaN(d.getTime())) return '';
@@ -1539,7 +1548,9 @@ export class ReportsService {
       title: string;
       apontamento: string;
       durationHHMM: string;
-      assistencia: string;
+      overtimeHHMM: string;
+      plantaoHHMM: string;
+      description: string;
       client: string;
       equipe: string;
       monthLabel: string;
@@ -1554,10 +1565,12 @@ export class ReportsService {
           user_name: string | null;
           ticket_number: number | null;
           title: string | null;
+          description: string | null;
           appointment_date: string;
           init_time: string | null;
           end_time: string | null;
           client_name: string | null;
+          valorization_raw: unknown | null;
           created_by_way_of: string | null;
         }>
       >`
@@ -1565,10 +1578,12 @@ export class ReportsService {
           a.user_name,
           a.ticket_number,
           coalesce(t.title, a.description, '') as title,
+          coalesce(a.description, '') as description,
           a.appointment_date::date::text as appointment_date,
           a.init_time::text as init_time,
           a.end_time::text as end_time,
           a.client_name,
+          a.valorization_raw,
           t.created_by_way_of
         from tiflux.ticket_appointments a
         left join tiflux.tickets t
@@ -1612,14 +1627,18 @@ export class ReportsService {
       });
       const equipe =
         teamByUserName.get(normalizeNameKey(attendant)) || 'Sem equipe';
+      const overtimeKind = overtimeKindFromValorization(r.valorization_raw);
+      const durationHHMM = this.formatMinutesHHMM(durationMinutes);
 
       return {
         attendant,
         ticketNumber: Number(r.ticket_number) || 0,
         title: String(r.title || '').trim(),
         apontamento: `${dateLabel} (${initHHMM} - ${endHHMM})`,
-        durationHHMM: this.formatMinutesHHMM(durationMinutes),
-        assistencia: this.mapAssistenciaLabel(r.created_by_way_of),
+        durationHHMM,
+        overtimeHHMM: overtimeKind === 'EXTRA' ? durationHHMM : '',
+        plantaoHHMM: overtimeKind === 'PLANTAO' ? durationHHMM : '',
+        description: this.formatReportDescription(r.description),
         client: String(r.client_name || '').trim() || '-',
         equipe,
         monthLabel: this.formatMonthShort(r.appointment_date),
@@ -1856,14 +1875,17 @@ export class ReportsService {
     // Cabeçalho + logo
     sheet.getColumn(1).width = 28;
     sheet.getColumn(2).width = 12;
-    sheet.getColumn(3).width = 56;
+    sheet.getColumn(3).width = 40;
     sheet.getColumn(4).width = 28;
     sheet.getColumn(5).width = 12;
-    sheet.getColumn(6).width = 30;
-    sheet.getColumn(7).width = 26;
-    sheet.getColumn(8).width = 10;
+    sheet.getColumn(6).width = 12;
+    sheet.getColumn(7).width = 12;
+    sheet.getColumn(8).width = 48;
+    sheet.getColumn(9).width = 26;
+    sheet.getColumn(10).width = 22;
+    sheet.getColumn(11).width = 10;
 
-    sheet.mergeCells('A1:G1');
+    sheet.mergeCells('A1:K1');
     sheet.getCell('A1').value = 'Relatório Rendimento';
     sheet.getCell('A1').font = {
       bold: true,
@@ -1922,6 +1944,9 @@ export class ReportsService {
       'Título',
       'Apontamento',
       'Duração',
+      'Hora extra',
+      'Plantão',
+      'Descrição',
       'Cliente',
       'Equipe',
       'Mês',
@@ -1947,6 +1972,9 @@ export class ReportsService {
         r.title,
         r.apontamento,
         r.durationHHMM,
+        r.overtimeHHMM,
+        r.plantaoHHMM,
+        r.description,
         r.client,
         r.equipe,
         r.monthLabel,
@@ -1957,8 +1985,116 @@ export class ReportsService {
 
     sheet.autoFilter = {
       from: { row: headerRowIndex, column: 1 },
-      to: { row: headerRowIndex, column: 8 },
+      to: { row: headerRowIndex, column: 11 },
     };
+
+    const rawRows =
+      (await this.prisma.$queryRaw<
+        Array<{
+          user_name: string | null;
+          appointment_date: string;
+          init_time: string | null;
+          end_time: string | null;
+          minutes: number;
+          valorization_raw: unknown | null;
+        }>
+      >`
+        select
+          a.user_name,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time::text as init_time,
+          a.end_time::text as end_time,
+          a.valorization_raw,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from tiflux.ticket_appointments a
+        left join tiflux.tickets t
+          on t.ticket_number = a.ticket_number
+        where a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
+          and a.user_name is not null
+          and trim(a.user_name) <> ''
+      `) ?? [];
+
+    const byAttendant = new Map<string, typeof rawRows>();
+    for (const row of rawRows) {
+      const name = String(row.user_name || '').trim();
+      if (!name) continue;
+      if (!byAttendant.has(name)) byAttendant.set(name, []);
+      byAttendant.get(name)!.push(row);
+    }
+
+    rowIndex += 2;
+    sheet.getRow(rowIndex).values = [
+      'Resumo (sem sobreposição)',
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+    sheet.getRow(rowIndex).font = { bold: true };
+    rowIndex += 1;
+
+    const summaryHeader = sheet.getRow(rowIndex);
+    summaryHeader.values = [
+      'Atendente',
+      null,
+      null,
+      null,
+      'Total',
+      'Hora extra',
+      'Plantão',
+      null,
+      null,
+      null,
+      null,
+    ];
+    summaryHeader.font = { bold: true };
+    rowIndex += 1;
+
+    const attendantNames = [...byAttendant.keys()].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR'),
+    );
+    for (const name of attendantNames) {
+      const group = byAttendant.get(name)!;
+      const mapped = group.map((r) => ({
+        appointment_date: r.appointment_date,
+        init_time: r.init_time,
+        end_time: r.end_time,
+        minutes: Number(r.minutes) || 0,
+        valorization_raw: r.valorization_raw,
+      }));
+      const total = computeUnionWorkedMinutes(mapped, 'ALL');
+      const extra = computeUnionWorkedMinutes(mapped, 'EXTRA');
+      const plantao = computeUnionWorkedMinutes(mapped, 'PLANTAO');
+      const row = sheet.getRow(rowIndex);
+      row.values = [
+        name,
+        null,
+        null,
+        null,
+        this.formatMinutesHHMM(total),
+        this.formatMinutesHHMM(extra),
+        this.formatMinutesHHMM(plantao),
+        null,
+        null,
+        null,
+        null,
+      ];
+      rowIndex += 1;
+    }
 
     return workbook.xlsx.writeBuffer();
   }

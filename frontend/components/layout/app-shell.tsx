@@ -30,7 +30,7 @@ function AppShellMain({ children }: { children: React.ReactNode }) {
         className={[
           "min-h-screen w-full min-w-0 box-border",
           "max-md:pl-0",
-          "md:pl-[var(--sidebar-width,260px)]",
+          "md:pl-[var(--sidebar-width,272px)]",
           "md:transition-[padding-left] md:duration-200 md:ease-out",
           "motion-reduce:md:transition-none",
         ].join(" ")}

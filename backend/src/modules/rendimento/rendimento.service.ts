@@ -12,9 +12,21 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type { RendimentoCalendarView } from './rendimento.dto';
 import {
   analyzeRendimentoDay,
+  LUNCH_MINUTES,
   type RendimentoDayInsightsDto,
   type RendimentoGapDto,
 } from './rendimento-day-insights';
+import {
+  buildDayEventSourceKey,
+  collectDayEventUpserts,
+  normalizeClockTimeForDb,
+  newDayEventId,
+  type RendimentoDayEventRow,
+  type RendimentoDayEventStatus,
+  type UpsertDayEventInput,
+} from './rendimento-day-events.helper';
+import { computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
+import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
 
 export type { RendimentoDayInsightsDto, RendimentoGapDto };
 
@@ -31,6 +43,9 @@ export type RendimentoEntryDto = {
   isOvertime: boolean;
   overtimeKind?: 'EXTRA' | 'PLANTAO' | null;
   valorizationServiceName?: string | null;
+  dayEventId?: string | null;
+  dayEventStatus?: RendimentoDayEventStatus | null;
+  debitProtected?: boolean;
 };
 
 type RendimentoJustificationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -83,6 +98,9 @@ export type RendimentoTimesheetDto = {
   totalHoursFormatted: string;
   periodOvertimeMinutes: number;
   periodOvertimeFormatted: string;
+  periodOvertimeRangeLabel: string;
+  periodPlantaoMinutes: number;
+  periodPlantaoFormatted: string;
   overtimeBalanceMinutes: number;
   overtimeBalanceFormatted: string;
   days: RendimentoDaySummaryDto[];
@@ -215,6 +233,45 @@ export class RendimentoService {
           minutes INTEGER NOT NULL DEFAULT 0,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+      `);
+      await this.prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS rendimento_day_events (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          date_ref DATE NOT NULL,
+          event_type TEXT NOT NULL,
+          from_time TIME NULL,
+          to_time TIME NULL,
+          minutes INTEGER NOT NULL DEFAULT 0,
+          appointment_external_id BIGINT NULL,
+          justification_id TEXT NULL,
+          label TEXT NULL,
+          description TEXT NULL,
+          reason TEXT NULL,
+          status TEXT NOT NULL DEFAULT 'ACTIVE',
+          debit_protected BOOLEAN NOT NULL DEFAULT false,
+          source_key TEXT NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          approved_by TEXT NULL REFERENCES users(id) ON DELETE SET NULL,
+          approved_at TIMESTAMP NULL,
+          deleted_at TIMESTAMP NULL,
+          CONSTRAINT rendimento_day_events_type_chk CHECK (
+            event_type IN ('IDLE_ALERT', 'LUNCH', 'JUSTIFICATION', 'OVERTIME', 'PLANTAO')
+          ),
+          CONSTRAINT rendimento_day_events_status_chk CHECK (
+            status IN ('ACTIVE', 'PENDING', 'APPROVED', 'REJECTED')
+          ),
+          CONSTRAINT rendimento_day_events_user_source_uniq UNIQUE (user_id, source_key)
+        );
+      `);
+      await this.prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_rendimento_day_events_user_date
+        ON rendimento_day_events (user_id, date_ref);
+      `);
+      await this.prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS idx_rendimento_day_events_type_status
+        ON rendimento_day_events (event_type, status);
       `);
     })();
     await this.ensureTablesPromise;
@@ -652,6 +709,323 @@ export class RendimentoService {
       });
   }
 
+  private async getProtectedOvertimeMinutes(
+    userId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<number> {
+    await this.ensureRendimentoTables();
+    const rows =
+      (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
+        `
+        SELECT COALESCE(SUM(minutes), 0)::int AS total
+        FROM rendimento_day_events
+        WHERE user_id = $1
+          AND date_ref BETWEEN $2::date AND $3::date
+          AND event_type IN ('OVERTIME', 'PLANTAO')
+          AND status = 'APPROVED'
+          AND debit_protected = true
+          AND deleted_at IS NULL
+      `,
+        userId,
+        this.toDateOnlyString(periodStart),
+        this.toDateOnlyString(periodEnd),
+      )) ?? [];
+    return Number(rows[0]?.total) || 0;
+  }
+
+  private async getDebitedOvertimeMinutes(
+    userId: string,
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<number> {
+    await this.ensureRendimentoTables();
+    const rows =
+      (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
+        `
+        SELECT COALESCE(SUM(overtime_minutes), 0)::int AS total
+        FROM rendimento_gap_justifications
+        WHERE user_id = $1
+          AND date_ref BETWEEN $2::date AND $3::date
+          AND status = 'APPROVED'
+          AND debit_overtime = true
+          AND deleted_at IS NULL
+      `,
+        userId,
+        this.toDateOnlyString(periodStart),
+        this.toDateOnlyString(periodEnd),
+      )) ?? [];
+    return Number(rows[0]?.total) || 0;
+  }
+
+  private getDebitableOvertimeMinutes(
+    periodOvertimeMinutes: number,
+    protectedMinutes: number,
+    debitedMinutes: number,
+  ): number {
+    return Math.max(
+      0,
+      Math.trunc(periodOvertimeMinutes) -
+        Math.trunc(protectedMinutes) -
+        Math.trunc(debitedMinutes),
+    );
+  }
+
+  private async refreshOvertimeBalance(
+    userId: string,
+    periodOvertimeMinutes: number,
+    referenceDate: Date,
+  ): Promise<number> {
+    await this.ensureRendimentoTables();
+    const payroll = resolvePayrollPeriodRange(referenceDate);
+    const protectedMinutes = await this.getProtectedOvertimeMinutes(
+      userId,
+      payroll.start,
+      payroll.end,
+    );
+    const debitedMinutes = await this.getDebitedOvertimeMinutes(
+      userId,
+      payroll.start,
+      payroll.end,
+    );
+    const available = this.getDebitableOvertimeMinutes(
+      periodOvertimeMinutes,
+      protectedMinutes,
+      debitedMinutes,
+    );
+    await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO rendimento_overtime_balances (user_id, minutes, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET minutes = $2, updated_at = NOW()
+    `,
+      userId,
+      available,
+    );
+    return available;
+  }
+
+  private async upsertDayEvent(input: UpsertDayEventInput): Promise<string> {
+    await this.ensureRendimentoTables();
+    const fromTime = normalizeClockTimeForDb(input.fromTime);
+    const toTime = normalizeClockTimeForDb(input.toTime);
+    const sourceKey = buildDayEventSourceKey({
+      eventType: input.eventType,
+      dateRef: input.dateRef,
+      fromTime,
+      toTime,
+      appointmentExternalId: input.appointmentExternalId,
+      justificationId: input.justificationId,
+    });
+
+    const existing =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          status: RendimentoDayEventStatus;
+          debit_protected: boolean;
+          event_type: string;
+        }>
+      >(
+        `
+        SELECT id, status, debit_protected, event_type
+        FROM rendimento_day_events
+        WHERE user_id = $1
+          AND source_key = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+        input.userId,
+        sourceKey,
+      )) ?? [];
+
+    const current = existing[0];
+    const status = input.status ?? current?.status ?? 'ACTIVE';
+    const debitProtected =
+      input.debitProtected ?? current?.debit_protected ?? false;
+
+    if (current) {
+      const lockedOvertime =
+        (current.event_type === 'OVERTIME' ||
+          current.event_type === 'PLANTAO') &&
+        current.status === 'APPROVED' &&
+        current.debit_protected;
+
+      if (lockedOvertime) {
+        return current.id;
+      }
+
+      await this.prisma.$executeRawUnsafe(
+        `
+        UPDATE rendimento_day_events
+        SET
+          from_time = $3::time,
+          to_time = $4::time,
+          minutes = $5,
+          appointment_external_id = $6,
+          justification_id = $7,
+          label = $8,
+          description = $9,
+          reason = $10,
+          status = $11,
+          debit_protected = $12,
+          updated_at = NOW()
+        WHERE id = $1 AND user_id = $2
+      `,
+        current.id,
+        input.userId,
+        fromTime,
+        toTime,
+        Math.max(0, Math.trunc(input.minutes)),
+        input.appointmentExternalId ?? null,
+        input.justificationId ?? null,
+        input.label ?? null,
+        input.description ?? null,
+        input.reason ?? null,
+        status,
+        debitProtected,
+      );
+      return current.id;
+    }
+
+    const id = newDayEventId();
+    await this.prisma.$executeRawUnsafe(
+      `
+      INSERT INTO rendimento_day_events (
+        id, user_id, date_ref, event_type, from_time, to_time, minutes,
+        appointment_external_id, justification_id, label, description, reason,
+        status, debit_protected, source_key
+      ) VALUES (
+        $1, $2, $3::date, $4, $5::time, $6::time, $7,
+        $8, $9, $10, $11, $12,
+        $13, $14, $15
+      )
+    `,
+      id,
+      input.userId,
+      input.dateRef.slice(0, 10),
+      input.eventType,
+      fromTime,
+      toTime,
+      Math.max(0, Math.trunc(input.minutes)),
+      input.appointmentExternalId ?? null,
+      input.justificationId ?? null,
+      input.label ?? null,
+      input.description ?? null,
+      input.reason ?? null,
+      status,
+      debitProtected,
+      sourceKey,
+    );
+    return id;
+  }
+
+  private async syncDayEventsForDays(
+    userId: string,
+    days: RendimentoDaySummaryDto[],
+  ): Promise<void> {
+    for (const day of days) {
+      if (!day.insights) continue;
+      const upserts = collectDayEventUpserts({
+        userId,
+        dateRef: day.date,
+        insights: day.insights,
+        entries: day.entries,
+      });
+      for (const item of upserts) {
+        await this.upsertDayEvent(item);
+      }
+    }
+  }
+
+  private async listDayEvents(params: {
+    userId: string;
+    start: Date;
+    end: Date;
+  }): Promise<RendimentoDayEventRow[]> {
+    await this.ensureRendimentoTables();
+    return (
+      (await this.prisma.$queryRawUnsafe<RendimentoDayEventRow[]>(
+        `
+        SELECT
+          id,
+          user_id,
+          date_ref::text AS date_ref,
+          event_type,
+          to_char(from_time, 'HH24:MI') AS from_time,
+          to_char(to_time, 'HH24:MI') AS to_time,
+          minutes,
+          appointment_external_id,
+          justification_id,
+          label,
+          description,
+          reason,
+          status,
+          debit_protected,
+          source_key
+        FROM rendimento_day_events
+        WHERE user_id = $1
+          AND date_ref BETWEEN $2::date AND $3::date
+          AND deleted_at IS NULL
+        ORDER BY date_ref ASC, from_time ASC NULLS LAST
+      `,
+        params.userId,
+        this.toDateOnlyString(params.start),
+        this.toDateOnlyString(params.end),
+      )) ?? []
+    );
+  }
+
+  private attachDayEventsToDays(
+    days: RendimentoDaySummaryDto[],
+    events: RendimentoDayEventRow[],
+  ): void {
+    const byAppointment = new Map<number, RendimentoDayEventRow>();
+    for (const event of events) {
+      if (event.appointment_external_id != null) {
+        byAppointment.set(Number(event.appointment_external_id), event);
+      }
+    }
+
+    for (const day of days) {
+      day.entries = day.entries.map((entry) => {
+        const event = byAppointment.get(entry.id);
+        if (!event) return entry;
+        return {
+          ...entry,
+          dayEventId: event.id,
+          dayEventStatus: event.status,
+          debitProtected: event.debit_protected,
+        };
+      });
+    }
+  }
+
+  private async computeOvertimeMinutesForUser(
+    userId: string,
+    start: Date,
+    end: Date,
+  ): Promise<number> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { email: true },
+    });
+    if (!user) return 0;
+
+    const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
+    const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
+    if (tifluxUser == null) return 0;
+
+    const payroll = resolvePayrollPeriodRange(new Date());
+    const rows = await this.fetchAppointments({
+      tifluxUserId: tifluxUser.id,
+      start: payroll.start,
+      end: payroll.end,
+    });
+    return computeUnionWorkedMinutes(rows, 'EXTRA');
+  }
+
   private currentMonthRange(): { start: Date; end: Date } {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -667,7 +1041,7 @@ export class RendimentoService {
       where: {
         deletedAt: null,
         status: UserStatus.ACTIVE,
-        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] },
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] }, // PJ não entra na lista de Rendimento
       },
       include: { company: true },
       orderBy: { name: 'asc' },
@@ -687,10 +1061,7 @@ export class RendimentoService {
           start,
           end,
         });
-        monthTotalMinutes = monthRows.reduce(
-          (sum, row) => sum + (Number(row.minutes) || 0),
-          0,
-        );
+        monthTotalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
       }
 
       collaborators.push({
@@ -721,7 +1092,7 @@ export class RendimentoService {
       where: {
         id: params.userId,
         deletedAt: null,
-        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] },
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] }, // PJ não tem agenda de rendimento
       },
     });
 
@@ -747,11 +1118,16 @@ export class RendimentoService {
         totalHoursFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
         periodOvertimeFormatted: this.formatMinutes(0),
+        periodOvertimeRangeLabel: resolvePayrollPeriodRange(reference).label,
+        periodPlantaoMinutes: 0,
+        periodPlantaoFormatted: this.formatMinutes(0),
         overtimeBalanceMinutes,
         overtimeBalanceFormatted: this.formatMinutes(overtimeBalanceMinutes),
         days: [],
       };
     }
+
+    const payrollPeriod = resolvePayrollPeriodRange(reference);
 
     const rows = await this.fetchAppointments({
       tifluxUserId: tifluxUser.id,
@@ -772,12 +1148,27 @@ export class RendimentoService {
       justificationsByDate.get(key)!.push(item);
     }
     const days = this.groupByDay(rows, justificationsByDate);
-    const totalMinutes = days.reduce((sum, day) => sum + day.totalMinutes, 0);
-    const periodOvertimeMinutes = days.reduce(
-      (sum, day) => sum + (day.insights?.overtimeMinutes ?? 0),
-      0,
+    await this.syncDayEventsForDays(user.id, days);
+    const dayEvents = await this.listDayEvents({ userId: user.id, start, end });
+    this.attachDayEventsToDays(days, dayEvents);
+
+    const payrollRows = await this.fetchAppointments({
+      tifluxUserId: tifluxUser.id,
+      start: payrollPeriod.start,
+      end: payrollPeriod.end,
+    });
+
+    const totalMinutes = computeUnionWorkedMinutes(rows, 'ALL');
+    const periodOvertimeMinutes = computeUnionWorkedMinutes(
+      payrollRows,
+      'EXTRA',
     );
-    const overtimeBalanceMinutes = await this.getOvertimeBalanceMinutes(user.id);
+    const periodPlantaoMinutes = computeUnionWorkedMinutes(rows, 'PLANTAO');
+    const overtimeBalanceMinutes = await this.refreshOvertimeBalance(
+      user.id,
+      periodOvertimeMinutes,
+      reference,
+    );
 
     return {
       userId: user.id,
@@ -790,6 +1181,9 @@ export class RendimentoService {
       totalHoursFormatted: this.formatMinutes(totalMinutes),
       periodOvertimeMinutes,
       periodOvertimeFormatted: this.formatMinutes(periodOvertimeMinutes),
+      periodOvertimeRangeLabel: payrollPeriod.label,
+      periodPlantaoMinutes,
+      periodPlantaoFormatted: this.formatMinutes(periodPlantaoMinutes),
       overtimeBalanceMinutes,
       overtimeBalanceFormatted: this.formatMinutes(overtimeBalanceMinutes),
       days,
@@ -836,6 +1230,16 @@ export class RendimentoService {
       throw new BadRequestException('Justificativa é obrigatória.');
     }
 
+    const gapMinutesPreview =
+      Number(params.gapMinutes) > 0
+        ? Math.trunc(Number(params.gapMinutes))
+        : toMinutes - fromMinutes;
+    if (params.gapType === 'lunch' && gapMinutesPreview > LUNCH_MINUTES) {
+      throw new BadRequestException(
+        'Período de almoço não pode exceder 1h30.',
+      );
+    }
+
     const gapMinutes =
       Number(params.gapMinutes) > 0
         ? Math.trunc(Number(params.gapMinutes))
@@ -870,7 +1274,97 @@ export class RendimentoService {
       params.actor.userId,
     );
 
+    await this.upsertDayEvent({
+      userId: params.userId,
+      dateRef: date,
+      eventType: 'JUSTIFICATION',
+      fromTime,
+      toTime,
+      minutes: gapMinutes,
+      justificationId: id,
+      label: this.gapLabelForType(params.gapType, gapMinutes),
+      reason,
+      status: 'PENDING',
+    });
+
     return { id, status: 'PENDING' as const };
+  }
+
+  async decideDayEvent(params: {
+    actor: AuthenticatedRequestUser;
+    eventId: string;
+    decision: 'APPROVED' | 'REJECTED';
+  }) {
+    await this.ensureRendimentoTables();
+    if (params.actor.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Somente administradores podem aprovar horas extras ou plantão.',
+      );
+    }
+
+    const rows =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          user_id: string;
+          event_type: string;
+          status: RendimentoDayEventStatus;
+        }>
+      >(
+        `
+        SELECT id, user_id, event_type, status
+        FROM rendimento_day_events
+        WHERE id = $1 AND deleted_at IS NULL
+      `,
+        params.eventId,
+      )) ?? [];
+    const current = rows[0];
+    if (!current) {
+      throw new NotFoundException('Registro de rendimento não encontrado.');
+    }
+    if (current.event_type !== 'OVERTIME' && current.event_type !== 'PLANTAO') {
+      throw new BadRequestException(
+        'Somente hora extra ou plantão podem ser aprovados neste fluxo.',
+      );
+    }
+    if (current.status !== 'PENDING') {
+      throw new BadRequestException('Este registro já foi decidido.');
+    }
+
+    const debitProtected = params.decision === 'APPROVED';
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_day_events
+      SET status = $2,
+          debit_protected = $3,
+          approved_by = $4,
+          approved_at = NOW(),
+          updated_at = NOW()
+      WHERE id = $1
+    `,
+      params.eventId,
+      params.decision,
+      debitProtected,
+      params.actor.userId,
+    );
+
+    const payroll = resolvePayrollPeriodRange(new Date());
+    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+      current.user_id,
+      payroll.start,
+      payroll.end,
+    );
+    await this.refreshOvertimeBalance(
+      current.user_id,
+      periodOvertimeMinutes,
+      new Date(),
+    );
+
+    return {
+      id: params.eventId,
+      status: params.decision,
+      debitProtected,
+    };
   }
 
   async decideGapJustification(params: {
@@ -912,6 +1406,41 @@ export class RendimentoService {
       throw new BadRequestException('Justificativa já foi decidida.');
     }
 
+    if (params.decision === 'APPROVED' && current.debit_overtime) {
+      const debit = Math.max(
+        0,
+        Math.trunc(Number(current.overtime_minutes) || 0),
+      );
+      const payroll = resolvePayrollPeriodRange(new Date());
+      const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+        current.user_id,
+        payroll.start,
+        payroll.end,
+      );
+      const protectedMinutes = await this.getProtectedOvertimeMinutes(
+        current.user_id,
+        payroll.start,
+        payroll.end,
+      );
+      const debitedMinutes = await this.getDebitedOvertimeMinutes(
+        current.user_id,
+        payroll.start,
+        payroll.end,
+      );
+      const debitable = this.getDebitableOvertimeMinutes(
+        periodOvertimeMinutes,
+        protectedMinutes,
+        debitedMinutes,
+      );
+      if (debit > debitable) {
+        throw new BadRequestException(
+          `Não é possível debitar ${this.formatMinutes(debit)} em horas extras. ` +
+            `Disponível para débito: ${this.formatMinutes(debitable)}. ` +
+            `Horas extras ou plantão já aprovados pelo administrador não podem ser debitados.`,
+        );
+      }
+    }
+
     await this.prisma.$executeRawUnsafe(
       `
       UPDATE rendimento_gap_justifications
@@ -927,23 +1456,34 @@ export class RendimentoService {
       params.actor.userId,
     );
 
-    if (params.decision === 'APPROVED' && current.debit_overtime) {
-      const debit = Math.max(0, Math.trunc(Number(current.overtime_minutes) || 0));
-      if (debit > 0) {
-        await this.prisma.$executeRawUnsafe(
-          `
-          INSERT INTO rendimento_overtime_balances (user_id, minutes, updated_at)
-          VALUES ($1, GREATEST(0, 0 - $2), NOW())
-          ON CONFLICT (user_id)
-          DO UPDATE
-             SET minutes = GREATEST(0, rendimento_overtime_balances.minutes - $2),
-                 updated_at = NOW()
-        `,
-          current.user_id,
-          debit,
-        );
-      }
-    }
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_day_events
+      SET status = $2,
+          debit_protected = false,
+          approved_by = $3,
+          approved_at = NOW(),
+          updated_at = NOW()
+      WHERE justification_id = $1
+        AND event_type = 'JUSTIFICATION'
+        AND deleted_at IS NULL
+    `,
+      params.justificationId,
+      params.decision,
+      params.actor.userId,
+    );
+
+    const payroll = resolvePayrollPeriodRange(new Date());
+    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+      current.user_id,
+      payroll.start,
+      payroll.end,
+    );
+    await this.refreshOvertimeBalance(
+      current.user_id,
+      periodOvertimeMinutes,
+      new Date(),
+    );
 
     return { id: params.justificationId, status: params.decision };
   }

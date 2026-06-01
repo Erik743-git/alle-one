@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -19,6 +19,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { isPjRole } from "@/lib/app-roles";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  RENDIMENTO_LUNCH_MAX_MINUTES,
+  rendimentoLunchMaxLabel,
+} from "@/lib/rendimento/constants";
 import { getStoredUser } from "@/lib/session";
 import {
   RendimentoCalendar,
@@ -30,7 +36,17 @@ import {
   type RendimentoTimesheet,
 } from "@/lib/services/rendimento.service";
 
+function minutesBetweenTimes(from: string, to: string): number {
+  const parse = (value: string) => {
+    const [h, m] = value.split(":").map((part) => Number(part));
+    return (h || 0) * 60 + (m || 0);
+  };
+  const diff = parse(to) - parse(from);
+  return diff > 0 ? diff : 1;
+}
+
 export default function RendimentoAgendaPage() {
+  const router = useRouter();
   const params = useParams<{ userId: string }>();
   const userId = params.userId;
 
@@ -38,7 +54,6 @@ export default function RendimentoAgendaPage() {
   const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [timesheet, setTimesheet] = useState<RendimentoTimesheet | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [justModalOpen, setJustModalOpen] = useState(false);
   const [justMode, setJustMode] = useState<"ALERT" | "VOLUNTARY">("ALERT");
@@ -51,11 +66,18 @@ export default function RendimentoAgendaPage() {
   const authUser = getStoredUser();
   const canApprove = authUser?.role === "ADMIN";
 
+  const justGapMinutes = useMemo(
+    () => minutesBetweenTimes(justFrom, justTo),
+    [justFrom, justTo],
+  );
+  const isLunchGap = defineLunch || justMode === "VOLUNTARY";
+  const lunchTooLong =
+    isLunchGap && justGapMinutes > RENDIMENTO_LUNCH_MAX_MINUTES;
+
   const loadTimesheet = useCallback(async () => {
     if (!userId) return;
     try {
       setLoading(true);
-      setError("");
       const data = await rendimentoService.getTimesheet({
         userId,
         view,
@@ -63,7 +85,7 @@ export default function RendimentoAgendaPage() {
       });
       setTimesheet(data);
     } catch (err) {
-      setError(
+      notifyError(
         err instanceof Error
           ? err.message
           : "Não foi possível carregar a agenda de horas.",
@@ -75,17 +97,12 @@ export default function RendimentoAgendaPage() {
   }, [referenceDate, userId, view]);
 
   useEffect(() => {
+    if (isPjRole(authUser?.role)) {
+      router.replace("/dashboard");
+      return;
+    }
     void loadTimesheet();
-  }, [loadTimesheet]);
-
-  function minutesBetweenTimes(from: string, to: string): number {
-    const parse = (value: string) => {
-      const [h, m] = value.split(":").map((part) => Number(part));
-      return (h || 0) * 60 + (m || 0);
-    };
-    const diff = parse(to) - parse(from);
-    return diff > 0 ? diff : 1;
-  }
+  }, [authUser?.role, loadTimesheet, router]);
 
   function openAlertJustification(params: {
     date: string;
@@ -118,12 +135,17 @@ export default function RendimentoAgendaPage() {
   async function submitJustification() {
     if (!userId) return;
     if (!justReason.trim()) {
-      setError("Informe a justificativa.");
+      notifyError("Informe a justificativa.");
+      return;
+    }
+    if (lunchTooLong) {
+      notifyError(
+        `O período de almoço não pode exceder ${rendimentoLunchMaxLabel()}.`,
+      );
       return;
     }
     try {
       setSaving(true);
-      setError("");
       const gapMinutes = minutesBetweenTimes(justFrom, justTo);
       await rendimentoService.createJustification({
         userId,
@@ -137,9 +159,10 @@ export default function RendimentoAgendaPage() {
         debitOvertime,
       });
       setJustModalOpen(false);
+      notifySuccess("Justificativa enviada para aprovação.");
       await loadTimesheet();
     } catch (err) {
-      setError(
+      notifyError(
         err instanceof Error ? err.message : "Não foi possível salvar justificativa.",
       );
     } finally {
@@ -147,13 +170,33 @@ export default function RendimentoAgendaPage() {
     }
   }
 
-  async function decideJustification(id: string, decision: "APPROVED" | "REJECTED") {
+  async function decideDayEvent(id: string, decision: "APPROVED" | "REJECTED") {
     try {
-      setError("");
-      await rendimentoService.decideJustification({ id, decision });
+      await rendimentoService.decideDayEvent({ id, decision });
+      notifySuccess(
+        decision === "APPROVED"
+          ? "Hora extra/plantão aprovado (protegido contra débito)."
+          : "Registro rejeitado.",
+      );
       await loadTimesheet();
     } catch (err) {
-      setError(
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível decidir o registro.",
+      );
+    }
+  }
+
+  async function decideJustification(id: string, decision: "APPROVED" | "REJECTED") {
+    try {
+      await rendimentoService.decideJustification({ id, decision });
+      notifySuccess(
+        decision === "APPROVED"
+          ? "Justificativa aprovada."
+          : "Justificativa rejeitada.",
+      );
+      await loadTimesheet();
+    } catch (err) {
+      notifyError(
         err instanceof Error ? err.message : "Não foi possível decidir justificativa.",
       );
     }
@@ -181,10 +224,6 @@ export default function RendimentoAgendaPage() {
               </div>
             </div>
 
-            {error ? (
-              <div className="alle-alert-error rounded-xl p-4 text-sm">{error}</div>
-            ) : null}
-
             <RendimentoCalendar
               timesheet={timesheet}
               view={view}
@@ -195,6 +234,8 @@ export default function RendimentoAgendaPage() {
               onOpenVoluntaryJustification={openVoluntaryJustification}
               onApproveJustification={(id) => void decideJustification(id, "APPROVED")}
               onRejectJustification={(id) => void decideJustification(id, "REJECTED")}
+              onApproveDayEvent={(id) => void decideDayEvent(id, "APPROVED")}
+              onRejectDayEvent={(id) => void decideDayEvent(id, "REJECTED")}
               onViewChange={setView}
               onReferenceDateChange={setReferenceDate}
             />
@@ -229,6 +270,11 @@ export default function RendimentoAgendaPage() {
                       onChange={(e) => setJustTo(e.target.value)}
                     />
                   </div>
+                  {lunchTooLong ? (
+                    <p className="text-xs font-medium text-rose-500">
+                      O intervalo de almoço não pode ultrapassar {rendimentoLunchMaxLabel()}.
+                    </p>
+                  ) : null}
                   <Textarea
                     value={justReason}
                     onChange={(e) => setJustReason(e.target.value)}
@@ -265,7 +311,11 @@ export default function RendimentoAgendaPage() {
                     >
                       Cancelar
                     </Button>
-                    <Button type="button" disabled={saving} onClick={() => void submitJustification()}>
+                    <Button
+                      type="button"
+                      disabled={saving || lunchTooLong}
+                      onClick={() => void submitJustification()}
+                    >
                       {saving ? "Salvando..." : "Salvar justificativa"}
                     </Button>
                   </div>

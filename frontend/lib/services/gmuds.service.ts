@@ -71,7 +71,7 @@ export type SearchUserResult = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
   companyId: string | null;
 };
 

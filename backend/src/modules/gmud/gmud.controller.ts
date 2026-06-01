@@ -39,7 +39,7 @@ export class GmudController {
 
   @Get()
   @RequirePermission(PermissionModule.GMUD, 'canView')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   list(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Query() query: ListGmudsQueryDto,
@@ -49,7 +49,7 @@ export class GmudController {
 
   @Get('users/search')
   @RequirePermission(PermissionModule.GMUD, 'canView')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   searchUsers(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Query() query: SearchUsersQueryDto,
@@ -59,7 +59,7 @@ export class GmudController {
 
   @Get(':id')
   @RequirePermission(PermissionModule.GMUD, 'canView')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   getById(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -69,7 +69,7 @@ export class GmudController {
 
   @Post()
   @RequirePermission(PermissionModule.GMUD, 'canCreate')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   create(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Body() dto: CreateGmudDto,
@@ -79,7 +79,7 @@ export class GmudController {
 
   @Patch(':id')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   update(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -90,7 +90,7 @@ export class GmudController {
 
   @Post(':id/approve')
   @RequirePermission(PermissionModule.GMUD, 'canApprove')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   approve(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -114,7 +114,7 @@ export class GmudController {
 
   @Post(':id/execution/start')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
-  @Roles('ADMIN', 'COLLABORATOR')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   startExecution(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -124,7 +124,7 @@ export class GmudController {
 
   @Post(':id/execution/complete')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
-  @Roles('ADMIN', 'COLLABORATOR')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   completeExecution(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -134,7 +134,7 @@ export class GmudController {
 
   @Post(':id/cancel')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
-  @Roles('ADMIN', 'COLLABORATOR')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   cancel(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -144,7 +144,7 @@ export class GmudController {
 
   @Post(':id/attachments')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @UseInterceptors(FileInterceptor('file'))
   addAttachment(
     @CurrentUser() user: AuthenticatedRequestUser,

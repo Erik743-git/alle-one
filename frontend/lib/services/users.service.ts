@@ -1,6 +1,6 @@
 import { apiRequest } from "@/lib/api";
 
-export type UserRole = "ADMIN" | "COLLABORATOR" | "CLIENT";
+export type UserRole = "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
 export type UserStatus = "ACTIVE" | "INACTIVE";
 
 export type UserCompany = {

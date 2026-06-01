@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Nunito, Geist_Mono } from "next/font/google";
+
+import { ClientProviders } from "@/components/providers/client-providers";
 import "./globals.css";
 
 const nunito = Nunito({
@@ -33,7 +35,7 @@ export default function RootLayout({
             __html: `(function(){try{var root=document.documentElement;var t=localStorage.getItem('alleone.theme');var theme=(t==='light'||t==='dark')?t:'dark';if(theme==='dark'){root.classList.add('dark')}else{root.classList.remove('dark')}var c=localStorage.getItem('alleone.sidebar.collapsed');var w=(c==='1')?72:260;root.style.setProperty('--sidebar-width',w+'px');root.dataset.sidebarCollapsed=(c==='1')?'true':'false';}catch(e){}})();`,
           }}
         />
-        {children}
+        <ClientProviders>{children}</ClientProviders>
       </body>
     </html>
   );

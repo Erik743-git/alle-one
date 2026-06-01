@@ -20,7 +20,7 @@ export function RendimentoLegend() {
       <span className="font-semibold text-foreground">Legenda:</span>
       <span className="inline-flex items-center gap-1.5">
         <span className="size-2.5 rounded-sm bg-amber-500" />
-        Hora extra
+        Hora extra (do dia 25 ao dia 24)
       </span>
       <span className="inline-flex items-center gap-1.5">
         <span className="size-2.5 rounded-sm bg-violet-600" />
@@ -42,9 +42,12 @@ export function RendimentoLegend() {
 export function RendimentoDayIndicators({
   summary,
   compact = false,
+  showLunch = true,
 }: {
   summary?: RendimentoDaySummary;
   compact?: boolean;
+  /** Visão mensal: ocultar ícone de almoço nas células do calendário. */
+  showLunch?: boolean;
 }) {
   const insights = dayInsightsForDisplay(summary);
   if (!insights) return null;
@@ -69,7 +72,7 @@ export function RendimentoDayIndicators({
           !
         </span>
       ) : null}
-      {insights.hasExpectedLunch ? (
+      {showLunch && insights.hasExpectedLunch ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300"
           title="Almoço identificado"
@@ -123,17 +126,24 @@ export function RendimentoGapBlock({
         {gap.fromTime} – {gap.toTime}: {gap.label}
       </div>
       {justification ? (
-        <div className="flex items-center gap-1">
-          {justificationPending ? <Hourglass className="size-3" /> : null}
-          {justificationApproved ? <CheckCircle2 className="size-3" /> : null}
-          {justificationRejected ? <XCircle className="size-3" /> : null}
-          <span>
-            {justification.status === "PENDING"
-              ? "Justificativa pendente"
-              : justification.status === "APPROVED"
-                ? "Justificativa aprovada"
-                : "Justificativa rejeitada"}
-          </span>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1">
+            {justificationPending ? <Hourglass className="size-3" /> : null}
+            {justificationApproved ? <CheckCircle2 className="size-3" /> : null}
+            {justificationRejected ? <XCircle className="size-3" /> : null}
+            <span>
+              {justification.status === "PENDING"
+                ? "Justificativa pendente"
+                : justification.status === "APPROVED"
+                  ? "Justificativa aprovada"
+                  : "Justificativa rejeitada"}
+            </span>
+          </div>
+          {justification.reason.trim() ? (
+            <p className="whitespace-pre-wrap text-[10px] leading-snug text-foreground/90">
+              {justification.reason.trim()}
+            </p>
+          ) : null}
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1">

@@ -1,0 +1,168 @@
+import { apiRequest } from "@/lib/api";
+import { authFetch } from "@/lib/auth-fetch";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+export type InventoryCompany = {
+  id: string;
+  name: string;
+  assetsCount: number;
+};
+
+export type InventoryAssetFile = {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+};
+
+export type InventoryAsset = {
+  id: string;
+  companyId: string;
+  name: string;
+  unit: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  file: InventoryAssetFile | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InventoryAssetsResponse = {
+  company: { id: string; name: string };
+  assets: InventoryAsset[];
+};
+
+async function parseError(response: Response, fallback: string) {
+  const data = (await response.json().catch(() => null)) as {
+    message?: string | string[];
+  } | null;
+  const apiMessage = data?.message
+    ? Array.isArray(data.message)
+      ? data.message[0]
+      : data.message
+    : null;
+  if (apiMessage) return apiMessage;
+  const text = await response.text().catch(() => "");
+  return text || fallback;
+}
+
+function appendAssetFields(
+  form: FormData,
+  data: {
+    name: string;
+    unit?: string;
+    dueDate?: string;
+    notes?: string;
+    clearDueDate?: boolean;
+    removeAttachment?: boolean;
+  },
+) {
+  form.append("name", data.name.trim());
+  if (data.unit !== undefined) form.append("unit", data.unit.trim());
+  if (data.dueDate !== undefined) form.append("dueDate", data.dueDate);
+  if (data.notes !== undefined) form.append("notes", data.notes);
+  if (data.clearDueDate) form.append("clearDueDate", "true");
+  if (data.removeAttachment) form.append("removeAttachment", "true");
+}
+
+export const inventarioService = {
+  listCompanies() {
+    return apiRequest<InventoryCompany[]>("/inventario/companies");
+  },
+
+  listAssets(companyId: string) {
+    return apiRequest<InventoryAssetsResponse>(
+      `/inventario/companies/${companyId}/assets`,
+    );
+  },
+
+  async createAsset(
+    companyId: string,
+    data: {
+      name: string;
+      unit?: string;
+      dueDate?: string;
+      notes?: string;
+    },
+    file?: File | null,
+  ) {
+    const form = new FormData();
+    appendAssetFields(form, data);
+    if (file) form.append("file", file);
+
+    const response = await authFetch(
+      `${API_URL}/inventario/companies/${companyId}/assets`,
+      { method: "POST", body: form },
+    );
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Não foi possível criar o ativo."));
+    }
+    return (await response.json()) as InventoryAsset;
+  },
+
+  async updateAsset(
+    assetId: string,
+    data: {
+      name?: string;
+      unit?: string;
+      dueDate?: string;
+      notes?: string;
+      clearDueDate?: boolean;
+      removeAttachment?: boolean;
+    },
+    file?: File | null,
+  ) {
+    const form = new FormData();
+    if (data.name !== undefined) form.append("name", data.name.trim());
+    if (data.unit !== undefined) form.append("unit", data.unit.trim());
+    if (data.dueDate !== undefined) form.append("dueDate", data.dueDate);
+    if (data.notes !== undefined) form.append("notes", data.notes);
+    if (data.clearDueDate) form.append("clearDueDate", "true");
+    if (data.removeAttachment) form.append("removeAttachment", "true");
+    if (file) form.append("file", file);
+
+    const response = await authFetch(`${API_URL}/inventario/assets/${assetId}`, {
+      method: "PATCH",
+      body: form,
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Não foi possível atualizar o ativo."));
+    }
+    return (await response.json()) as InventoryAsset;
+  },
+
+  deleteAsset(assetId: string) {
+    return apiRequest<{ ok: boolean }>(`/inventario/assets/${assetId}`, {
+      method: "DELETE",
+    });
+  },
+
+  async fetchAttachment(params: {
+    fileId: string;
+    companyId: string;
+    inline?: boolean;
+  }) {
+    const qs = new URLSearchParams({
+      companyId: params.companyId,
+      inline: params.inline === false ? "false" : "true",
+    });
+    const response = await authFetch(
+      `${API_URL}/inventario/attachments/${params.fileId}?${qs}`,
+    );
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Não foi possível carregar o anexo."));
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("Content-Disposition") ?? "";
+    const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"/i.exec(disposition);
+    const filename = decodeURIComponent(
+      match?.[1] ?? match?.[2] ?? "anexo",
+    );
+    const mimeType =
+      response.headers.get("Content-Type") ??
+      blob.type ??
+      "application/octet-stream";
+    return { blob, filename, mimeType };
+  },
+};

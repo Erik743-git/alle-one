@@ -6,7 +6,7 @@ export type RendimentoCollaborator = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
   companyName: string | null;
   status: string;
   tifluxUserId: number | null;
@@ -58,6 +58,9 @@ export type RendimentoEntry = {
   isOvertime: boolean;
   overtimeKind?: "EXTRA" | "PLANTAO" | null;
   valorizationServiceName?: string | null;
+  dayEventId?: string | null;
+  dayEventStatus?: "ACTIVE" | "PENDING" | "APPROVED" | "REJECTED" | null;
+  debitProtected?: boolean;
 };
 
 export type RendimentoDaySummary = {
@@ -79,6 +82,9 @@ export type RendimentoTimesheet = {
   totalHoursFormatted: string;
   periodOvertimeMinutes: number;
   periodOvertimeFormatted: string;
+  periodOvertimeRangeLabel: string;
+  periodPlantaoMinutes: number;
+  periodPlantaoFormatted: string;
   overtimeBalanceMinutes: number;
   overtimeBalanceFormatted: string;
   days: RendimentoDaySummary[];
@@ -141,5 +147,19 @@ export const rendimentoService = {
         },
       },
     );
+  },
+
+  decideDayEvent(params: {
+    id: string;
+    decision: "APPROVED" | "REJECTED";
+  }) {
+    return apiRequest<{
+      id: string;
+      status: "APPROVED" | "REJECTED";
+      debitProtected: boolean;
+    }>(`/rendimento/events/${params.id}/decision`, {
+      method: "PATCH",
+      body: { decision: params.decision },
+    });
   },
 };

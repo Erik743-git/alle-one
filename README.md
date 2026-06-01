@@ -5,7 +5,7 @@
 
 Portal corporativo (web) + API para gestão de clientes/empresas, acessos e permissões, GMUD, contratos, financeiro e integrações (ex.: Zabbix e TiFlux).
 
-**Versão atual:** ver [`VERSION`](VERSION) · **Histórico:** [`CHANGELOG.md`](CHANGELOG.md) · **Arquitetura:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · **Versionamento:** [`docs/VERSIONING.md`](docs/VERSIONING.md)
+**Versão atual:** ver [`VERSION`](VERSION) · **Histórico:** [`CHANGELOG.md`](CHANGELOG.md) · **Arquitetura:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · **Segurança:** [`docs/SECURITY.md`](docs/SECURITY.md) · **Versionamento:** [`docs/VERSIONING.md`](docs/VERSIONING.md)
 
 > **Importante (segurança)**: este workspace contém arquivos `.env` locais com segredos/credenciais. **Não compartilhe** esses arquivos e **não suba** para repositórios. Para handover, use `.env.example`/variáveis de ambiente no ambiente de execução.
 
@@ -247,8 +247,8 @@ npm run build
 - **Segredos em `.env` local**: trate como **comprometidos** se já foram compartilhados. Rotacione tokens/senhas e migre para um fluxo com `.env.example` + secret manager no deploy.
 - **Fallback inseguro de JWT**: removido; **`JWT_SECRET` é obrigatório** para subir a API.
 - **Seed com senha padrão fraca**: em **produção** o seed exige `ADMIN_SEED_PASSWORD` (mín. 12 caracteres). Em desenvolvimento, sem a variável ainda usa `123456` com aviso no console — prefira definir `ADMIN_SEED_PASSWORD` localmente.
-- **CI/CD**: existe workflow em `.github/workflows/ci.yml` (build backend+frontend). Ainda falta rodar **testes** e **lint do backend** no pipeline de forma estável.
-- **Uploads**: arquivos em `backend/uploads/` são locais e **não entram no Git** (ver `backend/.gitignore`).
+- **CI/CD**: `.github/workflows/ci.yml` roda testes unitários do backend (rendimento) + build dos dois apps.
+- **Uploads**: `backend/uploads/` é runtime-only; se ainda estiver versionado, use `git rm -r --cached backend/uploads` e mantenha só `.gitkeep`.
 
 ## Previsões futuras (roadmap realista)
 

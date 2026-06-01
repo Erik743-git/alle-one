@@ -104,10 +104,9 @@ AUTH_COOKIE_SECURE=false
 # TiFlux / SMTP / Zabbix — copie do .env de desenvolvimento se usar
 TIFLUX_API_URL=https://api.tiflux.com/api/v2
 TIFLUX_TOKEN=
-TIFLUX_SYNC_ENABLED=true
-TIFLUX_SYNC_STARTUP=true
 TIFLUX_RUNTIME_API=false
 TIFLUX_UNSAFE_ENDPOINTS=false
+# Sincronização do schema tiflux.*: projeto separado alleone-tiflux-sync (ver docs na VM em /home/alleone/docs/)
 ```
 
 Build e migrations:

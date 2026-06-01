@@ -24,7 +24,7 @@ jobs:
         run: npx prisma generate
         env:
           DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
-      # Quando o lint estiver verde localmente: npm run lint (idealmente sem --fix no script).
+      - run: npm test -- --passWithNoTests
       - run: npm run build
 
   frontend:

@@ -43,7 +43,7 @@ export class TifluxController {
   }
 
   @Get('clients')
-  @Roles('ADMIN', 'COLLABORATOR')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.COMPANIES, 'canView')
   getClients(
     @Query('active') active?: string,
@@ -124,7 +124,7 @@ export class TifluxController {
   }
 
   @Get('tickets')
-  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   getTickets(
     @Query('offset') offset?: string,

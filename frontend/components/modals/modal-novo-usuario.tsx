@@ -265,6 +265,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                   { value: "ADMIN", label: "Administrador" },
                   { value: "CLIENT", label: "Cliente" },
                   { value: "COLLABORATOR", label: "Colaborador" },
+                  { value: "PJ", label: "PJ" },
                 ]}
               />
             </div>

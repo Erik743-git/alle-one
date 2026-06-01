@@ -11,6 +11,8 @@ function getRoleLabel(role?: string) {
       return "Admin";
     case "COLLABORATOR":
       return "Colaborador";
+    case "PJ":
+      return "PJ";
     case "CLIENT":
       return "Cliente";
     default:
@@ -36,20 +38,15 @@ export default function SessionPanel({ collapsed = false }: { collapsed?: boolea
 
   if (collapsed) {
     return (
-      <div className="flex flex-col items-center gap-1.5">
-        <div
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary"
-          title={user.name}
-        >
-          <User2 size={18} />
-        </div>
+      <div className="flex justify-center">
         <Button
           type="button"
           onClick={handleLogout}
           variant="destructive"
           size="icon"
           className="h-10 w-10 rounded-xl"
-          aria-label="Sair"
+          aria-label={`Sair (${user.name})`}
+          title={`Sair — ${user.name}`}
         >
           <LogOut className="h-4 w-4" />
         </Button>

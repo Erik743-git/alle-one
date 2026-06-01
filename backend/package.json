@@ -39,7 +39,6 @@
     "helmet": "^8.1.0",
     "nodemailer": "^8.0.4",
     "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
     "prisma": "^6.19.2",
     "reflect-metadata": "^0.2.2",

@@ -47,6 +47,35 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
+    // Correio: caixa de pendências para colaboradores, PJ e admins.
+    if (
+      meta.module === ('CORREIO' as PermissionModule) &&
+      meta.flag === 'canView' &&
+      user.role !== 'CLIENT'
+    ) {
+      return true;
+    }
+
+    if (
+      meta.module === ('INVENTARIO' as PermissionModule) &&
+      meta.flag === 'canView' &&
+      user.role === 'COLLABORATOR'
+    ) {
+      return true;
+    }
+
+    if (
+      meta.module === ('INVENTARIO' as PermissionModule) &&
+      ['canCreate', 'canEdit', 'canDelete'].includes(meta.flag) &&
+      user.role === 'COLLABORATOR'
+    ) {
+      const entry = user.permissions.find(
+        (p) => p.module === ('INVENTARIO' as PermissionModule),
+      );
+      if (entry?.[meta.flag]) return true;
+      return meta.flag !== 'canDelete';
+    }
+
     const entry = user.permissions.find((p) => p.module === meta.module);
 
     if (!entry || !entry[meta.flag]) {

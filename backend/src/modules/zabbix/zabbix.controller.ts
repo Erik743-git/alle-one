@@ -15,7 +15,7 @@ import { ZabbixService } from './zabbix.service';
 
 @Controller('zabbix')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
-@Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+@Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
 export class ZabbixController {
   constructor(private readonly service: ZabbixService) {}
 

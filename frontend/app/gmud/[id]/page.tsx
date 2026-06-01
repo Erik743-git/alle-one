@@ -83,10 +83,16 @@ export default function GmudDetailPage() {
     user?.role === "ADMIN" && gmud?.status === "PENDING_APPROVAL";
 
   const canStartExecution =
-    (user?.role === "ADMIN" || user?.role === "COLLABORATOR") && gmud?.status === "APPROVED";
+    (user?.role === "ADMIN" ||
+      user?.role === "COLLABORATOR" ||
+      user?.role === "PJ") &&
+    gmud?.status === "APPROVED";
 
   const canCompleteExecution =
-    (user?.role === "ADMIN" || user?.role === "COLLABORATOR") && gmud?.status === "IN_EXECUTION";
+    (user?.role === "ADMIN" ||
+      user?.role === "COLLABORATOR" ||
+      user?.role === "PJ") &&
+    gmud?.status === "IN_EXECUTION";
 
   async function runAction(fn: () => Promise<Gmud>) {
     setActionLoading(true);

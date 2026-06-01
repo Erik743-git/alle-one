@@ -75,10 +75,13 @@ function parseHHMMToMinutes(value: string): number | null {
   return h * 60 + m;
 }
 
+const MINUTES_PER_DAY = 24 * 60;
+
 function formatMinutesAsTime(totalMinutes: number): string {
   const clamped = Math.max(0, Math.trunc(totalMinutes));
-  const h = Math.floor(clamped / 60);
-  const m = clamped % 60;
+  const wrapped = clamped % MINUTES_PER_DAY;
+  const h = Math.floor(wrapped / 60);
+  const m = wrapped % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
@@ -108,7 +111,7 @@ function normalizeHaystack(raw: unknown): string {
   }
 }
 
-function overtimeKindFromValorization(
+export function overtimeKindFromValorization(
   raw: unknown,
 ): 'EXTRA' | 'PLANTAO' | null {
   const serviceName = getValorizationServiceName(raw);

@@ -12,7 +12,7 @@ export type EffectiveModulePermission = {
 export type AuthenticatedRequestUser = {
   userId: string;
   email: string;
-  role: 'ADMIN' | 'COLLABORATOR' | 'CLIENT';
+  role: 'ADMIN' | 'COLLABORATOR' | 'PJ' | 'CLIENT';
   companyId: string | null;
   permissions: EffectiveModulePermission[];
 };

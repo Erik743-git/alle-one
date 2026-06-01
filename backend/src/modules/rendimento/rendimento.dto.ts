@@ -70,3 +70,8 @@ export class DecideRendimentoJustificationDto {
   @IsString()
   note?: string;
 }
+
+export class DecideRendimentoDayEventDto {
+  @IsIn(['APPROVED', 'REJECTED'])
+  decision!: 'APPROVED' | 'REJECTED';
+}

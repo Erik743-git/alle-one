@@ -9,4 +9,9 @@ export class AppController {
   getHello(): string {
     return this.appService.getHello();
   }
+
+  @Get('health')
+  health(): { ok: true; service: string } {
+    return { ok: true, service: 'alle-one-api' };
+  }
 }
