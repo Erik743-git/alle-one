@@ -31,9 +31,9 @@ export const reportsService = {
   },
 
   async listRendimentoCollaborators() {
-    return apiRequest<Array<{ id: string; name: string }>>(
-      "/reports/rendimento-collaborators",
-    );
+    return apiRequest<
+      Array<{ id: string; name: string; hasTifluxLink?: boolean }>
+    >("/reports/rendimento-collaborators");
   },
 
   async list(params?: {

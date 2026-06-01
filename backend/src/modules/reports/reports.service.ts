@@ -20,6 +20,7 @@ import {
   overtimeKindFromValorization,
 } from '../rendimento/rendimento-day-insights';
 import { computeUnionWorkedMinutes } from '../rendimento/rendimento-worked-minutes.helper';
+import { RendimentoService } from '../rendimento/rendimento.service';
 
 type ReportFormat = 'CSV' | 'XLSX';
 type ReportStatus = 'READY' | 'FAILED';
@@ -92,6 +93,7 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     private readonly tiflux: TifluxService,
     private readonly dashboard: DashboardService,
+    private readonly rendimento: RendimentoService,
   ) {}
 
   private async fetchChartPng(params: {
@@ -1562,7 +1564,7 @@ export class ReportsService {
     }>
   > {
     const company = await this.requireCompanyTifluxClientId(params.companyId);
-    const tifluxUserExternalId = await this.resolveTifluxUserExternalId(
+    const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
     const startDateOnly = toDateOnlyISO(params.start);
@@ -1601,7 +1603,18 @@ export class ReportsService {
           and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
           and a.user_name is not null
           and trim(a.user_name) <> ''
-          and (${tifluxUserExternalId}::int is null or a.user_external_id = ${tifluxUserExternalId}::int)
+          and (
+            (${collaboratorFilter.tifluxUserExternalId}::int is null and ${collaboratorFilter.attendantName}::text is null)
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is not null
+              and a.user_external_id = ${collaboratorFilter.tifluxUserExternalId}::int
+            )
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is null
+              and ${collaboratorFilter.attendantName}::text is not null
+              and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
+            )
+          )
         order by a.appointment_date::date asc, a.user_name asc, a.ticket_number asc, a.external_id asc
       `) ?? [];
 
@@ -1664,7 +1677,7 @@ export class ReportsService {
     userId?: string | null;
   }): Promise<Array<{ day: string; user: string; minutes: number }>> {
     const company = await this.requireCompanyTifluxClientId(params.companyId);
-    const tifluxUserExternalId = await this.resolveTifluxUserExternalId(
+    const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
 
@@ -1691,7 +1704,18 @@ export class ReportsService {
           on t.ticket_number = a.ticket_number
         where t.client_external_id = ${company.tifluxClientId}
           and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
-          and (${tifluxUserExternalId}::int is null or a.user_external_id = ${tifluxUserExternalId}::int)
+          and (
+            (${collaboratorFilter.tifluxUserExternalId}::int is null and ${collaboratorFilter.attendantName}::text is null)
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is not null
+              and a.user_external_id = ${collaboratorFilter.tifluxUserExternalId}::int
+            )
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is null
+              and ${collaboratorFilter.attendantName}::text is not null
+              and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
+            )
+          )
         group by a.appointment_date::date, a.user_name
         order by a.appointment_date::date asc, a.user_name asc
       `) ?? [];
@@ -1794,45 +1818,14 @@ export class ReportsService {
     return companies;
   }
 
-  /** Colaboradores com vínculo TiFlux (filtro do relatório de rendimento). */
-  async listRendimentoCollaborators(user: AuthenticatedRequestUser) {
-    const users = await this.prisma.user.findMany({
-      where: {
-        deletedAt: null,
-        status: 'ACTIVE',
-        role: { in: ['ADMIN', 'COLLABORATOR'] },
-      },
-      select: { id: true, name: true, email: true },
-      orderBy: { name: 'asc' },
-    });
-
-    if (users.length === 0) return [];
-
-    const emailSet = new Set(
-      users.map((u) => u.email.trim().toLowerCase()).filter(Boolean),
-    );
-
-    const tifluxRows =
-      (await this.prisma.$queryRaw<
-        Array<{ external_id: number; email: string | null }>
-      >`
-        select external_id, lower(trim(email)) as email
-        from tiflux.users
-        where coalesce(active, true) = true
-          and email is not null
-          and trim(email) <> ''
-      `) ?? [];
-
-    const tifluxByEmail = new Map<string, number>();
-    for (const row of tifluxRows) {
-      const email = String(row.email || '').trim();
-      if (!email || !emailSet.has(email)) continue;
-      tifluxByEmail.set(email, Number(row.external_id));
-    }
-
-    return users
-      .filter((u) => tifluxByEmail.has(u.email.trim().toLowerCase()))
-      .map((u) => ({ id: u.id, name: u.name }));
+  /** Mesma base da agenda de Rendimento (ADMIN/COLLABORATOR ativos). */
+  async listRendimentoCollaborators(_user: AuthenticatedRequestUser) {
+    const collaborators = await this.rendimento.listCollaborators();
+    return collaborators.map((c) => ({
+      id: c.id,
+      name: c.name,
+      hasTifluxLink: c.tifluxUserId != null,
+    }));
   }
 
   private async requireCompanyTifluxClientId(companyId: string): Promise<{
@@ -1857,40 +1850,32 @@ export class ReportsService {
     };
   }
 
-  private async resolveTifluxUserExternalId(
-    userId?: string | null,
-  ): Promise<number | null> {
+  private async resolveCollaboratorAppointmentFilter(userId?: string | null): Promise<{
+    tifluxUserExternalId: number | null;
+    attendantName: string | null;
+  }> {
     const id = userId?.trim();
-    if (!id) return null;
+    if (!id) {
+      return { tifluxUserExternalId: null, attendantName: null };
+    }
 
-    const user = await this.prisma.user.findFirst({
-      where: { id, deletedAt: null },
-      select: { email: true, name: true },
-    });
-    if (!user) {
+    const collaborators = await this.rendimento.listCollaborators();
+    const match = collaborators.find((c) => c.id === id);
+    if (!match) {
       throw new BadRequestException('Colaborador não encontrado.');
     }
 
-    const email = user.email.trim().toLowerCase();
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{ external_id: number }>
-      >`
-        select external_id
-        from tiflux.users
-        where coalesce(active, true) = true
-          and email is not null
-          and lower(trim(email)) = ${email}
-        limit 1
-      `) ?? [];
+    const tifluxUserExternalId = match.tifluxUserId ?? null;
+    const attendantName =
+      match.tifluxUserName?.trim() || match.name?.trim() || null;
 
-    if (!rows[0]) {
+    if (!tifluxUserExternalId && !attendantName) {
       throw new BadRequestException(
-        `Colaborador "${user.name}" sem vínculo com usuário TiFlux (e-mail).`,
+        `Colaborador "${match.name}" sem vínculo com TiFlux para filtrar apontamentos.`,
       );
     }
 
-    return Number(rows[0].external_id);
+    return { tifluxUserExternalId, attendantName };
   }
 
   private countRendimentoAlertsInPeriod(
@@ -2153,7 +2138,7 @@ export class ReportsService {
     };
 
     const companyTiflux = await this.requireCompanyTifluxClientId(params.companyId);
-    const tifluxUserExternalId = await this.resolveTifluxUserExternalId(
+    const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
 
@@ -2192,7 +2177,18 @@ export class ReportsService {
           and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
           and a.user_name is not null
           and trim(a.user_name) <> ''
-          and (${tifluxUserExternalId}::int is null or a.user_external_id = ${tifluxUserExternalId}::int)
+          and (
+            (${collaboratorFilter.tifluxUserExternalId}::int is null and ${collaboratorFilter.attendantName}::text is null)
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is not null
+              and a.user_external_id = ${collaboratorFilter.tifluxUserExternalId}::int
+            )
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is null
+              and ${collaboratorFilter.attendantName}::text is not null
+              and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
+            )
+          )
       `) ?? [];
 
     const byAttendant = new Map<

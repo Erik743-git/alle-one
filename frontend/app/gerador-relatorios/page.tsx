@@ -98,10 +98,21 @@ export default function GeradorRelatoriosPage() {
     void reportsService
       .listRendimentoCollaborators()
       .then((items) => {
-        if (!cancelled) setCollaborators(items ?? []);
+        if (!cancelled) {
+          setCollaborators(
+            (items ?? []).map((c) => ({ id: c.id, name: c.name })),
+          );
+        }
       })
-      .catch(() => {
-        if (!cancelled) setCollaborators([]);
+      .catch((e) => {
+        if (!cancelled) {
+          setCollaborators([]);
+          setErro(
+            e instanceof Error
+              ? e.message
+              : "Falha ao carregar colaboradores para o relatório.",
+          );
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingCollaborators(false);
@@ -318,12 +329,10 @@ export default function GeradorRelatoriosPage() {
                       isEstatisticaGeral ||
                       loadingCollaborators
                     }
-                    emptyLabel={
+                    placeholder={
                       !isRendimento
                         ? "Só no relatório Rendimento"
-                        : loadingCollaborators
-                          ? "Carregando..."
-                          : "Todos"
+                        : "Todos os colaboradores"
                     }
                   />
                 </div>
