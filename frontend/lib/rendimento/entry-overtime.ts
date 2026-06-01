@@ -21,12 +21,17 @@ function kindFromServiceName(serviceName: string | null): RendimentoOvertimeKind
   return null;
 }
 
+export type RendimentoOvertimeEntryInput = Pick<
+  RendimentoEntry,
+  "overtimeKind" | "isOvertime" | "valorizationServiceName"
+> & {
+  clientName?: string | null;
+  description?: string | null;
+};
+
 /** Classificação única para UI: prioriza tipo TiFlux, depois overtimeKind da API. */
 export function resolveRendimentoOvertimeDisplay(
-  entry: Pick<
-    RendimentoEntry,
-    "overtimeKind" | "isOvertime" | "valorizationServiceName" | "clientName" | "description"
-  >,
+  entry: RendimentoOvertimeEntryInput,
 ): RendimentoOvertimeDisplay {
   const serviceName = normalizeServiceName(entry.valorizationServiceName);
   const fromService = kindFromServiceName(serviceName);

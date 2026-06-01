@@ -6,14 +6,10 @@ import { cn } from "@/lib/utils";
 import {
   resolveRendimentoOvertimeDisplay,
   type RendimentoOvertimeDisplay,
+  type RendimentoOvertimeEntryInput,
 } from "@/lib/rendimento/entry-overtime";
-import type { RendimentoEntry } from "@/lib/services/rendimento.service";
-
 export function useRendimentoOvertimeDisplay(
-  entry: Pick<
-    RendimentoEntry,
-    "overtimeKind" | "isOvertime" | "valorizationServiceName" | "clientName" | "description"
-  >,
+  entry: RendimentoOvertimeEntryInput,
 ): RendimentoOvertimeDisplay {
   return resolveRendimentoOvertimeDisplay(entry);
 }
@@ -22,10 +18,7 @@ export function RendimentoOvertimeBadge({
   entry,
   size = "md",
 }: {
-  entry: Pick<
-    RendimentoEntry,
-    "overtimeKind" | "isOvertime" | "valorizationServiceName" | "clientName" | "description"
-  >;
+  entry: RendimentoOvertimeEntryInput;
   size?: "sm" | "md";
 }) {
   const display = resolveRendimentoOvertimeDisplay(entry);
@@ -52,7 +45,7 @@ export function RendimentoOvertimeBadge({
 export function RendimentoOvertimeServiceLine({
   entry,
 }: {
-  entry: Pick<RendimentoEntry, "valorizationServiceName" | "overtimeKind" | "isOvertime">;
+  entry: RendimentoOvertimeEntryInput;
 }) {
   const display = resolveRendimentoOvertimeDisplay(entry);
   if (!display.serviceName || !display.kind) return null;
