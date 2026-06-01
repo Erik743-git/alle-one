@@ -218,18 +218,45 @@ sudo -u alleone bash -lc 'cd /home/alleone/producao/frontend && npm run build'
 sudo -u alleone pm2 restart alleone-api alleone-web
 ```
 
-### HTTPS na 443 (quando tiver certificado)
+### HTTPS na 443 (certificado já disponível)
 
-Com Let's Encrypt (domínio público resolvendo para a VM):
+1. Descubra os arquivos do certificado na VM:
 
 ```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d alleone.alletecnologia.com
+sudo ls -la /etc/letsencrypt/live/alleone.alletecnologia.com/ 2>/dev/null
+# ou pergunte à TI: caminho do .crt/.pem e da chave privada
 ```
 
-Ou copie `deploy/nginx-alleone-ssl.conf.example`, ajuste caminhos do certificado e habilite o site.
+2. Edite `deploy/nginx-alleone-https.conf` (linhas `ssl_certificate` / `ssl_certificate_key`), copie para o Nginx:
 
-Depois use **https** em `CORS_ORIGINS`, `FRONTEND_URL`, `NEXT_PUBLIC_API_URL`, remova `AUTH_COOKIE_SECURE=false` (cookies Secure em HTTPS), rebuild front + `pm2 restart alleone-api`.
+```bash
+sudo cp /home/alleone/producao/deploy/nginx-alleone-https.conf /etc/nginx/sites-available/alleone
+sudo ln -sf /etc/nginx/sites-available/alleone /etc/nginx/sites-enabled/alleone
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+3. URLs e cookies (HTTPS):
+
+```env
+# backend/.env
+CORS_ORIGINS="https://alleone.alletecnologia.com"
+FRONTEND_URL=https://alleone.alletecnologia.com
+TRUST_PROXY=1
+# Remova AUTH_COOKIE_SECURE=false (em HTTPS o cookie Secure é o padrão)
+
+# frontend/.env.production
+NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com
+```
+
+```bash
+sudo -u alleone bash -lc 'cd /home/alleone/producao/backend && npm run build'
+sudo -u alleone bash -lc 'cd /home/alleone/producao/frontend && npm run build'
+sudo -u alleone pm2 restart alleone-api alleone-web
+```
+
+Acesso: **https://alleone.alletecnologia.com/** — HTTP `:80` e legado `:8000` redirecionam para HTTPS.
+
+**Let's Encrypt** (se ainda não instalou): `sudo certbot --nginx -d alleone.alletecnologia.com`
 
 ---
 
