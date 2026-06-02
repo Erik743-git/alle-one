@@ -307,20 +307,20 @@ const SidebarBrand = memo(function SidebarBrand({
         <div className="flex flex-col items-center gap-2 pr-10">
           <div className="flex w-full justify-center">
             <Image
-              src="/Logo_White.png"
-              alt="Alle One"
-              width={190}
-              height={68}
-              priority
-              className="h-auto w-full max-w-[168px] dark:hidden"
-            />
-            <Image
               src="/logo-alle.png"
               alt="Alle One"
               width={190}
               height={68}
               priority
-              className="hidden h-auto w-full max-w-[168px] dark:block"
+              className="h-auto w-full max-w-[168px] object-contain dark:hidden"
+            />
+            <Image
+              src="/Logo_White.png"
+              alt="Alle One"
+              width={190}
+              height={68}
+              priority
+              className="hidden h-auto w-full max-w-[168px] object-contain dark:block"
             />
           </div>
           <p className="text-center text-[11px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">

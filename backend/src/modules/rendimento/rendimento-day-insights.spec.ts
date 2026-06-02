@@ -226,6 +226,46 @@ describe('rendimento-day-insights', () => {
     expect(insights.hasIdleGapAlert).toBe(true);
   });
 
+  it('gap longo escolhido como almoço vira 1h30 + alerta com o restante', () => {
+    const { insights } = analyzeRendimentoDay([
+      {
+        id: 1,
+        date: '2026-05-29',
+        initTime: '10:00:00',
+        endTime: '10:30:00',
+        minutes: 30,
+        hoursFormatted: '00:30',
+        ticketNumber: 67486,
+        clientName: null,
+        description: null,
+      },
+      {
+        id: 2,
+        date: '2026-05-29',
+        initTime: '16:30:00',
+        endTime: '18:00:00',
+        minutes: 90,
+        hoursFormatted: '01:30',
+        ticketNumber: 70351,
+        clientName: null,
+        description: null,
+      },
+    ]);
+
+    const lunch = insights.gaps.find((g) => g.type === 'lunch');
+    expect(lunch).toBeTruthy();
+    expect(lunch!.fromTime).toBe('10:30');
+    expect(lunch!.toTime).toBe('12:00');
+    expect(lunch!.gapMinutes).toBe(90);
+
+    const midIdle = insights.gaps.find(
+      (g) => g.type === 'idle' && g.fromTime === '12:00' && g.toTime === '16:30',
+    );
+    expect(midIdle).toBeTruthy();
+    expect(midIdle!.gapMinutes).toBe(270);
+    expect(insights.hasIdleGapAlert).toBe(true);
+  });
+
   it('não cria alerta de gap depois de completar 8h trabalhadas no dia', () => {
     const { insights } = analyzeRendimentoDay([
       {

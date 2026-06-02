@@ -181,10 +181,11 @@ function pickLunchGap(gaps: RendimentoGapDto[], entries: RendimentoEntryInput[])
   })[0];
 }
 
-function splitFirstLongIdleGapIntoLunch(gaps: RendimentoGapDto[]): boolean {
-  const idx = gaps.findIndex((g) => g.type === 'idle' && g.gapMinutes >= LUNCH_MINUTES);
-  if (idx < 0) return false;
-
+/** Divide um gap longo em almoço (máx. 1h30) + alerta com o restante. */
+function splitGapAtIndexIntoLunchAndIdle(
+  gaps: RendimentoGapDto[],
+  idx: number,
+): boolean {
   const gap = gaps[idx];
   const from = parseTimeToMinutes(gap.fromTime);
   const to = parseTimeToMinutes(gap.toTime);
@@ -200,11 +201,7 @@ function splitFirstLongIdleGapIntoLunch(gaps: RendimentoGapDto[]): boolean {
     label: `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`,
   };
 
-  // Sobrou tempo depois do almoço? Mantém como "idle".
-  const remainingFrom = lunchEnd;
-  const remainingTo = to;
-  const remainingMinutes = remainingTo - remainingFrom;
-
+  const remainingMinutes = to - lunchEnd;
   const next: RendimentoGapDto[] = [];
   for (let i = 0; i < gaps.length; i += 1) {
     if (i !== idx) {
@@ -215,8 +212,8 @@ function splitFirstLongIdleGapIntoLunch(gaps: RendimentoGapDto[]): boolean {
     if (remainingMinutes > 0) {
       next.push({
         type: 'idle',
-        fromTime: formatMinutesAsTime(remainingFrom),
-        toTime: formatMinutesAsTime(remainingTo),
+        fromTime: formatMinutesAsTime(lunchEnd),
+        toTime: formatMinutesAsTime(to),
         gapMinutes: remainingMinutes,
         label: `${remainingMinutes} min sem apontamento`,
       });
@@ -225,6 +222,12 @@ function splitFirstLongIdleGapIntoLunch(gaps: RendimentoGapDto[]): boolean {
 
   gaps.splice(0, gaps.length, ...next);
   return true;
+}
+
+function splitFirstLongIdleGapIntoLunch(gaps: RendimentoGapDto[]): boolean {
+  const idx = gaps.findIndex((g) => g.type === 'idle' && g.gapMinutes >= LUNCH_MINUTES);
+  if (idx < 0) return false;
+  return splitGapAtIndexIntoLunchAndIdle(gaps, idx);
 }
 
 function addIdleGap(
@@ -322,8 +325,13 @@ export function analyzeRendimentoDay(
   const lunchCandidate = pickLunchGap(gaps, regularEntries);
   if (lunchCandidate) {
     lunchFound = true;
-    lunchCandidate.type = 'lunch';
-    lunchCandidate.label = `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`;
+    const lunchIdx = gaps.indexOf(lunchCandidate);
+    if (lunchIdx >= 0 && lunchCandidate.gapMinutes > LUNCH_MINUTES) {
+      splitGapAtIndexIntoLunchAndIdle(gaps, lunchIdx);
+    } else {
+      lunchCandidate.type = 'lunch';
+      lunchCandidate.label = `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`;
+    }
   } else if (splitFirstLongIdleGapIntoLunch(gaps)) {
     lunchFound = true;
   } else if (regularEntries.length === 1) {
