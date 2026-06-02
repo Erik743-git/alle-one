@@ -6,6 +6,8 @@ import {
 import * as bcrypt from 'bcrypt';
 import { User, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
+import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -27,7 +29,10 @@ type ServiceDeskSourceRow = {
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private toPublicUser(user: UserWithCompany): PublicUser {
     const { passwordHash: _omit, serviceDeskLinks, ...rest } = user;
@@ -140,7 +145,7 @@ export class UsersService {
     return this.toPublicUser(user);
   }
 
-  async create(data: CreateUserDto) {
+  async create(actor: AuthenticatedRequestUser, data: CreateUserDto) {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
@@ -190,10 +195,30 @@ export class UsersService {
       },
     });
 
+    await this.audit.log({
+      actor,
+      action: 'CREATE',
+      entity: 'User',
+      entityId: created.id,
+      payload: {
+        before: null,
+        after: {
+          id: created.id,
+          name: created.name,
+          email: created.email,
+          role: created.role,
+          status: created.status,
+          companyId: created.companyId,
+          firstAccess: created.firstAccess,
+          responsible: created.responsible,
+        },
+      },
+    });
+
     return this.toPublicUser(created);
   }
 
-  async update(id: string, data: UpdateUserDto) {
+  async update(actor: AuthenticatedRequestUser, id: string, data: UpdateUserDto) {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -266,10 +291,39 @@ export class UsersService {
       },
     });
 
+    await this.audit.log({
+      actor,
+      action: 'UPDATE',
+      entity: 'User',
+      entityId: id,
+      payload: {
+        before: {
+          id: existingUser.id,
+          name: existingUser.name,
+          email: existingUser.email,
+          role: existingUser.role,
+          status: existingUser.status,
+          companyId: existingUser.companyId,
+          firstAccess: existingUser.firstAccess,
+          responsible: existingUser.responsible,
+        },
+        after: {
+          id: updated.id,
+          name: updated.name,
+          email: updated.email,
+          role: updated.role,
+          status: updated.status,
+          companyId: updated.companyId,
+          firstAccess: updated.firstAccess,
+          responsible: updated.responsible,
+        },
+      },
+    });
+
     return this.toPublicUser(updated);
   }
 
-  async remove(id: string) {
+  async remove(actor: AuthenticatedRequestUser, id: string) {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -291,6 +345,23 @@ export class UsersService {
               select: { id: true, name: true, externalId: true },
             },
           },
+        },
+      },
+    });
+
+    await this.audit.log({
+      actor,
+      action: 'INACTIVATE',
+      entity: 'User',
+      entityId: id,
+      payload: {
+        before: {
+          id: existingUser.id,
+          status: existingUser.status,
+        },
+        after: {
+          id: deactivated.id,
+          status: deactivated.status,
         },
       },
     });

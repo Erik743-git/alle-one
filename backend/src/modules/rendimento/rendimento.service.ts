@@ -27,6 +27,7 @@ import {
 } from './rendimento-day-events.helper';
 import { computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
 import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
+import { AuditService } from '../audit/audit.service';
 
 export type { RendimentoDayInsightsDto, RendimentoGapDto };
 
@@ -162,6 +163,7 @@ export class RendimentoService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tifluxService: TifluxService,
+    private readonly audit: AuditService,
   ) {}
 
   formatMinutes(totalMinutes: number): string {
@@ -1410,6 +1412,22 @@ export class RendimentoService {
       params.actor.userId,
     );
 
+    await this.audit.log({
+      actor: params.actor,
+      action: 'APPROVE_OVERTIME_OR_PLANTAO',
+      entity: 'RendimentoDayEvent',
+      entityId: params.eventId,
+      payload: {
+        before: current,
+        after: {
+          id: params.eventId,
+          status: params.decision,
+          debitProtected,
+          approvedBy: params.actor.userId,
+        },
+      },
+    });
+
     const payroll = resolvePayrollPeriodRange(new Date());
     const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
       current.user_id,
@@ -1517,6 +1535,22 @@ export class RendimentoService {
       String(params.note || '').trim() || null,
       params.actor.userId,
     );
+
+    await this.audit.log({
+      actor: params.actor,
+      action: 'DECIDE_JUSTIFICATION',
+      entity: 'RendimentoGapJustification',
+      entityId: params.justificationId,
+      payload: {
+        before: current,
+        after: {
+          id: params.justificationId,
+          status: params.decision,
+          note: params.note ?? null,
+          approvedBy: params.actor.userId,
+        },
+      },
+    });
 
     await this.prisma.$executeRawUnsafe(
       `

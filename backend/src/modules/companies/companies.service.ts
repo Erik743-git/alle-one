@@ -17,10 +17,15 @@ import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { StreamableFile } from '@nestjs/common';
+import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class CompaniesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private normalizeString(value?: string | null) {
     const normalized = value?.trim() ?? '';
@@ -195,7 +200,7 @@ export class CompaniesService {
     return company;
   }
 
-  async create(data: CreateCompanyDto) {
+  async create(actor: AuthUser, data: CreateCompanyDto) {
     const name = data.name.trim();
     const responsibleName = data.responsibleName.trim();
     const email = data.email.trim().toLowerCase();
@@ -210,7 +215,7 @@ export class CompaniesService {
     await this.validateUniqueZabbixGroup(zabbixGroupName);
     await this.validateUniqueTifluxClient(tifluxClientId);
 
-    return this.prisma.company.create({
+    const created = await this.prisma.company.create({
       data: {
         name,
         responsibleName,
@@ -223,9 +228,33 @@ export class CompaniesService {
         status: data.status ?? true,
       },
     });
+
+    await this.audit.log({
+      actor,
+      action: 'CREATE',
+      entity: 'Company',
+      entityId: created.id,
+      payload: {
+        before: null,
+        after: {
+          id: created.id,
+          name: created.name,
+          email: created.email,
+          responsibleName: created.responsibleName,
+          cnpj: created.cnpj,
+          address: created.address,
+          status: created.status,
+          zabbixGroupName: created.zabbixGroupName,
+          tifluxClientId: created.tifluxClientId,
+          tifluxClientName: created.tifluxClientName,
+        },
+      },
+    });
+
+    return created;
   }
 
-  async update(id: string, data: UpdateCompanyDto) {
+  async update(actor: AuthUser, id: string, data: UpdateCompanyDto) {
     const existingCompany = await this.prisma.company.findFirst({
       where: {
         id,
@@ -281,7 +310,7 @@ export class CompaniesService {
       await this.validateUniqueTifluxClient(tifluxClientId, id);
     }
 
-    return this.prisma.company.update({
+    const updated = await this.prisma.company.update({
       where: {
         id,
       },
@@ -299,9 +328,44 @@ export class CompaniesService {
         ...(data.status !== undefined && { status: data.status }),
       },
     });
+
+    await this.audit.log({
+      actor,
+      action: 'UPDATE',
+      entity: 'Company',
+      entityId: id,
+      payload: {
+        before: {
+          id: existingCompany.id,
+          name: existingCompany.name,
+          email: existingCompany.email,
+          responsibleName: existingCompany.responsibleName,
+          cnpj: existingCompany.cnpj,
+          address: existingCompany.address,
+          status: existingCompany.status,
+          zabbixGroupName: existingCompany.zabbixGroupName,
+          tifluxClientId: existingCompany.tifluxClientId,
+          tifluxClientName: existingCompany.tifluxClientName,
+        },
+        after: {
+          id: updated.id,
+          name: updated.name,
+          email: updated.email,
+          responsibleName: updated.responsibleName,
+          cnpj: updated.cnpj,
+          address: updated.address,
+          status: updated.status,
+          zabbixGroupName: updated.zabbixGroupName,
+          tifluxClientId: updated.tifluxClientId,
+          tifluxClientName: updated.tifluxClientName,
+        },
+      },
+    });
+
+    return updated;
   }
 
-  async remove(id: string) {
+  async remove(actor: AuthUser, id: string) {
     const existingCompany = await this.prisma.company.findFirst({
       where: {
         id,
@@ -313,7 +377,7 @@ export class CompaniesService {
       throw new NotFoundException('Empresa não encontrada');
     }
 
-    return this.prisma.company.update({
+    const removed = await this.prisma.company.update({
       where: {
         id,
       },
@@ -322,6 +386,27 @@ export class CompaniesService {
         status: false,
       },
     });
+
+    await this.audit.log({
+      actor,
+      action: 'DELETE',
+      entity: 'Company',
+      entityId: id,
+      payload: {
+        before: {
+          id: existingCompany.id,
+          status: existingCompany.status,
+          deletedAt: existingCompany.deletedAt,
+        },
+        after: {
+          id: removed.id,
+          status: removed.status,
+          deletedAt: removed.deletedAt,
+        },
+      },
+    });
+
+    return removed;
   }
 
   async listContracts(companyId: string) {

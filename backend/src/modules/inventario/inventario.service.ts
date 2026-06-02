@@ -10,6 +10,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { StreamableFile } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type {
   CreateInventoryAssetDto,
@@ -39,7 +40,10 @@ export type InventoryAssetDto = {
 
 @Injectable()
 export class InventarioService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private assertCanMutate(user: AuthenticatedRequestUser) {
     if (user.role === UserRole.CLIENT) {
@@ -208,10 +212,23 @@ export class InventarioService {
     if (existing) {
       throw new BadRequestException('Já existe um tipo de ativo com este nome.');
     }
-    return this.prisma.inventoryAssetType.create({
+    const created = await this.prisma.inventoryAssetType.create({
       data: { name },
       select: { id: true, name: true },
     });
+
+    // actor não é obrigatório nesse endpoint (mas só ADMIN/COLLABORATOR chamam),
+    // então o interceptor já registra; aqui só registramos diffs se no futuro
+    // o controller passar actor explicitamente.
+    await this.audit.log({
+      actor: null,
+      action: 'CREATE',
+      entity: 'InventoryAssetType',
+      entityId: created.id,
+      payload: { before: null, after: created },
+    });
+
+    return created;
   }
 
   async listCompanies(user: AuthenticatedRequestUser) {
@@ -328,6 +345,27 @@ export class InventarioService {
       include: this.assetInclude(),
     });
 
+    await this.audit.log({
+      actor: user,
+      action: 'CREATE',
+      entity: 'InventoryAsset',
+      entityId: created.id,
+      payload: {
+        before: null,
+        after: {
+          id: created.id,
+          companyId: created.companyId,
+          assetTypeId: created.assetTypeId,
+          name: created.name,
+          description: created.description,
+          dueDate: created.dueDate ? created.dueDate.toISOString().slice(0, 10) : null,
+          reminderDaysBefore: created.reminderDaysBefore,
+          fileId: created.fileId,
+          createdBy: created.createdBy,
+        },
+      },
+    });
+
     return this.mapAsset({
       ...created,
       file: created.file
@@ -412,6 +450,35 @@ export class InventarioService {
       include: this.assetInclude(),
     });
 
+    await this.audit.log({
+      actor: user,
+      action: 'UPDATE',
+      entity: 'InventoryAsset',
+      entityId: assetId,
+      payload: {
+        before: {
+          id: existing.id,
+          companyId: existing.companyId,
+          assetTypeId: existing.assetTypeId,
+          name: existing.name,
+          description: existing.description,
+          dueDate: existing.dueDate ? existing.dueDate.toISOString().slice(0, 10) : null,
+          reminderDaysBefore: existing.reminderDaysBefore,
+          fileId: existing.fileId,
+        },
+        after: {
+          id: updated.id,
+          companyId: updated.companyId,
+          assetTypeId: updated.assetTypeId,
+          name: updated.name,
+          description: updated.description,
+          dueDate: updated.dueDate ? updated.dueDate.toISOString().slice(0, 10) : null,
+          reminderDaysBefore: updated.reminderDaysBefore,
+          fileId: updated.fileId,
+        },
+      },
+    });
+
     return this.mapAsset({
       ...updated,
       file: updated.file
@@ -437,6 +504,23 @@ export class InventarioService {
     await this.prisma.inventoryAsset.update({
       where: { id: assetId },
       data: { deletedAt: new Date() },
+    });
+
+    await this.audit.log({
+      actor: user,
+      action: 'DELETE',
+      entity: 'InventoryAsset',
+      entityId: assetId,
+      payload: {
+        before: {
+          id: existing.id,
+          deletedAt: existing.deletedAt,
+        },
+        after: {
+          id: existing.id,
+          deletedAt: new Date().toISOString(),
+        },
+      },
     });
 
     return { ok: true };

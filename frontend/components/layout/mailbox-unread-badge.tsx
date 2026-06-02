@@ -35,9 +35,9 @@ export function MailboxUnreadBadge({ variant = "inline" }: Props) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full bg-rose-600 font-bold text-white",
+        "pointer-events-none inline-flex shrink-0 items-center justify-center rounded-full bg-rose-600 font-bold text-white",
         variant === "collapsed"
-          ? "absolute -right-1 -top-1 min-w-[1rem] px-1 text-[9px] leading-4"
+          ? "absolute right-0.5 top-0.5 z-10 h-4 min-w-4 px-1 text-[9px] leading-4"
           : "min-w-[1.35rem] px-1.5 text-[10px] leading-5",
       )}
       aria-label={`${count} não lidas`}

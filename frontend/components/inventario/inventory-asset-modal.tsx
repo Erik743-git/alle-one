@@ -70,7 +70,8 @@ export function InventoryAssetModal({
       try {
         setLoadingTypes(true);
         const types = await inventarioService.listAssetTypes();
-        if (!cancelled) setAssetTypes(types);
+        const normalized = Array.isArray(types) ? types : [];
+        if (!cancelled) setAssetTypes(normalized);
       } catch (err) {
         if (!cancelled) {
           notifyError(
@@ -78,6 +79,7 @@ export function InventoryAssetModal({
               ? err.message
               : "Não foi possível carregar os tipos de ativo.",
           );
+          setAssetTypes([]);
         }
       } finally {
         if (!cancelled) setLoadingTypes(false);
@@ -107,10 +109,10 @@ export function InventoryAssetModal({
     setRemoveAttachment(false);
   }, [open, mode, asset]);
 
-  const typeOptions = useMemo(
-    () => assetTypes.map((t) => ({ value: t.id, label: t.name })),
-    [assetTypes],
-  );
+  const typeOptions = useMemo(() => {
+    const base = Array.isArray(assetTypes) ? assetTypes : [];
+    return base.map((t) => ({ value: t.id, label: t.name }));
+  }, [assetTypes]);
 
   async function handleCreateType(name: string) {
     try {

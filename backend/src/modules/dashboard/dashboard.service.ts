@@ -1153,6 +1153,7 @@ export class DashboardService {
 
     if (
       hay.includes('externo') ||
+      hay.includes('external') ||
       hay.includes('presencial') ||
       hay.includes('on-site') ||
       hay.includes('onsite')

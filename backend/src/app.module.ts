@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from './prisma/prisma.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CompaniesModule } from './modules/companies/companies.module';
@@ -36,6 +38,7 @@ import { InventarioModule } from './modules/inventario/inventario.module';
     ]),
     ScheduleModule.forRoot(),
     PrismaModule,
+    AuditModule,
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -59,6 +62,10 @@ import { InventarioModule } from './modules/inventario/inventario.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditInterceptor,
     },
   ],
 })

@@ -213,7 +213,11 @@ const SidebarNav = memo(function SidebarNav({
                   )}
                 >
                   <NavIconSlot collapsed={collapsed}>
-                    <Icon size={iconSize} className="shrink-0" strokeWidth={2} />
+                    <Icon
+                      size={iconSize}
+                      className="block shrink-0"
+                      strokeWidth={2}
+                    />
                   </NavIconSlot>
                   {!collapsed ? (
                     <span className="min-w-0 flex-1 truncate text-left tracking-tight">
@@ -235,7 +239,11 @@ const SidebarNav = memo(function SidebarNav({
                 className={cn(itemClass(!!active), !collapsed && "w-full")}
               >
                 <NavIconSlot collapsed={collapsed}>
-                  <Icon size={iconSize} className="shrink-0" strokeWidth={2} />
+                  <Icon
+                    size={iconSize}
+                    className="block shrink-0"
+                    strokeWidth={2}
+                  />
                   {isCorreio && collapsed ? (
                     <MailboxUnreadBadge variant="collapsed" />
                   ) : null}

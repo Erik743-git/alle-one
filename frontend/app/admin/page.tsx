@@ -62,6 +62,13 @@ export default function AdminPage() {
       icon: Users,
       href: "/admin/usuarios",
     },
+    {
+      name: "Auditoria",
+      description:
+        "Pesquise ações administrativas (criação/edição/exclusão/aprovações).",
+      icon: ShieldCheck,
+      href: "/admin/auditoria",
+    },
   ];
 
   const companiesActive = stats?.companiesActive ?? "—";

@@ -14,6 +14,8 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
@@ -44,19 +46,26 @@ export class UsersController {
 
   @Post()
   @RequirePermission(PermissionModule.USERS, 'canCreate')
-  create(@Body() data: CreateUserDto) {
-    return this.usersService.create(data);
+  create(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() data: CreateUserDto,
+  ) {
+    return this.usersService.create(actor, data);
   }
 
   @Patch(':id')
   @RequirePermission(PermissionModule.USERS, 'canEdit')
-  update(@Param('id') id: string, @Body() data: UpdateUserDto) {
-    return this.usersService.update(id, data);
+  update(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id') id: string,
+    @Body() data: UpdateUserDto,
+  ) {
+    return this.usersService.update(actor, id, data);
   }
 
   @Delete(':id')
   @RequirePermission(PermissionModule.USERS, 'canDelete')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  remove(@CurrentUser() actor: AuthenticatedRequestUser, @Param('id') id: string) {
+    return this.usersService.remove(actor, id);
   }
 }

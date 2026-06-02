@@ -20,6 +20,7 @@ import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
+import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -49,20 +50,24 @@ export class CompaniesController {
 
   @Post()
   @RequirePermission(PermissionModule.COMPANIES, 'canCreate')
-  create(@Body() data: CreateCompanyDto) {
-    return this.companiesService.create(data);
+  create(@CurrentUser() actor: AuthUser, @Body() data: CreateCompanyDto) {
+    return this.companiesService.create(actor, data);
   }
 
   @Patch(':id')
   @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
-  update(@Param('id') id: string, @Body() data: UpdateCompanyDto) {
-    return this.companiesService.update(id, data);
+  update(
+    @CurrentUser() actor: AuthUser,
+    @Param('id') id: string,
+    @Body() data: UpdateCompanyDto,
+  ) {
+    return this.companiesService.update(actor, id, data);
   }
 
   @Delete(':id')
   @RequirePermission(PermissionModule.COMPANIES, 'canDelete')
-  remove(@Param('id') id: string) {
-    return this.companiesService.remove(id);
+  remove(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
+    return this.companiesService.remove(actor, id);
   }
 
   @Get(':id/contracts')

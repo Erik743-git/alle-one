@@ -32,6 +32,9 @@ export function notify(
   variant: NotifyVariant = "default",
   durationMs = DEFAULT_DURATION_MS,
 ) {
+  if (typeof window === "undefined") {
+    return;
+  }
   const trimmed = message.trim();
   if (!trimmed) return;
 
@@ -43,7 +46,7 @@ export function notify(
   items = [...items.slice(-(MAX_VISIBLE - 1)), { id, message: trimmed, variant }];
   emit();
 
-  window.setTimeout(() => {
+  globalThis.setTimeout(() => {
     items = items.filter((item) => item.id !== id);
     emit();
   }, durationMs);

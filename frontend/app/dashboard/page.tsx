@@ -577,6 +577,38 @@ export default function DashboardPage() {
     }));
   }, [monitoringUseWeekly, alertasChartWeeklyData, alertasChartData]);
 
+  const alertasMonitoringWeeklyMonthlyTotalRow = useMemo(() => {
+    if (!monitoringUseWeekly) return null;
+    if (!isValidDateInput(startDate) || !isValidDateInput(endDate)) return null;
+
+    const start = new Date(toRangeDateString(startDate, false));
+    const end = new Date(toRangeDateString(endDate, true));
+    const isSameMonth =
+      start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+    if (!isSameMonth) return null;
+
+    const totals = alertasChartWeeklyData.reduce(
+      (acc, row) => {
+        acc.High += Number(row.High ?? 0);
+        acc.Disaster += Number(row.Disaster ?? 0);
+        acc.Total += Number(row.Total ?? 0);
+        return acc;
+      },
+      { High: 0, Disaster: 0, Total: 0 },
+    );
+
+    const monthLabel = start.toLocaleDateString("pt-BR", {
+      month: "long",
+      year: "numeric",
+    });
+
+    return {
+      key: "TOTAL_MES",
+      label: `Total ${monthLabel}`,
+      ...totals,
+    };
+  }, [monitoringUseWeekly, startDate, endDate, alertasChartWeeklyData]);
+
   const alertasMonitoringChartRows = useMemo(() => {
     if (monitoringUseWeekly) {
       return alertasChartWeeklyData;
@@ -997,6 +1029,22 @@ export default function DashboardPage() {
                         </td>
                       </tr>
                     ))}
+                    {alertasMonitoringWeeklyMonthlyTotalRow ? (
+                      <tr className="border-t border-border/60 bg-primary/10">
+                        <td className="px-4 py-3 font-bold">
+                          {alertasMonitoringWeeklyMonthlyTotalRow.label}
+                        </td>
+                        <td className="px-4 py-3 font-bold">
+                          {alertasMonitoringWeeklyMonthlyTotalRow.High}
+                        </td>
+                        <td className="px-4 py-3 font-bold">
+                          {alertasMonitoringWeeklyMonthlyTotalRow.Disaster}
+                        </td>
+                        <td className="px-4 py-3 font-bold text-primary">
+                          {alertasMonitoringWeeklyMonthlyTotalRow.Total}
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>
