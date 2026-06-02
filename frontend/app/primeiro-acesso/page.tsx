@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -154,14 +154,7 @@ export default function PrimeiroAcessoPage() {
         <Card className="rounded-[22px] border border-white/10 bg-[#08182f]/88 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
           <CardHeader className="space-y-6 px-7 pb-3 pt-7">
             <div className="flex items-center justify-between">
-              <Image
-                src="/logo-alle.png"
-                alt="Alle One"
-                width={140}
-                height={44}
-                priority
-                className="h-auto w-[140px]"
-              />
+              <AlleBrandLogoOnDark priority className="w-[140px]" />
 
               <button
                 type="button"

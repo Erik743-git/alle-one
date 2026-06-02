@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import Image from "next/image";
 import Link from "next/link";
+import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { useRouter } from "next/navigation";
 import {
   ArrowUpRight,
@@ -187,13 +187,9 @@ export default function LoginPage() {
         <Card className="rounded-[20px] border border-white/10 bg-[#08182f]/88 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:rounded-[22px]">
           <CardHeader className="space-y-5 px-5 pb-3 pt-5 sm:space-y-6 sm:px-7 sm:pt-7 lg:space-y-8">
             <div className="relative flex items-center">
-              <Image
-                src="/logo-alle.png"
-                alt="Alle One"
-                width={140}
-                height={44}
+              <AlleBrandLogoOnDark
                 priority
-                className="h-auto w-[110px] sm:w-[125px] lg:w-[140px]"
+                className="w-[110px] sm:w-[125px] lg:w-[140px]"
               />
 
               <a

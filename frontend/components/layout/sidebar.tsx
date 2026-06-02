@@ -3,6 +3,7 @@
 import { memo, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { AlleBrandLogo } from "@/components/brand/alle-brand-logo";
 import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import {
@@ -306,21 +307,9 @@ const SidebarBrand = memo(function SidebarBrand({
 
         <div className="flex flex-col items-center gap-2 pr-10">
           <div className="flex w-full justify-center">
-            <Image
-              src="/logo-alle.png"
-              alt="Alle One"
-              width={190}
-              height={68}
+            <AlleBrandLogo
               priority
-              className="h-auto w-full max-w-[168px] object-contain dark:hidden"
-            />
-            <Image
-              src="/Logo_White.png"
-              alt="Alle One"
-              width={190}
-              height={68}
-              priority
-              className="hidden h-auto w-full max-w-[168px] object-contain dark:block"
+              className="w-full max-w-[168px]"
             />
           </div>
           <p className="text-center text-[11px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">

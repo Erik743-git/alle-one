@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import Image from "next/image";
 import Link from "next/link";
+import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -62,12 +62,7 @@ export default function EsqueciSenhaPage() {
         <Card className="rounded-[22px] border border-white/10 bg-[#08182f]/88 backdrop-blur-xl">
           <CardHeader className="space-y-6 px-7 pt-7 pb-3">
             <div className="flex items-center justify-between">
-              <Image
-                src="/logo-alle.png"
-                alt="Alle One"
-                width={140}
-                height={44}
-              />
+              <AlleBrandLogoOnDark className="w-[140px]" />
 
               <Link
                 href="/login"
