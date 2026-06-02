@@ -280,7 +280,7 @@ export default function DashboardPage() {
   const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0);
   const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
 
-  const isAdmin = user?.role === "ADMIN";
+  const canSelectCompany = user?.role === "ADMIN" || user?.role === "COLLABORATOR";
 
   const today = new Date();
   const sevenDaysAgo = new Date();
@@ -305,7 +305,7 @@ export default function DashboardPage() {
   }, [refreshCooldownUntil]);
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!canSelectCompany) {
       setSelectedCompanyId(user?.companyId ?? null);
       setCompanies([]);
       return;
@@ -315,7 +315,10 @@ export default function DashboardPage() {
 
     async function loadCompanies() {
       try {
-        const list = await companiesService.list();
+        const list =
+          user?.role === "ADMIN"
+            ? await companiesService.list()
+            : await companiesService.listAccessible();
         if (!active) {
           return;
         }
@@ -339,11 +342,11 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [isAdmin, selectedCompanyId, user?.companyId]);
+  }, [canSelectCompany, selectedCompanyId, user?.companyId, user?.role]);
 
   const getEffectiveCompanyId = useCallback(() => {
-    return isAdmin ? selectedCompanyId : user?.companyId ?? null;
-  }, [isAdmin, selectedCompanyId, user?.companyId]);
+    return canSelectCompany ? selectedCompanyId : user?.companyId ?? null;
+  }, [canSelectCompany, selectedCompanyId, user?.companyId]);
 
   const loadDashboard = useCallback(
     async (mode: "initial" | "manual" | "auto" = "initial") => {
@@ -351,7 +354,7 @@ export default function DashboardPage() {
 
       if (!effectiveCompanyId) {
         setError(
-          isAdmin
+          canSelectCompany
             ? "Selecione uma empresa para visualizar o dashboard."
             : "Usuário sem empresa vinculada.",
         );
@@ -385,8 +388,11 @@ export default function DashboardPage() {
         let groupName = companyFromList?.zabbixGroupName?.trim() ?? "";
 
         if (!groupName) {
-          const company = isAdmin
-            ? await companiesService.getById(effectiveCompanyId)
+          const company = canSelectCompany
+            ? user?.role === "ADMIN"
+              ? await companiesService.getById(effectiveCompanyId)
+              : companies.find((c) => c.id === effectiveCompanyId) ??
+                (await companiesService.getSessionCompany())
             : await companiesService.getSessionCompany();
           groupName = company.zabbixGroupName?.trim() ?? "";
         }
@@ -500,7 +506,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [companies, endDate, getEffectiveCompanyId, isAdmin, refreshCooldownUntil, startDate],
+    [companies, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, startDate, user?.role],
   );
 
   useEffect(() => {
@@ -655,7 +661,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end xl:w-auto">
-              {isAdmin ? (
+              {canSelectCompany ? (
                 <div className="w-full rounded-xl border border-border bg-card px-4 py-3 sm:min-w-[320px]">
                   <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Empresa
@@ -705,11 +711,11 @@ export default function DashboardPage() {
 
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {isAdmin ? "Empresa selecionada" : "Empresa logada"}
+                  {canSelectCompany ? "Empresa selecionada" : "Empresa logada"}
                 </p>
                 <div className="mt-1 flex items-center gap-3">
                   <p className="text-sm font-bold">
-                    {isAdmin
+                    {canSelectCompany
                       ? companies.find((c) => c.id === selectedCompanyId)?.name ??
                         "Selecione uma empresa"
                       : user?.companyName ?? "Empresa não vinculada"}

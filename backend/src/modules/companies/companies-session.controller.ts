@@ -1,4 +1,10 @@
-import { Controller, Get, NotFoundException, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -23,5 +29,18 @@ export class CompaniesSessionController {
     }
 
     return this.companiesService.findOne(user.companyId);
+  }
+
+  /**
+   * Lista empresas para troca no dashboard por equipe interna (ex.: Colaborador).
+   * Não expõe endpoints administrativos de gestão de empresas.
+   */
+  @Get('accessible')
+  async accessible(@CurrentUser() user: AuthenticatedRequestUser) {
+    if (user.role !== 'ADMIN' && user.role !== 'COLLABORATOR') {
+      throw new ForbiddenException('Acesso negado.');
+    }
+
+    return this.companiesService.findAll();
   }
 }

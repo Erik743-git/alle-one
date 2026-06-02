@@ -49,6 +49,11 @@ export const companiesService = {
     return apiRequest<Company[]>("/companies");
   },
 
+  /** Empresas acessíveis para troca no dashboard (equipe interna). */
+  async listAccessible() {
+    return apiRequest<Company[]>("/companies/session/accessible");
+  },
+
   async getById(id: string) {
     return apiRequest<Company>(`/companies/${id}`);
   },
