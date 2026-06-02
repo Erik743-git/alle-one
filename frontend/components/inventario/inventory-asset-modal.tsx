@@ -160,7 +160,7 @@ export function InventoryAssetModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-[min(96vw,720px)] max-w-[720px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {mode === "create" ? "Adicionar ativo" : "Editar ativo"}
