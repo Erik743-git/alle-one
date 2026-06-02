@@ -25,7 +25,7 @@ const aplicativos = [
     nome: "Zabbix",
     descricao:
       "Monitoramento de hosts, triggers, disponibilidade e eventos.",
-    href: "https://zabbix-prd.alletecnologia.com/zabbix.php?action=dashboard.view&dashboardid=408",
+    href: "https://zabbix-prd.alletecnologia.com",
     icon: Activity,
   },
   {
@@ -39,7 +39,7 @@ const aplicativos = [
     nome: "TiFlux",
     descricao:
       "Atendimento, chamados, SLA e gestão de suporte.",
-    href: "https://app.tiflux.com/v/?_gl=1*xfsbng*_gcl_au*OTQwMjQyODg1LjE3NzQ0NDA3Njk.*_ga*MjExNjM1MjE4NS4xNzc0NDQwNzcw*_ga_EY9Q8KJXC2*czE3NzQ0NDA3NzAkbzEkZzEkdDE3NzQ0NDA3NzAkajYwJGwwJGgw",
+    href: "https://suporte.alletecnologia.com/v/",
     icon: LifeBuoy,
   },
 ];
