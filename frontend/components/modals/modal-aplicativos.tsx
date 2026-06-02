@@ -25,14 +25,14 @@ const aplicativos = [
     nome: "Zabbix",
     descricao:
       "Monitoramento de hosts, triggers, disponibilidade e eventos.",
-    href: "https://zabbix-prd.alletecnologia.com/index.php",
+    href: "https://zabbix-prd.alletecnologia.com/zabbix.php?action=dashboard.view&dashboardid=408",
     icon: Activity,
   },
   {
     nome: "Grafana",
     descricao:
       "Dashboards e métricas técnicas de infraestrutura e serviços.",
-    href: "https://grafana.com/auth/sign-in/",
+    href: "https://grafana-prd.alletecnologia.com",
     icon: BarChart3,
   },
   {
