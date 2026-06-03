@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { UserRole, UserStatus } from '@prisma/client';
@@ -147,6 +148,7 @@ type TifluxUserDbRow = {
 
 @Injectable()
 export class RendimentoService {
+  private readonly logger = new Logger(RendimentoService.name);
   private tifluxUserEmailMap: Map<string, TifluxUserLink> | null = null;
   private tifluxUserEmailMapLoadPromise: Promise<
     Map<string, TifluxUserLink>
@@ -756,7 +758,7 @@ export class RendimentoService {
         FROM rendimento_day_events
         WHERE user_id = $1
           AND source_key = $2
-          AND deleted_at IS NULL
+        ORDER BY deleted_at NULLS FIRST
         LIMIT 1
       `,
         input.userId,
@@ -793,6 +795,7 @@ export class RendimentoService {
           reason = $10,
           status = $11,
           debit_protected = $12,
+          deleted_at = NULL,
           updated_at = NOW()
         WHERE id = $1 AND user_id = $2
       `,
@@ -851,17 +854,15 @@ export class RendimentoService {
     const rows =
       (await this.prisma.$queryRawUnsafe<Array<{ count: number }>>(
         `
-        WITH updated AS (
-          UPDATE rendimento_day_events
-          SET deleted_at = NOW(), updated_at = NOW()
+        WITH deleted AS (
+          DELETE FROM rendimento_day_events
           WHERE user_id = $1
             AND date_ref = $2::date
             AND event_type IN ('IDLE_ALERT', 'LUNCH')
             AND status = 'ACTIVE'
-            AND deleted_at IS NULL
           RETURNING id
         )
-        SELECT COUNT(*)::int AS count FROM updated
+        SELECT COUNT(*)::int AS count FROM deleted
       `,
         userId,
         dateRef.slice(0, 10),
@@ -877,17 +878,15 @@ export class RendimentoService {
     const rows =
       (await this.prisma.$queryRawUnsafe<Array<{ count: number }>>(
         `
-        WITH updated AS (
-          UPDATE rendimento_day_events
-          SET deleted_at = NOW(), updated_at = NOW()
+        WITH deleted AS (
+          DELETE FROM rendimento_day_events
           WHERE user_id = $1
             AND date_ref BETWEEN $2::date AND $3::date
             AND event_type IN ('IDLE_ALERT', 'LUNCH')
             AND status = 'ACTIVE'
-            AND deleted_at IS NULL
           RETURNING id
         )
-        SELECT COUNT(*)::int AS count FROM updated
+        SELECT COUNT(*)::int AS count FROM deleted
       `,
         userId,
         this.toDateOnlyString(start),
@@ -959,55 +958,67 @@ export class RendimentoService {
     let eventsPurged = 0;
     let eventsUpserted = 0;
 
+    const errors: string[] = [];
+
     for (const collaborator of targets) {
-      const tifluxUser = this.lookupTifluxUser(
-        collaborator.email,
-        tifluxUserByEmail,
-      );
-      if (!tifluxUser) continue;
+      try {
+        const tifluxUser = this.lookupTifluxUser(
+          collaborator.email,
+          tifluxUserByEmail,
+        );
+        if (!tifluxUser) continue;
 
-      eventsPurged += await this.purgeAutoGapEventsInRange(
-        collaborator.id,
-        start,
-        end,
-      );
+        eventsPurged += await this.purgeAutoGapEventsInRange(
+          collaborator.id,
+          start,
+          end,
+        );
 
-      const rows = await this.fetchAppointments({
-        tifluxUserId: tifluxUser.id,
-        start,
-        end,
-      });
-      const justifications = await this.listJustifications({
-        userId: collaborator.id,
-        start,
-        end,
-      });
-      const justificationsByDate = new Map<string, GapJustificationRow[]>();
-      for (const item of justifications) {
-        const key = item.date_ref.slice(0, 10);
-        if (!justificationsByDate.has(key)) {
-          justificationsByDate.set(key, []);
-        }
-        justificationsByDate.get(key)!.push(item);
-      }
-
-      const days = this.groupByDay(rows, justificationsByDate);
-      daysProcessed += days.length;
-      for (const day of days) {
-        if (!day.insights) continue;
-        const upserts = collectDayEventUpserts({
-          userId: collaborator.id,
-          dateRef: day.date,
-          insights: day.insights,
-          entries: day.entries,
+        const rows = await this.fetchAppointments({
+          tifluxUserId: tifluxUser.id,
+          start,
+          end,
         });
-        eventsUpserted += upserts.filter(
-          (item) =>
-            item.eventType === 'IDLE_ALERT' || item.eventType === 'LUNCH',
-        ).length;
+        const justifications = await this.listJustifications({
+          userId: collaborator.id,
+          start,
+          end,
+        });
+        const justificationsByDate = new Map<string, GapJustificationRow[]>();
+        for (const item of justifications) {
+          const key = item.date_ref.slice(0, 10);
+          if (!justificationsByDate.has(key)) {
+            justificationsByDate.set(key, []);
+          }
+          justificationsByDate.get(key)!.push(item);
+        }
+
+        const days = this.groupByDay(rows, justificationsByDate);
+        daysProcessed += days.length;
+        for (const day of days) {
+          if (!day.insights) continue;
+          const upserts = collectDayEventUpserts({
+            userId: collaborator.id,
+            dateRef: day.date,
+            insights: day.insights,
+            entries: day.entries,
+          });
+          eventsUpserted += upserts.filter(
+            (item) =>
+              item.eventType === 'IDLE_ALERT' || item.eventType === 'LUNCH',
+          ).length;
+        }
+        await this.syncDayEventsForDays(collaborator.id, days);
+        usersProcessed += 1;
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'Erro desconhecido ao reprocessar.';
+        errors.push(`${collaborator.name}: ${msg}`);
       }
-      await this.syncDayEventsForDays(collaborator.id, days);
-      usersProcessed += 1;
+    }
+
+    if (usersProcessed === 0 && errors.length > 0) {
+      throw new BadRequestException(errors.join(' | '));
     }
 
     return {
@@ -1017,8 +1028,11 @@ export class RendimentoService {
       eventsUpserted,
       rangeStart: this.toDateOnlyString(start),
       rangeEnd: this.toDateOnlyString(end),
+      errors: errors.length ? errors : undefined,
       message:
-        'Alertas recalculados com as regras atuais. Abra a agenda de cada colaborador para conferir.',
+        errors.length > 0
+          ? `Reprocessamento parcial: ${usersProcessed} colaborador(es) OK; ${errors.length} falha(s).`
+          : 'Alertas recalculados com as regras atuais. Abra a agenda de cada colaborador para conferir.',
     };
   }
 
@@ -1267,7 +1281,15 @@ export class RendimentoService {
       justificationsByDate.get(key)!.push(item);
     }
     const days = this.groupByDay(rows, justificationsByDate);
-    await this.syncDayEventsForDays(user.id, days);
+    try {
+      await this.syncDayEventsForDays(user.id, days);
+    } catch (err) {
+      this.logger.error(
+        `Falha ao sincronizar eventos de rendimento (user=${user.id}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     const dayEvents = await this.listDayEvents({ userId: user.id, start, end });
     this.attachDayEventsToDays(days, dayEvents);
 
