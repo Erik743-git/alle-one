@@ -2,7 +2,7 @@
 
 Roteiro para executar **juntos** na VM após `git pull` com código atualizado:
 
-1. Nginx (`/admin`, `inventario/asset-types`)
+1. Nginx (`/admin/overview-stats`, `/admin/audit-logs`, `inventario/asset-types` — **não** `/admin` inteiro)
 2. `prisma migrate deploy` (rendimento + demais migrations pendentes)
 3. Revisão de `.env` (backend + frontend)
 
@@ -50,9 +50,13 @@ Se `nginx -t` falhar, **não** dê reload — corrija o arquivo antes.
 curl -s -o /dev/null -w "api-direto:%{http_code}\n" http://127.0.0.1:3002/health
 
 # Rotas que antes davam 404 no Nginx — 401 = chegou na API (sem cookie); 404 HTML = ainda errado
-curl -s -o /dev/null -w "admin-via-nginx:%{http_code}\n" \
+curl -s -o /dev/null -w "admin-api:%{http_code}\n" \
   -H "Host: alleone.alletecnologia.com" \
   http://127.0.0.1/admin/audit-logs
+
+curl -s -o /dev/null -w "admin-pagina:%{http_code}\n" \
+  -H "Host: alleone.alletecnologia.com" \
+  http://127.0.0.1/admin
 
 curl -s -o /dev/null -w "inventario-tipos:%{http_code}\n" \
   -H "Host: alleone.alletecnologia.com" \
@@ -64,6 +68,8 @@ curl -s -o /dev/null -w "inventario-tipos:%{http_code}\n" \
 | `401` ou `403` | OK — Nginx repassou para a API |
 | `404` (HTML Next) | Nginx antigo — repetir Parte B |
 | `502` | API parada — Parte A |
+| `/admin` → JSON `Cannot GET /admin` | Nginx enviou página para API — atualizar config (só `overview-stats` e `audit-logs` na 3002) |
+| `/admin` → `200` HTML | OK — Next na 3000 |
 
 ---
 

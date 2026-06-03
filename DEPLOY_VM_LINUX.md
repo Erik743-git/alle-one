@@ -311,7 +311,8 @@ sudo nginx -t && sudo systemctl reload nginx
 | Login “reinicia” / volta ao login sem erro | HTTP + cookie `Secure` → `AUTH_COOKIE_SECURE=false` e `pm2 restart alleone-api` |
 | `Cannot GET /dashboard` (JSON 404) | Nginx antigo mandava `/dashboard` para a API → `sudo cp deploy/nginx-alleone.conf /etc/nginx/sites-available/alleone` e `reload` |
 | Login/páginas “off” ou 502 | `pm2 status`; `curl -I http://127.0.0.1:3000/login`; subir `alleone-web` |
-| Auditoria admin 404 / inventário tipos 404 | Nginx: `location ~ ^/admin(/|$)` e `inventario/(companies|assets|asset-types)` → API 3002; `sudo nginx -t && reload` |
+| Auditoria API 404 / inventário tipos 404 | Nginx: `^/admin/(overview-stats|audit-logs)` → API 3002; páginas `/admin` → Next 3000 |
+| `Cannot GET /admin` (JSON no browser) | Nginx muito amplo em `/admin` — corrigir `deploy/nginx-alleone-https.conf` e `reload` |
 | `must be owner of table` após restore | `ALTER TABLE ... OWNER TO uportal` em `public` e `tiflux` |
 
 ### Backup e logs (operação)
