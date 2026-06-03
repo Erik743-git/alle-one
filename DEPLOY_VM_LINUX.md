@@ -258,6 +258,21 @@ Acesso: **https://alleone.alletecnologia.com/** — HTTP `:80` e legado `:8000` 
 
 ---
 
+## 8.1 Pós-deploy operacional (Nginx + migrate + .env)
+
+Checklist detalhado: **`deploy/POS_DEPLOY_OPERACIONAL.md`**
+
+```bash
+# alleone — migrate + API
+bash /home/alleone/producao/deploy/scripts/pos-deploy-alleone.sh
+
+# ubuntu — Nginx
+sudo cp /home/alleone/producao/deploy/nginx-alleone-https.conf /etc/nginx/sites-available/alleone
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+---
+
 ## 8. Atualizar versão (deploy novo)
 
 ```bash
