@@ -18,6 +18,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuditMeta } from '../audit/audit.decorator';
 import { UsersService } from './users.service';
 
 @Controller('users')
@@ -46,6 +47,7 @@ export class UsersController {
 
   @Post()
   @RequirePermission(PermissionModule.USERS, 'canCreate')
+  @AuditMeta({ entity: 'User', action: 'CREATE' })
   create(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Body() data: CreateUserDto,
@@ -55,6 +57,7 @@ export class UsersController {
 
   @Patch(':id')
   @RequirePermission(PermissionModule.USERS, 'canEdit')
+  @AuditMeta({ entity: 'User', action: 'UPDATE', entityIdParam: 'id' })
   update(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -65,6 +68,7 @@ export class UsersController {
 
   @Delete(':id')
   @RequirePermission(PermissionModule.USERS, 'canDelete')
+  @AuditMeta({ entity: 'User', action: 'DELETE', entityIdParam: 'id' })
   remove(@CurrentUser() actor: AuthenticatedRequestUser, @Param('id') id: string) {
     return this.usersService.remove(actor, id);
   }

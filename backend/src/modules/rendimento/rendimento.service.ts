@@ -151,7 +151,6 @@ export class RendimentoService {
   private tifluxUserEmailMapLoadPromise: Promise<
     Map<string, TifluxUserLink>
   > | null = null;
-  private ensureTablesPromise: Promise<void> | null = null;
   /**
    * Segurança/performance: evita fallback para API TiFlux durante uso do portal.
    * O portal deve ler do banco local sincronizado.
@@ -191,92 +190,6 @@ export class RendimentoService {
     const h = Math.floor(total / 60);
     const m = total % 60;
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-  }
-
-  private async ensureRendimentoTables() {
-    if (this.ensureTablesPromise) {
-      await this.ensureTablesPromise;
-      return;
-    }
-    this.ensureTablesPromise = (async () => {
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS rendimento_gap_justifications (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          date_ref DATE NOT NULL,
-          from_time TIME NOT NULL,
-          to_time TIME NOT NULL,
-          gap_type TEXT NOT NULL,
-          gap_minutes INTEGER NOT NULL,
-          kind TEXT NOT NULL,
-          status TEXT NOT NULL DEFAULT 'PENDING',
-          reason TEXT NOT NULL,
-          debit_overtime BOOLEAN NOT NULL DEFAULT false,
-          overtime_minutes INTEGER NOT NULL DEFAULT 0,
-          created_by TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          approved_by TEXT NULL REFERENCES users(id) ON DELETE SET NULL,
-          approved_at TIMESTAMP NULL,
-          note TEXT NULL,
-          deleted_at TIMESTAMP NULL
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS idx_rendimento_gap_justifications_user_date
-        ON rendimento_gap_justifications (user_id, date_ref);
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS idx_rendimento_gap_justifications_status
-        ON rendimento_gap_justifications (status);
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS rendimento_overtime_balances (
-          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-          minutes INTEGER NOT NULL DEFAULT 0,
-          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS rendimento_day_events (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          date_ref DATE NOT NULL,
-          event_type TEXT NOT NULL,
-          from_time TIME NULL,
-          to_time TIME NULL,
-          minutes INTEGER NOT NULL DEFAULT 0,
-          appointment_external_id BIGINT NULL,
-          justification_id TEXT NULL,
-          label TEXT NULL,
-          description TEXT NULL,
-          reason TEXT NULL,
-          status TEXT NOT NULL DEFAULT 'ACTIVE',
-          debit_protected BOOLEAN NOT NULL DEFAULT false,
-          source_key TEXT NOT NULL,
-          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          approved_by TEXT NULL REFERENCES users(id) ON DELETE SET NULL,
-          approved_at TIMESTAMP NULL,
-          deleted_at TIMESTAMP NULL,
-          CONSTRAINT rendimento_day_events_type_chk CHECK (
-            event_type IN ('IDLE_ALERT', 'LUNCH', 'JUSTIFICATION', 'OVERTIME', 'PLANTAO')
-          ),
-          CONSTRAINT rendimento_day_events_status_chk CHECK (
-            status IN ('ACTIVE', 'PENDING', 'APPROVED', 'REJECTED')
-          ),
-          CONSTRAINT rendimento_day_events_user_source_uniq UNIQUE (user_id, source_key)
-        );
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS idx_rendimento_day_events_user_date
-        ON rendimento_day_events (user_id, date_ref);
-      `);
-      await this.prisma.$executeRawUnsafe(`
-        CREATE INDEX IF NOT EXISTS idx_rendimento_day_events_type_status
-        ON rendimento_day_events (event_type, status);
-      `);
-    })();
-    await this.ensureTablesPromise;
   }
 
   private assertCanManageTargetUser(
@@ -516,7 +429,6 @@ export class RendimentoService {
   }
 
   private async getOvertimeBalanceMinutes(userId: string): Promise<number> {
-    await this.ensureRendimentoTables();
     const rows =
       (await this.prisma.$queryRawUnsafe<Array<{ minutes: number }>>(
         `
@@ -534,7 +446,6 @@ export class RendimentoService {
     start: Date;
     end: Date;
   }): Promise<GapJustificationRow[]> {
-    await this.ensureRendimentoTables();
     const rows =
       (await this.prisma.$queryRawUnsafe<GapJustificationRow[]>(
         `
@@ -730,7 +641,6 @@ export class RendimentoService {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<number> {
-    await this.ensureRendimentoTables();
     const rows =
       (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
         `
@@ -755,7 +665,6 @@ export class RendimentoService {
     periodStart: Date,
     periodEnd: Date,
   ): Promise<number> {
-    await this.ensureRendimentoTables();
     const rows =
       (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
         `
@@ -792,7 +701,6 @@ export class RendimentoService {
     periodOvertimeMinutes: number,
     referenceDate: Date,
   ): Promise<number> {
-    await this.ensureRendimentoTables();
     const payroll = resolvePayrollPeriodRange(referenceDate);
     const protectedMinutes = await this.getProtectedOvertimeMinutes(
       userId,
@@ -823,7 +731,6 @@ export class RendimentoService {
   }
 
   private async upsertDayEvent(input: UpsertDayEventInput): Promise<string> {
-    await this.ensureRendimentoTables();
     const fromTime = normalizeClockTimeForDb(input.fromTime);
     const toTime = normalizeClockTimeForDb(input.toTime);
     const sourceKey = buildDayEventSourceKey({
@@ -960,7 +867,6 @@ export class RendimentoService {
     start: Date;
     end: Date;
   }): Promise<RendimentoDayEventRow[]> {
-    await this.ensureRendimentoTables();
     return (
       (await this.prisma.$queryRawUnsafe<RendimentoDayEventRow[]>(
         `
@@ -1267,7 +1173,6 @@ export class RendimentoService {
     debitOvertime?: boolean;
     overtimeMinutes?: number;
   }) {
-    await this.ensureRendimentoTables();
     this.assertCanManageTargetUser(params.actor, params.userId);
 
     const user = await this.prisma.user.findFirst({
@@ -1359,7 +1264,6 @@ export class RendimentoService {
     eventId: string;
     decision: 'APPROVED' | 'REJECTED';
   }) {
-    await this.ensureRendimentoTables();
     if (params.actor.role !== 'ADMIN') {
       throw new ForbiddenException(
         'Somente administradores podem aprovar horas extras ou plantão.',
@@ -1453,7 +1357,6 @@ export class RendimentoService {
     decision: 'APPROVED' | 'REJECTED';
     note?: string;
   }) {
-    await this.ensureRendimentoTables();
     if (params.actor.role !== 'ADMIN') {
       throw new ForbiddenException(
         'Somente administradores podem aprovar/rejeitar justificativas.',

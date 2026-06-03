@@ -9,6 +9,10 @@ import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { StreamableFile } from '@nestjs/common';
+import {
+  assertAllowedUploadMime,
+  UPLOAD_MAX_BYTES,
+} from '../../common/upload.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -178,6 +182,11 @@ export class InventarioService {
     user: AuthenticatedRequestUser,
     file: Express.Multer.File,
   ) {
+    if (file.size > UPLOAD_MAX_BYTES) {
+      throw new BadRequestException('Arquivo excede o limite de 10MB');
+    }
+    assertAllowedUploadMime(file.mimetype);
+
     const uploadsDir = join(process.cwd(), 'uploads', 'inventory');
     mkdirSync(uploadsDir, { recursive: true });
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');

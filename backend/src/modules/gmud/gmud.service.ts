@@ -15,6 +15,15 @@ import {
   UpdateGmudDto,
 } from './dto/gmud.dto';
 import { AuthenticatedRequestUser } from './gmud.types';
+import {
+  gmudParticipationWhere,
+  seesGmudsByParticipationOnly,
+  userParticipatesInGmud,
+} from './gmud-access';
+import {
+  assertAllowedUploadMime,
+  UPLOAD_MAX_BYTES,
+} from '../../common/upload.config';
 import { GmudMailService } from './mail/gmud-mail.service';
 import { randomUUID } from 'crypto';
 import { mkdirSync, writeFileSync } from 'fs';
@@ -73,48 +82,16 @@ export class GmudService {
     );
   }
 
-  private seesGmudsByParticipationOnly(role: AuthenticatedRequestUser['role']) {
-    return role === 'COLLABORATOR' || role === 'PJ';
-  }
-
-  /** Colaborador/PJ vê GMUDs em que participa (e as que criou em rascunho). */
-  private gmudParticipationWhere(userId: string) {
-    return {
-      OR: [
-        { responsibleId: userId },
-        { createdBy: userId },
-        { executors: { some: { userId } } },
-        { approvers: { some: { userId } } },
-      ],
-    };
-  }
-
-  private userParticipatesInGmud(
-    userId: string,
-    gmud: {
-      createdBy: string;
-      responsibleId: string | null;
-      executors: Array<{ user: { id: string } }>;
-      approvers: Array<{ user: { id: string } }>;
-    },
-  ) {
-    if (gmud.createdBy === userId) return true;
-    if (gmud.responsibleId === userId) return true;
-    if (gmud.executors.some((e) => e.user.id === userId)) return true;
-    if (gmud.approvers.some((a) => a.user.id === userId)) return true;
-    return false;
-  }
-
   async list(user: AuthenticatedRequestUser, query: ListGmudsQueryDto) {
     const statusFilter = query.status
       ? { status: query.status as unknown as GmudStatus }
       : {};
 
-    if (this.seesGmudsByParticipationOnly(user.role)) {
+    if (seesGmudsByParticipationOnly(user.role)) {
       return this.prisma.gmud.findMany({
         where: {
           deletedAt: null,
-          ...this.gmudParticipationWhere(user.userId),
+          ...gmudParticipationWhere(user.userId),
           ...(query.companyId ? { companyId: query.companyId } : {}),
           ...statusFilter,
         },
@@ -191,8 +168,8 @@ export class GmudService {
       throw new NotFoundException('GMUD não encontrada');
     }
 
-    if (this.seesGmudsByParticipationOnly(user.role)) {
-      if (!this.userParticipatesInGmud(user.userId, gmud)) {
+    if (seesGmudsByParticipationOnly(user.role)) {
+      if (!userParticipatesInGmud(user.userId, gmud)) {
         throw new ForbiddenException('Sem acesso a esta GMUD');
       }
       return gmud;
@@ -840,10 +817,10 @@ export class GmudService {
       throw new BadRequestException('GMUD não aceita anexos neste status');
     }
 
-    const maxBytes = 10 * 1024 * 1024;
-    if (file.size > maxBytes) {
+    if (file.size > UPLOAD_MAX_BYTES) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
+    assertAllowedUploadMime(file.mimetype);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'gmud', gmud.id);
     mkdirSync(uploadsDir, { recursive: true });

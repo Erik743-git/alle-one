@@ -25,6 +25,7 @@ import {
   DecideRendimentoJustificationDto,
   RendimentoTimesheetQueryDto,
 } from './rendimento.dto';
+import { AuditMeta } from '../audit/audit.decorator';
 import { RendimentoService } from './rendimento.service';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
@@ -61,6 +62,11 @@ export class RendimentoController {
 
   @Post('users/:userId/justifications')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canEdit')
+  @AuditMeta({
+    entity: 'RendimentoGapJustification',
+    action: 'CREATE',
+    entityIdParam: 'userId',
+  })
   createGapJustification(
     @Req() req: AuthenticatedRequest,
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -84,6 +90,11 @@ export class RendimentoController {
   @Patch('justifications/:id/decision')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
   @Roles('ADMIN')
+  @AuditMeta({
+    entity: 'RendimentoGapJustification',
+    action: 'DECIDE',
+    entityIdParam: 'id',
+  })
   decideGapJustification(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -100,6 +111,11 @@ export class RendimentoController {
   @Patch('events/:id/decision')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
   @Roles('ADMIN')
+  @AuditMeta({
+    entity: 'RendimentoDayEvent',
+    action: 'DECIDE',
+    entityIdParam: 'id',
+  })
   decideDayEvent(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,

@@ -13,6 +13,9 @@ import {
 import { PermissionModule } from '@prisma/client';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import { multerMemoryLimits } from '../../common/upload.config';
+import { AuditMeta } from '../audit/audit.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
@@ -70,6 +73,7 @@ export class GmudController {
   @Post()
   @RequirePermission(PermissionModule.GMUD, 'canCreate')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @AuditMeta({ entity: 'Gmud', action: 'CREATE' })
   create(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Body() dto: CreateGmudDto,
@@ -80,6 +84,7 @@ export class GmudController {
   @Patch(':id')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @AuditMeta({ entity: 'Gmud', action: 'UPDATE', entityIdParam: 'id' })
   update(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -91,6 +96,7 @@ export class GmudController {
   @Post(':id/approve')
   @RequirePermission(PermissionModule.GMUD, 'canApprove')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @AuditMeta({ entity: 'Gmud', action: 'APPROVE', entityIdParam: 'id' })
   approve(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -102,7 +108,9 @@ export class GmudController {
   @Post(':id/approve-on-behalf')
   @RequirePermission(PermissionModule.GMUD, 'canApprove')
   @Roles('ADMIN')
-  @UseInterceptors(FileInterceptor('evidence'))
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @AuditMeta({ entity: 'Gmud', action: 'APPROVE_ON_BEHALF', entityIdParam: 'id' })
+  @UseInterceptors(FileInterceptor('evidence', multerMemoryLimits))
   approveOnBehalf(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -135,6 +143,7 @@ export class GmudController {
   @Post(':id/cancel')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @AuditMeta({ entity: 'Gmud', action: 'CANCEL', entityIdParam: 'id' })
   cancel(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,
@@ -145,7 +154,9 @@ export class GmudController {
   @Post(':id/attachments')
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
-  @UseInterceptors(FileInterceptor('file'))
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @AuditMeta({ entity: 'GmudAttachment', action: 'CREATE', entityIdParam: 'id' })
+  @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
   addAttachment(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') id: string,

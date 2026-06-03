@@ -13,6 +13,9 @@ import {
 } from '@nestjs/common';
 import { PermissionModule } from '@prisma/client';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
+import { multerMemoryLimits } from '../../common/upload.config';
+import { AuditMeta } from '../audit/audit.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -50,12 +53,14 @@ export class CompaniesController {
 
   @Post()
   @RequirePermission(PermissionModule.COMPANIES, 'canCreate')
+  @AuditMeta({ entity: 'Company', action: 'CREATE' })
   create(@CurrentUser() actor: AuthUser, @Body() data: CreateCompanyDto) {
     return this.companiesService.create(actor, data);
   }
 
   @Patch(':id')
   @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
+  @AuditMeta({ entity: 'Company', action: 'UPDATE', entityIdParam: 'id' })
   update(
     @CurrentUser() actor: AuthUser,
     @Param('id') id: string,
@@ -66,6 +71,7 @@ export class CompaniesController {
 
   @Delete(':id')
   @RequirePermission(PermissionModule.COMPANIES, 'canDelete')
+  @AuditMeta({ entity: 'Company', action: 'DELETE', entityIdParam: 'id' })
   remove(@CurrentUser() actor: AuthUser, @Param('id') id: string) {
     return this.companiesService.remove(actor, id);
   }
@@ -78,6 +84,11 @@ export class CompaniesController {
 
   @Post(':id/contracts')
   @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
+  @AuditMeta({
+    entity: 'CompanyContract',
+    action: 'CREATE',
+    entityIdParam: 'id',
+  })
   createContract(
     @Param('id') companyId: string,
     @Body() dto: CreateCompanyContractDto,
@@ -97,6 +108,11 @@ export class CompaniesController {
 
   @Delete(':id/contracts/:contractId')
   @RequirePermission(PermissionModule.COMPANIES, 'canDelete')
+  @AuditMeta({
+    entity: 'CompanyContract',
+    action: 'DELETE',
+    entityIdParam: 'contractId',
+  })
   deleteContract(
     @Param('id') companyId: string,
     @Param('contractId') contractId: string,
@@ -106,7 +122,13 @@ export class CompaniesController {
 
   @Post(':id/contracts/:contractId/file')
   @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
-  @UseInterceptors(FileInterceptor('file'))
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @AuditMeta({
+    entity: 'CompanyContract',
+    action: 'UPLOAD_FILE',
+    entityIdParam: 'contractId',
+  })
+  @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
   uploadContractFile(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') companyId: string,
@@ -123,7 +145,9 @@ export class CompaniesController {
 
   @Post(':id/logo')
   @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
-  @UseInterceptors(FileInterceptor('file'))
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @AuditMeta({ entity: 'Company', action: 'UPLOAD_LOGO', entityIdParam: 'id' })
+  @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
   uploadLogo(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param('id') companyId: string,

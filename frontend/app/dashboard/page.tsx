@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import {
   useCallback,
   useEffect,
@@ -14,8 +15,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
-import { DeferredResponsiveContainer } from "@/components/charts/deferred-responsive-container";
-import { useChartTheme, useChartTooltipProps } from "@/lib/chart-theme";
 import { getStoredUser } from "@/lib/session";
 import {
   companiesService,
@@ -44,17 +43,18 @@ import {
   ShieldAlert,
   Ticket,
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+const DashboardLazyChart = dynamic(
+  () =>
+    import("@/components/dashboard/dashboard-recharts-panel").then((m) => ({
+      default: m.DashboardLazyChart,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[360px] animate-pulse rounded-xl bg-muted/40" />
+    ),
+  },
+);
 
 const MANUAL_REFRESH_COOLDOWN_MS = 20000;
 const AUTO_REFRESH_INTERVAL_MS = 120000;
@@ -291,9 +291,6 @@ export default function DashboardPage() {
 
   const completeRequestIdRef = useRef(0);
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const chartTheme = useChartTheme();
-  const TOOLTIP_PROPS = useChartTooltipProps(chartTheme);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -827,39 +824,7 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <div className="h-[360px]">
-                <DeferredResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chamadosChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                    <XAxis
-                      dataKey="monthLabel"
-                      stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick }}
-                      tickLine={{ stroke: chartTheme.tick }}
-                      axisLine={{ stroke: chartTheme.grid }}
-                    />
-                    <YAxis
-                      stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick }}
-                      tickLine={{ stroke: chartTheme.tick }}
-                      axisLine={{ stroke: chartTheme.grid }}
-                    />
-                    <Tooltip {...TOOLTIP_PROPS} />
-                    <Legend
-                      wrapperStyle={{ color: chartTheme.tick }}
-                      formatter={(value: string) =>
-                        <span style={{ color: chartTheme.tick }}>{value}</span>
-                      }
-                    />
-                    <Bar dataKey="Infraestrutura" fill="#4f8bd6" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Sistema" fill="#d85c57" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="NOC" fill="#8c6fd1" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Rotinas" fill="#9bc45b" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Consult" fill="#ed7d31" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Total" fill="#57c1d9" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </DeferredResponsiveContainer>
-              </div>
+              <DashboardLazyChart kind="chamados" data={chamadosChartData} />
 
               {dashboard?.resumoHorasTrabalhadas ? (
                 <div className="space-y-4 border-t border-border pt-6">
@@ -971,39 +936,7 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <div className="h-[360px]">
-                <DeferredResponsiveContainer width="100%" height="100%">
-                  <BarChart data={horasChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                    <XAxis
-                      dataKey="monthLabel"
-                      stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick }}
-                      tickLine={{ stroke: chartTheme.tick }}
-                      axisLine={{ stroke: chartTheme.grid }}
-                    />
-                    <YAxis
-                      stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick }}
-                      tickLine={{ stroke: chartTheme.tick }}
-                      axisLine={{ stroke: chartTheme.grid }}
-                    />
-                    <Tooltip {...TOOLTIP_PROPS} />
-                    <Legend
-                      wrapperStyle={{ color: chartTheme.tick }}
-                      formatter={(value: string) =>
-                        <span style={{ color: chartTheme.tick }}>{value}</span>
-                      }
-                    />
-                    <Bar dataKey="Infraestrutura" fill="#4f8bd6" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Sistema" fill="#d85c57" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="NOC" fill="#8c6fd1" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Rotinas" fill="#9bc45b" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Consult" fill="#ed7d31" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Total" fill="#57c1d9" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </DeferredResponsiveContainer>
-              </div>
+              <DashboardLazyChart kind="horas" data={horasChartData} />
             </CardContent>
           </Card>
 
@@ -1055,55 +988,7 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <div className="h-[360px]">
-                <DeferredResponsiveContainer width="100%" height="100%">
-                  <LineChart data={alertasMonitoringChartRows}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
-                    <XAxis
-                      dataKey="weekLabel"
-                      stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick, fontSize: 11 }}
-                      tickLine={{ stroke: chartTheme.tick }}
-                      axisLine={{ stroke: chartTheme.grid }}
-                      interval={0}
-                      angle={alertasMonitoringChartRows.length > 4 ? -25 : 0}
-                      textAnchor={
-                        alertasMonitoringChartRows.length > 4 ? "end" : "middle"
-                      }
-                      height={alertasMonitoringChartRows.length > 4 ? 56 : 30}
-                    />
-                    <YAxis
-                      stroke={chartTheme.tick}
-                      tick={{ fill: chartTheme.tick }}
-                      tickLine={{ stroke: chartTheme.tick }}
-                      axisLine={{ stroke: chartTheme.grid }}
-                    />
-                    <Tooltip {...TOOLTIP_PROPS} />
-                    <Legend
-                      wrapperStyle={{ color: chartTheme.tick }}
-                      formatter={(value: string) =>
-                        <span style={{ color: chartTheme.tick }}>{value}</span>
-                      }
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="High"
-                      stroke="#4f8bd6"
-                      strokeWidth={2}
-                      dot={{ r: 5, strokeWidth: 2, fill: "#4f8bd6" }}
-                      activeDot={{ r: 6 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Disaster"
-                      stroke="#d85c57"
-                      strokeWidth={2}
-                      dot={{ r: 5, strokeWidth: 2, fill: "#d85c57" }}
-                      activeDot={{ r: 6 }}
-                    />
-                  </LineChart>
-                </DeferredResponsiveContainer>
-              </div>
+              <DashboardLazyChart kind="alertas" data={alertasMonitoringChartRows} />
             </CardContent>
           </Card>
 

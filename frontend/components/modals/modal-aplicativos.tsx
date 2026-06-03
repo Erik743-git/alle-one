@@ -36,7 +36,7 @@ const aplicativos = [
     icon: BarChart3,
   },
   {
-    nome: "TiFlux",
+    nome: "Central de Suporte",
     descricao:
       "Atendimento, chamados, SLA e gestão de suporte.",
     href: "https://suporte.alletecnologia.com/v/",
