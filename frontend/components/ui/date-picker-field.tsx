@@ -62,13 +62,13 @@ export function DatePickerField({
           variant="outline"
           disabled={disabled}
           className={cn(
-            "h-10 w-full justify-start rounded-xl border-input bg-background px-3 text-left text-sm font-normal font-sans shadow-sm",
+            "h-10 w-full justify-start gap-2 rounded-xl border-input bg-background px-3 text-left text-sm font-normal font-sans shadow-sm",
             !selected && "text-muted-foreground",
             className,
           )}
         >
-          <CalendarIcon className="mr-2 h-3.5 w-3.5 shrink-0 opacity-60" />
-          {label}
+          <CalendarIcon className="h-4 w-4 shrink-0 opacity-60" />
+          <span className="min-w-0 flex-1 truncate tabular-nums">{label}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent

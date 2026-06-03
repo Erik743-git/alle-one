@@ -1203,7 +1203,11 @@ export class RendimentoService {
       Number(params.gapMinutes) > 0
         ? Math.trunc(Number(params.gapMinutes))
         : toMinutes - fromMinutes;
-    if (params.gapType === 'lunch' && gapMinutesPreview > LUNCH_MINUTES) {
+    if (
+      params.kind !== 'VOLUNTARY' &&
+      params.gapType === 'lunch' &&
+      gapMinutesPreview > LUNCH_MINUTES
+    ) {
       throw new BadRequestException(
         'Período de almoço não pode exceder 1h30.',
       );

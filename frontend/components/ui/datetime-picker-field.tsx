@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 
 type DateTimePickerFieldProps = {
@@ -42,6 +41,12 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
+const timeSegmentClass =
+  "h-8 w-11 min-w-0 rounded-md border-0 bg-muted/50 px-0 text-center text-sm font-medium tabular-nums shadow-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-muted/30 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none";
+
+const timeFieldShellClass =
+  "flex h-10 items-center justify-center gap-2 rounded-xl border border-input bg-background px-3 shadow-sm";
+
 export function TimePickerField({
   value,
   onChange,
@@ -55,15 +60,13 @@ export function TimePickerField({
 }) {
   const time = value?.trim() ? value.slice(0, 5) : "09:00";
   return (
-    <div
-      className={cn(
-        "flex h-10 w-full items-center justify-center rounded-xl border border-input bg-background px-2 shadow-sm",
-        disabled && "opacity-50",
-        className,
-      )}
-    >
-      <TimeInputs time={time} disabled={disabled} onTimeChange={onChange} />
-    </div>
+    <TimeInputs
+      time={time}
+      disabled={disabled}
+      onTimeChange={onChange}
+      layout="field"
+      className={cn("w-full", className)}
+    />
   );
 }
 
@@ -71,10 +74,14 @@ function TimeInputs({
   time,
   disabled,
   onTimeChange,
+  layout = "embedded",
+  className,
 }: {
   time: string;
   disabled?: boolean;
   onTimeChange: (time: string) => void;
+  layout?: "field" | "embedded";
+  className?: string;
 }) {
   const [hour, minute] = time.split(":");
   const [hourDraft, setHourDraft] = React.useState(() =>
@@ -110,8 +117,15 @@ function TimeInputs({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <Input
+    <div
+      className={cn(
+        timeFieldShellClass,
+        layout === "field" ? "w-full" : "shrink-0",
+        disabled && "pointer-events-none opacity-50",
+        className,
+      )}
+    >
+      <input
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
@@ -124,10 +138,15 @@ function TimeInputs({
           if (e.key === "Enter") commit(hourDraft, minuteDraft);
         }}
         onWheel={(e) => e.currentTarget.blur()}
-        className="h-10 w-[3.25rem] rounded-xl px-1 text-center text-sm shadow-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className={timeSegmentClass}
       />
-      <span className="text-sm text-muted-foreground">:</span>
-      <Input
+      <span
+        className="select-none text-sm font-semibold leading-none text-foreground"
+        aria-hidden
+      >
+        :
+      </span>
+      <input
         type="text"
         inputMode="numeric"
         pattern="[0-9]*"
@@ -140,7 +159,7 @@ function TimeInputs({
           if (e.key === "Enter") commit(hourDraft, minuteDraft);
         }}
         onWheel={(e) => e.currentTarget.blur()}
-        className="h-10 w-[3.25rem] rounded-xl px-1 text-center text-sm shadow-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className={timeSegmentClass}
       />
     </div>
   );
@@ -157,7 +176,12 @@ export function DateTimePickerField({
   const timeDisabled = disabled || !date;
 
   return (
-    <div className={cn("flex flex-col gap-2 sm:flex-row sm:items-center", className)}>
+    <div
+      className={cn(
+        "flex flex-col gap-2 sm:flex-row sm:items-stretch",
+        className,
+      )}
+    >
       <DatePickerField
         value={date}
         onChange={(nextDate) => onChange(joinDateTime(nextDate, time))}
@@ -169,6 +193,7 @@ export function DateTimePickerField({
         time={time}
         disabled={timeDisabled}
         onTimeChange={(nextTime) => onChange(joinDateTime(date, nextTime))}
+        layout="embedded"
       />
     </div>
   );

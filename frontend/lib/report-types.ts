@@ -9,7 +9,7 @@ export const REPORT_TYPES = [
   {
     value: "4",
     label: "Estatística Geral",
-    formats: ["XLSX"] as const,
+    formats: ["CSV", "XLSX"] as const,
   },
 ] as const;
 

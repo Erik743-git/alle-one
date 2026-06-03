@@ -21,6 +21,7 @@ import {
 } from '../rendimento/rendimento-day-insights';
 import { computeUnionWorkedMinutes } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
+import { buildTipo4ReportCsv } from './reports-tipo4-csv';
 
 type ReportFormat = 'CSV' | 'XLSX';
 type ReportStatus = 'READY' | 'FAILED';
@@ -1004,7 +1005,7 @@ export class ReportsService {
     }
   }
 
-  private async generateTipo4Xlsx(params: {
+  private async loadTipo4ReportBundle(params: {
     user: AuthenticatedRequestUser;
     companyId: string;
     start: Date;
@@ -1026,9 +1027,6 @@ export class ReportsService {
     const startIso = params.start.toISOString();
     const endIso = params.end.toISOString();
 
-    // Importante: o DashboardService faz override de companyId quando role === CLIENT.
-    // Aqui o escopo já foi validado em `generateReport` (ensureCompanyInScope),
-    // então forçamos role=ADMIN para garantir que o relatório use a empresa do filtro.
     const reportUser = {
       ...params.user,
       role: 'ADMIN' as AuthenticatedRequestUser['role'],
@@ -1139,6 +1137,68 @@ export class ReportsService {
             ticketsBaseTotal: 0,
             openTickets: [],
           };
+
+    return {
+      company,
+      group,
+      periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+      periodStartIso: startIso,
+      periodEndIso: endIso,
+      monitoringUseWeekly,
+      chamadosMonths,
+      horasMonths,
+      alertasMonitoringRows,
+      dashSummary,
+      topTriggers,
+      allTriggersInPeriod,
+      principaisHosts,
+      ticketsStats,
+    };
+  }
+
+  private async generateTipo4Csv(params: {
+    user: AuthenticatedRequestUser;
+    companyId: string;
+    start: Date;
+    end: Date;
+  }) {
+    const loaded = await this.loadTipo4ReportBundle(params);
+    return buildTipo4ReportCsv({
+      companyName: loaded.company.name,
+      zabbixGroup: loaded.group,
+      periodLabel: loaded.periodLabel,
+      periodStartIso: loaded.periodStartIso,
+      periodEndIso: loaded.periodEndIso,
+      monitoringUseWeekly: loaded.monitoringUseWeekly,
+      chamadosMonths: loaded.chamadosMonths,
+      horasMonths: loaded.horasMonths,
+      alertasMonitoringRows: loaded.alertasMonitoringRows,
+      dashSummary: loaded.dashSummary,
+      topTriggers: loaded.topTriggers,
+      allTriggersInPeriod: loaded.allTriggersInPeriod,
+      principaisHosts: loaded.principaisHosts,
+      ticketsStats: loaded.ticketsStats,
+    });
+  }
+
+  private async generateTipo4Xlsx(params: {
+    user: AuthenticatedRequestUser;
+    companyId: string;
+    start: Date;
+    end: Date;
+  }) {
+    const loaded = await this.loadTipo4ReportBundle(params);
+    const company = loaded.company;
+    const group = loaded.group;
+    const chamadosMonths = loaded.chamadosMonths;
+    const horasMonths = loaded.horasMonths;
+    const alertasMonitoringRows = loaded.alertasMonitoringRows;
+    const monitoringUseWeekly = loaded.monitoringUseWeekly;
+    const dashSummary = loaded.dashSummary;
+    const topTriggers = loaded.topTriggers;
+    const allTriggersInPeriod = loaded.allTriggersInPeriod;
+    const principaisHosts = loaded.principaisHosts;
+    const ticketsStats = loaded.ticketsStats;
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Alle One';
@@ -1410,7 +1470,7 @@ export class ReportsService {
         sheet,
         companyName: company.name,
         group,
-        periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+        periodLabel: loaded.periodLabel,
         dashSummary,
         topTriggers,
         principaisHosts,
@@ -1425,7 +1485,7 @@ export class ReportsService {
         sheet,
         companyName: company.name,
         group,
-        periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+        periodLabel: loaded.periodLabel,
         rows: allTriggersInPeriod,
         addCompanyLogo,
       });
@@ -1438,7 +1498,7 @@ export class ReportsService {
         workbook,
         sheet,
         companyName: company.name,
-        periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
+        periodLabel: loaded.periodLabel,
         stats: ticketsStats,
         addCompanyLogo,
       });
@@ -2401,12 +2461,6 @@ export class ReportsService {
       throw new BadRequestException('format inválido (use CSV ou XLSX)');
     }
 
-    if (type === '4' && format !== 'XLSX') {
-      throw new BadRequestException(
-        'Estatística Geral está disponível apenas em XLSX.',
-      );
-    }
-
     const userId = payload.userId?.trim() || null;
     if (type === '4' && userId) {
       throw new BadRequestException(
@@ -2453,19 +2507,33 @@ export class ReportsService {
                   }),
             ),
           }
-        : {
-            filename: `${baseName}.csv`,
-            mimeType: 'text/csv',
-            buffer: Buffer.from(
-              await this.generateHoursUsageCsv({
-                companyId,
-                start: range.start,
-                end: range.end,
-                userId,
-              }),
-              'utf8',
-            ),
-          };
+        : type === '4'
+          ? {
+              filename: `${baseName}.csv`,
+              mimeType: 'text/csv; charset=utf-8',
+              buffer: Buffer.from(
+                await this.generateTipo4Csv({
+                  user,
+                  companyId,
+                  start: range.start,
+                  end: range.end,
+                }),
+                'utf8',
+              ),
+            }
+          : {
+              filename: `${baseName}.csv`,
+              mimeType: 'text/csv; charset=utf-8',
+              buffer: Buffer.from(
+                await this.generateHoursUsageCsv({
+                  companyId,
+                  start: range.start,
+                  end: range.end,
+                  userId,
+                }),
+                'utf8',
+              ),
+            };
 
     const targetPath = join(uploadsDir, built.filename);
     writeFileSync(targetPath, built.buffer);

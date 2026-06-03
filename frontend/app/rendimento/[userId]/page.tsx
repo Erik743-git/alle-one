@@ -38,13 +38,18 @@ import {
   type RendimentoTimesheet,
 } from "@/lib/services/rendimento.service";
 
+function parseTimeToMinutes(value: string): number | null {
+  if (!value?.trim()) return null;
+  const [h, m] = value.split(":").map((part) => Number(part.trim()));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return (h || 0) * 60 + (m || 0);
+}
+
 function minutesBetweenTimes(from: string, to: string): number {
-  const parse = (value: string) => {
-    const [h, m] = value.split(":").map((part) => Number(part));
-    return (h || 0) * 60 + (m || 0);
-  };
-  const diff = parse(to) - parse(from);
-  return diff > 0 ? diff : 1;
+  const start = parseTimeToMinutes(from);
+  const end = parseTimeToMinutes(to);
+  if (start === null || end === null || end <= start) return 0;
+  return end - start;
 }
 
 export default function RendimentoAgendaPage() {
@@ -75,9 +80,15 @@ export default function RendimentoAgendaPage() {
     () => minutesBetweenTimes(justFrom, justTo),
     [justFrom, justTo],
   );
-  const isLunchGap = defineLunch || justMode === "VOLUNTARY";
+  const invalidTimeRange = useMemo(() => {
+    const start = parseTimeToMinutes(justFrom);
+    const end = parseTimeToMinutes(justTo);
+    return start !== null && end !== null && end <= start;
+  }, [justFrom, justTo]);
   const lunchTooLong =
-    isLunchGap && justGapMinutes > RENDIMENTO_LUNCH_MAX_MINUTES;
+    justMode === "ALERT" &&
+    defineLunch &&
+    justGapMinutes > RENDIMENTO_LUNCH_MAX_MINUTES;
 
   const loadTimesheet = useCallback(async () => {
     if (!userId) return;
@@ -143,9 +154,9 @@ export default function RendimentoAgendaPage() {
   function openVoluntaryJustification(params: { date: string }) {
     setJustMode("VOLUNTARY");
     setJustDate(params.date);
-    setJustFrom("12:00");
-    setJustTo("13:30");
-    setDefineLunch(true);
+    setJustFrom("08:00");
+    setJustTo("09:00");
+    setDefineLunch(false);
     setJustReason("");
     setDebitOvertime(false);
     setJustModalOpen(true);
@@ -155,6 +166,10 @@ export default function RendimentoAgendaPage() {
     if (!userId) return;
     if (!justReason.trim()) {
       notifyError("Informe a justificativa.");
+      return;
+    }
+    if (invalidTimeRange) {
+      notifyError("O horário final deve ser maior que o horário inicial.");
       return;
     }
     if (lunchTooLong) {
@@ -171,7 +186,8 @@ export default function RendimentoAgendaPage() {
         date: justDate,
         fromTime: justFrom,
         toTime: justTo,
-        gapType: defineLunch ? "lunch" : "idle",
+        gapType:
+          justMode === "VOLUNTARY" ? "idle" : defineLunch ? "lunch" : "idle",
         gapMinutes,
         kind: justMode,
         reason: justReason.trim(),
@@ -268,12 +284,13 @@ export default function RendimentoAgendaPage() {
                       : "Justificativa voluntária"}
                   </DialogTitle>
                   <DialogDescription>
-                    As justificativas ficam auditáveis e podem debitar horas extras após
-                    aprovação do administrador.
+                    {justMode === "VOLUNTARY"
+                      ? "Informe o intervalo exato (ex.: consulta, café). Não usa regra de almoço — é um registro pontual para aprovação."
+                      : "As justificativas ficam auditáveis e podem debitar horas extras após aprovação do administrador."}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="space-y-3">
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-muted-foreground">
                         Data
@@ -284,30 +301,38 @@ export default function RendimentoAgendaPage() {
                         modal
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Início
-                      </Label>
-                      <TimePickerField
-                        value={justFrom}
-                        onChange={setJustFrom}
-                        disabled={!justDate}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Fim
-                      </Label>
-                      <TimePickerField
-                        value={justTo}
-                        onChange={setJustTo}
-                        disabled={!justDate}
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Início
+                        </Label>
+                        <TimePickerField
+                          value={justFrom}
+                          onChange={setJustFrom}
+                          disabled={!justDate}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Fim
+                        </Label>
+                        <TimePickerField
+                          value={justTo}
+                          onChange={setJustTo}
+                          disabled={!justDate}
+                        />
+                      </div>
                     </div>
                   </div>
+                  {invalidTimeRange ? (
+                    <p className="text-xs font-medium text-rose-500">
+                      O horário final deve ser maior que o horário inicial.
+                    </p>
+                  ) : null}
                   {lunchTooLong ? (
                     <p className="text-xs font-medium text-rose-500">
-                      O intervalo de almoço não pode ultrapassar {rendimentoLunchMaxLabel()}.
+                      O intervalo de almoço não pode ultrapassar{" "}
+                      {rendimentoLunchMaxLabel()}.
                     </p>
                   ) : null}
                   <Textarea
@@ -348,7 +373,7 @@ export default function RendimentoAgendaPage() {
                     </Button>
                     <Button
                       type="button"
-                      disabled={saving || lunchTooLong}
+                      disabled={saving || invalidTimeRange || lunchTooLong}
                       onClick={() => void submitJustification()}
                     >
                       {saving ? "Salvando..." : "Salvar justificativa"}

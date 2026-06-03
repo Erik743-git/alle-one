@@ -379,7 +379,8 @@ export default function GeradorRelatoriosPage() {
                 <p className="text-xs text-muted-foreground">
                   Rendimento: empresa padrão Alle (alterável); apontamentos dos
                   tickets da empresa no período; colaborador opcional. Estatística
-                  Geral: visão da empresa (sem filtro por colaborador).
+                  Geral: visão da empresa (sem colaborador); CSV com as mesmas
+                  tabelas do XLSX em seções separadas (gráficos só no XLSX).
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
