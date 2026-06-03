@@ -8,6 +8,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { API_URL } from "@/lib/env";
 import {
   DEFAULT_RESEND_COOLDOWN_SECONDS,
   requestPasswordResetCode,
@@ -15,8 +16,6 @@ import {
   saveResetEmail,
   setResendCooldown,
 } from "@/lib/password-reset-flow";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 export default function EsqueciSenhaPage() {
   const router = useRouter();
@@ -38,7 +37,9 @@ export default function EsqueciSenhaPage() {
       const data = await requestPasswordResetCode(API_URL, email.trim());
       const normalized = (data.email ?? email).trim().toLowerCase();
       saveResetEmail(normalized);
-      saveDevResetCode(data.devCode);
+      if (process.env.NODE_ENV !== "production") {
+        saveDevResetCode(data.devCode);
+      }
       setResendCooldown(
         data.resendCooldownSeconds ?? DEFAULT_RESEND_COOLDOWN_SECONDS,
       );
@@ -75,8 +76,8 @@ export default function EsqueciSenhaPage() {
             <div className="space-y-2 text-center">
               <h1 className="text-3xl font-bold text-white">Esqueci a senha</h1>
               <p className="text-sm text-slate-400">
-                Informe o e-mail da sua conta. Enviaremos um código de 6 dígitos
-                para redefinir a senha.
+                Informe o e-mail da sua conta. Se estiver cadastrado, enviaremos um
+                código de 8 caracteres para redefinir a senha.
               </p>
             </div>
           </CardHeader>

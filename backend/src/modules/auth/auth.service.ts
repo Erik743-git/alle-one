@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -68,6 +67,10 @@ export class AuthService {
       throw new UnauthorizedException('Usuário ou senha inválidos');
     }
 
+    if (user.deletedAt || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('Usuário ou senha inválidos');
+    }
+
     const payload = {
       sub: user.id,
       email: user.email,
@@ -127,7 +130,11 @@ export class AuthService {
       },
     });
 
-    if (!user) {
+    if (
+      !user ||
+      user.deletedAt ||
+      user.status !== UserStatus.ACTIVE
+    ) {
       throw new UnauthorizedException('Usuário não encontrado');
     }
 
@@ -168,6 +175,12 @@ export class AuthService {
   }
 
   async forgotPassword(data: ForgotPasswordDto) {
+    const genericMessage =
+      'Se o e-mail estiver cadastrado, enviaremos um código de redefinição em instantes.';
+    const cooldownSeconds = Number.isFinite(RESEND_COOLDOWN_SECONDS)
+      ? Math.max(30, RESEND_COOLDOWN_SECONDS)
+      : 60;
+
     const email = data.email.trim().toLowerCase();
     const user = await this.prisma.user.findFirst({
       where: {
@@ -178,9 +191,11 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new NotFoundException(
-        'Este e-mail não está cadastrado no portal.',
-      );
+      await delayResetGuard();
+      return {
+        message: genericMessage,
+        resendCooldownSeconds: cooldownSeconds,
+      };
     }
 
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
@@ -242,17 +257,12 @@ export class AuthService {
       );
     }
 
-    const cooldownSeconds = Number.isFinite(RESEND_COOLDOWN_SECONDS)
-      ? Math.max(30, RESEND_COOLDOWN_SECONDS)
-      : 60;
-
     const exposeDevCode =
       process.env.NODE_ENV !== 'production' &&
       process.env.PASSWORD_RESET_EXPOSE_CODE_IN_DEV !== 'false';
 
     return {
-      message: 'Código enviado com sucesso.',
-      email: user.email,
+      message: genericMessage,
       resendCooldownSeconds: cooldownSeconds,
       ...(exposeDevCode ? { devCode: plainCode } : {}),
     };
@@ -303,7 +313,7 @@ export class AuthService {
 
   private async findActivePasswordReset(rawToken: string) {
     const code = normalizeResetTokenInput(rawToken);
-    if (!code || code.length < 6) return null;
+    if (!code || code.length < 8) return null;
 
     const tokenHash = hashPasswordResetCode(code);
 

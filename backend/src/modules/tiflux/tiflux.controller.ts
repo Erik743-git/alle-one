@@ -27,8 +27,12 @@ export class TifluxController {
   constructor(private readonly tifluxService: TifluxService) {}
 
   private assertUnsafeTifluxEndpointsEnabled(): void {
-    const enabled = process.env.TIFLUX_UNSAFE_ENDPOINTS === 'true';
-    if (!enabled) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new BadRequestException(
+        'Endpoints TiFlux de depuração não estão disponíveis em produção.',
+      );
+    }
+    if (process.env.TIFLUX_UNSAFE_ENDPOINTS !== 'true') {
       throw new BadRequestException(
         'Endpoint TiFlux desabilitado por segurança.',
       );

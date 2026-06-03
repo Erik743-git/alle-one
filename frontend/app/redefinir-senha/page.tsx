@@ -20,19 +20,16 @@ import {
   setResendCooldown,
 } from "@/lib/password-reset-flow";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { API_URL } from "@/lib/env";
 
 type Step = "code" | "password" | "done";
 
 function normalizeCode(value: string) {
-  return value.replace(/\D/g, "").slice(0, 6);
+  return value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 8);
 }
 
 function tokenForApi(value: string) {
-  const trimmed = value.trim();
-  const digitsOnly = trimmed.replace(/\s/g, "");
-  if (/^\d{6}$/.test(digitsOnly)) return digitsOnly;
-  return trimmed;
+  return normalizeCode(value);
 }
 
 function RedefinirSenhaForm() {
@@ -79,8 +76,8 @@ function RedefinirSenhaForm() {
 
   const validateCode = useCallback(async (code: string) => {
     const normalized = tokenForApi(code);
-    if (normalized.length < 6) {
-      setErro("Informe o código de 6 dígitos recebido por e-mail.");
+    if (normalized.length < 8) {
+      setErro("Informe o código de 8 caracteres recebido por e-mail.");
       return false;
     }
 
@@ -122,8 +119,8 @@ function RedefinirSenhaForm() {
     if (!tokenFromUrl || step !== "code" || !resetEmail) return;
 
     const apiToken = tokenForApi(tokenFromUrl);
-    if (apiToken.length >= 6) {
-      setToken(/^\d{6}$/.test(apiToken) ? apiToken : tokenFromUrl);
+    if (apiToken.length >= 8) {
+      setToken(apiToken);
       setValidatingUrlToken(true);
       void validateCode(apiToken).finally(() => setValidatingUrlToken(false));
     }
@@ -137,8 +134,10 @@ function RedefinirSenhaForm() {
     try {
       setResending(true);
       const data = await requestPasswordResetCode(API_URL, resetEmail);
-      saveDevResetCode(data.devCode);
-      setDevCode(data.devCode ?? getDevResetCode());
+      if (process.env.NODE_ENV !== "production") {
+        saveDevResetCode(data.devCode);
+        setDevCode(data.devCode ?? getDevResetCode());
+      }
       setResendCooldown(
         data.resendCooldownSeconds ?? DEFAULT_RESEND_COOLDOWN_SECONDS,
       );
@@ -257,7 +256,7 @@ function RedefinirSenhaForm() {
               <p className="text-sm text-slate-400">
                 {step === "code" && (
                   <>
-                    Informe o código de 6 dígitos enviado para{" "}
+                    Informe o código de 8 caracteres enviado para{" "}
                     <span className="font-semibold text-slate-200">
                       {resetEmail}
                     </span>
@@ -304,14 +303,13 @@ function RedefinirSenhaForm() {
                     Código
                   </label>
                   <Input
-                    inputMode="numeric"
                     autoComplete="one-time-code"
                     value={token}
                     onChange={(e) => setToken(normalizeCode(e.target.value))}
-                    placeholder="000000"
-                    maxLength={6}
+                    placeholder="ABCD2345"
+                    maxLength={8}
                     disabled={busy}
-                    className="h-12 rounded-xl border-white/15 bg-[#020b1b] text-center text-lg tracking-[0.35em] text-white"
+                    className="h-12 rounded-xl border-white/15 bg-[#020b1b] text-center text-lg uppercase tracking-[0.2em] text-white"
                   />
                 </div>
 
@@ -344,7 +342,7 @@ function RedefinirSenhaForm() {
 
                 <Button
                   type="submit"
-                  disabled={busy || token.length < 6}
+                  disabled={busy || token.length < 8}
                   className="h-12 w-full bg-[#12b5d9] text-white hover:bg-[#0ea5c6]"
                 >
                   {busy ? (

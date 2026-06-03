@@ -1,6 +1,7 @@
+import { API_URL } from "@/lib/env";
 import { clearSession, getStoredToken } from "@/lib/session";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+export { API_URL };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -55,10 +56,15 @@ export async function apiRequest<T>(
     return null as T;
   }
 
-  const data = (await response.json().catch(() => null)) as
-    | T
-    | { message?: string | string[] }
-    | null;
+  let data: T | { message?: string | string[] } | null = null;
+  const rawText = await response.text().catch(() => "");
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText) as T | { message?: string | string[] };
+    } catch {
+      data = null;
+    }
+  }
 
   if (!response.ok) {
     const apiMessage =
@@ -67,16 +73,19 @@ export async function apiRequest<T>(
       "message" in data &&
       data.message
         ? Array.isArray(data.message)
-          ? data.message[0]
+          ? data.message.join(", ")
           : data.message
         : null;
-    const textMessage = !apiMessage
-      ? await response.text().catch(() => "")
-      : "";
     const message =
-      apiMessage || textMessage || `Erro ao processar a requisição (${response.status}).`;
+      apiMessage ||
+      rawText ||
+      `Erro ao processar a requisição (${response.status}).`;
 
     throw new Error(message);
+  }
+
+  if (!rawText) {
+    return null as T;
   }
 
   return data as T;

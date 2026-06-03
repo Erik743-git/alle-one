@@ -8,6 +8,9 @@ function parseSameSite(
   if (v === 'strict' || v === 'lax' || v === 'none') {
     return v;
   }
+  if (process.env.NODE_ENV === 'production') {
+    return 'strict';
+  }
   return 'lax';
 }
 

@@ -23,11 +23,14 @@ export function clearResetFlow() {
 
 export function saveDevResetCode(code: string | undefined) {
   if (typeof window === "undefined" || !code) return;
+  if (process.env.NODE_ENV === "production") return;
   sessionStorage.setItem(RESET_DEV_CODE_KEY, code);
 }
 
 export function getDevResetCode(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || process.env.NODE_ENV === "production") {
+    return null;
+  }
   return sessionStorage.getItem(RESET_DEV_CODE_KEY);
 }
 

@@ -1,6 +1,7 @@
 import { createHmac, randomInt } from 'crypto';
 
-const RESET_CODE_LENGTH = 6;
+const RESET_CODE_LENGTH = 8;
+const RESET_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 export function getFrontendBaseUrl(): string {
   const raw =
     process.env.FRONTEND_URL?.trim() ||
@@ -10,13 +11,15 @@ export function getFrontendBaseUrl(): string {
 }
 
 export function generatePasswordResetCode(): string {
-  const max = 10 ** RESET_CODE_LENGTH;
-  const value = randomInt(0, max);
-  return value.toString().padStart(RESET_CODE_LENGTH, '0');
+  let code = '';
+  for (let i = 0; i < RESET_CODE_LENGTH; i += 1) {
+    code += RESET_CODE_ALPHABET[randomInt(0, RESET_CODE_ALPHABET.length)];
+  }
+  return code;
 }
 
 export function normalizeResetTokenInput(token: string): string {
-  return token.trim().replace(/\s+/g, '');
+  return token.trim().replace(/\s+/g, '').toUpperCase();
 }
 
 function getResetPepper(): string {
