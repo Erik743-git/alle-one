@@ -2,7 +2,7 @@
 
 Roteiro para executar **juntos** na VM após `git pull` com código atualizado:
 
-1. Nginx (`/admin/overview-stats`, `/admin/audit-logs`, `inventario/asset-types` — **não** `/admin` inteiro)
+1. Nginx (`/admin/overview-stats`, `/admin/audit-logs`, `/admin/reprocess-rendimento-alerts`, `inventario/asset-types` — **não** `/admin` inteiro)
 2. `prisma migrate deploy` (rendimento + demais migrations pendentes)
 3. Revisão de `.env` (backend + frontend)
 

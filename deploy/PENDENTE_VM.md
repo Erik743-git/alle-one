@@ -14,7 +14,7 @@ npm run build
 pm2 restart alleone-api
 ```
 
-Commit de referência: `e60336e` — `fix(admin): converter offset e limit da auditoria em numero na query`
+Commit de referência (auditoria): parser manual de query em `admin-audit.query.ts` (não depende mais do class-validator em offset/limit).
 
 ## 2. Nginx (se ainda não aplicou)
 
@@ -23,7 +23,7 @@ sudo cp /home/alleone/producao/deploy/nginx-alleone-https.conf /etc/nginx/sites-
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-Importante: `/admin` (página) vai para o Next; só `/admin/overview-stats` e `/admin/audit-logs` vão para a API.
+Importante: `/admin` (página) vai para o Next; rotas de API: `/admin/overview-stats`, `/admin/audit-logs`, `/admin/reprocess-rendimento-alerts`.
 
 ## 3. Migrations
 

@@ -53,4 +53,23 @@ export const adminService = {
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return apiRequest<ListAuditLogsResponse>(`/admin/audit-logs${suffix}`);
   },
+
+  async reprocessRendimentoAlerts(body?: {
+    userId?: string;
+    from?: string;
+    to?: string;
+  }) {
+    return apiRequest<{
+      usersProcessed: number;
+      daysProcessed: number;
+      eventsPurged: number;
+      eventsUpserted: number;
+      rangeStart: string;
+      rangeEnd: string;
+      message: string;
+    }>("/admin/reprocess-rendimento-alerts", {
+      method: "POST",
+      body: body ?? {},
+    });
+  },
 };

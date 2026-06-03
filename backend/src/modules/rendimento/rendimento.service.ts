@@ -844,12 +844,65 @@ export class RendimentoService {
     return id;
   }
 
+  private async purgeAutoGapEventsForDay(
+    userId: string,
+    dateRef: string,
+  ): Promise<number> {
+    const rows =
+      (await this.prisma.$queryRawUnsafe<Array<{ count: number }>>(
+        `
+        WITH updated AS (
+          UPDATE rendimento_day_events
+          SET deleted_at = NOW(), updated_at = NOW()
+          WHERE user_id = $1
+            AND date_ref = $2::date
+            AND event_type IN ('IDLE_ALERT', 'LUNCH')
+            AND status = 'ACTIVE'
+            AND deleted_at IS NULL
+          RETURNING id
+        )
+        SELECT COUNT(*)::int AS count FROM updated
+      `,
+        userId,
+        dateRef.slice(0, 10),
+      )) ?? [];
+    return Number(rows[0]?.count) || 0;
+  }
+
+  private async purgeAutoGapEventsInRange(
+    userId: string,
+    start: Date,
+    end: Date,
+  ): Promise<number> {
+    const rows =
+      (await this.prisma.$queryRawUnsafe<Array<{ count: number }>>(
+        `
+        WITH updated AS (
+          UPDATE rendimento_day_events
+          SET deleted_at = NOW(), updated_at = NOW()
+          WHERE user_id = $1
+            AND date_ref BETWEEN $2::date AND $3::date
+            AND event_type IN ('IDLE_ALERT', 'LUNCH')
+            AND status = 'ACTIVE'
+            AND deleted_at IS NULL
+          RETURNING id
+        )
+        SELECT COUNT(*)::int AS count FROM updated
+      `,
+        userId,
+        this.toDateOnlyString(start),
+        this.toDateOnlyString(end),
+      )) ?? [];
+    return Number(rows[0]?.count) || 0;
+  }
+
   private async syncDayEventsForDays(
     userId: string,
     days: RendimentoDaySummaryDto[],
   ): Promise<void> {
     for (const day of days) {
       if (!day.insights) continue;
+      await this.purgeAutoGapEventsForDay(userId, day.date);
       const upserts = collectDayEventUpserts({
         userId,
         dateRef: day.date,
@@ -860,6 +913,113 @@ export class RendimentoService {
         await this.upsertDayEvent(item);
       }
     }
+  }
+
+  /**
+   * Recalcula alertas/almoço persistidos com as regras atuais (remove órfãos e re-sincroniza).
+   * Apenas ADMIN. Não altera HE/plantão/justificativas já decididas.
+   */
+  async reprocessGapAlerts(params: {
+    actor: AuthenticatedRequestUser;
+    userId?: string;
+    from?: string;
+    to?: string;
+  }) {
+    if (params.actor.role !== UserRole.ADMIN) {
+      throw new ForbiddenException(
+        'Somente administrador pode reprocessar alertas.',
+      );
+    }
+
+    const end = params.to
+      ? this.parseDateOnly(params.to)
+      : new Date();
+    const start = params.from
+      ? this.parseDateOnly(params.from)
+      : new Date(end.getFullYear(), end.getMonth() - 6, end.getDate());
+
+    if (start > end) {
+      throw new BadRequestException('Data inicial não pode ser maior que a final.');
+    }
+
+    const collaborators = await this.listCollaboratorsForSelect();
+    const targets = params.userId
+      ? collaborators.filter((c) => c.id === params.userId)
+      : collaborators.filter((c) => c.tifluxUserId != null);
+
+    if (params.userId && targets.length === 0) {
+      throw new NotFoundException(
+        'Colaborador não encontrado ou sem vínculo TiFlux.',
+      );
+    }
+
+    const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
+    let usersProcessed = 0;
+    let daysProcessed = 0;
+    let eventsPurged = 0;
+    let eventsUpserted = 0;
+
+    for (const collaborator of targets) {
+      const tifluxUser = this.lookupTifluxUser(
+        collaborator.email,
+        tifluxUserByEmail,
+      );
+      if (!tifluxUser) continue;
+
+      eventsPurged += await this.purgeAutoGapEventsInRange(
+        collaborator.id,
+        start,
+        end,
+      );
+
+      const rows = await this.fetchAppointments({
+        tifluxUserId: tifluxUser.id,
+        start,
+        end,
+      });
+      const justifications = await this.listJustifications({
+        userId: collaborator.id,
+        start,
+        end,
+      });
+      const justificationsByDate = new Map<string, GapJustificationRow[]>();
+      for (const item of justifications) {
+        const key = item.date_ref.slice(0, 10);
+        if (!justificationsByDate.has(key)) {
+          justificationsByDate.set(key, []);
+        }
+        justificationsByDate.get(key)!.push(item);
+      }
+
+      const days = this.groupByDay(rows, justificationsByDate);
+      daysProcessed += days.length;
+      for (const day of days) {
+        if (!day.insights) continue;
+        const upserts = collectDayEventUpserts({
+          userId: collaborator.id,
+          dateRef: day.date,
+          insights: day.insights,
+          entries: day.entries,
+        });
+        eventsUpserted += upserts.filter(
+          (item) =>
+            item.eventType === 'IDLE_ALERT' || item.eventType === 'LUNCH',
+        ).length;
+      }
+      await this.syncDayEventsForDays(collaborator.id, days);
+      usersProcessed += 1;
+    }
+
+    return {
+      usersProcessed,
+      daysProcessed,
+      eventsPurged,
+      eventsUpserted,
+      rangeStart: this.toDateOnlyString(start),
+      rangeEnd: this.toDateOnlyString(end),
+      message:
+        'Alertas recalculados com as regras atuais. Abra a agenda de cada colaborador para conferir.',
+    };
   }
 
   private async listDayEvents(params: {

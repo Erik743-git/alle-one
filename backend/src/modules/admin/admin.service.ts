@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserRole } from '@prisma/client';
-import type { AdminAuditLogsQueryDto } from './admin-audit.dto';
+import type { AdminAuditLogsQuery } from './admin-audit.query';
 
 @Injectable()
 export class AdminService {
@@ -43,10 +43,10 @@ export class AdminService {
     };
   }
 
-  async listAuditLogs(query: AdminAuditLogsQueryDto) {
-    const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
-    const offset = Math.max(Number(query.offset) || 0, 0);
-    const order = query.order === 'asc' ? 'asc' : 'desc';
+  async listAuditLogs(query: AdminAuditLogsQuery) {
+    const limit = query.limit;
+    const offset = query.offset;
+    const order = query.order;
 
     const from = query.from ? new Date(query.from) : null;
     const to = query.to ? new Date(query.to) : null;

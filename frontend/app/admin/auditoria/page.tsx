@@ -11,7 +11,7 @@ import {
   adminService,
   type AuditLogItem,
 } from "@/lib/services/admin.service";
-import { notifyError } from "@/lib/notify";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
 function formatDateTime(iso: string) {
@@ -40,6 +40,7 @@ export default function AdminAuditoriaPage() {
   const [to, setTo] = useState("");
 
   const [page, setPage] = useState(1);
+  const [reprocessing, setReprocessing] = useState(false);
   const pageSize = 50;
 
   const offset = (page - 1) * pageSize;
@@ -98,6 +99,51 @@ export default function AdminAuditoriaPage() {
                 Ações administrativas registradas no portal (create/update/delete/aprovações).
               </p>
             </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Manutenção — alertas de rendimento</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Recalcula lacunas e almoço persistidos com as regras atuais (últimos 6 meses,
+                  todos os colaboradores com TiFlux). Não altera HE/plantão já aprovados.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={reprocessing}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Reprocessar alertas de rendimento para todos os colaboradores (últimos 6 meses)?",
+                      )
+                    ) {
+                      return;
+                    }
+                    void (async () => {
+                      try {
+                        setReprocessing(true);
+                        const res = await adminService.reprocessRendimentoAlerts();
+                        notifySuccess(
+                          `${res.message} (${res.usersProcessed} colaborador(es), ${res.eventsPurged} removido(s), ${res.eventsUpserted} recriado(s))`,
+                        );
+                      } catch (err) {
+                        notifyError(
+                          err instanceof Error
+                            ? err.message
+                            : "Falha ao reprocessar alertas.",
+                        );
+                      } finally {
+                        setReprocessing(false);
+                      }
+                    })();
+                  }}
+                >
+                  {reprocessing ? "Reprocessando…" : "Reprocessar alertas (6 meses)"}
+                </Button>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
