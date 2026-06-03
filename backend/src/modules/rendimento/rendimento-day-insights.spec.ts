@@ -1,5 +1,6 @@
 import {
   analyzeRendimentoDay,
+  GAP_ALERT_MINUTES,
   isOvertimeValorization,
 } from './rendimento-day-insights';
 
@@ -498,6 +499,46 @@ describe('rendimento-day-insights', () => {
 
     expect(insights.gaps).toHaveLength(0);
     expect(insights.hasIdleGapAlert).toBe(false);
+  });
+
+  it('após dividir almoço, restante de até 60 min não vira alerta', () => {
+    const { insights } = analyzeRendimentoDay([
+      {
+        id: 1,
+        date: '2026-06-04',
+        initTime: '08:00:00',
+        endTime: '10:42:00',
+        minutes: 162,
+        hoursFormatted: '02:42',
+        ticketNumber: 1,
+        clientName: null,
+        description: null,
+      },
+      {
+        id: 2,
+        date: '2026-06-04',
+        initTime: '12:34:00',
+        endTime: '17:00:00',
+        minutes: 266,
+        hoursFormatted: '04:26',
+        ticketNumber: 2,
+        clientName: null,
+        description: null,
+      },
+    ]);
+
+    const lunch = insights.gaps.find((g) => g.type === 'lunch');
+    expect(lunch).toBeTruthy();
+    expect(lunch!.fromTime).toBe('10:42');
+    expect(lunch!.toTime).toBe('12:12');
+
+    const shortIdle = insights.gaps.find(
+      (g) => g.type === 'idle' && g.fromTime === '12:12' && g.toTime === '12:34',
+    );
+    expect(shortIdle).toBeUndefined();
+    expect(
+      insights.gaps.filter((g) => g.type === 'idle' && g.gapMinutes <= GAP_ALERT_MINUTES),
+    ).toHaveLength(0);
   });
 
   it('no dia atual, não estende alerta final até agora além do que falta para 8h', () => {

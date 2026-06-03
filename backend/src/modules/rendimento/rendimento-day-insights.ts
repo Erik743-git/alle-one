@@ -209,7 +209,7 @@ function splitGapAtIndexIntoLunchAndIdle(
       continue;
     }
     next.push(lunch);
-    if (remainingMinutes > 0) {
+    if (remainingMinutes > GAP_ALERT_MINUTES) {
       next.push({
         type: 'idle',
         fromTime: formatMinutesAsTime(lunchEnd),
