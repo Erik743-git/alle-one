@@ -73,7 +73,66 @@ export class GmudService {
     );
   }
 
+  private seesGmudsByParticipationOnly(role: AuthenticatedRequestUser['role']) {
+    return role === 'COLLABORATOR' || role === 'PJ';
+  }
+
+  /** Colaborador/PJ vê GMUDs em que participa (e as que criou em rascunho). */
+  private gmudParticipationWhere(userId: string) {
+    return {
+      OR: [
+        { responsibleId: userId },
+        { createdBy: userId },
+        { executors: { some: { userId } } },
+        { approvers: { some: { userId } } },
+      ],
+    };
+  }
+
+  private userParticipatesInGmud(
+    userId: string,
+    gmud: {
+      createdBy: string;
+      responsibleId: string | null;
+      executors: Array<{ user: { id: string } }>;
+      approvers: Array<{ user: { id: string } }>;
+    },
+  ) {
+    if (gmud.createdBy === userId) return true;
+    if (gmud.responsibleId === userId) return true;
+    if (gmud.executors.some((e) => e.user.id === userId)) return true;
+    if (gmud.approvers.some((a) => a.user.id === userId)) return true;
+    return false;
+  }
+
   async list(user: AuthenticatedRequestUser, query: ListGmudsQueryDto) {
+    const statusFilter = query.status
+      ? { status: query.status as unknown as GmudStatus }
+      : {};
+
+    if (this.seesGmudsByParticipationOnly(user.role)) {
+      return this.prisma.gmud.findMany({
+        where: {
+          deletedAt: null,
+          ...this.gmudParticipationWhere(user.userId),
+          ...(query.companyId ? { companyId: query.companyId } : {}),
+          ...statusFilter,
+        },
+        include: {
+          company: { select: { id: true, name: true } },
+          creator: { select: { id: true, name: true, email: true } },
+          responsible: { select: { id: true, name: true, email: true } },
+          executors: {
+            include: { user: { select: { id: true, name: true, email: true } } },
+          },
+          approvers: {
+            include: { user: { select: { id: true, name: true, email: true } } },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
     if (query.companyId) {
@@ -84,9 +143,7 @@ export class GmudService {
       where: {
         deletedAt: null,
         companyId: query.companyId ? query.companyId : { in: scopeCompanyIds },
-        ...(query.status
-          ? { status: query.status as unknown as GmudStatus }
-          : {}),
+        ...statusFilter,
       },
       include: {
         company: { select: { id: true, name: true } },
@@ -132,6 +189,13 @@ export class GmudService {
 
     if (!gmud) {
       throw new NotFoundException('GMUD não encontrada');
+    }
+
+    if (this.seesGmudsByParticipationOnly(user.role)) {
+      if (!this.userParticipatesInGmud(user.userId, gmud)) {
+        throw new ForbiddenException('Sem acesso a esta GMUD');
+      }
+      return gmud;
     }
 
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);

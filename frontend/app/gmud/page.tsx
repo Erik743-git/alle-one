@@ -48,6 +48,20 @@ function sortByName<T extends { name: string }>(rows: T[]) {
   return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
 
+function companyFromGmudRef(ref: { id: string; name: string }): Company {
+  return {
+    id: ref.id,
+    name: ref.name,
+    responsibleName: "",
+    email: "",
+    status: true,
+    logoFileId: null,
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+  };
+}
+
 function canEdit(gmud: Gmud) {
   return gmud.status === "DRAFT" || gmud.status === "PENDING_APPROVAL";
 }
@@ -107,17 +121,12 @@ export default function GmudPage() {
     setError(null);
     try {
       const isClient = user?.role === "CLIENT";
-      const isCollaborator =
+      const seesGmudsByParticipation =
         user?.role === "COLLABORATOR" || user?.role === "PJ";
       const [companiesData, gmudsData] = await Promise.all([
-        isClient
+        isClient || seesGmudsByParticipation
           ? Promise.resolve([] as Company[])
-          : isCollaborator
-            ? companiesService
-                .getSessionCompany()
-                .then((company) => [company])
-                .catch(() => [] as Company[])
-            : companiesService.list(),
+          : companiesService.list(),
         gmudsService.list(),
       ]);
 
@@ -147,6 +156,21 @@ export default function GmudPage() {
 
   const scopedCompanies = useMemo<CompanyGroup[]>(() => {
     const isClient = user?.role === "CLIENT";
+    const seesGmudsByParticipation =
+      user?.role === "COLLABORATOR" || user?.role === "PJ";
+
+    if (seesGmudsByParticipation) {
+      const companyMap = new Map<string, Company>();
+      for (const g of gmuds) {
+        if (g.company && !companyMap.has(g.company.id)) {
+          companyMap.set(g.company.id, companyFromGmudRef(g.company));
+        }
+      }
+      return sortByName([...companyMap.values()]).map((c) => ({
+        company: c,
+        gmuds: gmuds.filter((g) => g.companyId === c.id),
+      }));
+    }
 
     if (isClient) {
       const companyId = user?.companyId;
