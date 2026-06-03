@@ -63,12 +63,30 @@ export type RendimentoEntry = {
   debitProtected?: boolean;
 };
 
+export type RendimentoVoluntaryJustification = {
+  id: string;
+  kind: "VOLUNTARY";
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  gapType?: "idle" | "lunch";
+  fromTime: string;
+  toTime: string;
+  gapMinutes: number;
+  reason: string;
+  debitOvertime: boolean;
+  overtimeMinutes: number;
+  createdBy: string;
+  createdAt: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+};
+
 export type RendimentoDaySummary = {
   date: string;
   totalMinutes: number;
   totalHoursFormatted: string;
   entries: RendimentoEntry[];
   insights: RendimentoDayInsights;
+  voluntaryJustifications?: RendimentoVoluntaryJustification[];
 };
 
 export type RendimentoTimesheet = {

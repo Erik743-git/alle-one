@@ -366,10 +366,7 @@ export function analyzeRendimentoDay(
       (lastStart != null ? lastStart + last.minutes : null);
 
     if (lastEnd != null && regularWorkedMinutes < REGULAR_DAY_MINUTES) {
-      const nowLimit = dayIsToday ? new Date() : null;
-      const limit = dayIsToday
-        ? nowLimit!.getHours() * 60 + nowLimit!.getMinutes()
-        : lastEnd + (REGULAR_DAY_MINUTES - regularWorkedMinutes);
+      const minutesStillNeeded = REGULAR_DAY_MINUTES - regularWorkedMinutes;
 
       // Se criamos almoço fixo, o gap final deve começar depois dele.
       const lastLunch = [...gaps]
@@ -378,6 +375,18 @@ export function analyzeRendimentoDay(
         .filter((m): m is number => m != null)
         .sort((a, b) => b - a)[0];
       const tailFrom = Math.max(lastEnd, lastLunch ?? lastEnd);
+      const virtualCompleteEnd = tailFrom + minutesStillNeeded;
+
+      // Dia passado: até o horário virtual em que as 8h normais fechariam.
+      // Hoje: até o menor entre "agora" e esse horário virtual — evita alertar
+      // 18:00→20:36 quando só faltam 30 min de jornada (deveria ser 18:00→18:30).
+      const nowMinutes = dayIsToday
+        ? new Date().getHours() * 60 + new Date().getMinutes()
+        : null;
+      const limit =
+        dayIsToday && nowMinutes != null
+          ? Math.min(nowMinutes, virtualCompleteEnd)
+          : virtualCompleteEnd;
 
       if (limit > tailFrom) {
         addIdleGap(gaps, tailFrom, limit);

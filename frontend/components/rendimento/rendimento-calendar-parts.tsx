@@ -1,6 +1,14 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Coffee, Clock, Hourglass, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Coffee,
+  Clock,
+  FileText,
+  Hourglass,
+  XCircle,
+} from "lucide-react";
 
 import { RendimentoOvertimeBadge } from "@/components/rendimento/rendimento-overtime-badge";
 import {
@@ -12,6 +20,7 @@ import type {
   RendimentoDaySummary,
   RendimentoEntry,
   RendimentoGap,
+  RendimentoVoluntaryJustification,
 } from "@/lib/services/rendimento.service";
 
 export function RendimentoLegend() {
@@ -211,6 +220,80 @@ export function RendimentoEntryCard({
   );
 }
 
+/** Aviso pontual — independente do alerta de lacuna (sem apontamento). */
+export function RendimentoVoluntaryJustificationBlock({
+  item,
+  canApprove,
+  onApprove,
+  onReject,
+}: {
+  item: RendimentoVoluntaryJustification;
+  canApprove?: boolean;
+  onApprove?: () => void;
+  onReject?: () => void;
+}) {
+  const pending = item.status === "PENDING";
+  const approved = item.status === "APPROVED";
+  const rejected = item.status === "REJECTED";
+
+  return (
+    <li
+      className={cn(
+        "rounded-md border px-2 py-1.5 text-[10px] font-medium space-y-1",
+        approved
+          ? "border-violet-500/40 bg-violet-500/15 text-violet-900 dark:text-violet-100"
+          : rejected
+            ? "border-rose-500/45 bg-rose-500/15 text-rose-800 dark:text-rose-200"
+            : pending
+              ? "border-sky-500/40 bg-sky-500/15 text-sky-900 dark:text-sky-100"
+              : "border-violet-500/35 bg-violet-500/10",
+      )}
+    >
+      <div>
+        <FileText className="mb-0.5 inline size-3" />{" "}
+        {item.fromTime} – {item.toTime}: Justificativa voluntária
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center gap-1">
+          {pending ? <Hourglass className="size-3" /> : null}
+          {approved ? <CheckCircle2 className="size-3" /> : null}
+          {rejected ? <XCircle className="size-3" /> : null}
+          <span>
+            {pending
+              ? "Aguardando aprovação (não substitui alerta de lacuna)"
+              : approved
+                ? "Aprovada"
+                : "Rejeitada"}
+          </span>
+        </div>
+        {item.reason.trim() ? (
+          <p className="whitespace-pre-wrap text-[10px] leading-snug text-foreground/90">
+            {item.reason.trim()}
+          </p>
+        ) : null}
+      </div>
+      {canApprove && pending && onApprove && onReject ? (
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-500"
+            onClick={onApprove}
+          >
+            Aprovar
+          </button>
+          <button
+            type="button"
+            className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-500"
+            onClick={onReject}
+          >
+            Rejeitar
+          </button>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 function sortEntriesByStart(entries: RendimentoEntry[]) {
   return [...entries].sort((a, b) => {
     const am = a.initTime?.slice(0, 5) ?? "00:00";
@@ -230,37 +313,65 @@ function timeKey(value: string | null | undefined): string {
 export function buildDayTimeline(summary: RendimentoDaySummary) {
   type TimelineItem =
     | { kind: "entry"; entry: RendimentoEntry }
-    | { kind: "gap"; gap: RendimentoGap };
+    | { kind: "gap"; gap: RendimentoGap }
+    | { kind: "voluntary"; voluntary: RendimentoVoluntaryJustification };
 
   const entries = sortEntriesByStart(summary.entries);
   const gaps = [...(summary.insights?.gaps ?? [])].sort((a, b) =>
+    timeKey(a.fromTime).localeCompare(timeKey(b.fromTime)),
+  );
+  const voluntary = [...(summary.voluntaryJustifications ?? [])].sort((a, b) =>
     timeKey(a.fromTime).localeCompare(timeKey(b.fromTime)),
   );
 
   const items: TimelineItem[] = [];
   let entryIndex = 0;
   let gapIndex = 0;
+  let voluntaryIndex = 0;
 
-  while (entryIndex < entries.length || gapIndex < gaps.length) {
+  while (
+    entryIndex < entries.length ||
+    gapIndex < gaps.length ||
+    voluntaryIndex < voluntary.length
+  ) {
     const entry = entries[entryIndex];
     const gap = gaps[gapIndex];
+    const vol = voluntary[voluntaryIndex];
     const entryAt = timeKey(entry?.initTime);
     const gapAt = timeKey(gap?.fromTime);
+    const volAt = timeKey(vol?.fromTime);
 
-    if (gap && (!entry || gapAt < entryAt)) {
-      items.push({ kind: "gap", gap });
-      gapIndex += 1;
-      continue;
+    const candidates: Array<{ at: string; push: () => void }> = [];
+    if (gap) {
+      candidates.push({
+        at: gapAt,
+        push: () => {
+          items.push({ kind: "gap", gap });
+          gapIndex += 1;
+        },
+      });
     }
-
+    if (vol) {
+      candidates.push({
+        at: volAt,
+        push: () => {
+          items.push({ kind: "voluntary", voluntary: vol });
+          voluntaryIndex += 1;
+        },
+      });
+    }
     if (entry) {
-      items.push({ kind: "entry", entry });
-      entryIndex += 1;
-      continue;
+      candidates.push({
+        at: entryAt,
+        push: () => {
+          items.push({ kind: "entry", entry });
+          entryIndex += 1;
+        },
+      });
     }
 
-    items.push({ kind: "gap", gap: gap! });
-    gapIndex += 1;
+    candidates.sort((a, b) => a.at.localeCompare(b.at));
+    candidates[0]?.push();
   }
 
   return items;

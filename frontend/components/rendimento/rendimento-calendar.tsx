@@ -28,6 +28,7 @@ import {
   RendimentoEntryCard,
   RendimentoGapBlock,
   RendimentoLegend,
+  RendimentoVoluntaryJustificationBlock,
 } from "@/components/rendimento/rendimento-calendar-parts";
 import {
   RendimentoOvertimeBadge,
@@ -315,8 +316,22 @@ export function RendimentoCalendar({
             return (
               <div
                 key={key}
+                role="button"
+                tabIndex={0}
+                title={`Ver ${format(day, "EEEE, d 'de' MMMM", { locale: ptBR })}`}
+                onClick={() => {
+                  onReferenceDateChange(day);
+                  onViewChange("day");
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onReferenceDateChange(day);
+                    onViewChange("day");
+                  }
+                }}
                 className={cn(
-                  "flex min-h-[220px] flex-col rounded-xl border border-border bg-card p-2",
+                  "flex min-h-[220px] flex-col rounded-xl border border-border bg-card p-2 text-left transition hover:bg-muted/25 cursor-pointer",
                   isToday && "ring-2 ring-primary/40",
                   dayInsightsForDisplay(summary)?.hasIdleGapAlert && "border-orange-500/50",
                 )}
@@ -340,6 +355,22 @@ export function RendimentoCalendar({
                           <RendimentoGapBlock
                             key={`gap-${item.gap.fromTime}-${index}`}
                             gap={item.gap}
+                          />
+                        ) : item.kind === "voluntary" ? (
+                          <RendimentoVoluntaryJustificationBlock
+                            key={`voluntary-${item.voluntary.id}-${index}`}
+                            item={item.voluntary}
+                            canApprove={canApproveJustification}
+                            onApprove={
+                              onApproveJustification
+                                ? () => onApproveJustification(item.voluntary.id)
+                                : undefined
+                            }
+                            onReject={
+                              onRejectJustification
+                                ? () => onRejectJustification(item.voluntary.id)
+                                : undefined
+                            }
                           />
                         ) : (
                           <RendimentoEntryCard
@@ -433,6 +464,22 @@ export function RendimentoCalendar({
                     onReject={
                       item.gap.justification?.id && onRejectJustification
                         ? () => onRejectJustification(item.gap.justification!.id)
+                        : undefined
+                    }
+                  />
+                ) : item.kind === "voluntary" ? (
+                  <RendimentoVoluntaryJustificationBlock
+                    key={`day-voluntary-${item.voluntary.id}-${index}`}
+                    item={item.voluntary}
+                    canApprove={canApproveJustification}
+                    onApprove={
+                      onApproveJustification
+                        ? () => onApproveJustification(item.voluntary.id)
+                        : undefined
+                    }
+                    onReject={
+                      onRejectJustification
+                        ? () => onRejectJustification(item.voluntary.id)
                         : undefined
                     }
                   />

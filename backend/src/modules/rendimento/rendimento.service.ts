@@ -59,6 +59,9 @@ export type RendimentoGapJustificationDto = {
   status: RendimentoJustificationStatus;
   /** Tipo informado pelo colaborador (pode corrigir almoço vs alerta). */
   gapType: 'idle' | 'lunch';
+  fromTime: string;
+  toTime: string;
+  gapMinutes: number;
   reason: string;
   debitOvertime: boolean;
   overtimeMinutes: number;
@@ -74,6 +77,8 @@ export type RendimentoDaySummaryDto = {
   totalHoursFormatted: string;
   entries: RendimentoEntryDto[];
   insights: RendimentoDayInsightsDto;
+  /** Avisos pontuais — não substituem alertas de lacuna na timeline. */
+  voluntaryJustifications: RendimentoGapJustificationDto[];
 };
 
 export type RendimentoCollaboratorDto = {
@@ -491,6 +496,9 @@ export class RendimentoService {
       kind: row.kind,
       status: row.status,
       gapType: row.gap_type,
+      fromTime: row.from_time,
+      toTime: row.to_time,
+      gapMinutes: Number(row.gap_minutes) || 0,
       reason: row.reason,
       debitOvertime: Boolean(row.debit_overtime),
       overtimeMinutes: Number(row.overtime_minutes) || 0,
@@ -532,8 +540,12 @@ export class RendimentoService {
     insights: RendimentoDayInsightsDto,
     dayJustifications: GapJustificationRow[],
   ): RendimentoDayInsightsDto {
+    const alertJustifications = dayJustifications.filter(
+      (j) => j.kind !== 'VOLUNTARY',
+    );
+
     const gaps = insights.gaps.map((gap) => {
-      const matched = dayJustifications.find((j) => {
+      const matched = alertJustifications.find((j) => {
         if (j.from_time === gap.fromTime && j.to_time === gap.toTime) return true;
         return this.overlaps(gap.fromTime, gap.toTime, j.from_time, j.to_time);
       });
@@ -623,6 +635,9 @@ export class RendimentoService {
         const totalMinutes = entries.reduce((sum, item) => sum + item.minutes, 0);
         const dateOnly = date.slice(0, 10);
         const dayJustifications = justificationsByDate.get(dateOnly) ?? [];
+        const voluntaryJustifications = dayJustifications
+          .filter((j) => j.kind === 'VOLUNTARY')
+          .map((j) => this.mapJustificationDto(j));
         const patchedInsights = this.applyJustificationsToDay(
           dateOnly,
           insights,
@@ -634,6 +649,7 @@ export class RendimentoService {
           totalHoursFormatted: this.formatMinutes(totalMinutes),
           entries,
           insights: patchedInsights,
+          voluntaryJustifications,
         };
       });
   }
@@ -910,6 +926,25 @@ export class RendimentoService {
       });
       for (const item of upserts) {
         await this.upsertDayEvent(item);
+      }
+      for (const voluntary of day.voluntaryJustifications ?? []) {
+        await this.upsertDayEvent({
+          userId,
+          dateRef: day.date,
+          eventType: 'JUSTIFICATION',
+          fromTime: voluntary.fromTime,
+          toTime: voluntary.toTime,
+          minutes: voluntary.gapMinutes,
+          justificationId: voluntary.id,
+          label: 'Justificativa voluntária',
+          reason: voluntary.reason,
+          status:
+            voluntary.status === 'APPROVED'
+              ? 'APPROVED'
+              : voluntary.status === 'REJECTED'
+                ? 'REJECTED'
+                : 'PENDING',
+        });
       }
     }
   }
@@ -1437,7 +1472,10 @@ export class RendimentoService {
       toTime,
       minutes: gapMinutes,
       justificationId: id,
-      label: this.gapLabelForType(params.gapType, gapMinutes),
+      label:
+        params.kind === 'VOLUNTARY'
+          ? 'Justificativa voluntária'
+          : this.gapLabelForType(params.gapType, gapMinutes),
       reason,
       status: 'PENDING',
     });

@@ -143,8 +143,8 @@ describe('rendimento-day-insights', () => {
     const idle = insights.gaps.find((g) => g.type === 'idle');
     expect(idle).toBeTruthy();
     expect(idle!.fromTime).toBe('14:00');
-    // Dia passado: o gap final vai até o "virtual end" de completar 8h (faltavam 4h30 => 17:00).
-    expect(idle!.toTime).toBe('17:00');
+    // Dia passado: gap final após o almoço até completar 8h (14:00 + 4h30 => 18:30).
+    expect(idle!.toTime).toBe('18:30');
     expect(insights.hasIdleGapAlert).toBe(true);
   });
 
@@ -498,5 +498,45 @@ describe('rendimento-day-insights', () => {
 
     expect(insights.gaps).toHaveLength(0);
     expect(insights.hasIdleGapAlert).toBe(false);
+  });
+
+  it('no dia atual, não estende alerta final até agora além do que falta para 8h', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 5, 3, 20, 36, 0));
+
+    const { insights } = analyzeRendimentoDay([
+      {
+        id: 1,
+        date: '2026-06-03',
+        initTime: '09:00:00',
+        endTime: '11:40:00',
+        minutes: 160,
+        hoursFormatted: '02:40',
+        ticketNumber: 1,
+        clientName: null,
+        description: null,
+      },
+      {
+        id: 2,
+        date: '2026-06-03',
+        initTime: '13:10:00',
+        endTime: '18:00:00',
+        minutes: 290,
+        hoursFormatted: '04:50',
+        ticketNumber: 2,
+        clientName: null,
+        description: null,
+      },
+    ]);
+
+    expect(insights.regularMinutes).toBe(450);
+    const tailIdle = insights.gaps.find(
+      (g) => g.type === 'idle' && g.fromTime === '18:00',
+    );
+    // Faltam 30 min para 8h → 18:00–18:30 (não até 20:36); abaixo de 60 min não gera alerta.
+    expect(tailIdle).toBeUndefined();
+    expect(insights.hasIdleGapAlert).toBe(false);
+
+    jest.useRealTimers();
   });
 });
