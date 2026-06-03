@@ -40,7 +40,7 @@ type Props =
 
 export function DashboardLazyChart(props: Props) {
   const chartTheme = useChartTheme();
-  const TOOLTIP_PROPS = useChartTooltipProps();
+  const TOOLTIP_PROPS = useChartTooltipProps(chartTheme);
 
   if (props.kind === "alertas") {
     const data = props.data;
