@@ -26,7 +26,7 @@ export function AlleBrandLogo({
         width={width}
         height={height}
         priority={priority}
-        className={cn("h-auto object-contain dark:hidden", className)}
+        className={cn("h-auto bg-transparent object-contain dark:hidden", className)}
       />
       <Image
         src={ALLE_LOGO_DARK_SRC}
@@ -34,7 +34,7 @@ export function AlleBrandLogo({
         width={width}
         height={height}
         priority={priority}
-        className={cn("hidden h-auto object-contain dark:block", className)}
+        className={cn("hidden h-auto bg-transparent object-contain dark:block", className)}
       />
     </>
   );
