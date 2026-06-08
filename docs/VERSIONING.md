@@ -25,6 +25,7 @@ Enquanto o produto estiver em **0.x**, APIs e schema podem evoluir com migraçõ
 | `v0.1.0` | Initial commit | Monorepo, módulos base, CI |
 | `v0.2.0` | Dashboard Zabbix + relatório Tipo 4 | Monitoramento, Excel, date picker |
 | `v0.3.0` | UX portal + GMUD + selects | Tema claro, Consult, selects pesquisáveis |
+| `v0.4.0` | V2 Tickets + Apontamentos empresarial | Tickets admin, apontamento portal, questionamentos |
 
 ### Publicar uma nova versão
 
