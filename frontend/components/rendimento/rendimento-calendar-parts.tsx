@@ -7,6 +7,7 @@ import {
   Clock,
   FileText,
   Hourglass,
+  Shield,
   XCircle,
 } from "lucide-react";
 
@@ -44,7 +45,29 @@ export function RendimentoLegend() {
         <Coffee className="size-3 text-emerald-600" />
         Almoço (perdoa 1 alerta/dia)
       </span>
+      <span className="inline-flex items-center gap-1.5">
+        <Hourglass className="size-3 text-sky-500" />
+        Justificativa voluntária pendente
+      </span>
     </div>
+  );
+}
+
+function dayHasHoraExtra(summary?: RendimentoDaySummary): boolean {
+  return (summary?.entries ?? []).some(
+    (entry) => resolveRendimentoOvertimeDisplay(entry).kind === "EXTRA",
+  );
+}
+
+function dayHasPlantao(summary?: RendimentoDaySummary): boolean {
+  return (summary?.entries ?? []).some(
+    (entry) => resolveRendimentoOvertimeDisplay(entry).kind === "PLANTAO",
+  );
+}
+
+function dayHasPendingVoluntary(summary?: RendimentoDaySummary): boolean {
+  return (summary?.voluntaryJustifications ?? []).some(
+    (item) => item.status === "PENDING",
   );
 }
 
@@ -55,15 +78,29 @@ export function RendimentoDayIndicators({
 }: {
   summary?: RendimentoDaySummary;
   compact?: boolean;
-  /** Visão mensal: ocultar ícone de almoço nas células do calendário. */
+  /** Visão mensal: HE, plantão, alerta e voluntária pendente (sem almoço). */
   showLunch?: boolean;
 }) {
   const insights = dayInsightsForDisplay(summary);
-  if (!insights) return null;
+  const monthMode = !showLunch;
+  const hasHoraExtra = monthMode
+    ? dayHasHoraExtra(summary)
+    : Boolean(insights?.hasOvertime);
+  const hasPlantao = monthMode && dayHasPlantao(summary);
+  const hasPendingVoluntary = monthMode && dayHasPendingVoluntary(summary);
+
+  if (
+    !insights &&
+    !hasHoraExtra &&
+    !hasPlantao &&
+    !hasPendingVoluntary
+  ) {
+    return null;
+  }
 
   return (
     <div className={cn("flex flex-wrap gap-1", compact ? "mt-1" : "mt-2")}>
-      {insights.hasOvertime ? (
+      {hasHoraExtra ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300"
           title="Hora extra no dia"
@@ -72,7 +109,16 @@ export function RendimentoDayIndicators({
           HE
         </span>
       ) : null}
-      {insights.hasIdleGapAlert ? (
+      {hasPlantao ? (
+        <span
+          className="inline-flex items-center gap-0.5 rounded bg-violet-600/20 px-1 py-0.5 text-[9px] font-bold text-violet-700 dark:text-violet-300"
+          title="Plantão no dia"
+        >
+          <Shield className="size-2.5" />
+          P
+        </span>
+      ) : null}
+      {insights?.hasIdleGapAlert ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-orange-500/20 px-1 py-0.5 text-[9px] font-bold text-orange-700 dark:text-orange-300"
           title="Intervalo sem apontamento (> 1h)"
@@ -81,7 +127,15 @@ export function RendimentoDayIndicators({
           !
         </span>
       ) : null}
-      {showLunch && insights.hasExpectedLunch ? (
+      {hasPendingVoluntary ? (
+        <span
+          className="inline-flex items-center gap-0.5 rounded bg-sky-500/20 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300"
+          title="Justificativa voluntária aguardando aprovação"
+        >
+          <Hourglass className="size-2.5" />
+        </span>
+      ) : null}
+      {showLunch && insights?.hasExpectedLunch ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300"
           title="Almoço identificado"

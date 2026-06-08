@@ -196,7 +196,7 @@ export default function LoginPage() {
                 href="https://alletecnologia.com"
                 target="_blank"
                 rel="noreferrer"
-                title="Retornar para Alle Tecnologia"
+                title="Ir para Alle Tecnologia.com"
                 className="absolute right-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-white"
               >
                 <ArrowUpRight size={18} />
