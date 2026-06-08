@@ -152,23 +152,49 @@ export default function AdminAuditoriaPage() {
               <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Entidade</p>
-                  <Input value={entity} onChange={(e) => setEntity(e.target.value)} placeholder="Ex.: User, Company, InventoryAsset" />
+                  <Input
+                    value={entity}
+                    onChange={(e) => setEntity(e.target.value)}
+                    placeholder="Ex.: User, Gmud"
+                  />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Ação</p>
-                  <Input value={action} onChange={(e) => setAction(e.target.value)} placeholder="Ex.: CREATE, UPDATE, DELETE, DECIDE" />
+                  <Input
+                    value={action}
+                    onChange={(e) => setAction(e.target.value)}
+                    placeholder="Ex.: CREATE, DECIDE"
+                  />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Actor (userId)</p>
-                  <Input value={actorId} onChange={(e) => setActorId(e.target.value)} placeholder="UUID do admin" />
+                  <Input
+                    value={actorId}
+                    onChange={(e) => setActorId(e.target.value)}
+                    placeholder="UUID admin"
+                  />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">De</p>
-                  <Input type="date" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
+                  <Input
+                    type="date"
+                    value={from}
+                    onChange={(e) => {
+                      setFrom(e.target.value);
+                      setPage(1);
+                    }}
+                  />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Até</p>
-                  <Input type="date" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+                  <Input
+                    type="date"
+                    value={to}
+                    onChange={(e) => {
+                      setTo(e.target.value);
+                      setPage(1);
+                    }}
+                  />
                 </div>
               </CardContent>
             </Card>

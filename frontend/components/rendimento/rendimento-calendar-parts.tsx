@@ -381,7 +381,9 @@ export function buildDayTimeline(summary: RendimentoDaySummary) {
 export function dayInsightsForDisplay(summary?: RendimentoDaySummary) {
   if (!summary?.insights) return null;
   const gaps = summary.insights.gaps ?? [];
-  const idleGaps = gaps.filter((g) => g.type === "idle");
+  const idleGaps = gaps.filter(
+    (g) => g.type === "idle" && g.gapMinutes > 60,
+  );
   const hasPendingIdleAlert = idleGaps.some((g) => {
     const j = g.justification;
     if (!j) return true;

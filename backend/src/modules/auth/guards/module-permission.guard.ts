@@ -82,6 +82,23 @@ export class ModulePermissionGuard implements CanActivate {
       return meta.flag !== 'canDelete';
     }
 
+    // Justificativa voluntária no rendimento: colaborador só precisa visualizar o módulo.
+    if (
+      meta.module === ('RENDIMENTO' as PermissionModule) &&
+      meta.flag === 'canEdit' &&
+      user.role === 'COLLABORATOR'
+    ) {
+      const request = context.switchToHttp().getRequest<{
+        body?: { kind?: string };
+      }>();
+      if (request.body?.kind === 'VOLUNTARY') {
+        const entry = user.permissions.find(
+          (p) => p.module === ('RENDIMENTO' as PermissionModule),
+        );
+        if (entry?.canView) return true;
+      }
+    }
+
     const entry = user.permissions.find((p) => p.module === meta.module);
 
     if (!entry || !entry[meta.flag]) {

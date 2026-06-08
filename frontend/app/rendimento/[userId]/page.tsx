@@ -22,6 +22,7 @@ import { DatePickerField } from "@/components/ui/date-picker-field";
 import { TimePickerField } from "@/components/ui/datetime-picker-field";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { isPjRole } from "@/lib/app-roles";
+import { canCreateVoluntaryRendimentoJustification } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   RENDIMENTO_LUNCH_MAX_MINUTES,
@@ -75,6 +76,7 @@ export default function RendimentoAgendaPage() {
   const [debitOvertime, setDebitOvertime] = useState(false);
   const authUser = getStoredUser();
   const canApprove = authUser?.role === "ADMIN";
+  const canVoluntaryJustification = canCreateVoluntaryRendimentoJustification();
 
   const justGapMinutes = useMemo(
     () => minutesBetweenTimes(justFrom, justTo),
@@ -267,7 +269,9 @@ export default function RendimentoAgendaPage() {
               refreshing={refreshing}
               canApproveJustification={canApprove}
               onOpenAlertJustification={openAlertJustification}
-              onOpenVoluntaryJustification={openVoluntaryJustification}
+              onOpenVoluntaryJustification={
+                canVoluntaryJustification ? openVoluntaryJustification : undefined
+              }
               onApproveJustification={(id) => void decideJustification(id, "APPROVED")}
               onRejectJustification={(id) => void decideJustification(id, "REJECTED")}
               onApproveDayEvent={(id) => void decideDayEvent(id, "APPROVED")}

@@ -13,6 +13,7 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type { RendimentoCalendarView } from './rendimento.dto';
 import {
   analyzeRendimentoDay,
+  GAP_ALERT_MINUTES,
   LUNCH_MINUTES,
   type RendimentoDayInsightsDto,
   type RendimentoGapDto,
@@ -77,7 +78,7 @@ export type RendimentoDaySummaryDto = {
   totalHoursFormatted: string;
   entries: RendimentoEntryDto[];
   insights: RendimentoDayInsightsDto;
-  /** Avisos pontuais — não substituem alertas de lacuna na timeline. */
+  /** Avisos pontuais; quando aprovados, suprimem alertas idle sobrepostos na timeline. */
   voluntaryJustifications: RendimentoGapJustificationDto[];
 };
 
@@ -522,6 +523,146 @@ export class RendimentoService {
     return `${gapMinutes} min sem apontamento`;
   }
 
+  private formatMinutesAsTime(totalMinutes: number): string {
+    const clamped = Math.max(0, Math.trunc(totalMinutes));
+    const wrapped = clamped % (24 * 60);
+    const h = Math.floor(wrapped / 60);
+    const m = wrapped % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  private justificationSuffix(
+    justification?: { status: RendimentoJustificationStatus },
+  ): string {
+    if (!justification) return '';
+    if (justification.status === 'APPROVED') return ' · justificado';
+    if (justification.status === 'PENDING') return ' · justificativa pendente';
+    return ' · justificativa rejeitada';
+  }
+
+  private isUserClaimedLunchGap(gap: RendimentoGapDto): boolean {
+    const justification = gap.justification;
+    if (!justification || justification.kind === 'VOLUNTARY') return false;
+    return (
+      justification.gapType === 'lunch' &&
+      (justification.status === 'APPROVED' ||
+        justification.status === 'PENDING')
+    );
+  }
+
+  /** Lacuna idle só existe se for estritamente maior que 1h (mesma regra do dia). */
+  private demoteLunchGapToIdle(gap: RendimentoGapDto): RendimentoGapDto | null {
+    if (gap.gapMinutes <= GAP_ALERT_MINUTES) {
+      return null;
+    }
+    return {
+      ...gap,
+      type: 'idle',
+      label: this.gapLabelForType('idle', gap.gapMinutes),
+      justification: undefined,
+    };
+  }
+
+  private filterSubThresholdIdleGaps(
+    gaps: RendimentoGapDto[],
+  ): RendimentoGapDto[] {
+    return gaps.filter(
+      (gap) =>
+        gap.type !== 'idle' || gap.gapMinutes > GAP_ALERT_MINUTES,
+    );
+  }
+
+  /**
+   * Por dia: no máximo um almoço (justificado pelo colaborador tem prioridade)
+   * e duração máxima de 1h30 — o excedente vira alerta de lacuna.
+   */
+  private normalizeLunchGaps(gaps: RendimentoGapDto[]): RendimentoGapDto[] {
+    const claimedLunchIndices = gaps
+      .map((gap, index) => (this.isUserClaimedLunchGap(gap) ? index : -1))
+      .filter((index) => index >= 0);
+
+    let normalized: RendimentoGapDto[] = [];
+    for (let index = 0; index < gaps.length; index += 1) {
+      const gap = gaps[index];
+      if (gap.type !== 'lunch') {
+        normalized.push(gap);
+        continue;
+      }
+      if (!claimedLunchIndices.length) {
+        normalized.push(gap);
+        continue;
+      }
+      const primaryIdx = claimedLunchIndices[0];
+      if (index === primaryIdx) {
+        normalized.push(gap);
+        continue;
+      }
+      const demoted = this.demoteLunchGapToIdle(gap);
+      if (demoted) normalized.push(demoted);
+    }
+
+    const lunchIndices = normalized
+      .map((gap, index) => (gap.type === 'lunch' ? index : -1))
+      .filter((index) => index >= 0);
+
+    if (lunchIndices.length > 1) {
+      const keepIdx = lunchIndices[0];
+      const next: RendimentoGapDto[] = [];
+      for (let index = 0; index < normalized.length; index += 1) {
+        const gap = normalized[index];
+        if (gap.type !== 'lunch' || index === keepIdx) {
+          next.push(gap);
+          continue;
+        }
+        const demoted = this.demoteLunchGapToIdle(gap);
+        if (demoted) next.push(demoted);
+      }
+      normalized = next;
+    }
+
+    const expanded: RendimentoGapDto[] = [];
+    for (const gap of normalized) {
+      if (gap.type !== 'lunch' || gap.gapMinutes <= LUNCH_MINUTES) {
+        expanded.push(gap);
+        continue;
+      }
+
+      const from = this.parseHHMMToMinutes(gap.fromTime);
+      const to = this.parseHHMMToMinutes(gap.toTime);
+      if (to <= from) {
+        expanded.push(gap);
+        continue;
+      }
+
+      const lunchEnd = from + LUNCH_MINUTES;
+      const remainingMinutes = to - lunchEnd;
+      const suffix = this.justificationSuffix(gap.justification);
+
+      expanded.push({
+        ...gap,
+        type: 'lunch',
+        fromTime: this.formatMinutesAsTime(from),
+        toTime: this.formatMinutesAsTime(lunchEnd),
+        gapMinutes: LUNCH_MINUTES,
+        label: `${this.gapLabelForType('lunch', LUNCH_MINUTES)}${suffix}`,
+      });
+
+      if (remainingMinutes > GAP_ALERT_MINUTES) {
+        expanded.push({
+          type: 'idle',
+          fromTime: this.formatMinutesAsTime(lunchEnd),
+          toTime: this.formatMinutesAsTime(to),
+          gapMinutes: remainingMinutes,
+          label: this.gapLabelForType('idle', remainingMinutes),
+        });
+      }
+    }
+
+    return this.filterSubThresholdIdleGaps(
+      expanded.sort((a, b) => a.fromTime.localeCompare(b.fromTime)),
+    );
+  }
+
   private overlaps(
     gapFrom: string,
     gapTo: string,
@@ -533,6 +674,97 @@ export class RendimentoService {
     const b1 = this.parseHHMMToMinutes(justFrom);
     const b2 = this.parseHHMMToMinutes(justTo);
     return Math.max(a1, b1) < Math.min(a2, b2);
+  }
+
+  private subtractIntervalFromSegment(
+    segFrom: number,
+    segTo: number,
+    cutFrom: number,
+    cutTo: number,
+  ): Array<{ from: number; to: number }> {
+    if (cutTo <= segFrom || cutFrom >= segTo) {
+      return [{ from: segFrom, to: segTo }];
+    }
+
+    const parts: Array<{ from: number; to: number }> = [];
+    if (cutFrom > segFrom) {
+      parts.push({ from: segFrom, to: Math.min(cutFrom, segTo) });
+    }
+    if (cutTo < segTo) {
+      parts.push({ from: Math.max(cutTo, segFrom), to: segTo });
+    }
+    return parts.filter((part) => part.to > part.from);
+  }
+
+  /**
+   * Justificativa voluntária aprovada suprime só o trecho sobreposto do alerta;
+   * o restante da lacuna continua como alerta (se > 1h).
+   */
+  private trimIdleGapsAroundApprovedVoluntary(
+    gaps: RendimentoGapDto[],
+    dayJustifications: GapJustificationRow[],
+  ): RendimentoGapDto[] {
+    const approvedVoluntary = dayJustifications.filter(
+      (j) => j.kind === 'VOLUNTARY' && j.status === 'APPROVED',
+    );
+    if (!approvedVoluntary.length) return gaps;
+
+    const result: RendimentoGapDto[] = [];
+
+    for (const gap of gaps) {
+      if (gap.type !== 'idle') {
+        result.push(gap);
+        continue;
+      }
+
+      if (
+        gap.justification?.status === 'APPROVED' &&
+        gap.justification.kind !== 'VOLUNTARY'
+      ) {
+        result.push(gap);
+        continue;
+      }
+
+      const from = this.parseHHMMToMinutes(gap.fromTime);
+      const to = this.parseHHMMToMinutes(gap.toTime);
+      if (to <= from) continue;
+
+      let segments: Array<{ from: number; to: number }> = [{ from, to }];
+      for (const voluntary of approvedVoluntary) {
+        const cutFrom = this.parseHHMMToMinutes(voluntary.from_time);
+        const cutTo = this.parseHHMMToMinutes(voluntary.to_time);
+        const next: Array<{ from: number; to: number }> = [];
+        for (const segment of segments) {
+          next.push(
+            ...this.subtractIntervalFromSegment(
+              segment.from,
+              segment.to,
+              cutFrom,
+              cutTo,
+            ),
+          );
+        }
+        segments = next;
+      }
+
+      for (const segment of segments) {
+        const gapMinutes = segment.to - segment.from;
+        if (gapMinutes <= GAP_ALERT_MINUTES) continue;
+        result.push({
+          ...gap,
+          type: 'idle',
+          fromTime: this.formatMinutesAsTime(segment.from),
+          toTime: this.formatMinutesAsTime(segment.to),
+          gapMinutes,
+          label: this.gapLabelForType('idle', gapMinutes),
+          justification: undefined,
+        });
+      }
+    }
+
+    return this.filterSubThresholdIdleGaps(
+      result.sort((a, b) => a.fromTime.localeCompare(b.fromTime)),
+    );
   }
 
   private applyJustificationsToDay(
@@ -571,8 +803,16 @@ export class RendimentoService {
       };
     });
 
-    const hasIdleGapAlert = gaps.some((gap) => {
-      if (gap.type !== 'idle') return false;
+    const normalizedGaps = this.normalizeLunchGaps(gaps);
+
+    const gapsWithoutVoluntaryOverlap =
+      this.trimIdleGapsAroundApprovedVoluntary(
+        normalizedGaps,
+        dayJustifications,
+      );
+
+    const hasIdleGapAlert = gapsWithoutVoluntaryOverlap.some((gap) => {
+      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
       const justification = gap.justification;
       if (!justification) return true;
       if (justification.kind === 'VOLUNTARY') return false;
@@ -582,8 +822,8 @@ export class RendimentoService {
     return {
       ...insights,
       hasIdleGapAlert,
-      hasExpectedLunch: gaps.some((g) => g.type === 'lunch'),
-      gaps,
+      hasExpectedLunch: gapsWithoutVoluntaryOverlap.some((g) => g.type === 'lunch'),
+      gaps: gapsWithoutVoluntaryOverlap,
     };
   }
 
@@ -604,6 +844,40 @@ export class RendimentoService {
     }));
   }
 
+  private buildDaySummary(
+    date: string,
+    dayRows: AppointmentRow[],
+    justificationsByDate: Map<string, GapJustificationRow[]>,
+  ): RendimentoDaySummaryDto {
+    const baseEntries = this.mapEntries(dayRows);
+    const valorizationById = new Map(
+      dayRows.map((row) => [Number(row.appointment_id), row.valorization_raw]),
+    );
+    const { entries, insights } = analyzeRendimentoDay(
+      baseEntries,
+      valorizationById,
+    );
+    const totalMinutes = entries.reduce((sum, item) => sum + item.minutes, 0);
+    const dateOnly = date.slice(0, 10);
+    const dayJustifications = justificationsByDate.get(dateOnly) ?? [];
+    const voluntaryJustifications = dayJustifications
+      .filter((j) => j.kind === 'VOLUNTARY')
+      .map((j) => this.mapJustificationDto(j));
+    const patchedInsights = this.applyJustificationsToDay(
+      dateOnly,
+      insights,
+      dayJustifications,
+    );
+    return {
+      date,
+      totalMinutes,
+      totalHoursFormatted: this.formatMinutes(totalMinutes),
+      entries,
+      insights: patchedInsights,
+      voluntaryJustifications,
+    };
+  }
+
   private groupByDay(
     rows: AppointmentRow[],
     justificationsByDate: Map<string, GapJustificationRow[]>,
@@ -618,40 +892,17 @@ export class RendimentoService {
       map.get(key)!.push(row);
     }
 
+    for (const dateOnly of justificationsByDate.keys()) {
+      if (!map.has(dateOnly)) {
+        map.set(dateOnly, []);
+      }
+    }
+
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, dayRows]) => {
-        const baseEntries = this.mapEntries(dayRows);
-        const valorizationById = new Map(
-          dayRows.map((row) => [
-            Number(row.appointment_id),
-            row.valorization_raw,
-          ]),
-        );
-        const { entries, insights } = analyzeRendimentoDay(
-          baseEntries,
-          valorizationById,
-        );
-        const totalMinutes = entries.reduce((sum, item) => sum + item.minutes, 0);
-        const dateOnly = date.slice(0, 10);
-        const dayJustifications = justificationsByDate.get(dateOnly) ?? [];
-        const voluntaryJustifications = dayJustifications
-          .filter((j) => j.kind === 'VOLUNTARY')
-          .map((j) => this.mapJustificationDto(j));
-        const patchedInsights = this.applyJustificationsToDay(
-          dateOnly,
-          insights,
-          dayJustifications,
-        );
-        return {
-          date,
-          totalMinutes,
-          totalHoursFormatted: this.formatMinutes(totalMinutes),
-          entries,
-          insights: patchedInsights,
-          voluntaryJustifications,
-        };
-      });
+      .map(([date, dayRows]) =>
+        this.buildDaySummary(date, dayRows, justificationsByDate),
+      );
   }
 
   private async getProtectedOvertimeMinutes(
@@ -1315,7 +1566,16 @@ export class RendimentoService {
       }
       justificationsByDate.get(key)!.push(item);
     }
-    const days = this.groupByDay(rows, justificationsByDate);
+    let days = this.groupByDay(rows, justificationsByDate);
+    if (params.view === 'day') {
+      const refKey = this.toDateOnlyString(reference);
+      if (!days.some((d) => d.date.slice(0, 10) === refKey)) {
+        days = [
+          this.buildDaySummary(refKey, [], justificationsByDate),
+          ...days,
+        ];
+      }
+    }
     try {
       await this.syncDayEventsForDays(user.id, days);
     } catch (err) {

@@ -145,6 +145,24 @@ export function RendimentoCalendar({
 
   const selectedDayKey = format(referenceDate, "yyyy-MM-dd");
   const selectedDay = daysByDate.get(selectedDayKey);
+  const displayDay =
+    view === "day"
+      ? (selectedDay ?? {
+          date: selectedDayKey,
+          totalMinutes: 0,
+          totalHoursFormatted: "00:00",
+          entries: [],
+          insights: {
+            regularMinutes: 0,
+            overtimeMinutes: 0,
+            hasOvertime: false,
+            hasIdleGapAlert: false,
+            hasExpectedLunch: false,
+            gaps: [],
+          },
+          voluntaryJustifications: [],
+        })
+      : selectedDay;
 
   return (
     <div className="font-sans space-y-4">
@@ -388,7 +406,7 @@ export function RendimentoCalendar({
         </div>
       ) : null}
 
-      {timesheet && view === "day" ? (
+      {timesheet && view === "day" && displayDay ? (
         <div className="rounded-xl border border-border bg-card">
           <div className="border-b border-border px-4 py-3">
             <p className="text-sm text-muted-foreground">Dia selecionado</p>
@@ -396,35 +414,35 @@ export function RendimentoCalendar({
               {format(referenceDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
             </p>
             <p className="text-lg font-bold text-primary">
-              {selectedDay?.totalHoursFormatted ?? "00:00"}
+              {displayDay.totalHoursFormatted ?? "00:00"}
             </p>
-            {selectedDay?.insights ? (
+            {displayDay.insights ? (
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 <span className="rounded-md bg-muted px-2 py-1">
                   Regular:{" "}
-                  {String(Math.floor(selectedDay.insights.regularMinutes / 60)).padStart(2, "0")}
+                  {String(Math.floor(displayDay.insights.regularMinutes / 60)).padStart(2, "0")}
                   :
-                  {String(selectedDay.insights.regularMinutes % 60).padStart(2, "0")}
+                  {String(displayDay.insights.regularMinutes % 60).padStart(2, "0")}
                 </span>
-                {selectedDay.insights.hasOvertime ? (
+                {displayDay.insights.hasOvertime ? (
                   <span className="rounded-md bg-amber-500/20 px-2 py-1 font-semibold text-amber-800 dark:text-amber-200">
                     Hora extra:{" "}
-                    {String(Math.floor(selectedDay.insights.overtimeMinutes / 60)).padStart(2, "0")}
+                    {String(Math.floor(displayDay.insights.overtimeMinutes / 60)).padStart(2, "0")}
                     :
-                    {String(selectedDay.insights.overtimeMinutes % 60).padStart(2, "0")}
+                    {String(displayDay.insights.overtimeMinutes % 60).padStart(2, "0")}
                   </span>
                 ) : null}
               </div>
             ) : null}
-            <RendimentoDayIndicators summary={selectedDay} />
-            {onOpenVoluntaryJustification && selectedDay ? (
+            <RendimentoDayIndicators summary={displayDay} />
+            {onOpenVoluntaryJustification ? (
               <div className="mt-3">
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   onClick={() =>
-                    onOpenVoluntaryJustification({ date: selectedDay.date.slice(0, 10) })
+                    onOpenVoluntaryJustification({ date: selectedDayKey })
                   }
                 >
                   Justificativa voluntária
@@ -433,12 +451,12 @@ export function RendimentoCalendar({
             ) : null}
           </div>
           <ul className="space-y-2 p-4">
-            {(selectedDay?.entries ?? []).length === 0 ? (
+            {buildDayTimeline(displayDay).length === 0 ? (
               <li className="py-8 text-center text-sm text-muted-foreground">
                 Nenhum apontamento neste dia.
               </li>
             ) : (
-              buildDayTimeline(selectedDay!).map((item, index) =>
+              buildDayTimeline(displayDay).map((item, index) =>
                 item.kind === "gap" ? (
                   <RendimentoGapBlock
                     key={`day-gap-${item.gap.fromTime}-${index}`}
@@ -447,7 +465,7 @@ export function RendimentoCalendar({
                       onOpenAlertJustification
                         ? () =>
                             onOpenAlertJustification({
-                              date: selectedDay!.date.slice(0, 10),
+                              date: displayDay.date.slice(0, 10),
                               fromTime: item.gap.fromTime,
                               toTime: item.gap.toTime,
                               gapMinutes: item.gap.gapMinutes,

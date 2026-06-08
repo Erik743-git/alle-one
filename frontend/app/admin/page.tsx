@@ -65,7 +65,7 @@ export default function AdminPage() {
     {
       name: "Auditoria",
       description:
-        "Pesquise ações administrativas (criação/edição/exclusão/aprovações).",
+        "Pesquise ações administrativas: criação, edição, exclusão e aprovações.",
       icon: ShieldCheck,
       href: "/admin/auditoria",
     },
@@ -162,20 +162,24 @@ export default function AdminPage() {
                 const Icon = module.icon;
 
                 return (
-                  <Link key={module.name} href={module.href} className="group">
+                  <Link
+                    key={module.name}
+                    href={module.href}
+                    className="group block h-full min-w-0"
+                  >
                     <Card className="h-full overflow-hidden transition duration-300 hover:border-primary/40 hover:bg-muted/40 hover:shadow-[0_0_0_1px_rgba(18,181,217,0.12),0_20px_40px_rgba(0,0,0,0.28)]">
-                      <CardContent className="flex h-full min-h-[230px] flex-col justify-between p-6">
-                        <div className="space-y-5">
+                      <CardContent className="flex h-full min-h-[230px] min-w-0 flex-col justify-between p-6">
+                        <div className="min-w-0 space-y-5">
                           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary transition group-hover:bg-primary/15">
                             <Icon size={28} />
                           </div>
 
-                          <div className="space-y-2">
+                          <div className="min-w-0 space-y-2">
                             <h2 className="text-2xl font-bold tracking-tight text-foreground">
                               {module.name}
                             </h2>
 
-                            <p className="text-sm leading-6 text-muted-foreground">
+                            <p className="break-words text-sm leading-6 text-muted-foreground">
                               {module.description}
                             </p>
                           </div>

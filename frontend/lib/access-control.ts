@@ -52,6 +52,7 @@ const COLLABORATOR_DEFAULT_VIEW: PermissionModuleKey[] = [
   "GMUD",
   "CORREIO",
   "INVENTARIO",
+  "RENDIMENTO",
 ];
 
 const PJ_DEFAULT_VIEW: PermissionModuleKey[] = [
@@ -118,6 +119,13 @@ export function canAccessDashboard() {
 export function canAccessRendimento() {
   if (isPj()) return false;
   return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
+}
+
+/** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */
+export function canCreateVoluntaryRendimentoJustification() {
+  if (isAdmin()) return true;
+  if (!isCollaborator()) return false;
+  return canViewModule("RENDIMENTO");
 }
 
 export function canAccessCorreio() {
