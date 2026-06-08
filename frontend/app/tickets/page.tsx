@@ -296,7 +296,7 @@ export default function TicketsPage() {
               <div className="flex min-h-[240px] items-center justify-center">
                 <Loader2 className="size-8 animate-spin text-primary" />
               </div>
-            ) : !data?.groups.length ? (
+            ) : !(data?.groups?.length) ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
                   Nenhum ticket aberto encontrado com os filtros atuais.
@@ -314,7 +314,7 @@ export default function TicketsPage() {
                       ? ` · responsável: ${data.responsibleName}`
                       : " · todos os responsáveis"}
                 </p>
-                {data.groups.map((group) => (
+                {(data?.groups ?? []).map((group) => (
                   <Card key={group.key}>
                     <CardHeader>
                       <CardTitle className="text-base">

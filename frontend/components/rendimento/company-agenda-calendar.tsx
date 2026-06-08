@@ -564,12 +564,12 @@ export function CompanyAgendaCalendar({
             </p>
           </div>
           <ul className="space-y-2 p-4">
-            {selectedDay.entries.length === 0 ? (
+            {(selectedDay.entries ?? []).length === 0 ? (
               <li className="py-8 text-center text-sm text-muted-foreground">
                 Nenhum apontamento neste dia.
               </li>
             ) : (
-              selectedDay.entries.map((entry) => (
+              (selectedDay.entries ?? []).map((entry) => (
                 <CompanyEntryCard
                   key={`${entry.source}:${entry.ref}`}
                   entry={entry}

@@ -78,7 +78,14 @@ export default function RendimentoEmpresaPage() {
         view,
         date: toDateInputValue(referenceDate),
       });
-      setAgenda(data);
+      setAgenda(
+        data
+          ? {
+              ...data,
+              days: Array.isArray(data.days) ? data.days : [],
+            }
+          : null,
+      );
       hasAgendaRef.current = true;
     } catch (err) {
       notifyError(

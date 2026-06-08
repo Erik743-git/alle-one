@@ -25,6 +25,7 @@ import {
 } from "@/lib/app-roles";
 import { isClient } from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
+import { ensureArray } from "@/lib/utils";
 import {
   CompanyPendingQuestionsDialog,
   PendingQuestionsBadge,
@@ -57,7 +58,7 @@ function RendimentoPageContent() {
 
   const reloadCompanies = useCallback(async () => {
     const data = await rendimentoService.listCompanies();
-    setCompanies(data);
+    setCompanies(ensureArray(data));
   }, []);
 
   useEffect(() => {
@@ -91,7 +92,7 @@ function RendimentoPageContent() {
           await reloadCompanies();
         } else if (isAdmin) {
           const data = await rendimentoService.listCollaborators();
-          setCollaborators(data);
+          setCollaborators(ensureArray(data));
         }
       } catch (err) {
         notifyError(
@@ -116,9 +117,10 @@ function RendimentoPageContent() {
   };
 
   const filteredCollaborators = useMemo(() => {
+    const list = ensureArray(collaborators);
     const term = search.trim().toLowerCase();
-    if (!term) return collaborators;
-    return collaborators.filter((item) => {
+    if (!term) return list;
+    return list.filter((item) => {
       const haystack = [
         item.name,
         item.email,
@@ -132,9 +134,10 @@ function RendimentoPageContent() {
   }, [collaborators, search]);
 
   const filteredCompanies = useMemo(() => {
+    const list = ensureArray(companies);
     const term = search.trim().toLowerCase();
-    if (!term) return companies;
-    return companies.filter((item) => {
+    if (!term) return list;
+    return list.filter((item) => {
       const haystack = [item.name, item.tifluxClientName ?? ""]
         .join(" ")
         .toLowerCase();

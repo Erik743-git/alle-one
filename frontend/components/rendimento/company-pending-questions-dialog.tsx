@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { ensureArray } from "@/lib/utils";
 import {
   rendimentoService,
   type CompanyQuestionItem,
@@ -51,7 +52,7 @@ export function CompanyPendingQuestionsDialog({
         companyId: company.id,
         status: "PENDING",
       });
-      setQuestions(data);
+      setQuestions(ensureArray(data));
     } catch (err) {
       notifyError(
         err instanceof Error
