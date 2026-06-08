@@ -251,7 +251,7 @@ export default function RendimentoAgendaPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
                 <Button asChild variant="outline" size="sm" className="w-fit">
-                  <Link href="/rendimento">
+                  <Link href="/apontamentos">
                     <ArrowLeft className="mr-2 size-4" />
                     Voltar à lista
                   </Link>

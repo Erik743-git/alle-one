@@ -56,7 +56,7 @@ type CompanyAgendaCalendarProps = {
 
 function dayMap(agenda: RendimentoCompanyAgenda | null) {
   const map = new Map<string, RendimentoCompanyDay>();
-  if (!agenda) return map;
+  if (!agenda?.days?.length) return map;
   for (const day of agenda.days) {
     map.set(day.date.slice(0, 10), day);
   }
@@ -79,6 +79,17 @@ function formatMinutesLabel(minutes: number) {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function formatTimeLabel(value: string | null | undefined) {
+  if (!value) return "—";
+  const trimmed = String(value).trim();
+  if (!trimmed) return "—";
+  if (trimmed.includes("T")) {
+    const timePart = trimmed.slice(11, 16);
+    return timePart.length === 5 ? timePart : "—";
+  }
+  return trimmed.slice(0, 5);
 }
 
 function emptyDay(date: string): RendimentoCompanyDay {
@@ -179,7 +190,7 @@ function CompanyEntryCard({
       >
         <div className="min-w-0 flex-1 space-y-1">
           <p className={cn("font-semibold text-foreground", dense && "text-[11px]")}>
-            {entry.initTime?.slice(0, 5) ?? "—"} – {entry.endTime?.slice(0, 5) ?? "—"}
+            {formatTimeLabel(entry.initTime)} – {formatTimeLabel(entry.endTime)}
             <span className="ml-2 font-bold text-primary">
               {entry.hoursFormatted ?? formatMinutesLabel(entry.minutes)}
             </span>
@@ -284,7 +295,7 @@ export function CompanyAgendaCalendar({
   const totalAppointments = agenda?.totalAppointments ?? 0;
   const totalPendingQuestions =
     agenda?.totalPendingQuestions ??
-    agenda?.days.reduce((sum, day) => sum + day.pendingQuestions, 0) ??
+    agenda?.days?.reduce((sum, day) => sum + day.pendingQuestions, 0) ??
     0;
 
   function navigate(delta: -1 | 1) {

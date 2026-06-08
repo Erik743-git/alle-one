@@ -79,11 +79,11 @@ function RendimentoPageContent() {
           isCollaboratorRole(authUser.role) &&
           authUser.id
         ) {
-          router.replace(`/rendimento/${authUser.id}`);
+          router.replace(`/apontamentos/${authUser.id}`);
           return;
         }
         if (isClientUser && authUser?.companyId) {
-          router.replace(`/rendimento/empresa/${authUser.companyId}`);
+          router.replace(`/apontamentos/empresa/${authUser.companyId}`);
           return;
         }
         setLoading(true);
@@ -112,7 +112,7 @@ function RendimentoPageContent() {
 
   const setMode = (mode: AdminViewMode) => {
     setViewMode(mode);
-    router.replace(mode === "company" ? "/rendimento?view=company" : "/rendimento");
+    router.replace(mode === "company" ? "/apontamentos?view=company" : "/apontamentos");
   };
 
   const filteredCollaborators = useMemo(() => {
@@ -267,7 +267,7 @@ function RendimentoPageContent() {
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button asChild size="sm" variant="outline">
-                                  <Link href={`/rendimento/empresa/${item.id}`}>
+                                  <Link href={`/apontamentos/empresa/${item.id}`}>
                                     <CalendarDays className="mr-2 size-4" />
                                     Ver agenda
                                   </Link>
@@ -329,7 +329,7 @@ function RendimentoPageContent() {
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button asChild size="sm" variant="outline">
-                                  <Link href={`/rendimento/${item.id}`}>
+                                  <Link href={`/apontamentos/${item.id}`}>
                                     <CalendarDays className="mr-2 size-4" />
                                     Ver agenda
                                   </Link>

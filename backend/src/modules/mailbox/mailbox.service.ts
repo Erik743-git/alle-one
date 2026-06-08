@@ -270,7 +270,7 @@ export class MailboxService {
             kind: MailboxNotificationKind.RENDIMENTO_ALERT,
             title: 'Alerta de rendimento',
             body: `Você tem lacuna sem apontamento em ${dateLabel} (${monthLabel}).`,
-            href: `/rendimento/${userId}`,
+            href: `/apontamentos/${userId}`,
             dedupeKey: `rendimento:alert:${day.date.slice(0, 10)}`,
             payload: { date: day.date.slice(0, 10), userId },
           },
@@ -325,7 +325,7 @@ export class MailboxService {
       kind: MailboxNotificationKind.RENDIMENTO_APPROVAL_PENDING,
       title: 'Justificativa de rendimento pendente',
       body: `${row.user_name} · ${row.date_ref.slice(0, 10)} (${row.from_time}–${row.to_time}) aguarda aprovação.`,
-      href: `/rendimento/${row.user_id}`,
+      href: `/apontamentos/${row.user_id}`,
       dedupeKey: `rendimento:justification:${row.id}`,
       payload: { justificationId: row.id, userId: row.user_id },
     }));

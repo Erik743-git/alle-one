@@ -176,7 +176,7 @@ export default function RendimentoEmpresaPage() {
     }
   };
 
-  const backHref = isAdmin ? "/rendimento?view=company" : "/rendimento";
+  const backHref = isAdmin ? "/apontamentos?view=company" : "/apontamentos";
 
   return (
     <ProtectedPage>

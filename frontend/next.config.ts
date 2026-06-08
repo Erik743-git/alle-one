@@ -18,6 +18,20 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      {
+        source: "/rendimento",
+        destination: "/apontamentos",
+        permanent: true,
+      },
+      {
+        source: "/rendimento/:path*",
+        destination: "/apontamentos/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     if (!isProd) {
       return [];

@@ -100,7 +100,7 @@ function buildMenuItems(): MenuItem[] {
     },
     {
       name: "Apontamentos",
-      href: "/rendimento",
+      href: "/apontamentos",
       icon: CalendarRange,
       visible: canAccessRendimento(),
     },
