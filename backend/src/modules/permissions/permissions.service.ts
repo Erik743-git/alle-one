@@ -177,6 +177,13 @@ const ROLE_FALLBACK: Record<
       canDelete: false,
       canApprove: false,
     },
+    RENDIMENTO: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
   },
 };
 

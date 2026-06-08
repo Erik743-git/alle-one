@@ -51,7 +51,7 @@ alle-one/
     └── lib/services/       # Clientes HTTP da API
 ```
 
-Projeto auxiliar **fora deste repo**: `alleone-tiflux-sync` — popula o schema PostgreSQL `tiflux.*` (clientes, tickets, apontamentos). O portal **lê** esse cache; o sync **não** roda dentro do `alle-one` (módulo `tiflux-sync` removido para evitar duplicidade).
+Projeto auxiliar **fora deste repo**: `alleone-tiflux-sync` — popula o schema PostgreSQL `tiflux.*` (clientes, tickets, apontamentos). O portal **lê** esse cache; escrita de apontamentos V2 fica em `portal_ticket_appointments` até cutover TiFlux. Ver [V2-TICKETS.md](./V2-TICKETS.md) e [V2-APONTAMENTOS.md](./V2-APONTAMENTOS.md).
 
 ## Backend — módulos NestJS
 
@@ -69,9 +69,10 @@ Registrados em `backend/src/app.module.ts`:
 | **Contracts** | Contratos via TiFlux |
 | **Financial** | Dados financeiros |
 | **Zabbix** | Grupos, hosts, triggers, eventos |
-| **Tiflux** | Clientes, contratos, apontamentos |
+| **Tiflux** | Clientes, contratos, apontamentos (API legada) |
+| **Tickets** | V2: lista/detalhe tickets (`tiflux.*`), apontamentos portal-only, anexos |
 | **UsageAlerts** | Alertas de uso + job agendado |
-| **Rendimento** | Agenda de horas TiFlux por colaborador (período 26→25, HE/plantão) |
+| **Rendimento** | **Apontamentos**: agenda colaborador + visão empresarial + questionamentos |
 | **Mailbox** | Correio interno (alertas GMUD, tickets, inventário, etc.) |
 | **Inventario** | Ativos por empresa, anexos e vencimentos |
 | **Admin** | Operações administrativas agregadas |

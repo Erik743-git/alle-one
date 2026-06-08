@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -74,4 +75,66 @@ export class DecideRendimentoJustificationDto {
 export class DecideRendimentoDayEventDto {
   @IsIn(['APPROVED', 'REJECTED'])
   decision!: 'APPROVED' | 'REJECTED';
+}
+
+export class RendimentoCompanyAgendaQueryDto {
+  @IsIn(['month', 'week', 'day'])
+  view!: 'month' | 'week' | 'day';
+
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+}
+
+export class CreateRendimentoAppointmentQuestionDto {
+  @IsIn(['tiflux', 'portal'])
+  appointmentSource!: 'tiflux' | 'portal';
+
+  @IsString()
+  appointmentRef!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  ticketNumber!: number;
+
+  @IsDateString()
+  date!: string;
+
+  @IsOptional()
+  @IsString()
+  initTime?: string;
+
+  @IsOptional()
+  @IsString()
+  endTime?: string;
+
+  @IsOptional()
+  @IsString()
+  userName?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsString()
+  message!: string;
+}
+
+export class AnswerRendimentoAppointmentQuestionDto {
+  @IsString()
+  responseNote!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  abonar?: boolean;
+
+  @IsOptional()
+  @IsString()
+  responseCode?: string;
+}
+
+export class ListCompanyQuestionsQueryDto {
+  @IsOptional()
+  @IsIn(['PENDING', 'ANSWERED'])
+  status?: 'PENDING' | 'ANSWERED';
 }

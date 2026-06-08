@@ -18,6 +18,7 @@ import {
   CalendarRange,
   Mail,
   Package,
+  Ticket,
 } from "lucide-react";
 import {
   canAccessAdmin,
@@ -29,6 +30,7 @@ import {
   canAccessGmud,
   canAccessRelatorios,
   canAccessRendimento,
+  canAccessTickets,
 } from "@/lib/access-control";
 import { MailboxUnreadBadge } from "@/components/layout/mailbox-unread-badge";
 import ThemeToggle from "@/components/theme/theme-toggle";
@@ -97,10 +99,16 @@ function buildMenuItems(): MenuItem[] {
       visible: canAccessRelatorios(),
     },
     {
-      name: "Rendimento",
+      name: "Apontamentos",
       href: "/rendimento",
       icon: CalendarRange,
       visible: canAccessRendimento(),
+    },
+    {
+      name: "Tickets",
+      href: "/tickets",
+      icon: Ticket,
+      visible: canAccessTickets(),
     },
     {
       name: "Correio",

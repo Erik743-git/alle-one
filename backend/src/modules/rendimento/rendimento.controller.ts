@@ -20,12 +20,17 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import {
+  AnswerRendimentoAppointmentQuestionDto,
+  CreateRendimentoAppointmentQuestionDto,
   CreateRendimentoJustificationDto,
   DecideRendimentoDayEventDto,
   DecideRendimentoJustificationDto,
+  ListCompanyQuestionsQueryDto,
+  RendimentoCompanyAgendaQueryDto,
   RendimentoTimesheetQueryDto,
 } from './rendimento.dto';
 import { AuditMeta } from '../audit/audit.decorator';
+import { RendimentoCompanyService } from './rendimento-company.service';
 import { RendimentoService } from './rendimento.service';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
@@ -34,9 +39,100 @@ type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 @ApiBearerAuth()
 @Controller('rendimento')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
-@Roles('ADMIN', 'COLLABORATOR')
+@Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
 export class RendimentoController {
-  constructor(private readonly rendimentoService: RendimentoService) {}
+  constructor(
+    private readonly rendimentoService: RendimentoService,
+    private readonly rendimentoCompanyService: RendimentoCompanyService,
+  ) {}
+
+  @Get('companies')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN', 'CLIENT')
+  listCompanies(@Req() req: AuthenticatedRequest) {
+    return this.rendimentoCompanyService.listCompanies(req.user);
+  }
+
+  @Get('companies/:companyId/agenda')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN', 'CLIENT')
+  getCompanyAgenda(
+    @Req() req: AuthenticatedRequest,
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Query() query: RendimentoCompanyAgendaQueryDto,
+  ) {
+    return this.rendimentoCompanyService.getCompanyAgenda({
+      actor: req.user,
+      companyId,
+      view: query.view,
+      date: query.date,
+    });
+  }
+
+  @Get('companies/:companyId/questions')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  listCompanyQuestions(
+    @Req() req: AuthenticatedRequest,
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Query() query: ListCompanyQuestionsQueryDto,
+  ) {
+    return this.rendimentoCompanyService.listCompanyQuestions({
+      actor: req.user,
+      companyId,
+      status: query.status,
+    });
+  }
+
+  @Post('companies/:companyId/questions')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('CLIENT')
+  @AuditMeta({
+    entity: 'RendimentoAppointmentQuestion',
+    action: 'CREATE',
+    entityIdParam: 'companyId',
+  })
+  createAppointmentQuestion(
+    @Req() req: AuthenticatedRequest,
+    @Param('companyId', ParseUUIDPipe) companyId: string,
+    @Body() body: CreateRendimentoAppointmentQuestionDto,
+  ) {
+    return this.rendimentoCompanyService.createQuestion({
+      actor: req.user,
+      companyId,
+      appointmentSource: body.appointmentSource,
+      appointmentRef: body.appointmentRef,
+      ticketNumber: body.ticketNumber,
+      date: body.date,
+      initTime: body.initTime,
+      endTime: body.endTime,
+      userName: body.userName,
+      description: body.description,
+      message: body.message,
+    });
+  }
+
+  @Patch('questions/:id/answer')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  @AuditMeta({
+    entity: 'RendimentoAppointmentQuestion',
+    action: 'ANSWER',
+    entityIdParam: 'id',
+  })
+  answerAppointmentQuestion(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: AnswerRendimentoAppointmentQuestionDto,
+  ) {
+    return this.rendimentoCompanyService.answerQuestion({
+      actor: req.user,
+      questionId: id,
+      responseNote: body.responseNote,
+      abonar: body.abonar,
+      responseCode: body.responseCode,
+    });
+  }
 
   @Get('collaborators')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
@@ -47,6 +143,7 @@ export class RendimentoController {
 
   @Get('users/:userId/timesheet')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN', 'COLLABORATOR')
   getTimesheet(
     @Req() req: AuthenticatedRequest,
     @Param('userId', ParseUUIDPipe) userId: string,
@@ -62,6 +159,7 @@ export class RendimentoController {
 
   @Post('users/:userId/justifications')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canEdit')
+  @Roles('ADMIN', 'COLLABORATOR')
   @AuditMeta({
     entity: 'RendimentoGapJustification',
     action: 'CREATE',

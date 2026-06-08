@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { CalendarDays, Loader2, Search, Users } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Building2,
+  CalendarDays,
+  Loader2,
+  Search,
+  Users,
+} from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -17,20 +23,49 @@ import {
   isPjRole,
   roleDisplayLabel,
 } from "@/lib/app-roles";
+import { isClient } from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
+import {
+  CompanyPendingQuestionsDialog,
+  PendingQuestionsBadge,
+} from "@/components/rendimento/company-pending-questions-dialog";
 import {
   rendimentoService,
   type RendimentoCollaborator,
+  type RendimentoCompany,
 } from "@/lib/services/rendimento.service";
+
+type AdminViewMode = "people" | "company";
 
 export default function RendimentoPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const authUser = getStoredUser();
+  const isAdmin = authUser?.role === "ADMIN";
+  const isClientUser = isClient();
+
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [collaborators, setCollaborators] = useState<RendimentoCollaborator[]>(
     [],
   );
+  const [companies, setCompanies] = useState<RendimentoCompany[]>([]);
+  const [viewMode, setViewMode] = useState<AdminViewMode>("people");
+  const [questionsCompany, setQuestionsCompany] =
+    useState<RendimentoCompany | null>(null);
+  const [questionsOpen, setQuestionsOpen] = useState(false);
+
+  const reloadCompanies = useCallback(async () => {
+    const data = await rendimentoService.listCompanies();
+    setCompanies(data);
+  }, []);
+
+  useEffect(() => {
+    const mode = searchParams.get("view");
+    if (mode === "company" || mode === "people") {
+      setViewMode(mode);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     void (async () => {
@@ -47,22 +82,40 @@ export default function RendimentoPage() {
           router.replace(`/rendimento/${authUser.id}`);
           return;
         }
+        if (isClientUser && authUser?.companyId) {
+          router.replace(`/rendimento/empresa/${authUser.companyId}`);
+          return;
+        }
         setLoading(true);
-        const data = await rendimentoService.listCollaborators();
-        setCollaborators(data);
+        if (isAdmin && viewMode === "company") {
+          await reloadCompanies();
+        } else if (isAdmin) {
+          const data = await rendimentoService.listCollaborators();
+          setCollaborators(data);
+        }
       } catch (err) {
         notifyError(
           err instanceof Error
             ? err.message
-            : "Não foi possível carregar os colaboradores.",
+            : "Não foi possível carregar os dados.",
         );
       } finally {
         setLoading(false);
       }
     })();
-  }, [authUser?.id, authUser?.role, router]);
+  }, [authUser?.id, authUser?.role, authUser?.companyId, isAdmin, isClientUser, reloadCompanies, router, viewMode]);
 
-  const filtered = useMemo(() => {
+  const openCompanyQuestions = (company: RendimentoCompany) => {
+    setQuestionsCompany(company);
+    setQuestionsOpen(true);
+  };
+
+  const setMode = (mode: AdminViewMode) => {
+    setViewMode(mode);
+    router.replace(mode === "company" ? "/rendimento?view=company" : "/rendimento");
+  };
+
+  const filteredCollaborators = useMemo(() => {
     const term = search.trim().toLowerCase();
     if (!term) return collaborators;
     return collaborators.filter((item) => {
@@ -78,32 +131,79 @@ export default function RendimentoPage() {
     });
   }, [collaborators, search]);
 
+  const filteredCompanies = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return companies;
+    return companies.filter((item) => {
+      const haystack = [item.name, item.tifluxClientName ?? ""]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [companies, search]);
+
+  const showPeople = isAdmin && viewMode === "people";
+  const showCompany = isAdmin && viewMode === "company";
+
   return (
     <ProtectedPage>
       <PermissionGate module="RENDIMENTO">
         <AppShell>
           <div className="font-sans w-full space-y-8">
-            <div className="space-y-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Users size={24} />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  {showCompany ? <Building2 size={24} /> : <Users size={24} />}
+                </div>
+                <h1 className="text-3xl font-bold text-foreground">
+                  Apontamentos
+                </h1>
+                <p className="max-w-2xl text-muted-foreground">
+                  {showCompany
+                    ? "Visão empresarial — o que o cliente vê. Acompanhe apontamentos por empresa e responda questionamentos."
+                    : "Acompanhe os apontamentos de horas dos colaboradores no TiFlux. A coluna «Horas no mês» usa total sem sobreposição no mesmo dia; na agenda, cada apontamento continua listado normalmente."}
+                </p>
               </div>
-              <h1 className="text-3xl font-bold text-foreground">Rendimento</h1>
-              <p className="text-muted-foreground">
-                Acompanhe os apontamentos de horas dos colaboradores no TiFlux.
-                A coluna «Horas no mês» usa total sem sobreposição no mesmo dia; na
-                agenda, cada apontamento continua listado normalmente.
-              </p>
+
+              {isAdmin && (
+                <div className="flex rounded-xl border border-border p-1">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={viewMode === "people" ? "default" : "ghost"}
+                    onClick={() => setMode("people")}
+                    title="Visão colaboradores"
+                  >
+                    <Users className="mr-2 size-4" />
+                    Colaboradores
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={viewMode === "company" ? "default" : "ghost"}
+                    onClick={() => setMode("company")}
+                    title="Visão empresarial"
+                  >
+                    <Building2 className="mr-2 size-4" />
+                    Empresas
+                  </Button>
+                </div>
+              )}
             </div>
 
             <Card>
               <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="text-lg">Colaboradores</CardTitle>
+                <CardTitle className="text-lg">
+                  {showCompany ? "Empresas" : "Colaboradores"}
+                </CardTitle>
                 <div className="relative w-full sm:max-w-xs">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Buscar nome ou e-mail..."
+                    placeholder={
+                      showCompany ? "Buscar empresa..." : "Buscar nome ou e-mail..."
+                    }
                     className="h-10 pl-9"
                   />
                 </div>
@@ -112,6 +212,72 @@ export default function RendimentoPage() {
                 {loading ? (
                   <div className="flex min-h-[200px] items-center justify-center">
                     <Loader2 className="size-8 animate-spin text-primary" />
+                  </div>
+                ) : showCompany ? (
+                  <div className="overflow-x-auto rounded-xl border border-border">
+                    <table className="w-full min-w-[880px] text-left font-sans text-sm">
+                      <thead className="bg-muted/40 text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold">Empresa</th>
+                          <th className="px-4 py-3 font-semibold">Cliente TiFlux</th>
+                          <th className="px-4 py-3 font-semibold">Horas no mês</th>
+                          <th className="px-4 py-3 font-semibold">Questionamentos</th>
+                          <th className="px-4 py-3 font-semibold text-right">
+                            Agenda
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCompanies.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={5}
+                              className="px-4 py-8 text-center text-muted-foreground"
+                            >
+                              Nenhuma empresa com vínculo TiFlux encontrada.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredCompanies.map((item) => (
+                            <tr
+                              key={item.id}
+                              className="border-t border-border hover:bg-muted/20"
+                            >
+                              <td className="px-4 py-3 font-medium text-foreground">
+                                {item.name}
+                              </td>
+                              <td className="px-4 py-3 text-muted-foreground">
+                                {item.tifluxClientName ??
+                                  (item.tifluxClientId
+                                    ? `ID ${item.tifluxClientId}`
+                                    : "Sem vínculo")}
+                              </td>
+                              <td className="px-4 py-3 font-bold text-primary">
+                                {item.monthTotalHoursFormatted ?? "00:00"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <PendingQuestionsBadge
+                                  count={item.pendingQuestionsCount ?? 0}
+                                  onClick={
+                                    item.pendingQuestionsCount > 0
+                                      ? () => openCompanyQuestions(item)
+                                      : undefined
+                                  }
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button asChild size="sm" variant="outline">
+                                  <Link href={`/rendimento/empresa/${item.id}`}>
+                                    <CalendarDays className="mr-2 size-4" />
+                                    Ver agenda
+                                  </Link>
+                                </Button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-border">
@@ -129,7 +295,7 @@ export default function RendimentoPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {filtered.length === 0 ? (
+                        {filteredCollaborators.length === 0 ? (
                           <tr>
                             <td
                               colSpan={6}
@@ -139,7 +305,7 @@ export default function RendimentoPage() {
                             </td>
                           </tr>
                         ) : (
-                          filtered.map((item) => (
+                          filteredCollaborators.map((item) => (
                             <tr
                               key={item.id}
                               className="border-t border-border hover:bg-muted/20"
@@ -150,7 +316,9 @@ export default function RendimentoPage() {
                               <td className="px-4 py-3 text-muted-foreground">
                                 {item.email}
                               </td>
-                              <td className="px-4 py-3">{roleDisplayLabel(item.role)}</td>
+                              <td className="px-4 py-3">
+                                {roleDisplayLabel(item.role)}
+                              </td>
                               <td className="px-4 py-3 font-bold text-primary">
                                 {item.monthTotalHoursFormatted}
                               </td>
@@ -177,6 +345,13 @@ export default function RendimentoPage() {
               </CardContent>
             </Card>
           </div>
+
+          <CompanyPendingQuestionsDialog
+            company={questionsCompany}
+            open={questionsOpen}
+            onOpenChange={setQuestionsOpen}
+            onAnswered={() => void reloadCompanies()}
+          />
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

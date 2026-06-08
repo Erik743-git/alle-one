@@ -108,7 +108,155 @@ export type RendimentoTimesheet = {
   days: RendimentoDaySummary[];
 };
 
+export type RendimentoCompany = {
+  id: string;
+  name: string;
+  tifluxClientId: number | null;
+  tifluxClientName: string | null;
+  monthTotalMinutes: number;
+  monthTotalHoursFormatted: string;
+  pendingQuestionsCount: number;
+};
+
+export type RendimentoAppointmentQuestion = {
+  id: string;
+  status: "PENDING" | "ANSWERED";
+  message: string;
+  adminResponse: string | null;
+  adminResponseCode: string | null;
+  abonado: boolean;
+  createdAt: string;
+  respondedAt: string | null;
+};
+
+export type CompanyQuestionItem = {
+  id: string;
+  appointmentSource: "tiflux" | "portal";
+  appointmentRef: string;
+  ticketNumber: number;
+  appointmentDate: string;
+  initTime: string | null;
+  endTime: string | null;
+  userName: string | null;
+  description: string | null;
+  message: string;
+  questionedByName: string;
+  createdAt: string;
+  status: "PENDING" | "ANSWERED";
+  adminResponse: string | null;
+  abonado: boolean;
+  respondedAt: string | null;
+};
+
+export type RendimentoCompanyAppointment = {
+  source: "tiflux" | "portal";
+  ref: string;
+  ticketNumber: number;
+  date: string;
+  initTime: string | null;
+  endTime: string | null;
+  minutes: number;
+  hoursFormatted: string;
+  userName: string | null;
+  description: string | null;
+  descriptionFull?: string | null;
+  descriptionTruncated?: boolean;
+  serviceName: string | null;
+  question: RendimentoAppointmentQuestion | null;
+};
+
+export type RendimentoCompanyDay = {
+  date: string;
+  totalMinutes: number;
+  totalHoursFormatted: string;
+  appointmentCount: number;
+  pendingQuestions: number;
+  entries: RendimentoCompanyAppointment[];
+};
+
+export type RendimentoCompanyAgenda = {
+  company: RendimentoCompany;
+  date: string;
+  view: "month" | "week" | "day";
+  rangeStart: string;
+  rangeEnd: string;
+  totalMinutes: number;
+  totalHoursFormatted: string;
+  totalAppointments: number;
+  totalPendingQuestions: number;
+  days: RendimentoCompanyDay[];
+};
+
 export const rendimentoService = {
+  listCompanies() {
+    return apiRequest<RendimentoCompany[]>("/rendimento/companies");
+  },
+
+  listCompanyQuestions(params: {
+    companyId: string;
+    status?: "PENDING" | "ANSWERED";
+  }) {
+    const search = new URLSearchParams();
+    if (params.status) search.set("status", params.status);
+    const qs = search.toString();
+    return apiRequest<CompanyQuestionItem[]>(
+      `/rendimento/companies/${params.companyId}/questions${qs ? `?${qs}` : ""}`,
+    );
+  },
+
+  getCompanyAgenda(params: {
+    companyId: string;
+    view: "month" | "week" | "day";
+    date?: string;
+  }) {
+    const search = new URLSearchParams();
+    search.set("view", params.view);
+    if (params.date) {
+      search.set("date", params.date);
+    }
+    return apiRequest<RendimentoCompanyAgenda>(
+      `/rendimento/companies/${params.companyId}/agenda?${search.toString()}`,
+    );
+  },
+
+  createAppointmentQuestion(params: {
+    companyId: string;
+    appointmentSource: "tiflux" | "portal";
+    appointmentRef: string;
+    ticketNumber: number;
+    date: string;
+    initTime?: string;
+    endTime?: string;
+    userName?: string;
+    description?: string;
+    message: string;
+  }) {
+    const { companyId, ...body } = params;
+    return apiRequest<{ ok: boolean; question: RendimentoAppointmentQuestion }>(
+      `/rendimento/companies/${companyId}/questions`,
+      { method: "POST", body },
+    );
+  },
+
+  answerAppointmentQuestion(params: {
+    id: string;
+    responseNote: string;
+    abonar?: boolean;
+    responseCode?: string;
+  }) {
+    return apiRequest<{ ok: boolean; question: RendimentoAppointmentQuestion }>(
+      `/rendimento/questions/${params.id}/answer`,
+      {
+        method: "PATCH",
+        body: {
+          responseNote: params.responseNote,
+          abonar: params.abonar,
+          responseCode: params.responseCode,
+        },
+      },
+    );
+  },
+
   listCollaborators() {
     return apiRequest<RendimentoCollaborator[]>("/rendimento/collaborators");
   },

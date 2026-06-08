@@ -71,6 +71,14 @@ export class ModulePermissionGuard implements CanActivate {
     }
 
     if (
+      meta.module === ('RENDIMENTO' as PermissionModule) &&
+      meta.flag === 'canView' &&
+      user.role === 'CLIENT'
+    ) {
+      return true;
+    }
+
+    if (
       meta.module === ('INVENTARIO' as PermissionModule) &&
       ['canCreate', 'canEdit', 'canDelete'].includes(meta.flag) &&
       user.role === 'COLLABORATOR'
@@ -82,7 +90,7 @@ export class ModulePermissionGuard implements CanActivate {
       return meta.flag !== 'canDelete';
     }
 
-    // Justificativa voluntária no rendimento: colaborador só precisa visualizar o módulo.
+    // Justificativas na própria agenda (lacuna ou voluntária): colaborador só precisa canView.
     if (
       meta.module === ('RENDIMENTO' as PermissionModule) &&
       meta.flag === 'canEdit' &&
@@ -91,7 +99,8 @@ export class ModulePermissionGuard implements CanActivate {
       const request = context.switchToHttp().getRequest<{
         body?: { kind?: string };
       }>();
-      if (request.body?.kind === 'VOLUNTARY') {
+      const kind = request.body?.kind;
+      if (kind === 'VOLUNTARY' || kind === 'ALERT') {
         const entry = user.permissions.find(
           (p) => p.module === ('RENDIMENTO' as PermissionModule),
         );

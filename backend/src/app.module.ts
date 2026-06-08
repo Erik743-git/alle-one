@@ -24,6 +24,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { RendimentoModule } from './modules/rendimento/rendimento.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { InventarioModule } from './modules/inventario/inventario.module';
     RendimentoModule,
     MailboxModule,
     InventarioModule,
+    TicketsModule,
   ],
   controllers: [AppController],
   providers: [

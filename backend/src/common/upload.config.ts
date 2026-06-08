@@ -3,8 +3,15 @@ import { BadRequestException } from '@nestjs/common';
 /** Limite padrão de upload multipart (10 MB). */
 export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
+/** Anexos de apontamento no portal (até 25 MB, como TiFlux). */
+export const TICKET_APPOINTMENT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+
 export const multerMemoryLimits = {
   limits: { fileSize: UPLOAD_MAX_BYTES },
+} as const;
+
+export const ticketAppointmentUploadLimits = {
+  limits: { fileSize: TICKET_APPOINTMENT_UPLOAD_MAX_BYTES },
 } as const;
 
 const ALLOWED_MIME_PREFIXES = [

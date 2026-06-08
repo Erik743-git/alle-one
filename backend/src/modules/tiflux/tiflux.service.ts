@@ -491,7 +491,7 @@ export class TifluxService {
   async request<T>(
     path: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: Record<string, unknown>,
+    body?: Record<string, unknown> | FormData,
   ): Promise<T> {
     if (!this.baseUrl) {
       throw new InternalServerErrorException(
@@ -500,7 +500,14 @@ export class TifluxService {
     }
 
     const url = this.buildUrl(path);
-    const headers = this.getHeaders({ method, hasBody: Boolean(body) });
+    const isFormData =
+      typeof FormData !== 'undefined' && body instanceof FormData;
+    const headers = isFormData
+      ? {
+          Accept: 'application/json',
+          Authorization: `Bearer ${this.token}`,
+        }
+      : this.getHeaders({ method, hasBody: Boolean(body) });
 
     return this.runExclusive(async () => {
       for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
@@ -515,7 +522,11 @@ export class TifluxService {
           const response = await fetch(url, {
             method,
             headers,
-            body: body ? JSON.stringify(body) : undefined,
+            body: isFormData
+              ? body
+              : body
+                ? JSON.stringify(body)
+                : undefined,
             signal: controller.signal,
           });
 
@@ -729,9 +740,21 @@ export class TifluxService {
   async requestResource(
     path: string,
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-    body?: Record<string, unknown>,
+    body?: Record<string, unknown> | FormData,
   ) {
     return this.request<unknown>(path, method, body);
+  }
+
+  async postMultipart(
+    path: string,
+    fields: Record<string, string | number | undefined | null>,
+  ): Promise<unknown> {
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined || value === null || value === '') continue;
+      form.append(key, String(value));
+    }
+    return this.request<unknown>(path, 'POST', form);
   }
 
   getLastTotalItemsHeader() {
@@ -1030,5 +1053,128 @@ export class TifluxService {
     }
 
     return results;
+  }
+
+  async getDesks(filters?: {
+    active?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const searchParams = new URLSearchParams();
+    if (filters?.active !== undefined) {
+      searchParams.set('active', String(filters.active));
+    }
+    if (filters?.limit !== undefined) {
+      searchParams.set('limit', String(filters.limit));
+    }
+    if (filters?.offset !== undefined) {
+      searchParams.set('offset', String(filters.offset));
+    }
+    const query = searchParams.toString();
+    const path = query ? `/desks?${query}` : '/desks';
+    const data = await this.request<Array<Record<string, unknown>>>(path, 'GET');
+    return Array.isArray(data) ? data : [];
+  }
+
+  async getDesksAll(filters?: {
+    active?: boolean;
+    limitPerPage?: number;
+    maxPages?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const limit = Math.max(1, Math.min(filters?.limitPerPage ?? 200, 200));
+    const maxPages = Math.max(1, filters?.maxPages ?? 20);
+    const all: Array<Record<string, unknown>> = [];
+    let page = 1;
+
+    while (page <= maxPages) {
+      const pageData = await this.getDesks({
+        active: filters?.active,
+        limit,
+        offset: page,
+      });
+      if (!pageData.length) break;
+      all.push(...pageData);
+      if (pageData.length < limit) break;
+      page += 1;
+    }
+
+    return all;
+  }
+
+  async getDesk(deskId: number): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(`/desks/${deskId}`, 'GET');
+  }
+
+  async getDeskPriorities(
+    deskId: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    const data = await this.request<Array<Record<string, unknown>>>(
+      `/desks/${deskId}/priorities`,
+      'GET',
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
+  async getDeskServicesCatalogItems(
+    deskId: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    const data = await this.request<Array<Record<string, unknown>>>(
+      `/desks/${deskId}/services-catalogs-items`,
+      'GET',
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
+  async createTicket(fields: Record<string, string | number | undefined | null>) {
+    return this.postMultipart('/tickets', fields);
+  }
+
+  async createTicketAppointment(
+    ticketNumber: number,
+    body: {
+      date: string;
+      init_time: string;
+      end_time: string;
+      description: string;
+    },
+  ): Promise<{ id: number }> {
+    return this.request<{ id: number }>(
+      `/tickets/${ticketNumber}/appointments`,
+      'POST',
+      body,
+    );
+  }
+
+  async getContracts(filters?: {
+    client_ids?: number[];
+    active?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const searchParams = new URLSearchParams();
+    if (filters?.client_ids?.length) {
+      searchParams.set('client_ids', filters.client_ids.join(','));
+    }
+    if (filters?.active !== undefined) {
+      searchParams.set('active', String(filters.active));
+    }
+    if (filters?.limit !== undefined) {
+      searchParams.set('limit', String(filters.limit));
+    }
+    if (filters?.offset !== undefined) {
+      searchParams.set('offset', String(filters.offset));
+    }
+    const query = searchParams.toString();
+    const path = query ? `/contracts?${query}` : '/contracts';
+    const data = await this.request<Array<Record<string, unknown>>>(path, 'GET');
+    return Array.isArray(data) ? data : [];
+  }
+
+  async getDeskStages(deskId: number): Promise<Array<Record<string, unknown>>> {
+    const data = await this.request<Array<Record<string, unknown>>>(
+      `/desks/${deskId}/stages`,
+      'GET',
+    );
+    return Array.isArray(data) ? data : [];
   }
 }

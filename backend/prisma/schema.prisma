@@ -110,6 +110,11 @@ model User {
   serviceDeskLinks    UserServiceDesk[]
   mailboxNotifications MailboxNotification[]
   inventoryAssetsCreated InventoryAsset[] @relation("InventoryAssetCreator")
+  tifluxOutboxEntries    PortalTifluxOutbox[]
+  portalTicketAppointments PortalTicketAppointment[]
+  portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
+  appointmentQuestionsAsked RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAskedBy")
+  appointmentQuestionsAnswered RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAnsweredBy")
 
   @@index([companyId])
   @@map("users")
@@ -163,6 +168,7 @@ model Company {
   tifluxAccounts       IntegrationTiFluxAccount[]
   usageAlertRules      UsageAlertRule[]
   inventoryAssets      InventoryAsset[]
+  appointmentQuestions RendimentoAppointmentQuestion[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -303,6 +309,7 @@ model File {
   reports            Report[]
   gmudAttachments    GmudAttachment[]
   inventoryAssets    InventoryAsset[]
+  portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
 
   @@index([uploadedBy])
   @@map("files")
@@ -555,4 +562,131 @@ model ExternalApiCache {
   @@index([provider])
   @@index([expiresAt])
   @@map("external_api_cache")
+}
+
+enum PortalTifluxOutboxKind {
+  CREATE_TICKET
+  CREATE_APPOINTMENT
+  UPDATE_TICKET
+  UPDATE_APPOINTMENT
+}
+
+enum PortalTifluxOutboxStatus {
+  PENDING
+  SYNCED
+  FAILED
+}
+
+/// Fila de escrita portal → TiFlux (opção A). Leitura canônica: schema tiflux.*
+model PortalTifluxOutbox {
+  id                String                   @id @default(uuid())
+  kind              PortalTifluxOutboxKind
+  status            PortalTifluxOutboxStatus @default(PENDING)
+  ticketNumber      Int?                     @map("ticket_number")
+  tifluxExternalId  Int?                     @map("tiflux_external_id")
+  payload           Json
+  errorMessage      String?                  @map("error_message")
+  createdBy         String                   @map("created_by")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  syncedAt          DateTime?                @map("synced_at")
+
+  creator           User                     @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  appointmentAttachments PortalTicketAppointmentAttachment[]
+  portalAppointments     PortalTicketAppointment[]
+
+  @@index([status, createdAt])
+  @@index([ticketNumber])
+  @@map("portal_tiflux_outbox")
+}
+
+enum PortalTicketAppointmentSyncStatus {
+  PENDING_TIFLUX
+  SYNCED
+  PORTAL_ONLY
+}
+
+/// Apontamento criado pelo portal (campos completos). TiFlux recebe só data/hora/descrição quando a API permitir.
+model PortalTicketAppointment {
+  id                          String                            @id @default(uuid())
+  ticketNumber                Int                               @map("ticket_number")
+  appointmentDate             DateTime                          @map("appointment_date") @db.Date
+  initTime                    String                            @map("init_time") @db.VarChar(5)
+  endTime                     String                            @map("end_time") @db.VarChar(5)
+  description                 String
+  serviceName                 String                            @map("service_name") @db.VarChar(120)
+  attendance                  String                            @db.VarChar(20)
+  tifluxAppointmentExternalId Int?                              @map("tiflux_appointment_external_id")
+  syncStatus                  PortalTicketAppointmentSyncStatus @default(PENDING_TIFLUX) @map("sync_status")
+  outboxId                    String?                           @map("outbox_id")
+  createdBy                   String                            @map("created_by")
+  createdAt                   DateTime                          @default(now()) @map("created_at")
+  updatedAt                   DateTime                          @updatedAt @map("updated_at")
+
+  creator     User                                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  outbox      PortalTifluxOutbox?                 @relation(fields: [outboxId], references: [id], onDelete: SetNull)
+  attachments PortalTicketAppointmentAttachment[]
+
+  @@index([ticketNumber])
+  @@index([tifluxAppointmentExternalId])
+  @@map("portal_ticket_appointments")
+}
+
+/// Anexos do portal em apontamentos (não vão para o TiFlux).
+model PortalTicketAppointmentAttachment {
+  id                        String   @id @default(uuid())
+  ticketNumber              Int      @map("ticket_number")
+  portalAppointmentId       String?  @map("portal_appointment_id")
+  outboxId                  String?  @map("outbox_id")
+  tifluxAppointmentExternalId Int?   @map("tiflux_appointment_external_id")
+  fileId                    String   @map("file_id")
+  createdBy                 String   @map("created_by")
+  createdAt                 DateTime @default(now()) @map("created_at")
+
+  file              File                     @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  creator           User                     @relation("PortalTicketAppointmentAttachmentCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  outbox            PortalTifluxOutbox?      @relation(fields: [outboxId], references: [id], onDelete: SetNull)
+  portalAppointment PortalTicketAppointment? @relation(fields: [portalAppointmentId], references: [id], onDelete: SetNull)
+
+  @@index([ticketNumber])
+  @@index([outboxId])
+  @@index([portalAppointmentId])
+  @@map("portal_ticket_appointment_attachments")
+}
+
+enum RendimentoAppointmentQuestionStatus {
+  PENDING
+  ANSWERED
+}
+
+/// Questionamento de apontamento pela visão empresarial (cliente → admins).
+model RendimentoAppointmentQuestion {
+  id                String                              @id @default(uuid())
+  companyId         String                              @map("company_id")
+  appointmentSource String                              @map("appointment_source") @db.VarChar(16)
+  appointmentRef    String                              @map("appointment_ref") @db.VarChar(64)
+  ticketNumber      Int                                 @map("ticket_number")
+  appointmentDate   DateTime                            @map("appointment_date") @db.Date
+  initTime          String?                             @map("init_time") @db.VarChar(5)
+  endTime           String?                             @map("end_time") @db.VarChar(5)
+  userName          String?                             @map("user_name") @db.VarChar(255)
+  description       String?
+  message           String
+  status            RendimentoAppointmentQuestionStatus @default(PENDING)
+  adminResponse     String?                             @map("admin_response")
+  adminResponseCode String?                             @map("admin_response_code") @db.VarChar(64)
+  abonado           Boolean                             @default(false)
+  questionedBy      String                              @map("questioned_by")
+  respondedBy       String?                             @map("responded_by")
+  respondedAt       DateTime?                           @map("responded_at")
+  createdAt         DateTime                            @default(now()) @map("created_at")
+  updatedAt         DateTime                            @updatedAt @map("updated_at")
+
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  questioner  User    @relation("RendimentoQuestionAskedBy", fields: [questionedBy], references: [id], onDelete: Restrict)
+  responder   User?   @relation("RendimentoQuestionAnsweredBy", fields: [respondedBy], references: [id], onDelete: SetNull)
+
+  @@index([companyId, appointmentDate])
+  @@index([status])
+  @@map("rendimento_appointment_questions")
 }

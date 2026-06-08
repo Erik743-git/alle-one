@@ -67,6 +67,10 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
     return true;
   }
 
+  if (flag === "canView" && module === "RENDIMENTO" && isClient()) {
+    return true;
+  }
+
   const user = getStoredUser();
   if (flag === "canView" && user && isCollaboratorRole(user.role)) {
     const lacksExplicit =
@@ -118,7 +122,13 @@ export function canAccessDashboard() {
 
 export function canAccessRendimento() {
   if (isPj()) return false;
+  if (isClient()) return true;
   return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
+}
+
+/** V2 tickets — somente administradores por enquanto. */
+export function canAccessTickets() {
+  return isAdmin() && canViewModule("TICKETS");
 }
 
 /** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */
@@ -126,6 +136,11 @@ export function canCreateVoluntaryRendimentoJustification() {
   if (isAdmin()) return true;
   if (!isCollaborator()) return false;
   return canViewModule("RENDIMENTO");
+}
+
+/** Colaborador pode justificar lacuna de tempo na própria agenda (canView basta). */
+export function canCreateAlertRendimentoJustification() {
+  return canCreateVoluntaryRendimentoJustification();
 }
 
 export function canAccessCorreio() {

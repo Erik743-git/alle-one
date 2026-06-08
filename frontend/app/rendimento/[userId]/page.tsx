@@ -22,7 +22,10 @@ import { DatePickerField } from "@/components/ui/date-picker-field";
 import { TimePickerField } from "@/components/ui/datetime-picker-field";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { isPjRole } from "@/lib/app-roles";
-import { canCreateVoluntaryRendimentoJustification } from "@/lib/access-control";
+import {
+  canCreateAlertRendimentoJustification,
+  canCreateVoluntaryRendimentoJustification,
+} from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   RENDIMENTO_LUNCH_MAX_MINUTES,
@@ -77,6 +80,7 @@ export default function RendimentoAgendaPage() {
   const authUser = getStoredUser();
   const canApprove = authUser?.role === "ADMIN";
   const canVoluntaryJustification = canCreateVoluntaryRendimentoJustification();
+  const canAlertJustification = canCreateAlertRendimentoJustification();
 
   const justGapMinutes = useMemo(
     () => minutesBetweenTimes(justFrom, justTo),
@@ -253,7 +257,7 @@ export default function RendimentoAgendaPage() {
                   </Link>
                 </Button>
                 <h1 className="text-3xl font-bold text-foreground">
-                  Agenda de horas
+                  Apontamentos
                 </h1>
                 <p className="text-muted-foreground">
                   {timesheet?.userName ?? "Colaborador"} · apontamentos TiFlux
@@ -268,7 +272,9 @@ export default function RendimentoAgendaPage() {
               loading={loading}
               refreshing={refreshing}
               canApproveJustification={canApprove}
-              onOpenAlertJustification={openAlertJustification}
+              onOpenAlertJustification={
+                canAlertJustification ? openAlertJustification : undefined
+              }
               onOpenVoluntaryJustification={
                 canVoluntaryJustification ? openVoluntaryJustification : undefined
               }

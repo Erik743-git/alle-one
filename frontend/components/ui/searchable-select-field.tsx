@@ -23,6 +23,8 @@ type SearchableSelectFieldProps = {
   emptyLabel?: string;
   className?: string;
   searchPlaceholder?: string;
+  /** Use dentro de Sheet/Dialog para evitar conflito de foco. */
+  modal?: boolean;
 };
 
 export function SearchableSelectField({
@@ -35,6 +37,7 @@ export function SearchableSelectField({
   emptyLabel = "",
   className,
   searchPlaceholder = "Pesquisar...",
+  modal = false,
 }: SearchableSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -74,7 +77,7 @@ export function SearchableSelectField({
   );
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>
         <Button
           type="button"
