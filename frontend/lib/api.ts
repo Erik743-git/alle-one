@@ -11,6 +11,37 @@ type RequestOptions = {
   auth?: boolean;
 };
 
+function resolveApiErrorMessage(
+  rawText: string,
+  status: number,
+  apiMessage: string | null,
+): string {
+  if (apiMessage) return apiMessage;
+
+  const trimmed = rawText.trim();
+  if (!trimmed) {
+    return `Erro ao processar a requisição (${status}).`;
+  }
+
+  const looksLikeHtml =
+    trimmed.startsWith("<!") ||
+    trimmed.startsWith("<html") ||
+    trimmed.includes("<!DOCTYPE");
+
+  if (looksLikeHtml) {
+    if (status === 404) {
+      return "Serviço não encontrado. A configuração do servidor pode estar desatualizada.";
+    }
+    return `Erro no servidor (${status}). Tente novamente em instantes.`;
+  }
+
+  if (trimmed.length > 280) {
+    return `Erro ao processar a requisição (${status}).`;
+  }
+
+  return trimmed;
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
@@ -76,12 +107,9 @@ export async function apiRequest<T>(
           ? data.message.join(", ")
           : data.message
         : null;
-    const message =
-      apiMessage ||
-      rawText ||
-      `Erro ao processar a requisição (${response.status}).`;
-
-    throw new Error(message);
+    throw new Error(
+      resolveApiErrorMessage(rawText, response.status, apiMessage),
+    );
   }
 
   if (!rawText) {
