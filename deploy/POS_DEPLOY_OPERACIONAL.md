@@ -133,12 +133,42 @@ pm2 restart alleone-web
 
 ---
 
+## Release v0.4.0 (V2 Tickets + Apontamentos)
+
+**Obrigatório:** `migrate deploy` (5 migrations novas) + **rebuild do frontend** (novas rotas `/tickets`, `/rendimento/empresa/...`).
+
+Migrations:
+
+- `20260808120000_portal_tiflux_outbox`
+- `20260809120000_portal_appointment_attachments`
+- `20260810120000_portal_ticket_appointments`
+- `20260811120000_rendimento_appointment_questions`
+- `20260812120000_rendimento_question_abonado`
+
+No `backend/.env` (se ainda não tiver):
+
+```env
+PORTAL_PUBLIC_URL=https://alleone.alletecnologia.com
+```
+
+SMTP preenchido para e-mails de questionamento de apontamentos (cliente → gestores).
+
+Deploy rápido (usuário `alleone`):
+
+```bash
+bash /home/alleone/producao/deploy/scripts/pos-deploy-alleone.sh
+```
+
+---
+
 ## Parte D — Teste no navegador (admin)
 
 - [ ] Login em https://alleone.alletecnologia.com
 - [ ] **Admin → Auditoria** carrega lista (não 404)
 - [ ] **Inventário** — tipos de ativo / cadastro
-- [ ] **Rendimento** — sem erro de tabela inexistente
+- [ ] **Apontamentos** — agenda colaborador; admin toggle Empresas
+- [ ] **Tickets** — lista e detalhe (admin)
+- [ ] Cliente: **Apontamentos** → agenda da própria empresa
 
 ---
 
