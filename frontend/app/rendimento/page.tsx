@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -37,7 +37,7 @@ import {
 
 type AdminViewMode = "people" | "company";
 
-export default function RendimentoPage() {
+function RendimentoPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const authUser = getStoredUser();
@@ -355,5 +355,19 @@ export default function RendimentoPage() {
         </AppShell>
       </PermissionGate>
     </ProtectedPage>
+  );
+}
+
+export default function RendimentoPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="size-8 animate-spin text-primary" />
+        </div>
+      }
+    >
+      <RendimentoPageContent />
+    </Suspense>
   );
 }

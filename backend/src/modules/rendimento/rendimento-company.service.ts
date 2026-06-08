@@ -10,11 +10,14 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { summarizeCompanyAppointmentDescription } from './company-description.util';
 import { RendimentoMailService } from './rendimento-mail.service';
 
-export type CompanyListItemDto = {
+export type CompanySummaryDto = {
   id: string;
   name: string;
   tifluxClientId: number | null;
   tifluxClientName: string | null;
+};
+
+export type CompanyListItemDto = CompanySummaryDto & {
   monthTotalMinutes: number;
   monthTotalHoursFormatted: string;
   pendingQuestionsCount: number;
@@ -75,7 +78,7 @@ export type CompanyAgendaDayDto = {
 };
 
 export type CompanyAgendaDto = {
-  company: CompanyListItemDto;
+  company: CompanySummaryDto;
   date: string;
   view: 'month' | 'week' | 'day';
   rangeStart: string;
