@@ -1,22 +1,35 @@
 # Alle One — HTTPS (porta 443)
-# Copie para /etc/nginx/sites-available/alleone-ssl e ajuste os caminhos do certificado.
-# Ou use: sudo certbot --nginx -d alleone.alletecnologia.com
+# Copie para /etc/nginx/sites-available/alleone e ajuste os caminhos do certificado.
 #
-# Depois de ativar 443, use URLs https:// sem porta e:
+# Depois de ativar 443:
 #   CORS_ORIGINS / NEXT_PUBLIC_API_URL / FRONTEND_URL → https://alleone.alletecnologia.com
-#   AUTH_COOKIE_SECURE=true (ou remova AUTH_COOKIE_SECURE=false)
+#   AUTH_COOKIE_SECURE=true
 #   rebuild frontend + pm2 restart alleone-api
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name alleone.alletecnologia.com;
 
     ssl_certificate     /etc/letsencrypt/live/alleone.alletecnologia.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/alleone.alletecnologia.com/privkey.pem;
 
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
     client_max_body_size 25m;
 
-    location ~ ^/(auth|permissions|users|companies|contracts|financial|gmuds|reports|usage-alerts|tiflux|zabbix)(/|$) {
+    location ~ ^/(auth|permissions|users|companies|contracts|financial|gmuds|reports|usage-alerts|tiflux|zabbix|mailbox|health)(/|$) {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ~ ^/inventario/(companies|assets|asset-types)(/|$) {
         proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -34,7 +47,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location ~ ^/admin/(overview-stats|audit-logs|reprocess-rendimento-alerts)(/|$) {
+    location ~ ^/admin/(overview-stats|audit-logs|reprocess-rendimento-alerts|classifications)(/|$) {
         proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
@@ -43,8 +56,39 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    location ~ ^/rendimento/(collaborators|users|justifications)(/|$) {
+    location ~ ^/rendimento/ {
         proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ~ ^/tickets/(catalogs|attachments)(/|$) {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ~ ^/tickets/[0-9]+/(appointments|catalogs)(/|$) {
+        proxy_pass http://127.0.0.1:3002;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location ~ ^/tickets(/[0-9]+)?$ {
+        set $upstream 3002;
+        if ($http_accept ~* "text/html") {
+            set $upstream 3000;
+        }
+        proxy_pass http://127.0.0.1:$upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -62,9 +106,9 @@ server {
     }
 }
 
-# HTTP → HTTPS (opcional, após 443 ativo)
 server {
     listen 80;
+    listen [::]:80;
     server_name alleone.alletecnologia.com;
     return 301 https://$host$request_uri;
 }
