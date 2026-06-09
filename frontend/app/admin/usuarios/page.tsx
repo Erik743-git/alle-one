@@ -33,6 +33,7 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
+import { usersService } from "@/lib/services/users.service";
 
 type ApiUser = {
   id: string;
@@ -166,31 +167,14 @@ export default function AdminUsuariosPage() {
       setCarregando(true);
       setErro("");
 
-      const response = await authFetch(`${API_URL}/users`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = (await response.json()) as ApiUser[] | { message?: string };
-
-      if (!response.ok) {
-        const message =
-          !Array.isArray(data) && typeof data.message === "string"
-            ? data.message
-            : "Não foi possível carregar os usuários.";
-
-        setErro(message);
-        setUsuarios([]);
-        return;
-      }
-
+      const data = await usersService.list();
       setUsuarios(
-        Array.isArray(data) ? [...data].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")) : [],
+        [...data].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
       );
-    } catch {
-      setErro("Erro ao conectar com o backend.");
+    } catch (err) {
+      setErro(
+        err instanceof Error ? err.message : "Erro ao conectar com o backend.",
+      );
       setUsuarios([]);
     } finally {
       setCarregando(false);
@@ -238,26 +222,8 @@ export default function AdminUsuariosPage() {
       setCarregandoMesas(true);
       setErroEdicao("");
 
-      const response = await authFetch(`${API_URL}/users/service-desks`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const data = (await response.json()) as
-        | ServiceDeskOption[]
-        | { message?: string };
-
-      if (!response.ok) {
-        const message =
-          !Array.isArray(data) && typeof data.message === "string"
-            ? data.message
-            : "Não foi possível carregar as mesas de serviço.";
-        setErroEdicao(message);
-        setServiceDesks([]);
-        return;
-      }
-
-      setServiceDesks(Array.isArray(data) ? sortByName(data) : []);
+      const data = await usersService.listServiceDesks();
+      setServiceDesks(sortByName(data));
     } catch {
       setErroEdicao("Erro ao conectar com o backend.");
       setServiceDesks([]);
@@ -426,31 +392,7 @@ export default function AdminUsuariosPage() {
         payload.password = senhaProvisoriaEdicao.trim();
       }
 
-      const response = await authFetch(`${API_URL}/users/${formEdicao.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = (await response.json()) as
-        | Record<string, unknown>
-        | { message?: string };
-
-      if (!response.ok) {
-        const message =
-          typeof data === "object" &&
-          data !== null &&
-          "message" in data &&
-          typeof data.message === "string"
-            ? data.message
-            : "Não foi possível salvar as alterações.";
-
-        setErroEdicao(message);
-        return;
-      }
-
+      await usersService.update(formEdicao.id, payload);
       setModalEditarUsuario(false);
       await buscarUsuarios();
     } catch {
@@ -468,39 +410,16 @@ export default function AdminUsuariosPage() {
     try {
       setDesativandoUsuario(true);
       setErroDesativacao("");
-
-      const response = await authFetch(`${API_URL}/users/${usuarioDesativar.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          status: "INACTIVE",
-        }),
-      });
-
-      const data = (await response.json()) as
-        | Record<string, unknown>
-        | { message?: string };
-
-      if (!response.ok) {
-        const message =
-          typeof data === "object" &&
-          data !== null &&
-          "message" in data &&
-          typeof data.message === "string"
-            ? data.message
-            : "Erro ao desativar usuário.";
-
-        setErroDesativacao(message);
-        return;
-      }
-
+      await usersService.update(usuarioDesativar.id, { status: "INACTIVE" });
       setModalDesativarUsuario(false);
       setUsuarioDesativar(null);
       await buscarUsuarios();
-    } catch {
-      setErroDesativacao("Erro ao conectar com o backend.");
+    } catch (err) {
+      setErroDesativacao(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível desativar o usuário.",
+      );
     } finally {
       setDesativandoUsuario(false);
     }

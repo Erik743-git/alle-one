@@ -86,4 +86,8 @@ export const usersService = {
       method: "DELETE",
     });
   },
+
+  async listServiceDesks() {
+    return apiRequest<ServiceDesk[]>("/users/service-desks");
+  },
 };

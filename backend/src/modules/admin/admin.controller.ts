@@ -23,6 +23,7 @@ import { AdminService } from './admin.service';
 import { parseAdminAuditLogsQuery } from './admin-audit.query';
 import { ReprocessRendimentoAlertsDto } from './admin-reprocess.dto';
 import { RendimentoService } from '../rendimento/rendimento.service';
+import { TicketsOutboxService } from '../tickets/tickets-outbox.service';
 import { DeskClassificationService } from './desk-classification.service';
 import {
   CreateDeskClassificationDto,
@@ -41,6 +42,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly rendimentoService: RendimentoService,
     private readonly deskClassificationService: DeskClassificationService,
+    private readonly ticketsOutboxService: TicketsOutboxService,
   ) {}
 
   @Get('overview-stats')
@@ -53,6 +55,18 @@ export class AdminController {
   @RequirePermission(PermissionModule.ADMIN, 'canView')
   listAuditLogs(@Query() query: Record<string, unknown>) {
     return this.adminService.listAuditLogs(parseAdminAuditLogsQuery(query));
+  }
+
+  @Post('reprocess-tiflux-outbox')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'PortalTifluxOutbox',
+    action: 'REPROCESS',
+  })
+  async reprocessTifluxOutbox() {
+    const requeued = await this.ticketsOutboxService.retryFailed(50);
+    const result = await this.ticketsOutboxService.processPendingBatch(50);
+    return { requeued, ...result };
   }
 
   @Post('reprocess-rendimento-alerts')

@@ -1,51 +1,44 @@
 # Manutenção e melhorias — Alle One
 
-Guia do que foi corrigido, o que ainda depende de evolução futura e como operar o portal com segurança.
+Guia operacional após a auditoria completa do projeto (jun/2026).
 
-## Correções aplicadas (2026-06)
+## Status das melhorias
 
-### Segurança e sessão
+| Área | Status |
+|------|--------|
+| Permissões alinhadas (menu / página / API) | ✅ |
+| Segurança (deletedAt, MIME, health + DB) | ✅ |
+| API_URL centralizado (`@/lib/env`) | ✅ |
+| Nginx (inventário attachments, admin outbox) | ✅ |
+| Worker outbox TiFlux (`CREATE_APPOINTMENT`) | ✅ |
+| Relatórios TiFlux (concorrência, não N+1 serial) | ✅ |
+| Dashboard modularizado (types + date utils) | ✅ parcial — próxima fase: hours/zabbix |
+| Testes backend (guards, permissions, concurrency) | ✅ |
+| Backup Postgres + deploy com health gate | ✅ |
+| Error boundary no frontend | ✅ |
+| Admin usuários → `usersService` | ✅ |
 
-| Item | O que mudou |
-|------|-------------|
-| Usuário excluído | `buildRequestUser` rejeita usuários com `deletedAt` — JWT antigo não mantém sessão |
-| Uploads | Contratos, logos e anexos de tickets validam tipo MIME (como GMUD/Inventário) |
-| Health check | `GET /health` testa conexão com Postgres; deploy falha se API não responder |
+## Worker TiFlux (portal → API)
 
-### Permissões (menu = página = API)
+Apontamentos criados em **Tickets** gravam fila `portal_tiflux_outbox` com `CREATE_APPOINTMENT` + `PENDING`.
 
-| Item | O que mudou |
-|------|-------------|
-| Inventário | Sidebar, `PermissionGate` e API usam a mesma matriz — revogar no admin funciona de verdade |
-| Tickets | Módulo **Tickets** aparece na matriz de permissões; acesso controlado por `canView` |
-| Mensagem | Sem permissão: texto claro antes do redirect ao dashboard |
+- **Job:** `TicketsOutboxJob` — cron a cada minuto (`tickets-outbox.job.ts`)
+- **Processador:** `TicketsOutboxService.processPendingBatch()`
+- **Retry admin:** `POST /admin/reprocess-tiflux-outbox` (reenfileira `FAILED` e processa)
 
-### Frontend e rede
+Variáveis: integração TiFlux já configurada em `backend/.env` (`TIFLUX_*`).
 
-| Item | O que mudou |
-|------|-------------|
-| `API_URL` | Todos os serviços importam `@/lib/env` (porta **3002** em dev) |
-| `/auth/me` | Uma chamada por sessão + refresh ao focar a aba (sem triplicar em cada página) |
-| Inventário | Card com nome longo truncado corretamente |
-| Nginx | Rota `/inventario/attachments/*` vai para a API |
+## Estrutura do dashboard (refatoração)
 
-### Operação
+| Arquivo | Responsabilidade |
+|---------|------------------|
+| `dashboard.service.ts` | Orquestração (API pública inalterada) |
+| `dashboard.types.ts` | Tipos de resposta e filtros |
+| `dashboard-date.utils.ts` | Datas, semanas, meses, ranges |
 
-| Item | O que mudou |
-|------|-------------|
-| Backup | Script `deploy/scripts/backup-postgres.sh` |
-| Deploy | `pos-deploy-alleone.sh` interrompe se health da API falhar |
+Próxima fase (sem urgência): extrair blocos Zabbix, horas TiFlux e fonte TiFlux para serviços dedicados.
 
-## O que **não** foi reescrito (de propósito)
-
-Evitamos refatorações grandes que poderiam quebrar produção:
-
-1. **`dashboard.service.ts` (~3.400 linhas)** — funciona; quebrar em módulos é tarefa futura com testes.
-2. **`reports.service.ts` / `rendimento.service.ts`** — mesmo motivo; relatórios TiFlux em loop são lentos mas estáveis.
-3. **Worker da outbox TiFlux** — tabela `PortalTifluxOutbox` existe; sync de apontamentos portal→TiFlux depende do projeto `alleone-tiflux-sync` ou cron dedicado (ver [V2-APONTAMENTOS.md](./V2-APONTAMENTOS.md)).
-4. **Suite de testes ampla** — apenas helpers críticos já tinham specs; expansão gradual recomendada.
-
-## Convenções do projeto
+## Convenções
 
 ### URL da API (frontend)
 
@@ -53,45 +46,46 @@ Evitamos refatorações grandes que poderiam quebrar produção:
 import { API_URL } from "@/lib/env";
 ```
 
-Nunca usar `localhost:3000` como fallback da API — 3000 é o Next; a API Nest roda em **3002**.
+Porta dev da API: **3002** (3000 = Next).
 
-### Permissões no frontend
+### Permissões
 
-- **Menu:** funções `canAccess*` em `frontend/lib/access-control.ts`
-- **Página:** `<PermissionGate module="…">`
-- **Admin:** rótulos em `PORTAL_PERMISSION_MODULES` (`permission-modules.ts`)
+- Menu: `frontend/lib/access-control.ts`
+- Página: `<PermissionGate module="…">`
+- Admin: `PORTAL_PERMISSION_MODULES`
 
-As três camadas devem usar a mesma regra (`hasPermission` / matriz do backend).
+### Nginx (produção)
 
-### Nginx em produção
-
-Arquivo canônico: `deploy/nginx-alleone-https.conf`. Após alteração:
+Arquivo canônico: `deploy/nginx-alleone-https.conf`
 
 ```bash
 sudo cp /home/alleone/producao/deploy/nginx-alleone-https.conf /etc/nginx/sites-available/alleone
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-### Backup Postgres (cron sugerido)
+### Backup Postgres
 
 ```bash
-# Diário às 3h — usuário alleone
+bash deploy/scripts/backup-postgres.sh
+```
+
+Cron sugerido (usuário `alleone`, 3h):
+
+```cron
 0 3 * * * ALLEONE_ROOT=/home/alleone/producao bash /home/alleone/producao/deploy/scripts/backup-postgres.sh >> /home/alleone/logs/backup.log 2>&1
 ```
 
-## Checklist pós-deploy
+## Checklist de deploy
 
-1. `bash deploy/scripts/pos-deploy-alleone.sh` (usuário `alleone`)
+1. `bash deploy/scripts/pos-deploy-alleone.sh`
 2. Reload nginx se `deploy/nginx*.conf` mudou
-3. Conferir `https://alleone.alletecnologia.com` — login, menu conforme perfil, anexos inventário
-4. `curl -s https://alleone.alletecnologia.com/health` → `database: "up"`
+3. `curl -s https://alleone.alletecnologia.com/health` → `"database":"up"`
+4. Testar: login, permissões, anexo inventário, apontamento ticket → status sync TiFlux
 
-## Índice da documentação
+## Documentação relacionada
 
-| Documento | Conteúdo |
-|-----------|----------|
-| [README.md](./README.md) | Índice geral |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Arquitetura e módulos |
-| [SECURITY.md](./SECURITY.md) | Auth, cookies, uploads |
-| [MAINTENANCE.md](./MAINTENANCE.md) | Este arquivo |
-| [../deploy/POS_DEPLOY_OPERACIONAL.md](../deploy/POS_DEPLOY_OPERACIONAL.md) | Deploy na VM |
+- [ARCHITECTURE.md](./ARCHITECTURE.md)
+- [SECURITY.md](./SECURITY.md)
+- [V2-TICKETS.md](./V2-TICKETS.md)
+- [V2-APONTAMENTOS.md](./V2-APONTAMENTOS.md)
+- [../deploy/POS_DEPLOY_OPERACIONAL.md](../deploy/POS_DEPLOY_OPERACIONAL.md)

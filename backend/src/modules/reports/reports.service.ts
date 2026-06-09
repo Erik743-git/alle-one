@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { mapWithConcurrency } from '../../common/concurrency.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TifluxService } from '../tiflux/tiflux.service';
@@ -1805,16 +1806,18 @@ export class ReportsService {
       { day: string; user: string; minutes: number }
     >();
 
-    for (const t of tickets) {
-      const appts = await this.tiflux.getTicketAppointmentsAll(
-        t.ticket_number,
-        {
+    const appointmentLists = await mapWithConcurrency(
+      tickets,
+      6,
+      (t) =>
+        this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
           start_date: startDateOnly,
           end_date: endDateOnly,
           limit: 200,
-        },
-      );
+        }),
+    );
 
+    for (const appts of appointmentLists) {
       for (const a of appts) {
         const day = String(a.date ?? '').slice(0, 10);
         if (!day) continue;

@@ -6,6 +6,17 @@ O versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/) (`MA
 
 ## [Unreleased]
 
+### TiFlux outbox e performance
+
+- Worker cron para `CREATE_APPOINTMENT` (portal → TiFlux); retry em `POST /admin/reprocess-tiflux-outbox`.
+- Relatórios: busca de apontamentos TiFlux em paralelo (até 6 tickets).
+- Dashboard: tipos e utilitários de data extraídos (`dashboard.types.ts`, `dashboard-date.utils.ts`).
+
+### Testes e frontend
+
+- Specs: `ModulePermissionGuard`, `PermissionsService.buildRequestUser`, `mapWithConcurrency`.
+- `ErrorBoundary` global; admin usuários via `usersService` / `companiesService`.
+
 ### Segurança e operação
 
 - `buildRequestUser` rejeita usuários com `deletedAt`.

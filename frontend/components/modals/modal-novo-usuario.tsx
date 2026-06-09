@@ -14,8 +14,8 @@ import { Button } from "@/components/ui/button";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Eye, UserPlus, EyeOff } from "lucide-react";
-import { authFetch } from "@/lib/auth-fetch";
-import { API_URL } from "@/lib/env";
+import { companiesService } from "@/lib/services/companies.service";
+import { usersService } from "@/lib/services/users.service";
 
 interface Props {
   open: boolean;
@@ -59,25 +59,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setLoadingCompanies(true);
       setErro("");
 
-      const response = await authFetch(`${API_URL}/companies`);
-
-      const data = (await response.json()) as
-        | Company[]
-        | { message?: string | string[] };
-
-      if (!response.ok) {
-        const message =
-          !Array.isArray(data) && data.message
-            ? Array.isArray(data.message)
-              ? data.message[0]
-              : data.message
-            : "Erro ao buscar empresas.";
-
-        setErro(message);
-        return;
-      }
-
-      setCompanies(Array.isArray(data) ? sortByName(data) : []);
+      const data = await companiesService.list();
+      setCompanies(sortByName(data));
     } catch {
       setErro("Erro ao conectar com backend.");
     } finally {
@@ -97,23 +80,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setLoadingServiceDesks(true);
       setErro("");
 
-      const response = await authFetch(`${API_URL}/users/service-desks`);
-      const data = (await response.json()) as
-        | ServiceDeskOption[]
-        | { message?: string | string[] };
-
-      if (!response.ok) {
-        const message =
-          !Array.isArray(data) && data.message
-            ? Array.isArray(data.message)
-              ? data.message[0]
-              : data.message
-            : "Erro ao buscar mesas de serviço.";
-        setErro(message);
-        return;
-      }
-
-      setServiceDesks(Array.isArray(data) ? sortByName(data) : []);
+      const data = await usersService.listServiceDesks();
+      setServiceDesks(sortByName(data));
     } catch {
       setErro("Erro ao conectar com backend.");
     } finally {
@@ -131,39 +99,17 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setLoadingSave(true);
       setErro("");
 
-      const response = await authFetch(`${API_URL}/users`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: nome,
-          email,
-          password,
-          role,
-          companyId,
-          status: "ACTIVE",
-          firstAccess: true,
-          responsible,
-          serviceDeskIds,
-        }),
+      await usersService.create({
+        name: nome,
+        email,
+        password,
+        role: role as "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT",
+        companyId,
+        status: "ACTIVE",
+        firstAccess: true,
+        responsible,
+        serviceDeskIds,
       });
-
-      const data = (await response.json()) as
-        | Record<string, unknown>
-        | { message?: string | string[] };
-
-      if (!response.ok) {
-        const message =
-          "message" in data && data.message
-            ? Array.isArray(data.message)
-              ? data.message[0]
-              : data.message
-            : "Erro ao criar usuário.";
-
-        setErro(message);
-        return;
-      }
 
       setNome("");
       setEmail("");

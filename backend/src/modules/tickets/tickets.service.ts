@@ -1065,9 +1065,32 @@ export class TicketsService {
         description: dto.description.trim(),
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
-        syncStatus: PortalTicketAppointmentSyncStatus.PORTAL_ONLY,
+        syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
         createdBy: actor.userId,
       },
+    });
+
+    const outboxId = await this.recordOutbox({
+      kind: PortalTifluxOutboxKind.CREATE_APPOINTMENT,
+      status: PortalTifluxOutboxStatus.PENDING,
+      ticketNumber,
+      tifluxExternalId: null,
+      payload: {
+        portalAppointmentId: portalAppointment.id,
+        date: dto.date,
+        init_time: dto.initTime,
+        end_time: dto.endTime,
+        description: dto.description.trim(),
+        serviceName: dto.serviceName.trim(),
+        attendance: dto.attendance,
+      },
+      errorMessage: null,
+      createdBy: actor.userId,
+    });
+
+    await this.prisma.portalTicketAppointment.update({
+      where: { id: portalAppointment.id },
+      data: { outboxId },
     });
 
     const attachments = await this.saveAppointmentFiles(
@@ -1075,7 +1098,7 @@ export class TicketsService {
       ticketNumber,
       files,
       portalAppointment.id,
-      null,
+      outboxId,
       null,
     );
 
@@ -1088,11 +1111,11 @@ export class TicketsService {
       ok: true,
       appointmentId: null,
       portalAppointmentId: portalAppointment.id,
-      outboxId: null,
+      outboxId,
       attachmentsCount: attachments.length,
       tifluxSynced: false,
-      portalOnly: true,
-      message: `Apontamento salvo no Alle One.${attachmentNote}`,
+      portalOnly: false,
+      message: `Apontamento salvo. Sincronização com TiFlux em andamento.${attachmentNote}`,
     };
   }
 }

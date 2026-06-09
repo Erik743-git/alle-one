@@ -12,159 +12,40 @@ import {
   categorizeTicketByDesk,
   emptyDeskCategoryCounts,
   type DeskCategory,
-  type MonthlyDeskBreakdownRow,
 } from './desk-categories';
-
-type MonthlyTicketRow = MonthlyDeskBreakdownRow;
-type MonthlyHoursRow = MonthlyDeskBreakdownRow;
-
-type MonthlyAlertsRow = {
-  monthKey: string;
-  monthLabel: string;
-  High: number;
-  Disaster: number;
-  Total: number;
-};
-
-type WeeklyAlertsRow = {
-  weekKey: string;
-  weekLabel: string;
-  High: number;
-  Disaster: number;
-  Total: number;
-};
-
-type TopHostsByMonthRow = {
-  monthKey: string;
-  monthLabel: string;
-  High: Array<{ host: string; quantity: number }>;
-  Disaster: Array<{ host: string; quantity: number }>;
-};
-
-type TopTriggerRow = {
-  host: string;
-  trigger: string;
-  severity: 'High' | 'Disaster';
-  count: number;
-};
-
-type AppointmentLike = {
-  date?: string;
-  init_time?: string;
-  end_time?: string;
-  description?: string;
-  client?: { id: number; name: string } | null;
-  user?: { id: number; name: string } | null;
-  valorization?: unknown;
-  [key: string]: unknown;
-};
-
-type DashboardFilters = {
-  group: string;
-  start?: string;
-  end?: string;
-  companyId?: string;
-};
-
-type DashboardSummary = {
-  totalChamados: number;
-  totalTickets: number;
-  totalOpenTickets: number;
-  totalHoras: number;
-  totalHorasFormatadas?: string;
-  totalHigh: number;
-  totalDisaster: number;
-  /** Combinações distintas host + trigger + severidade (High/Disaster) no período. */
-  totalTriggersDistintos: number;
-  totalHosts: number;
-  hostsAtivos: number;
-  hostsInativos: number;
-};
-
-type WorkHoursTifluxAssistanceBucket = 'externo' | 'remoto' | 'interno' | 'sem';
-
-type WorkHoursTifluxLine = {
-  data: string;
-  horaInicio: string;
-  horaFim: string;
-  duracaoFormatada: string;
-  assistencia: string;
-  assistenciaBucket: WorkHoursTifluxAssistanceBucket;
-  ticketNumber: number;
-  titulo: string;
-  atendente: string;
-};
-
-type WorkHoursTifluxSummary = {
-  totalTicketsDistintos: number;
-  totalMinutos: number;
-  totalHorasFormatadas: string;
-  semAssistenciaMinutos: number;
-  semAssistenciaFormatado: string;
-  externoMinutos: number;
-  externoFormatado: string;
-  remotoMinutos: number;
-  remotoFormatado: string;
-  internoMinutos: number;
-  internoFormatado: string;
-  /** Quantidade de apontamentos no período (após filtros do resumo). */
-  totalApontamentosNoPeriodo: number;
-  /** Limite de linhas enviadas na tabela (env TIFLUX_RESUMO_MAX_LINHAS). */
-  limiteLinhas: number;
-  linhas: WorkHoursTifluxLine[];
-  linhasTruncadas: boolean;
-};
-
-type DashboardResponse = {
-  filters: {
-    group: string;
-    start: string;
-    end: string;
-    companyId: string | null;
-  };
-  summary: DashboardSummary;
-  chamadosPorMes: MonthlyTicketRow[];
-  chamadosPorMesa: Array<{ deskName: string; totalTickets: number }>;
-  horasPorMes: MonthlyHoursRow[];
-  /** Resumo estilo relatório TiFlux (apontamentos no período, assistência, tickets distintos). */
-  resumoHorasTrabalhadas: WorkHoursTifluxSummary | null;
-  alertasPorMes: MonthlyAlertsRow[];
-  /** Mesma lógica de alertasPorMes, bucket por semana (seg–dom) para gráficos. */
-  alertasPorSemana: WeeklyAlertsRow[];
-  principaisHostsPorMes: TopHostsByMonthRow[];
-  topTriggers: TopTriggerRow[];
-  /** Todas as combinações host+trigger+severidade no período (ordenadas por volume). */
-  allTriggersInPeriod: TopTriggerRow[];
-  hostsDetalhados: unknown[];
-  templates: unknown[];
-  eventosRecentes: unknown[];
-};
-
-type DashboardHoursResponse = {
-  filters: {
-    group: string;
-    start: string;
-    end: string;
-    companyId: string | null;
-  };
-  summary: {
-    totalHoras: number;
-    totalHorasFormatadas: string;
-    totalTicketsConsiderados: number;
-  };
-  horasPorMes: MonthlyHoursRow[];
-  horasPorMesa: Array<{
-    deskName: string;
-    totalMinutes: number;
-    totalHorasFormatadas: string;
-  }>;
-  resumoHorasTrabalhadas: WorkHoursTifluxSummary | null;
-};
-
-type ResolvedCompanyIntegration = {
-  zabbixGroupName: string;
-  tifluxClientId: number | null;
-};
+import {
+  buildMonthMap,
+  buildTifluxDateRange,
+  buildWeekMap,
+  getMonthKey,
+  getMonthLabel,
+  getRange,
+  getWeekKey,
+  getWeekLabel,
+  getWeekStart,
+  normalizeRange,
+  toDateFromUnknown,
+  toDateOrNull,
+  toDateOnlyISO,
+  countDaysInRange,
+  getDefaultDateRange,
+} from './dashboard-date.utils';
+import type {
+  AppointmentLike,
+  DashboardFilters,
+  DashboardHoursResponse,
+  DashboardResponse,
+  MonthlyAlertsRow,
+  MonthlyHoursRow,
+  MonthlyTicketRow,
+  ResolvedCompanyIntegration,
+  TopHostsByMonthRow,
+  TopTriggerRow,
+  WeeklyAlertsRow,
+  WorkHoursTifluxAssistanceBucket,
+  WorkHoursTifluxLine,
+  WorkHoursTifluxSummary,
+} from './dashboard.types';
 
 @Injectable()
 export class DashboardService {
@@ -372,79 +253,8 @@ export class DashboardService {
     this.inFlightHoursRequests.delete(hoursCacheKey);
   }
 
-  private toDateOrNull(value?: string): Date | null {
-    if (!value) {
-      return null;
-    }
-
-    const parsed = new Date(value);
-
-    if (Number.isNaN(parsed.getTime())) {
-      return null;
-    }
-
-    return parsed;
-  }
-
-  private toDateFromUnknown(value: unknown): Date | null {
-    if (!value) return null;
-    if (value instanceof Date)
-      return Number.isNaN(value.getTime()) ? null : value;
-    if (typeof value === 'string') return this.toDateOrNull(value);
-    if (typeof value === 'number') {
-      const d = new Date(value);
-      return Number.isNaN(d.getTime()) ? null : d;
-    }
-    return null;
-  }
-
   private async sleep(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
-  }
-
-  private getDefaultDateRange() {
-    const end = new Date();
-    const start = new Date(end);
-
-    start.setDate(end.getDate() - 6);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    return {
-      start,
-      end,
-    };
-  }
-
-  private normalizeRange(startDate: Date, endDate: Date) {
-    const normalizedStart = new Date(startDate);
-    const normalizedEnd = new Date(endDate);
-
-    // O front envia datas sem timezone (ex.: "2026-04-01T23:59:59").
-    // Usar setUTCHours aqui pode "empurrar" o range em +1 dia dependendo do timezone local.
-    // Para manter o intervalo consistente com o filtro visual do usuário, normalizamos em horário local.
-    normalizedStart.setHours(0, 0, 0, 0);
-    normalizedEnd.setHours(23, 59, 59, 999);
-
-    if (normalizedEnd.getTime() <= normalizedStart.getTime()) {
-      normalizedEnd.setTime(normalizedStart.getTime() + 1000);
-    }
-
-    return {
-      startDate: normalizedStart,
-      endDate: normalizedEnd,
-    };
-  }
-
-  private buildTifluxDateRange(startDate: Date, endDate: Date) {
-    const normalized = this.normalizeRange(startDate, endDate);
-
-    return {
-      startDate: normalized.startDate,
-      endDate: normalized.endDate,
-      startISO: normalized.startDate.toISOString(),
-      endISO: normalized.endDate.toISOString(),
-    };
   }
 
   private getDashboardHoursDateOptions(): {
@@ -497,7 +307,7 @@ export class DashboardService {
     userStartDate: Date,
     userEndDate: Date,
   ): { ticketStart: Date; ticketEnd: Date } {
-    const { startDate, endDate } = this.normalizeRange(
+    const { startDate, endDate } = normalizeRange(
       userStartDate,
       userEndDate,
     );
@@ -505,10 +315,6 @@ export class DashboardService {
     ticketStart.setDate(ticketStart.getDate() - this.hoursTicketLookbackDays);
     ticketStart.setHours(0, 0, 0, 0);
     return { ticketStart, ticketEnd: endDate };
-  }
-
-  private toDateOnlyISO(date: Date) {
-    return date.toISOString().slice(0, 10);
   }
 
   private getAppointmentReviewDate(appointment: AppointmentLike): Date | null {
@@ -526,7 +332,7 @@ export class DashboardService {
     ];
 
     for (const c of candidates) {
-      const d = this.toDateFromUnknown(c);
+      const d = toDateFromUnknown(c);
       if (d) return d;
     }
 
@@ -545,7 +351,7 @@ export class DashboardService {
       if (review) return { date: review, source: 'review_date' };
     }
 
-    const byDateField = this.toDateOrNull(appointment.date);
+    const byDateField = toDateOrNull(appointment.date);
     if (byDateField) return { date: byDateField, source: 'appointment.date' };
 
     return { date: null, source: 'none' };
@@ -640,105 +446,11 @@ export class DashboardService {
     return desc || 'SEM_CLASSIFICACAO';
   }
 
-  private getRange(start?: string, end?: string) {
-    const fallback = this.getDefaultDateRange();
-
-    const startParsed = this.toDateOrNull(start);
-    const endParsed = this.toDateOrNull(end);
-
-    // Se o front enviou start/end e a data for inválida, não pode cair em fallback silencioso
-    // porque isso gera números totalmente diferentes do filtro visual.
-    if (start && !startParsed) {
-      throw new BadRequestException('Data inicial inválida');
-    }
-    if (end && !endParsed) {
-      throw new BadRequestException('Data final inválida');
-    }
-
-    const rawStartDate = startParsed ?? fallback.start;
-    const rawEndDate = endParsed ?? fallback.end;
-
-    return this.normalizeRange(rawStartDate, rawEndDate);
-  }
-
-  private getMonthKey(date: Date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-
-    return `${year}-${month}`;
-  }
-
-  private getMonthLabel(date: Date) {
-    return date.toLocaleDateString('pt-BR', {
-      month: 'long',
-      year: 'numeric',
-    });
-  }
-
-  /** Segunda-feira da semana do dia (horário local). */
-  private getWeekStart(date: Date) {
-    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    const daysFromMonday = (d.getDay() + 6) % 7;
-    d.setDate(d.getDate() - daysFromMonday);
-    return d;
-  }
-
-  private getWeekKey(date: Date) {
-    const start = this.getWeekStart(date);
-    const year = start.getFullYear();
-    const month = String(start.getMonth() + 1).padStart(2, '0');
-    const day = String(start.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  private getWeekLabel(weekStart: Date) {
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-
-    const dayFmt = (d: Date) =>
-      d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-
-    const startStr = dayFmt(weekStart);
-    const endStr =
-      weekEnd.getMonth() === weekStart.getMonth() &&
-      weekEnd.getFullYear() === weekStart.getFullYear()
-        ? weekEnd.toLocaleDateString('pt-BR', { day: '2-digit' })
-        : dayFmt(weekEnd);
-
-    return `${startStr} – ${endStr}`;
-  }
-
-  private buildWeekMap(startDate: Date, endDate: Date) {
-    const result = new Map<string, string>();
-    const cursor = this.getWeekStart(startDate);
-    const limit = this.getWeekStart(endDate);
-
-    while (cursor <= limit) {
-      result.set(this.getWeekKey(cursor), this.getWeekLabel(cursor));
-      cursor.setDate(cursor.getDate() + 7);
-    }
-
-    return result;
-  }
-
-  private buildMonthMap(startDate: Date, endDate: Date) {
-    const result = new Map<string, string>();
-    const cursor = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-    const limit = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-
-    while (cursor <= limit) {
-      result.set(this.getMonthKey(cursor), this.getMonthLabel(cursor));
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-
-    return result;
-  }
-
   private buildEmptyTicketRows(
     startDate: Date,
     endDate: Date,
   ): MonthlyTicketRow[] {
-    return Array.from(this.buildMonthMap(startDate, endDate).entries()).map(
+    return Array.from(buildMonthMap(startDate, endDate).entries()).map(
       ([monthKey, monthLabel]) => ({
         monthKey,
         monthLabel,
@@ -752,7 +464,7 @@ export class DashboardService {
     startDate: Date,
     endDate: Date,
   ): MonthlyHoursRow[] {
-    return Array.from(this.buildMonthMap(startDate, endDate).entries()).map(
+    return Array.from(buildMonthMap(startDate, endDate).entries()).map(
       ([monthKey, monthLabel]) => ({
         monthKey,
         monthLabel,
@@ -835,13 +547,13 @@ export class DashboardService {
     }
 
     for (const ticket of tickets) {
-      const createdAt = this.toDateOrNull(String(ticket.created_at ?? ''));
+      const createdAt = toDateOrNull(String(ticket.created_at ?? ''));
 
       if (!createdAt || createdAt < startDate || createdAt > endDate) {
         continue;
       }
 
-      const monthKey = this.getMonthKey(createdAt);
+      const monthKey = getMonthKey(createdAt);
       const row = rows.get(monthKey);
 
       if (!row) {
@@ -1065,7 +777,7 @@ export class DashboardService {
   private formatDatePtBrFromAppointmentDate(
     dateStr: string | undefined,
   ): string {
-    const d = this.toDateOrNull(String(dateStr ?? ''));
+    const d = toDateOrNull(String(dateStr ?? ''));
     if (!d) {
       return '';
     }
@@ -1077,7 +789,7 @@ export class DashboardService {
     startDate: Date,
     endDate: Date,
   ): boolean {
-    const d = this.toDateOrNull(String(appointment.date ?? ''));
+    const d = toDateOrNull(String(appointment.date ?? ''));
     if (!d) {
       return false;
     }
@@ -1222,7 +934,7 @@ export class DashboardService {
         }
         const { bucket, label } = this.classifyAppointmentAssistance(appt);
         const dateRaw = String(appt.date ?? '');
-        const d = this.toDateOrNull(dateRaw);
+        const d = toDateOrNull(dateRaw);
         const dataLabel = this.formatDatePtBrFromAppointmentDate(dateRaw);
         const init = String(appt.init_time ?? '').trim();
         const end = String(appt.end_time ?? '').trim();
@@ -1368,7 +1080,7 @@ export class DashboardService {
       return [];
     }
 
-    const { startISO, endISO } = this.buildTifluxDateRange(
+    const { startISO, endISO } = buildTifluxDateRange(
       filters.startDate,
       filters.endDate,
     );
@@ -1436,7 +1148,7 @@ export class DashboardService {
       filters.appointmentRangeStart,
       filters.appointmentRangeEnd,
     );
-    const { startISO, endISO } = this.buildTifluxDateRange(
+    const { startISO, endISO } = buildTifluxDateRange(
       ticketStart,
       ticketEnd,
     );
@@ -1586,8 +1298,8 @@ export class DashboardService {
 
     const allAppointments: AppointmentLike[] = [];
     let page = 1;
-    const start_date = this.toDateOnlyISO(filters.startDate);
-    const end_date = this.toDateOnlyISO(filters.endDate);
+    const start_date = toDateOnlyISO(filters.startDate);
+    const end_date = toDateOnlyISO(filters.endDate);
 
     while (page <= this.tifluxAppointmentsMaxPages) {
       const pageAppointments = await this.tifluxService.getTicketAppointments(
@@ -1977,11 +1689,11 @@ export class DashboardService {
 
       for (const appointment of item.appointments) {
         if (options.rawAggregation) {
-          const bucketDate = this.toDateOrNull(appointment.date);
+          const bucketDate = toDateOrNull(appointment.date);
           if (!bucketDate) {
             continue;
           }
-          const monthKey = this.getMonthKey(bucketDate);
+          const monthKey = getMonthKey(bucketDate);
           const minutesRow = totalMinutesByMonth.get(monthKey);
           if (!minutesRow) {
             continue;
@@ -2013,7 +1725,7 @@ export class DashboardService {
           continue;
         }
 
-        const monthKey = this.getMonthKey(effective.date);
+        const monthKey = getMonthKey(effective.date);
         const minutesRow = totalMinutesByMonth.get(monthKey);
 
         if (!minutesRow) {
@@ -2059,7 +1771,7 @@ export class DashboardService {
   ): MonthlyAlertsRow[] {
     const rows = new Map<string, MonthlyAlertsRow>();
 
-    for (const [monthKey, monthLabel] of this.buildMonthMap(
+    for (const [monthKey, monthLabel] of buildMonthMap(
       startDate,
       endDate,
     ).entries()) {
@@ -2077,7 +1789,7 @@ export class DashboardService {
         continue;
       }
 
-      const eventDate = this.toDateOrNull(
+      const eventDate = toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
 
@@ -2086,7 +1798,7 @@ export class DashboardService {
       }
 
       const severity = Number(event.severity ?? 0);
-      const monthKey = this.getMonthKey(eventDate);
+      const monthKey = getMonthKey(eventDate);
       const row = rows.get(monthKey);
 
       if (!row) {
@@ -2114,7 +1826,7 @@ export class DashboardService {
   ): WeeklyAlertsRow[] {
     const rows = new Map<string, WeeklyAlertsRow>();
 
-    for (const [weekKey, weekLabel] of this.buildWeekMap(
+    for (const [weekKey, weekLabel] of buildWeekMap(
       startDate,
       endDate,
     ).entries()) {
@@ -2132,7 +1844,7 @@ export class DashboardService {
         continue;
       }
 
-      const eventDate = this.toDateOrNull(
+      const eventDate = toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
 
@@ -2141,7 +1853,7 @@ export class DashboardService {
       }
 
       const severity = Number(event.severity ?? 0);
-      const weekKey = this.getWeekKey(eventDate);
+      const weekKey = getWeekKey(eventDate);
       const row = rows.get(weekKey);
 
       if (!row) {
@@ -2176,7 +1888,7 @@ export class DashboardService {
       }
     >();
 
-    for (const [monthKey, monthLabel] of this.buildMonthMap(
+    for (const [monthKey, monthLabel] of buildMonthMap(
       startDate,
       endDate,
     ).entries()) {
@@ -2192,7 +1904,7 @@ export class DashboardService {
         continue;
       }
 
-      const eventDate = this.toDateOrNull(
+      const eventDate = toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
 
@@ -2206,7 +1918,7 @@ export class DashboardService {
           ? String((event.hosts[0] as { name?: string }).name ?? 'Host')
           : 'Host';
 
-      const monthKey = this.getMonthKey(eventDate);
+      const monthKey = getMonthKey(eventDate);
       const row = rows.get(monthKey);
 
       if (!row) {
@@ -2254,7 +1966,7 @@ export class DashboardService {
         continue;
       }
 
-      const eventDate = this.toDateOrNull(
+      const eventDate = toDateOrNull(
         new Date(Number(event.clock ?? 0) * 1000).toISOString(),
       );
 
@@ -2303,13 +2015,6 @@ export class DashboardService {
       uniqueTriggers: sorted.length,
       totalProblemEvents,
     };
-  }
-
-  private getDaysFromRange(startDate: Date, endDate: Date) {
-    const diffMs = endDate.getTime() - startDate.getTime();
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-
-    return Math.max(diffDays, 1);
   }
 
   private async scopeDashboardFilters(
@@ -2420,10 +2125,10 @@ export class DashboardService {
     params: DashboardFilters,
   ): Promise<string> {
     const scoped = await this.scopeDashboardFilters(user, params);
-    const { startDate, endDate } = this.getRange(scoped.start, scoped.end);
-    const days = this.getDaysFromRange(startDate, endDate);
+    const { startDate, endDate } = getRange(scoped.start, scoped.end);
+    const days = countDaysInRange(startDate, endDate);
     const integrations = await this.resolveIntegrations(scoped);
-    const { startISO, endISO } = this.buildTifluxDateRange(startDate, endDate);
+    const { startISO, endISO } = buildTifluxDateRange(startDate, endDate);
     const hoursDateOpts = this.getDashboardHoursDateOptions();
 
     const makeTicketsPath = (filters: Record<string, unknown>) => {
@@ -2681,10 +2386,10 @@ export class DashboardService {
     params: DashboardFilters,
     options: { includeHours: boolean },
   ): Promise<DashboardResponse> {
-    const { startDate, endDate } = this.getRange(params.start, params.end);
-    const days = this.getDaysFromRange(startDate, endDate);
+    const { startDate, endDate } = getRange(params.start, params.end);
+    const days = countDaysInRange(startDate, endDate);
     const integrations = await this.resolveIntegrations(params);
-    const { startISO, endISO } = this.buildTifluxDateRange(startDate, endDate);
+    const { startISO, endISO } = buildTifluxDateRange(startDate, endDate);
 
     this.devDebug('==================================================');
     this.devDebug('buildCompleteDashboard INÍCIO');
@@ -3036,7 +2741,7 @@ export class DashboardService {
   private async buildDashboardHours(
     params: DashboardFilters,
   ): Promise<DashboardHoursResponse> {
-    const { startDate, endDate } = this.getRange(params.start, params.end);
+    const { startDate, endDate } = getRange(params.start, params.end);
     const integrations = await this.resolveIntegrations(params);
 
     if (process.env.NODE_ENV !== 'production') {
