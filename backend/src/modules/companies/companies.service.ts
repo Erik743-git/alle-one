@@ -20,12 +20,62 @@ import { StreamableFile } from '@nestjs/common';
 import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
 
+const contractRelationsInclude = {
+  contractFiles: {
+    include: {
+      file: {
+        select: {
+          id: true,
+          originalName: true,
+          mimeType: true,
+          size: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: { id: 'desc' as const },
+  },
+  classification: {
+    select: {
+      id: true,
+      name: true,
+      level: true,
+      serviceDesk: { select: { id: true, name: true } },
+      parent: {
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          parent: {
+            select: { id: true, name: true, level: true },
+          },
+        },
+      },
+    },
+  },
+};
+
 @Injectable()
 export class CompaniesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
   ) {}
+
+  private async resolveClassificationId(classificationId?: string | null) {
+    if (!classificationId) {
+      return null;
+    }
+
+    const row = await this.prisma.serviceDeskClassification.findFirst({
+      where: { id: classificationId, active: true },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new BadRequestException('Classificação inválida ou inativa.');
+    }
+    return row.id;
+  }
 
   private normalizeString(value?: string | null) {
     const normalized = value?.trim() ?? '';
@@ -418,22 +468,7 @@ export class CompaniesService {
         deletedAt: null,
       },
       orderBy: { createdAt: 'desc' },
-      include: {
-        contractFiles: {
-          include: {
-            file: {
-              select: {
-                id: true,
-                originalName: true,
-                mimeType: true,
-                size: true,
-                createdAt: true,
-              },
-            },
-          },
-          orderBy: { id: 'desc' },
-        },
-      },
+      include: contractRelationsInclude,
     });
 
     const now = new Date();
@@ -473,9 +508,14 @@ export class CompaniesService {
     const title = dto.title.trim();
     if (!title) throw new BadRequestException('Título é obrigatório');
 
+    const classificationId = await this.resolveClassificationId(
+      dto.classificationId,
+    );
+
     return this.prisma.contract.create({
       data: {
         companyId: company.id,
+        classificationId,
         title,
         description: dto.description?.trim() || null,
         status: dto.status ?? ContractStatus.ACTIVE,
@@ -484,21 +524,7 @@ export class CompaniesService {
         startDate,
         endDate,
       },
-      include: {
-        contractFiles: {
-          include: {
-            file: {
-              select: {
-                id: true,
-                originalName: true,
-                mimeType: true,
-                size: true,
-                createdAt: true,
-              },
-            },
-          },
-        },
-      },
+      include: contractRelationsInclude,
     });
   }
 
@@ -543,6 +569,11 @@ export class CompaniesService {
       );
     }
 
+    let classificationId: string | null | undefined;
+    if (dto.classificationId !== undefined) {
+      classificationId = await this.resolveClassificationId(dto.classificationId);
+    }
+
     return this.prisma.contract.update({
       where: { id: existing.id },
       data: {
@@ -559,22 +590,9 @@ export class CompaniesService {
           : {}),
         ...(dto.startDate !== undefined ? { startDate } : {}),
         ...(dto.endDate !== undefined ? { endDate } : {}),
+        ...(dto.classificationId !== undefined ? { classificationId } : {}),
       },
-      include: {
-        contractFiles: {
-          include: {
-            file: {
-              select: {
-                id: true,
-                originalName: true,
-                mimeType: true,
-                size: true,
-                createdAt: true,
-              },
-            },
-          },
-        },
-      },
+      include: contractRelationsInclude,
     });
   }
 

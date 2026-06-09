@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { FileText, Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { AppAlert } from "@/components/ui/app-alert";
+import { ContractClassificationPicker } from "@/components/contracts/contract-classification-picker";
+import { formatClassificationPath } from "@/lib/classification-path";
 import {
   companyContractsService,
   type CompanyContract,
@@ -57,6 +59,7 @@ export default function ModalContratosEmpresa({
   const [contracts, setContracts] = useState<CompanyContract[]>([]);
   const [editing, setEditing] = useState<CompanyContract | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [classificationId, setClassificationId] = useState<string | null>(null);
   const [form, setForm] = useState<{
     title: string;
     description: string;
@@ -103,6 +106,7 @@ export default function ModalContratosEmpresa({
 
   function startNew() {
     setEditing(null);
+    setClassificationId(null);
     setForm({
       title: "",
       description: "",
@@ -116,6 +120,7 @@ export default function ModalContratosEmpresa({
 
   function startEdit(c: CompanyContract) {
     setEditing(c);
+    setClassificationId(c.classificationId ?? c.classification?.id ?? null);
     setForm({
       title: c.title ?? "",
       description: c.description ?? "",
@@ -140,6 +145,7 @@ export default function ModalContratosEmpresa({
         extraHourPrice: form.extraHourPrice,
         startDate: form.startDate,
         endDate: form.endDate ? form.endDate : null,
+        classificationId,
       };
 
       if (!payload.title) throw new Error("Título é obrigatório");
@@ -396,6 +402,12 @@ export default function ModalContratosEmpresa({
                     />
                   </div>
 
+                  <ContractClassificationPicker
+                    value={classificationId}
+                    onChange={setClassificationId}
+                    disabled={saving}
+                  />
+
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-xs font-semibold text-muted-foreground">Descrição (opcional)</label>
                     <Input
@@ -467,6 +479,12 @@ export default function ModalContratosEmpresa({
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {c.monthlyHours}h/mês • excedente: R$ {Number(c.extraHourPrice).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Classificação:{" "}
+                            <span className="font-semibold text-foreground">
+                              {formatClassificationPath(c.classification)}
+                            </span>
                           </p>
                           {file ? (
                             <p className="text-xs text-muted-foreground">

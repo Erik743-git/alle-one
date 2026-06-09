@@ -20,7 +20,6 @@ export type ClassificationNode = {
 export type ClassificationTreeResponse = {
   desk: ServiceDeskOption;
   levelLabels: Array<{ level: number; label: string }>;
-  chain: ClassificationNode[];
   tree: ClassificationNode[];
 };
 

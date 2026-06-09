@@ -243,6 +243,7 @@ model ServiceDeskClassification {
   serviceDesk ServiceDesk                 @relation(fields: [serviceDeskId], references: [id], onDelete: Cascade)
   parent      ServiceDeskClassification?  @relation("ServiceDeskClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    ServiceDeskClassification[] @relation("ServiceDeskClassificationTree")
+  contracts   Contract[]
 
   @@unique([serviceDeskId, parentId, name])
   @@index([serviceDeskId])
@@ -281,24 +282,27 @@ model Permission {
 }
 
 model Contract {
-  id              String           @id @default(uuid())
-  companyId       String           @map("company_id")
-  title           String
-  description     String?
-  status          ContractStatus
-  monthlyHours    Int              @map("monthly_hours")
-  extraHourPrice  Decimal          @db.Decimal(10, 2) @map("extra_hour_price")
-  startDate       DateTime         @map("start_date")
-  endDate         DateTime?        @map("end_date")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  deletedAt       DateTime?        @map("deleted_at")
+  id               String           @id @default(uuid())
+  companyId        String           @map("company_id")
+  classificationId String?          @map("classification_id")
+  title            String
+  description      String?
+  status           ContractStatus
+  monthlyHours     Int              @map("monthly_hours")
+  extraHourPrice   Decimal          @db.Decimal(10, 2) @map("extra_hour_price")
+  startDate        DateTime         @map("start_date")
+  endDate          DateTime?        @map("end_date")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  deletedAt        DateTime?        @map("deleted_at")
 
-  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  contractFiles   ContractFile[]
-  billingEntries  BillingEntry[]
+  company          Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  classification   ServiceDeskClassification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
+  contractFiles    ContractFile[]
+  billingEntries   BillingEntry[]
 
   @@index([companyId])
+  @@index([classificationId])
   @@map("contracts")
 }
 

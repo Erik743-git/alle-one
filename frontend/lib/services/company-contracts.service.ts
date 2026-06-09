@@ -16,9 +16,19 @@ export type ContractFile = {
   };
 };
 
+export type ContractClassification = {
+  id: string;
+  name: string;
+  level: number;
+  serviceDesk?: { id: string; name: string } | null;
+  parent?: ContractClassification | null;
+};
+
 export type CompanyContract = {
   id: string;
   companyId: string;
+  classificationId?: string | null;
+  classification?: ContractClassification | null;
   title: string;
   description: string | null;
   status: ContractStatus;
@@ -45,6 +55,7 @@ export type CreateCompanyContractPayload = {
   extraHourPrice: string;
   startDate: string; // ISO/date string
   endDate?: string | null;
+  classificationId?: string | null;
 };
 
 export type UpdateCompanyContractPayload = Partial<CreateCompanyContractPayload>;

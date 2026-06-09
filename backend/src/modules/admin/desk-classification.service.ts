@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import type {
@@ -20,6 +21,15 @@ export type DeskClassificationNodeDto = {
   sortOrder: number;
   parentId: string | null;
   children: DeskClassificationNodeDto[];
+};
+
+type ClassificationRow = {
+  id: string;
+  name: string;
+  level: number;
+  active: boolean;
+  sortOrder: number;
+  parentId: string | null;
 };
 
 @Injectable()
@@ -130,28 +140,20 @@ export class DeskClassificationService {
       orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
     });
 
-    const chain = this.buildChain(rows);
+    const tree = this.buildTree(rows);
 
     return {
-      desk,
+      desk: {
+        ...desk,
+        source:
+          desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+      },
       levelLabels: [
         { level: 1, label: 'Nível 1 — categoria' },
         { level: 2, label: 'Nível 2 — subcategoria' },
         { level: 3, label: 'Nível 3 — produto/solução' },
       ],
-      chain,
-      tree:
-        chain.length > 0
-          ? [
-              chain.reduceRight<DeskClassificationNodeDto | null>(
-                (child, node) => ({
-                  ...node,
-                  children: child ? [child] : [],
-                }),
-                null,
-              )!,
-            ]
-          : [],
+      tree,
     };
   }
 
@@ -188,27 +190,35 @@ export class DeskClassificationService {
       parentId = parent.id;
     }
 
-    const existingAtLevel =
+    const lastSibling =
       await this.prisma.serviceDeskClassification.findFirst({
-        where: { serviceDeskId: dto.serviceDeskId, level },
-        select: { id: true },
+        where: { serviceDeskId: dto.serviceDeskId, parentId },
+        orderBy: { sortOrder: 'desc' },
+        select: { sortOrder: true },
       });
-    if (existingAtLevel) {
-      throw new BadRequestException(
-        `Já existe um item no nível ${level}. Edite ou exclua antes de adicionar outro.`,
-      );
+    const sortOrder = (lastSibling?.sortOrder ?? -1) + 1;
+
+    try {
+      return await this.prisma.serviceDeskClassification.create({
+        data: {
+          serviceDeskId: dto.serviceDeskId,
+          parentId,
+          name,
+          level,
+          sortOrder,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Já existe uma classificação com este nome neste nível.',
+        );
+      }
+      throw error;
     }
-
-    const created = await this.prisma.serviceDeskClassification.create({
-      data: {
-        serviceDeskId: dto.serviceDeskId,
-        parentId,
-        name,
-        level,
-      },
-    });
-
-    return created;
   }
 
   async update(id: string, dto: UpdateDeskClassificationDto) {
@@ -224,14 +234,26 @@ export class DeskClassificationService {
       throw new BadRequestException('Nome inválido.');
     }
 
-    return this.prisma.serviceDeskClassification.update({
-      where: { id },
-      data: {
-        ...(name !== undefined ? { name } : {}),
-        ...(dto.active !== undefined ? { active: dto.active } : {}),
-        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
-      },
-    });
+    try {
+      return await this.prisma.serviceDeskClassification.update({
+        where: { id },
+        data: {
+          ...(name !== undefined ? { name } : {}),
+          ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException(
+          'Já existe uma classificação com este nome neste nível.',
+        );
+      }
+      throw error;
+    }
   }
 
   async remove(id: string) {
@@ -245,38 +267,52 @@ export class DeskClassificationService {
     return { ok: true };
   }
 
-  private buildChain(
-    rows: Array<{
-      id: string;
-      name: string;
-      level: number;
-      active: boolean;
-      sortOrder: number;
-      parentId: string | null;
-    }>,
-  ): DeskClassificationNodeDto[] {
-    const level1 = rows.find((row) => row.level === 1 && row.parentId === null);
-    if (!level1) return [];
+  async resolveClassificationId(classificationId?: string | null) {
+    if (!classificationId) {
+      return null;
+    }
 
-    const level2 = rows.find(
-      (row) => row.level === 2 && row.parentId === level1.id,
-    );
-    const level3 = level2
-      ? rows.find((row) => row.level === 3 && row.parentId === level2.id)
-      : undefined;
+    const row = await this.prisma.serviceDeskClassification.findFirst({
+      where: { id: classificationId, active: true },
+      select: { id: true },
+    });
+    if (!row) {
+      throw new BadRequestException('Classificação inválida ou inativa.');
+    }
+    return row.id;
+  }
 
-    const toNode = (row: (typeof rows)[number]): DeskClassificationNodeDto => ({
+  private buildTree(rows: ClassificationRow[]): DeskClassificationNodeDto[] {
+    const byParent = new Map<string | null, ClassificationRow[]>();
+    for (const row of rows) {
+      const key = row.parentId;
+      const bucket = byParent.get(key);
+      if (bucket) {
+        bucket.push(row);
+      } else {
+        byParent.set(key, [row]);
+      }
+    }
+
+    const sortRows = (list: ClassificationRow[]) =>
+      [...list].sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'),
+      );
+
+    const toNode = (row: ClassificationRow): DeskClassificationNodeDto => ({
       id: row.id,
       name: row.name,
       level: row.level,
       active: row.active,
       sortOrder: row.sortOrder,
       parentId: row.parentId,
-      children: [],
+      children:
+        row.level < 3
+          ? sortRows(byParent.get(row.id) ?? []).map(toNode)
+          : [],
     });
 
-    return [level1, level2, level3]
-      .filter((row): row is (typeof rows)[number] => row != null)
-      .map(toNode);
+    return sortRows(byParent.get(null) ?? []).map(toNode);
   }
 }

@@ -1,13 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ChevronRight,
-  Loader2,
-  Pencil,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { ChevronRight, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +40,97 @@ type Props = {
   onDeskDeleted: (deskId: string) => void;
 };
 
+function ClassificationTreeRows({
+  nodes,
+  depth,
+  onAddChild,
+  onEdit,
+  onDelete,
+  onToggleActive,
+}: {
+  nodes: ClassificationNode[];
+  depth: number;
+  onAddChild: (node: ClassificationNode) => void;
+  onEdit: (node: ClassificationNode) => void;
+  onDelete: (node: ClassificationNode) => void;
+  onToggleActive: (node: ClassificationNode) => void;
+}) {
+  return (
+    <div className={cn("space-y-2", depth > 0 && "ml-5 border-l border-border pl-3")}>
+      {nodes.map((node) => (
+        <div key={node.id} className="space-y-2">
+          <div
+            className={cn(
+              "flex min-h-[52px] flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2",
+              !node.active && "opacity-60",
+            )}
+          >
+            {depth > 0 ? (
+              <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+            ) : null}
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {LEVEL_HINTS[node.level]}
+            </span>
+            <span className="font-medium text-foreground">{node.name}</span>
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              {node.level < 3 ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1"
+                  onClick={() => onAddChild(node)}
+                >
+                  <Plus size={14} />
+                  Filho
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                onClick={() => onToggleActive(node)}
+              >
+                {node.active ? "Desativar" : "Ativar"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8"
+                onClick={() => onEdit(node)}
+              >
+                <Pencil size={14} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-destructive hover:text-destructive"
+                onClick={() => onDelete(node)}
+              >
+                <Trash2 size={14} />
+              </Button>
+            </div>
+          </div>
+
+          {node.children.length > 0 ? (
+            <ClassificationTreeRows
+              nodes={node.children}
+              depth={depth + 1}
+              onAddChild={onAddChild}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onToggleActive={onToggleActive}
+            />
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function DeskClassificationModal({
   open,
   desk,
@@ -67,11 +152,6 @@ export function DeskClassificationModal({
   const [editingDeskName, setEditingDeskName] = useState(false);
   const [deskNameDraft, setDeskNameDraft] = useState("");
   const confirm = useConfirm();
-
-  const chain = useMemo(() => treeData?.chain ?? [], [treeData]);
-
-  const nextLevel = chain.length + 1;
-  const canAddLevel = nextLevel <= 3;
 
   const loadTree = useCallback(async (deskId: string) => {
     try {
@@ -105,6 +185,8 @@ export function DeskClassificationModal({
   }, [open, desk, loadTree]);
 
   if (!desk) return null;
+
+  const tree = treeData?.tree ?? [];
 
   async function handleCreate() {
     if (!newName.trim()) return;
@@ -147,7 +229,7 @@ export function DeskClassificationModal({
   async function handleDeleteNode(node: ClassificationNode) {
     const ok = await confirm({
       title: "Excluir classificação",
-      description: `Excluir "${node.name}"? Os níveis abaixo também serão removidos.`,
+      description: `Excluir "${node.name}"? Itens filhos também serão removidos.`,
       confirmText: "Excluir",
       variant: "error",
     });
@@ -221,23 +303,18 @@ export function DeskClassificationModal({
     }
   }
 
-  function openAddNextLevel() {
-    const parent = chain[chain.length - 1];
-    setAddTarget({
-      level: nextLevel,
-      parentId: parent?.id,
-    });
+  function openAddRoot() {
+    setAddTarget({ level: 1 });
     setEditingNode(null);
     setNewName("");
   }
 
-  const pathPreview = [
-    desk.name,
-    ...chain.map((n) => n.name),
-    ...Array.from({ length: Math.max(0, 3 - chain.length) }, (_, i) =>
-      `Nível ${chain.length + i + 1}`,
-    ),
-  ].join(" → ");
+  function openAddChild(node: ClassificationNode) {
+    if (node.level >= 3) return;
+    setAddTarget({ level: node.level + 1, parentId: node.id });
+    setEditingNode(null);
+    setNewName("");
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -245,8 +322,8 @@ export function DeskClassificationModal({
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Hierarquia da mesa</DialogTitle>
           <DialogDescription>
-            Cada mesa permite apenas 1 item por nível (categoria, subcategoria
-            e produto/solução).
+            Cadastre quantas classificações precisar em cada nível (até 3
+            níveis de profundidade).
           </DialogDescription>
         </DialogHeader>
 
@@ -302,14 +379,8 @@ export function DeskClassificationModal({
                   >
                     {desk.source === "tiflux" ? "TiFlux" : "Portal"}
                   </span>
-                  {desk.externalId != null ? (
-                    <span className="text-xs text-muted-foreground">
-                      ID {desk.externalId}
-                    </span>
-                  ) : null}
                 </div>
               )}
-              <p className="text-sm text-muted-foreground">{pathPreview}</p>
             </div>
             {!editingDeskName ? (
               <div className="flex flex-wrap gap-1">
@@ -338,15 +409,15 @@ export function DeskClassificationModal({
             ) : null}
           </div>
 
-          {canAddLevel && !addTarget && !editingNode ? (
+          {!addTarget && !editingNode ? (
             <Button
               type="button"
               size="sm"
               className="gap-1"
-              onClick={openAddNextLevel}
+              onClick={openAddRoot}
             >
               <Plus size={14} />
-              Adicionar {LEVEL_HINTS[nextLevel]?.split("—")[0]?.trim()}
+              Adicionar categoria (nível 1)
             </Button>
           ) : null}
 
@@ -428,83 +499,25 @@ export function DeskClassificationModal({
               <Loader2 className="animate-spin" size={18} />
               Carregando classificações...
             </div>
-          ) : chain.length > 0 ? (
-            <div className="space-y-2 pb-2">
-              {chain.map((node, index) => (
-                <div key={node.id} className="flex items-stretch gap-2">
-                  {index > 0 ? (
-                    <div className="flex w-6 shrink-0 items-center justify-center text-muted-foreground">
-                      <ChevronRight size={16} />
-                    </div>
-                  ) : (
-                    <div className="w-6 shrink-0" />
-                  )}
-                  <div
-                    className={cn(
-                      "flex min-h-[52px] flex-1 flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2",
-                      !node.active && "opacity-60",
-                    )}
-                  >
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {LEVEL_HINTS[node.level]}
-                    </span>
-                    <ChevronRight
-                      size={14}
-                      className="text-muted-foreground"
-                    />
-                    <span className="font-medium text-foreground">
-                      {node.name}
-                    </span>
-                    <div className="ml-auto flex flex-wrap items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8"
-                        onClick={() => void handleToggleActive(node)}
-                      >
-                        {node.active ? "Desativar" : "Ativar"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
-                          setEditingNode(node);
-                          setEditName(node.name);
-                          setAddTarget(null);
-                        }}
-                      >
-                        <Pencil size={14} />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 text-destructive hover:text-destructive"
-                        onClick={() => void handleDeleteNode(node)}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          ) : tree.length > 0 ? (
+            <ClassificationTreeRows
+              nodes={tree}
+              depth={0}
+              onAddChild={openAddChild}
+              onEdit={(node) => {
+                setEditingNode(node);
+                setEditName(node.name);
+                setAddTarget(null);
+              }}
+              onDelete={(node) => void handleDeleteNode(node)}
+              onToggleActive={(node) => void handleToggleActive(node)}
+            />
           ) : (
             <p className="py-4 text-sm text-muted-foreground">
-              Nenhuma classificação cadastrada. Adicione o nível 1 para começar
-              a montar o caminho.
+              Nenhuma classificação cadastrada. Adicione categorias de nível 1
+              para começar.
             </p>
           )}
-
-          {chain.length >= 3 ? (
-            <p className="text-xs text-muted-foreground">
-              Os 3 níveis já estão preenchidos. Edite ou exclua um nível para
-              alterar o caminho.
-            </p>
-          ) : null}
         </div>
       </DialogContent>
     </Dialog>

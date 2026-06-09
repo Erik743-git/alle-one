@@ -248,6 +248,24 @@ export class FinancialService {
           },
           orderBy: { id: 'desc' },
         },
+        classification: {
+          select: {
+            id: true,
+            name: true,
+            level: true,
+            serviceDesk: { select: { id: true, name: true } },
+            parent: {
+              select: {
+                id: true,
+                name: true,
+                level: true,
+                parent: {
+                  select: { id: true, name: true, level: true },
+                },
+              },
+            },
+          },
+        },
       },
     });
 

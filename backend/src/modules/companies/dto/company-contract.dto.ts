@@ -36,6 +36,10 @@ export class CreateCompanyContractDto {
   @IsOptional()
   @IsDateString()
   endDate?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  classificationId?: string | null;
 }
 
 export class UpdateCompanyContractDto {
@@ -68,6 +72,10 @@ export class UpdateCompanyContractDto {
   @IsOptional()
   @IsDateString()
   endDate?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  classificationId?: string | null;
 }
 
 export class CompanyContractParamsDto {

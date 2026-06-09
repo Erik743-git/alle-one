@@ -177,9 +177,9 @@ export default function AdminClassificacaoPage() {
                   Classificação de mesas
                 </h1>
                 <p className="max-w-2xl text-sm text-muted-foreground">
-                  Clique em uma mesa para definir o caminho de classificação (1
-                  item por nível). Você também pode editar ou excluir mesas na
-                  lista.
+                  Clique em uma mesa para cadastrar classificações em até 3
+                  níveis (várias opções por nível). Você também pode editar ou
+                  excluir mesas na lista.
                 </p>
               </div>
             </div>
