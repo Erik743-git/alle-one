@@ -34,3 +34,17 @@ export type PermissionFlag =
   | "canEdit"
   | "canDelete"
   | "canApprove";
+
+/** Rótulos exibidos na matriz de permissões do admin (modal de usuário). */
+export const PORTAL_PERMISSION_MODULES: Array<{
+  key: PermissionModuleKey;
+  label: string;
+}> = [
+  { key: "DASHBOARD", label: "Dashboard" },
+  { key: "FINANCIAL", label: "Financeiro" },
+  { key: "GMUD", label: "GMUD" },
+  { key: "RENDIMENTO", label: "Apontamentos" },
+  { key: "CORREIO", label: "Correio" },
+  { key: "INVENTARIO", label: "Inventário" },
+  { key: "ADMIN", label: "Administração" },
+];

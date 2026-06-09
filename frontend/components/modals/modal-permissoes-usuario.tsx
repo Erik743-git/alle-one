@@ -11,21 +11,16 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, Check, Loader2 } from "lucide-react";
-import type { PermissionModuleKey } from "@/lib/permission-modules";
+import {
+  PORTAL_PERMISSION_MODULES,
+  type PermissionModuleKey,
+} from "@/lib/permission-modules";
 import {
   permissionsService,
   type UserPermissionsPayload,
 } from "@/lib/services/permissions.service";
 
-const MODULOS: { label: string; key: PermissionModuleKey }[] = [
-  { label: "Dashboard", key: "DASHBOARD" },
-  { label: "Financeiro", key: "FINANCIAL" },
-  { label: "GMUD", key: "GMUD" },
-  { label: "Apontamentos", key: "RENDIMENTO" },
-  { label: "Correio", key: "CORREIO" },
-  { label: "Inventário", key: "INVENTARIO" },
-  { label: "Administração", key: "ADMIN" },
-];
+const MODULOS = PORTAL_PERMISSION_MODULES;
 
 function presetAtivo(module: PermissionModuleKey): UserPermissionsPayload {
   if (module === "GMUD") {
