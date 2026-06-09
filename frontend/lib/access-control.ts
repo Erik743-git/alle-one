@@ -68,15 +68,25 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
     return true;
   }
 
-  if (flag === "canView" && module === "RENDIMENTO" && isClient()) {
-    return true;
-  }
-
-  // CLIENT: Financeiro liberado por padrão (ROLE_FALLBACK no backend), salvo revogação explícita.
-  if (flag === "canView" && module === "FINANCIAL" && isClient()) {
-    const entry = getModuleEntry("FINANCIAL");
-    if (entry && entry.canView === false) return false;
-    return true;
+  // CLIENT: módulos com fallback no backend; matriz explícita pode revogar.
+  if (flag === "canView" && isClient()) {
+    const clientMatrixModules: PermissionModuleKey[] = [
+      "FINANCIAL",
+      "RENDIMENTO",
+      "GMUD",
+      "INVENTARIO",
+    ];
+    if (clientMatrixModules.includes(module)) {
+      const entry = getModuleEntry(module);
+      if (entry && entry.canView === false) return false;
+      if (
+        module === "FINANCIAL" ||
+        module === "RENDIMENTO" ||
+        module === "INVENTARIO"
+      ) {
+        return true;
+      }
+    }
   }
 
   const user = getStoredUser();
@@ -134,7 +144,11 @@ export function canAccessDashboard() {
 }
 
 export function canAccessRendimento() {
-  if (isClient()) return true;
+  if (isClient()) {
+    const entry = getModuleEntry("RENDIMENTO");
+    if (entry && entry.canView === false) return false;
+    return true;
+  }
   if (isPj()) return canViewModule("RENDIMENTO");
   return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
 }
@@ -169,7 +183,11 @@ export function canAccessCorreio() {
 
 export function canAccessInventario() {
   if (isPj()) return false;
-  if (isClient()) return true;
+  if (isClient()) {
+    const entry = getModuleEntry("INVENTARIO");
+    if (entry && entry.canView === false) return false;
+    return true;
+  }
   return isAdmin() || isCollaborator() || canViewModule("INVENTARIO");
 }
 

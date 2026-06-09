@@ -65,7 +65,26 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('INVENTARIO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      (user.role === 'COLLABORATOR' || user.role === 'CLIENT')
+      user.role === 'COLLABORATOR'
+    ) {
+      return true;
+    }
+
+    if (
+      meta.module === ('INVENTARIO' as PermissionModule) &&
+      meta.flag === 'canView' &&
+      user.role === 'CLIENT'
+    ) {
+      const entry = user.permissions.find(
+        (p) => p.module === ('INVENTARIO' as PermissionModule),
+      );
+      if (!entry || entry.canView) return true;
+    }
+
+    if (
+      meta.module === ('RENDIMENTO' as PermissionModule) &&
+      meta.flag === 'canView' &&
+      user.role === 'PJ'
     ) {
       return true;
     }
@@ -73,9 +92,12 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('RENDIMENTO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      (user.role === 'CLIENT' || user.role === 'PJ')
+      user.role === 'CLIENT'
     ) {
-      return true;
+      const entry = user.permissions.find(
+        (p) => p.module === ('RENDIMENTO' as PermissionModule),
+      );
+      if (!entry || entry.canView) return true;
     }
 
     // Financeiro: padrão liberado para cliente; matriz explícita pode revogar.

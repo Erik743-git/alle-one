@@ -57,6 +57,21 @@ export function useAuth() {
     };
   }, []);
 
+  // Atualiza permissões após mudanças no admin (sem exigir logout).
+  useEffect(() => {
+    if (!hydrated) return;
+
+    const refresh = () => {
+      void tryRestoreSessionFromCookie().then((restored) => {
+        if (restored) setUser(restored);
+      });
+    };
+
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [hydrated, pathname]);
+
   const authenticated = !!user;
   const loading = !hydrated;
 
