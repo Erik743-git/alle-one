@@ -11,6 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  canCreateTicketsAndAppointments,
+  TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
+} from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -124,13 +128,19 @@ export default function TicketsPage() {
                   Por padrão, exibe apenas tickets em que você é o responsável.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Button asChild>
-                  <Link href="/tickets/new">
-                    <Plus className="mr-2 size-4" />
-                    Novo ticket
-                  </Link>
-                </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {canCreateTicketsAndAppointments() ? (
+                  <Button asChild>
+                    <Link href="/tickets/new">
+                      <Plus className="mr-2 size-4" />
+                      Novo ticket
+                    </Link>
+                  </Button>
+                ) : (
+                  <p className="max-w-sm text-xs text-muted-foreground">
+                    {TICKETS_CREATE_ADMIN_ONLY_MESSAGE}
+                  </p>
+                )}
                 <Button
                   type="button"
                   variant="outline"

@@ -157,6 +157,15 @@ export function canAccessTickets() {
   return canViewModule("TICKETS");
 }
 
+/** Mensagem exibida quando não-admin tenta criar ticket ou apontamento. */
+export const TICKETS_CREATE_ADMIN_ONLY_MESSAGE =
+  "A criação de tickets e apontamentos está disponível apenas para administradores. Você pode consultar os tickets existentes.";
+
+/** V2 Tickets: criar ticket ou apontamento no portal — somente ADMIN (visualização liberada por canView). */
+export function canCreateTicketsAndAppointments() {
+  return isAdmin();
+}
+
 /** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */
 export function canCreateVoluntaryRendimentoJustification() {
   if (isPj()) return false;

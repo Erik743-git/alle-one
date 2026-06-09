@@ -11,6 +11,10 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
+import {
+  canCreateTicketsAndAppointments,
+  TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
+} from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
 import {
   ticketsService,
@@ -110,7 +114,7 @@ export default function TicketDetailPage() {
                   Voltar à lista
                 </Link>
               </Button>
-              {ticket ? (
+              {ticket && canCreateTicketsAndAppointments() ? (
                 <Button
                   type="button"
                   size="sm"
@@ -218,8 +222,13 @@ export default function TicketDetailPage() {
                 </div>
 
                 <Card>
-                  <CardHeader>
+                  <CardHeader className="space-y-2">
                     <CardTitle className="text-base">Apontamentos</CardTitle>
+                    {!canCreateTicketsAndAppointments() ? (
+                      <p className="text-xs font-normal text-muted-foreground">
+                        {TICKETS_CREATE_ADMIN_ONLY_MESSAGE}
+                      </p>
+                    ) : null}
                   </CardHeader>
                   <CardContent className="overflow-x-auto p-0">
                     <table className="w-full min-w-[860px] text-left text-sm">
@@ -338,12 +347,14 @@ export default function TicketDetailPage() {
                   </CardContent>
                 </Card>
 
-                <TicketAppointmentModal
-                  ticketNumber={ticket.ticketNumber}
-                  open={appointmentOpen}
-                  onOpenChange={setAppointmentOpen}
-                  onCreated={() => void load()}
-                />
+                {canCreateTicketsAndAppointments() ? (
+                  <TicketAppointmentModal
+                    ticketNumber={ticket.ticketNumber}
+                    open={appointmentOpen}
+                    onOpenChange={setAppointmentOpen}
+                    onCreated={() => void load()}
+                  />
+                ) : null}
               </>
             )}
           </div>

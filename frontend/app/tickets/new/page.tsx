@@ -13,6 +13,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  canCreateTicketsAndAppointments,
+  TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
+} from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   ticketsService,
@@ -104,9 +108,11 @@ export default function NewTicketPage() {
     }
   }
 
+  const canCreate = canCreateTicketsAndAppointments();
+
   return (
     <ProtectedPage>
-      <PermissionGate module="TICKETS" flag="canCreate">
+      <PermissionGate module="TICKETS">
         <AppShell>
           <div className="font-sans mx-auto w-full max-w-3xl space-y-6">
             <Button asChild variant="outline" size="sm" className="w-fit">
@@ -121,13 +127,19 @@ export default function NewTicketPage() {
                 <Plus size={24} />
               </div>
               <h1 className="text-3xl font-bold text-foreground">Novo ticket</h1>
-              <p className="text-muted-foreground">
-                Cria no TiFlux via API (<code className="text-xs">POST /tickets</code>, multipart).
-                Após o sync, aparece na lista local.
-              </p>
+              {canCreate ? (
+                <p className="text-muted-foreground">
+                  Cria no TiFlux via API (<code className="text-xs">POST /tickets</code>, multipart).
+                  Após o sync, aparece na lista local.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {TICKETS_CREATE_ADMIN_ONLY_MESSAGE}
+                </p>
+              )}
             </div>
 
-            {loading && !catalogs ? (
+            {!canCreate ? null : loading && !catalogs ? (
               <div className="flex min-h-[200px] items-center justify-center">
                 <Loader2 className="size-8 animate-spin text-primary" />
               </div>

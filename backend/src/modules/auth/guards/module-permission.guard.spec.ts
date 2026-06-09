@@ -73,6 +73,30 @@ describe('ModulePermissionGuard', () => {
     expect(() => guard.canActivate(ctx as never)).toThrow(ForbiddenException);
   });
 
+  it('bloqueia criação de tickets para não-admin', () => {
+    const user: AuthenticatedRequestUser = {
+      userId: '4',
+      email: 'g@h.com',
+      role: 'COLLABORATOR',
+      companyId: null,
+      permissions: [
+        {
+          module: PermissionModule.TICKETS,
+          canView: true,
+          canCreate: true,
+          canEdit: false,
+          canDelete: false,
+          canApprove: false,
+        },
+      ],
+    };
+    const { guard, ctx } = buildContext(user, {
+      module: PermissionModule.TICKETS,
+      flag: 'canCreate',
+    });
+    expect(() => guard.canActivate(ctx as never)).toThrow(ForbiddenException);
+  });
+
   it('permite CLIENT com FINANCIAL quando matriz não revoga', () => {
     const user: AuthenticatedRequestUser = {
       userId: '3',

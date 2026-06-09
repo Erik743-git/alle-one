@@ -38,6 +38,15 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
+    if (
+      meta.module === ('TICKETS' as PermissionModule) &&
+      meta.flag === 'canCreate'
+    ) {
+      throw new ForbiddenException(
+        'Criação de tickets e apontamentos disponível apenas para administradores.',
+      );
+    }
+
     if (meta.module === ('REPORTS' as PermissionModule)) {
       throw new ForbiddenException(
         'Relatórios disponíveis apenas para administradores.',
