@@ -162,9 +162,9 @@ export function CompanyPendingQuestionsDialog({
           {company ? (
             <div className="flex justify-end border-t border-border pt-4">
               <Button asChild variant="outline" size="sm">
-                <Link href={`/apontamentos/empresa/${company.id}`}>
+                <Link href="/financeiro">
                   <CalendarDays className="mr-2 size-4" />
-                  Ver agenda completa
+                  Ver no financeiro
                 </Link>
               </Button>
             </div>

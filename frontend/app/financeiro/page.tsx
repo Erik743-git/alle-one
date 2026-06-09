@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
+import { CompanyAgendaPanel } from "@/components/financeiro/company-agenda-panel";
+import {
+  CompanyPendingQuestionsDialog,
+  PendingQuestionsBadge,
+} from "@/components/rendimento/company-pending-questions-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Accordion,
@@ -39,10 +44,17 @@ import {
   financialService,
   type FinancialOverviewResponse,
 } from "@/lib/services/financial.service";
+import {
+  rendimentoService,
+  type RendimentoCompany,
+  type RendimentoCompanyAgenda,
+} from "@/lib/services/rendimento.service";
+import { ensureArray } from "@/lib/utils";
 
 export default function FinanceiroPage() {
   const user = getStoredUser();
   const isClient = user?.role === "CLIENT";
+  const isAdmin = user?.role === "ADMIN";
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState<string>(
@@ -58,7 +70,12 @@ export default function FinanceiroPage() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewName, setPreviewName] = useState<string>("Contrato");
+  const [pendingQuestionsCount, setPendingQuestionsCount] = useState(0);
+  const [questionsCompany, setQuestionsCompany] =
+    useState<RendimentoCompany | null>(null);
+  const [questionsOpen, setQuestionsOpen] = useState(false);
   const companyRequestIdRef = useRef(0);
+  const activeCompanyId = isClient ? user?.companyId ?? "" : companyId;
   const companyOptions = useMemo(
     () => companies.map((c) => ({ value: c.id, label: c.name })),
     [companies],
@@ -147,6 +164,36 @@ export default function FinanceiroPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, isClient]);
+
+  const reloadCompanyQuestionsMeta = useCallback(async () => {
+    if (!activeCompanyId) {
+      setPendingQuestionsCount(0);
+      setQuestionsCompany(null);
+      return;
+    }
+    try {
+      const list = await rendimentoService.listCompanies();
+      const found = ensureArray(list).find((c) => c.id === activeCompanyId);
+      setQuestionsCompany(found ?? null);
+      setPendingQuestionsCount(found?.pendingQuestionsCount ?? 0);
+    } catch {
+      setQuestionsCompany(null);
+      setPendingQuestionsCount(0);
+    }
+  }, [activeCompanyId]);
+
+  useEffect(() => {
+    void reloadCompanyQuestionsMeta();
+  }, [reloadCompanyQuestionsMeta]);
+
+  const handleAgendaLoaded = useCallback(
+    (agenda: RendimentoCompanyAgenda | null) => {
+      if (agenda != null) {
+        setPendingQuestionsCount(agenda.totalPendingQuestions ?? 0);
+      }
+    },
+    [],
+  );
 
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase();
@@ -271,7 +318,16 @@ export default function FinanceiroPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex w-full flex-col gap-2 pr-4 sm:mr-10 sm:w-auto sm:flex-row sm:items-center lg:mr-14 xl:mr-16">
+              {!isClient ? (
+                <SearchableSelectField
+                  value={companyId}
+                  onChange={setCompanyId}
+                  options={companyOptions}
+                  emptyLabel="Selecione a empresa..."
+                  className="min-w-[220px]"
+                />
+              ) : null}
               <Button
                 type="button"
                 disabled={refreshing}
@@ -280,7 +336,11 @@ export default function FinanceiroPage() {
                 onClick={async () => {
                   setRefreshing(true);
                   try {
-                    await loadContracts({ silent: true });
+                    await Promise.all([
+                      loadContracts({ silent: true }),
+                      loadOverview({ silent: true }),
+                      reloadCompanyQuestionsMeta(),
+                    ]);
                   } finally {
                     setRefreshing(false);
                   }
@@ -387,22 +447,13 @@ export default function FinanceiroPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 gap-3">
-                    {isClient ? (
-                      <Input
-                        value={user?.companyName ?? "Minha empresa"}
-                        disabled
-                        className="h-11"
-                      />
-                    ) : (
-                      <SearchableSelectField
-                        value={companyId}
-                        onChange={setCompanyId}
-                        options={companyOptions}
-                        emptyLabel="Selecione..."
-                      />
-                    )}
-                  </div>
+                  {isClient ? (
+                    <Input
+                      value={user?.companyName ?? "Minha empresa"}
+                      disabled
+                      className="h-11"
+                    />
+                  ) : null}
                 </div>
 
                 <div className="text-xs text-muted-foreground">
@@ -504,6 +555,41 @@ export default function FinanceiroPage() {
                   </p>
                 </div>
 
+                <div className="rounded-xl border border-border bg-background p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Questionamentos
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Apontamentos questionados pelo cliente aguardando resposta.
+                      </p>
+                    </div>
+                    {isAdmin ? (
+                      <PendingQuestionsBadge
+                        count={pendingQuestionsCount}
+                        onClick={
+                          pendingQuestionsCount > 0 && questionsCompany
+                            ? () => setQuestionsOpen(true)
+                            : undefined
+                        }
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                        {pendingQuestionsCount > 0
+                          ? `${pendingQuestionsCount} pendente(s)`
+                          : "Nenhum pendente"}
+                      </span>
+                    )}
+                  </div>
+                  {pendingQuestionsCount > 0 ? (
+                    <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+                      Há questionamentos pendentes nesta empresa. Responda pelo
+                      painel abaixo ou use o botão acima.
+                    </p>
+                  ) : null}
+                </div>
+
                 {(overview?.contracts ?? []).length === 0 ? (
                   <div className="rounded-xl border border-border bg-background p-4 text-sm text-muted-foreground">
                     Nenhum contrato cadastrado no portal para esta empresa.
@@ -572,6 +658,38 @@ export default function FinanceiroPage() {
               </CardContent>
             </Card>
           </div>
+
+          {activeCompanyId ? (
+            <Card id="agenda-empresa">
+              <CardHeader>
+                <CardTitle className="text-sm text-muted-foreground">
+                  Apontamentos da empresa
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Agenda por dia, semana ou mês — mesma visão que o cliente vê no
+                  portal.
+                  {isClient
+                    ? " Você pode questionar apontamentos diretamente no calendário."
+                    : " Responda questionamentos e abone apontamentos quando necessário."}
+                </p>
+              </CardHeader>
+              <CardContent>
+                <CompanyAgendaPanel
+                  companyId={activeCompanyId}
+                  isClientUser={isClient}
+                  isAdmin={isAdmin}
+                  onAgendaLoaded={handleAgendaLoaded}
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <CompanyPendingQuestionsDialog
+            company={questionsCompany}
+            open={questionsOpen}
+            onOpenChange={setQuestionsOpen}
+            onAnswered={() => void reloadCompanyQuestionsMeta()}
+          />
         </div>
       </AppShell>
       </PermissionGate>

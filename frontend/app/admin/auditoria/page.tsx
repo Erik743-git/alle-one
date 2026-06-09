@@ -11,6 +11,7 @@ import {
   adminService,
   type AuditLogItem,
 } from "@/lib/services/admin.service";
+import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ function prettyJson(value: unknown) {
 }
 
 export default function AdminAuditoriaPage() {
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<AuditLogItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -114,14 +116,15 @@ export default function AdminAuditoriaPage() {
                   variant="outline"
                   disabled={reprocessing}
                   onClick={() => {
-                    if (
-                      !window.confirm(
-                        "Reprocessar alertas de rendimento para todos os colaboradores (últimos 6 meses)?",
-                      )
-                    ) {
-                      return;
-                    }
                     void (async () => {
+                      const ok = await confirm({
+                        title: "Reprocessar alertas",
+                        description:
+                          "Reprocessar alertas de rendimento para todos os colaboradores (últimos 6 meses)?",
+                        confirmText: "Reprocessar",
+                        variant: "warning",
+                      });
+                      if (!ok) return;
                       try {
                         setReprocessing(true);
                         const res = await adminService.reprocessRendimentoAlerts();

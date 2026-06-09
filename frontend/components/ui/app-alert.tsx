@@ -43,7 +43,10 @@ export function AppAlert({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="font-sans max-w-[95vw] sm:max-w-md border-border bg-card text-card-foreground">
+      <DialogContent
+        showCloseButton={false}
+        className="font-sans max-w-[95vw] sm:max-w-md border-border bg-card text-card-foreground"
+      >
         <DialogHeader>
           <DialogTitle className="font-sans text-foreground">{title}</DialogTitle>
           {description ? (

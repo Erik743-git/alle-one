@@ -24,7 +24,7 @@ export class RendimentoMailService {
     if (!uniqueEmails.length) return;
 
     const portalUrl = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
-    const link = `${portalUrl}/apontamentos/empresa/${payload.companyId}`;
+    const link = `${portalUrl}/financeiro`;
     const subject = `[Apontamentos] Questionamento — ${payload.companyName}`;
     const who = payload.userName ?? '—';
     const text = [

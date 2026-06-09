@@ -30,6 +30,11 @@ const nextConfig: NextConfig = {
         destination: "/apontamentos/:path*",
         permanent: true,
       },
+      {
+        source: "/apontamentos/empresa/:companyId",
+        destination: "/financeiro",
+        permanent: true,
+      },
     ];
   },
   async headers() {

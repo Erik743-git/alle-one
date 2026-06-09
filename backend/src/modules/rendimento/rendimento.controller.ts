@@ -143,7 +143,7 @@ export class RendimentoController {
 
   @Get('users/:userId/timesheet')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
-  @Roles('ADMIN', 'COLLABORATOR')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   getTimesheet(
     @Req() req: AuthenticatedRequest,
     @Param('userId', ParseUUIDPipe) userId: string,

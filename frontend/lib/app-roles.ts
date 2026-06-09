@@ -8,14 +8,14 @@ export function isPjRole(role?: string | null): boolean {
   return role === "PJ";
 }
 
-/** Colaborador CLT + PJ: mesmo tipo de acesso interno (exceto Rendimento para PJ). */
+/** Colaborador CLT + PJ: acesso interno ao portal. */
 export function isInternalStaffRole(role?: string | null): boolean {
   return role === "ADMIN" || role === "COLLABORATOR" || role === "PJ";
 }
 
-/** Quem aparece na agenda/lista de Rendimento. */
+/** Quem pode ter agenda própria em Apontamentos (admin lista só CLT). */
 export function isRendimentoSubjectRole(role?: string | null): boolean {
-  return role === "ADMIN" || role === "COLLABORATOR";
+  return role === "ADMIN" || role === "COLLABORATOR" || role === "PJ";
 }
 
 export function roleDisplayLabel(role?: string | null): string {

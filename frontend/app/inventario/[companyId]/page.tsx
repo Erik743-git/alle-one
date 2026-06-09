@@ -30,6 +30,7 @@ import {
   canEditInventario,
   isClient,
 } from "@/lib/access-control";
+import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -63,6 +64,7 @@ export default function InventarioEmpresaPage() {
   const params = useParams<{ companyId: string }>();
   const companyId = params.companyId;
   const clientUser = isClient();
+  const confirm = useConfirm();
 
   const [loading, setLoading] = useState(true);
   const [companyName, setCompanyName] = useState("");
@@ -169,7 +171,13 @@ export default function InventarioEmpresaPage() {
 
   async function handleDelete(asset: InventoryAsset) {
     const label = asset.assetTypeName || asset.name;
-    if (!window.confirm(`Excluir o ativo "${label}"?`)) return;
+    const ok = await confirm({
+      title: "Excluir ativo",
+      description: `Excluir o ativo "${label}"?`,
+      confirmText: "Excluir",
+      variant: "error",
+    });
+    if (!ok) return;
     try {
       setDeletingId(asset.id);
       await inventarioService.deleteAsset(asset.id);

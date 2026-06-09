@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -57,7 +57,6 @@ function minutesBetweenTimes(from: string, to: string): number {
 }
 
 export default function RendimentoAgendaPage() {
-  const router = useRouter();
   const params = useParams<{ userId: string }>();
   const userId = params.userId;
 
@@ -78,9 +77,12 @@ export default function RendimentoAgendaPage() {
   const [justReason, setJustReason] = useState("");
   const [debitOvertime, setDebitOvertime] = useState(false);
   const authUser = getStoredUser();
+  const isPjUser = isPjRole(authUser?.role);
   const canApprove = authUser?.role === "ADMIN";
-  const canVoluntaryJustification = canCreateVoluntaryRendimentoJustification();
-  const canAlertJustification = canCreateAlertRendimentoJustification();
+  const canVoluntaryJustification =
+    !isPjUser && canCreateVoluntaryRendimentoJustification();
+  const canAlertJustification =
+    !isPjUser && canCreateAlertRendimentoJustification();
 
   const justGapMinutes = useMemo(
     () => minutesBetweenTimes(justFrom, justTo),
@@ -133,12 +135,8 @@ export default function RendimentoAgendaPage() {
   }, [referenceDate, userId, view]);
 
   useEffect(() => {
-    if (isPjRole(authUser?.role)) {
-      router.replace("/dashboard");
-      return;
-    }
     void loadTimesheet();
-  }, [authUser?.role, loadTimesheet, router]);
+  }, [loadTimesheet]);
 
   function openAlertJustification(params: {
     date: string;
@@ -250,17 +248,22 @@ export default function RendimentoAgendaPage() {
           <div className="font-sans w-full space-y-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-2">
-                <Button asChild variant="outline" size="sm" className="w-fit">
-                  <Link href="/apontamentos">
-                    <ArrowLeft className="mr-2 size-4" />
-                    Voltar à lista
-                  </Link>
-                </Button>
+                {!isPjUser ? (
+                  <Button asChild variant="outline" size="sm" className="w-fit">
+                    <Link href="/apontamentos">
+                      <ArrowLeft className="mr-2 size-4" />
+                      Voltar à lista
+                    </Link>
+                  </Button>
+                ) : null}
                 <h1 className="text-3xl font-bold text-foreground">
                   Apontamentos
                 </h1>
                 <p className="text-muted-foreground">
                   {timesheet?.userName ?? "Colaborador"} · apontamentos TiFlux
+                  {isPjUser
+                    ? " · visão terceiro (sem alertas de lacuna ou almoço)"
+                    : ""}
                 </p>
               </div>
             </div>
@@ -271,6 +274,7 @@ export default function RendimentoAgendaPage() {
               referenceDate={referenceDate}
               loading={loading}
               refreshing={refreshing}
+              pjSimplifiedView={isPjUser}
               canApproveJustification={canApprove}
               onOpenAlertJustification={
                 canAlertJustification ? openAlertJustification : undefined

@@ -73,7 +73,7 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('RENDIMENTO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role === 'CLIENT'
+      (user.role === 'CLIENT' || user.role === 'PJ')
     ) {
       return true;
     }

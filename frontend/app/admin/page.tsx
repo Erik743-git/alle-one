@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   FileText,
   LayoutDashboard,
+  FolderTree,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -61,6 +62,13 @@ export default function AdminPage() {
         "Crie, edite, exclua usuários e defina permissões por empresa.",
       icon: Users,
       href: "/admin/usuarios",
+    },
+    {
+      name: "Classificação",
+      description:
+        "Cadastre categorias em até 3 níveis sobre as mesas de serviço do TiFlux.",
+      icon: FolderTree,
+      href: "/admin/classificacao",
     },
     {
       name: "Auditoria",

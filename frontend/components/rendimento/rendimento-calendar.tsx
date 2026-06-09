@@ -55,6 +55,8 @@ type RendimentoCalendarProps = {
   loading?: boolean;
   refreshing?: boolean;
   canApproveJustification?: boolean;
+  /** Terceiro (PJ): só apontamentos, HE e plantão. */
+  pjSimplifiedView?: boolean;
   onOpenAlertJustification?: (params: {
     date: string;
     fromTime: string;
@@ -99,6 +101,7 @@ export function RendimentoCalendar({
   loading = false,
   refreshing = false,
   canApproveJustification = false,
+  pjSimplifiedView = false,
   onOpenAlertJustification,
   onOpenVoluntaryJustification,
   onApproveJustification,
@@ -206,7 +209,7 @@ export function RendimentoCalendar({
         </div>
       </div>
 
-      <RendimentoLegend />
+      <RendimentoLegend simplified={pjSimplifiedView} />
 
       <div className="rounded-xl border border-border bg-card px-4 py-3">
         <p className="mb-3 text-xs text-muted-foreground">
@@ -238,12 +241,14 @@ export function RendimentoCalendar({
                 ? "—"
                 : timesheet?.periodOvertimeFormatted ?? "00:00"}
             </p>
-            <p className="text-xs text-muted-foreground">
-              Saldo debitável:{" "}
-              {loading && !timesheet
-                ? "—"
-                : timesheet?.overtimeBalanceFormatted ?? "00:00"}
-            </p>
+            {!pjSimplifiedView ? (
+              <p className="text-xs text-muted-foreground">
+                Saldo debitável:{" "}
+                {loading && !timesheet
+                  ? "—"
+                  : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+              </p>
+            ) : null}
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Horas de plantão</p>
@@ -297,7 +302,8 @@ export function RendimentoCalendar({
                   className={cn(
                     "min-h-[96px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
                     !inMonth && "bg-muted/20 text-muted-foreground",
-                    dayInsightsForDisplay(summary)?.hasIdleGapAlert &&
+                    !pjSimplifiedView &&
+                      dayInsightsForDisplay(summary)?.hasIdleGapAlert &&
                       "ring-1 ring-inset ring-orange-500/50",
                   )}
                 >
@@ -316,7 +322,12 @@ export function RendimentoCalendar({
                       </span>
                     ) : null}
                   </div>
-                  <RendimentoDayIndicators summary={summary} compact showLunch={false} />
+                  <RendimentoDayIndicators
+                    summary={summary}
+                    compact
+                    showLunch={false}
+                    hideGapAlerts={pjSimplifiedView}
+                  />
                 </button>
               );
             })}
@@ -351,7 +362,9 @@ export function RendimentoCalendar({
                 className={cn(
                   "flex min-h-[220px] flex-col rounded-xl border border-border bg-card p-2 text-left transition hover:bg-muted/25 cursor-pointer",
                   isToday && "ring-2 ring-primary/40",
-                  dayInsightsForDisplay(summary)?.hasIdleGapAlert && "border-orange-500/50",
+                  !pjSimplifiedView &&
+                    dayInsightsForDisplay(summary)?.hasIdleGapAlert &&
+                    "border-orange-500/50",
                 )}
               >
                 <div className="mb-2 border-b border-border pb-2">
@@ -364,11 +377,17 @@ export function RendimentoCalendar({
                   <p className="text-xs font-semibold text-primary">
                     {summary?.totalHoursFormatted ?? "00:00"}
                   </p>
-                  <RendimentoDayIndicators summary={summary} compact />
+                  <RendimentoDayIndicators
+                    summary={summary}
+                    compact
+                    hideGapAlerts={pjSimplifiedView}
+                  />
                 </div>
                 <ul className="flex-1 space-y-1 overflow-y-auto">
                   {summary
-                    ? buildDayTimeline(summary).map((item, index) =>
+                    ? buildDayTimeline(summary, {
+                        appointmentsOnly: pjSimplifiedView,
+                      }).map((item, index) =>
                         item.kind === "gap" ? (
                           <RendimentoGapBlock
                             key={`gap-${item.gap.fromTime}-${index}`}
@@ -434,8 +453,11 @@ export function RendimentoCalendar({
                 ) : null}
               </div>
             ) : null}
-            <RendimentoDayIndicators summary={displayDay} />
-            {onOpenVoluntaryJustification ? (
+            <RendimentoDayIndicators
+              summary={displayDay}
+              hideGapAlerts={pjSimplifiedView}
+            />
+            {!pjSimplifiedView && onOpenVoluntaryJustification ? (
               <div className="mt-3">
                 <Button
                   type="button"
@@ -451,12 +473,16 @@ export function RendimentoCalendar({
             ) : null}
           </div>
           <ul className="space-y-2 p-4">
-            {buildDayTimeline(displayDay).length === 0 ? (
+            {buildDayTimeline(displayDay, {
+              appointmentsOnly: pjSimplifiedView,
+            }).length === 0 ? (
               <li className="py-8 text-center text-sm text-muted-foreground">
                 Nenhum apontamento neste dia.
               </li>
             ) : (
-              buildDayTimeline(displayDay).map((item, index) =>
+              buildDayTimeline(displayDay, {
+                appointmentsOnly: pjSimplifiedView,
+              }).map((item, index) =>
                 item.kind === "gap" ? (
                   <RendimentoGapBlock
                     key={`day-gap-${item.gap.fromTime}-${index}`}

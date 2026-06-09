@@ -59,6 +59,7 @@ const PJ_DEFAULT_VIEW: PermissionModuleKey[] = [
   "DASHBOARD",
   "GMUD",
   "CORREIO",
+  "RENDIMENTO",
 ];
 
 export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag) {
@@ -121,8 +122,8 @@ export function canAccessDashboard() {
 }
 
 export function canAccessRendimento() {
-  if (isPj()) return false;
   if (isClient()) return true;
+  if (isPj()) return canViewModule("RENDIMENTO");
   return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
 }
 
@@ -133,6 +134,7 @@ export function canAccessTickets() {
 
 /** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */
 export function canCreateVoluntaryRendimentoJustification() {
+  if (isPj()) return false;
   if (isAdmin()) return true;
   if (!isCollaborator()) return false;
   return canViewModule("RENDIMENTO");

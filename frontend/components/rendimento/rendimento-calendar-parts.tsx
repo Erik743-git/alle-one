@@ -24,7 +24,7 @@ import type {
   RendimentoVoluntaryJustification,
 } from "@/lib/services/rendimento.service";
 
-export function RendimentoLegend() {
+export function RendimentoLegend({ simplified = false }: { simplified?: boolean }) {
   return (
     <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
       <span className="font-semibold text-foreground">Legenda:</span>
@@ -36,19 +36,23 @@ export function RendimentoLegend() {
         <span className="size-2.5 rounded-sm bg-violet-600" />
         Plantão
       </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-2.5 rounded-sm bg-orange-500" />
-        <AlertTriangle className="size-3 text-orange-500" />
-        &gt; 1h sem apontar
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <Coffee className="size-3 text-emerald-600" />
-        Almoço (perdoa 1 alerta/dia)
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <Hourglass className="size-3 text-sky-500" />
-        Justificativa voluntária pendente
-      </span>
+      {!simplified ? (
+        <>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="size-2.5 rounded-sm bg-orange-500" />
+            <AlertTriangle className="size-3 text-orange-500" />
+            &gt; 1h sem apontar
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Coffee className="size-3 text-emerald-600" />
+            Almoço (perdoa 1 alerta/dia)
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Hourglass className="size-3 text-sky-500" />
+            Justificativa voluntária pendente
+          </span>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -75,11 +79,14 @@ export function RendimentoDayIndicators({
   summary,
   compact = false,
   showLunch = true,
+  hideGapAlerts = false,
 }: {
   summary?: RendimentoDaySummary;
   compact?: boolean;
   /** Visão mensal: HE, plantão, alerta e voluntária pendente (sem almoço). */
   showLunch?: boolean;
+  /** Terceiro (PJ): só HE e plantão. */
+  hideGapAlerts?: boolean;
 }) {
   const insights = dayInsightsForDisplay(summary);
   const monthMode = !showLunch;
@@ -118,7 +125,7 @@ export function RendimentoDayIndicators({
           P
         </span>
       ) : null}
-      {insights?.hasIdleGapAlert ? (
+      {!hideGapAlerts && insights?.hasIdleGapAlert ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-orange-500/20 px-1 py-0.5 text-[9px] font-bold text-orange-700 dark:text-orange-300"
           title="Intervalo sem apontamento (> 1h)"
@@ -127,7 +134,7 @@ export function RendimentoDayIndicators({
           !
         </span>
       ) : null}
-      {hasPendingVoluntary ? (
+      {!hideGapAlerts && hasPendingVoluntary ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-sky-500/20 px-1 py-0.5 text-[9px] font-bold text-sky-700 dark:text-sky-300"
           title="Justificativa voluntária aguardando aprovação"
@@ -135,7 +142,7 @@ export function RendimentoDayIndicators({
           <Hourglass className="size-2.5" />
         </span>
       ) : null}
-      {showLunch && insights?.hasExpectedLunch ? (
+      {!hideGapAlerts && showLunch && insights?.hasExpectedLunch ? (
         <span
           className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 px-1 py-0.5 text-[9px] font-bold text-emerald-700 dark:text-emerald-300"
           title="Almoço identificado"
@@ -364,7 +371,10 @@ function timeKey(value: string | null | undefined): string {
  * Mesma fonte da visão mensal (`insights.gaps`): mescla apontamentos + todos os gaps
  * (inclui alerta no fim do dia, que não fica entre dois tickets).
  */
-export function buildDayTimeline(summary: RendimentoDaySummary) {
+export function buildDayTimeline(
+  summary: RendimentoDaySummary,
+  options?: { appointmentsOnly?: boolean },
+) {
   type TimelineItem =
     | { kind: "entry"; entry: RendimentoEntry }
     | { kind: "gap"; gap: RendimentoGap }
@@ -426,6 +436,10 @@ export function buildDayTimeline(summary: RendimentoDaySummary) {
 
     candidates.sort((a, b) => a.at.localeCompare(b.at));
     candidates[0]?.push();
+  }
+
+  if (options?.appointmentsOnly) {
+    return items.filter((item) => item.kind === "entry");
   }
 
   return items;

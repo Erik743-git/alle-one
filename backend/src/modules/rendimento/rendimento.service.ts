@@ -1511,7 +1511,7 @@ export class RendimentoService {
       where: {
         id: params.userId,
         deletedAt: null,
-        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] }, // PJ não tem agenda de rendimento
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
       },
     });
 
@@ -1617,6 +1617,11 @@ export class RendimentoService {
       reference,
     );
 
+    const timesheetDays =
+      user.role === UserRole.PJ
+        ? this.stripPjTimesheetDays(days)
+        : days;
+
     return {
       userId: user.id,
       userName: user.name,
@@ -1633,8 +1638,24 @@ export class RendimentoService {
       periodPlantaoFormatted: this.formatMinutes(periodPlantaoMinutes),
       overtimeBalanceMinutes,
       overtimeBalanceFormatted: this.formatMinutes(overtimeBalanceMinutes),
-      days,
+      days: timesheetDays,
     };
+  }
+
+  /** Terceiro (PJ): só apontamentos + HE/plantão — sem lacunas, almoço ou justificativas. */
+  private stripPjTimesheetDays(
+    days: RendimentoDaySummaryDto[],
+  ): RendimentoDaySummaryDto[] {
+    return days.map((day) => ({
+      ...day,
+      voluntaryJustifications: [],
+      insights: {
+        ...day.insights,
+        gaps: [],
+        hasIdleGapAlert: false,
+        hasExpectedLunch: false,
+      },
+    }));
   }
 
   async createGapJustification(params: {
