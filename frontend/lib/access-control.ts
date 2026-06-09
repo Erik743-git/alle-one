@@ -153,9 +153,8 @@ export function canAccessRendimento() {
   return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
 }
 
-/** V2 tickets — somente administradores por enquanto. */
 export function canAccessTickets() {
-  return isAdmin() && canViewModule("TICKETS");
+  return canViewModule("TICKETS");
 }
 
 /** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */
@@ -188,21 +187,19 @@ export function canAccessInventario() {
     if (entry && entry.canView === false) return false;
     return true;
   }
-  return isAdmin() || isCollaborator() || canViewModule("INVENTARIO");
+  return canViewModule("INVENTARIO");
 }
 
 export function canEditInventario() {
   if (isClient() || isPj()) return false;
   if (isAdmin()) return true;
-  if (hasPermission("INVENTARIO", "canEdit")) return true;
-  return isCollaborator() && canAccessInventario();
+  return hasPermission("INVENTARIO", "canEdit");
 }
 
 export function canDeleteInventario() {
   if (isClient() || isPj()) return false;
   if (isAdmin()) return true;
-  if (hasPermission("INVENTARIO", "canDelete")) return true;
-  return isCollaborator() && canAccessInventario();
+  return hasPermission("INVENTARIO", "canDelete");
 }
 
 export function canAccessAplicativos() {

@@ -7,9 +7,8 @@ import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { API_URL } from "@/lib/env";
 import { clearSession, getStoredUser } from "@/lib/session";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 function validatePassword(password: string) {
   if (password.length < 8) {

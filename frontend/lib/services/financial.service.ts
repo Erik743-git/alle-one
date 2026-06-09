@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
 import type { ListCompanyContractsResponse } from "@/lib/services/company-contracts.service";
 
 export type FinancialOverviewContract = {
@@ -58,7 +59,6 @@ export const financialService = {
     if (params.companyId) search.set("companyId", params.companyId);
     if (params.inline) search.set("inline", "true");
     const qs = search.toString();
-    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
     const url = `${API_URL}/financial/contracts/${params.contractId}/file${qs ? `?${qs}` : ""}`;
 
     const res = await authFetch(url, {

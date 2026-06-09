@@ -37,7 +37,11 @@ pm2 restart alleone-api alleone-web
 
 sleep 3
 echo "==> health API"
-curl -sf "http://127.0.0.1:3002/health" >/dev/null && echo "API OK" || echo "API FALHOU — pm2 logs alleone-api --lines 30"
+if ! curl -sf "http://127.0.0.1:3002/health" >/dev/null; then
+  echo "ERRO: API health falhou (verifique DB e pm2 logs alleone-api --lines 30)"
+  exit 1
+fi
+echo "API OK"
 
 echo "==> health Web"
 curl -sf -o /dev/null -w "web:%{http_code}\n" "http://127.0.0.1:3000/login" || true

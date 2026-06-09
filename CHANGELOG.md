@@ -6,7 +6,25 @@ O versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/) (`MA
 
 ## [Unreleased]
 
-_Nada pendente._
+### Segurança e operação
+
+- `buildRequestUser` rejeita usuários com `deletedAt`.
+- Health check com teste de Postgres; deploy falha se API unhealthy.
+- Validação MIME em uploads de contratos, logos e anexos de tickets.
+- Script `deploy/scripts/backup-postgres.sh`.
+
+### Permissões e UX
+
+- Inventário e Tickets alinhados entre menu, página e API.
+- Tickets na matriz de permissões do admin.
+- Labels **Apontamentos** em relatórios; mensagem clara no `PermissionGate`.
+
+### Frontend e infra
+
+- `API_URL` centralizado em `@/lib/env` (porta 3002 em dev).
+- Menos chamadas duplicadas a `/auth/me`.
+- Nginx: rota `/inventario/attachments/*`.
+- Documentação: `docs/MAINTENANCE.md`.
 
 ## [0.4.0] — 2026-06-02
 

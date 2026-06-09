@@ -10,7 +10,7 @@ import {
   type AuthUser,
 } from "./session";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { API_URL } from "@/lib/env";
 
 async function tryRestoreSessionFromCookie(): Promise<AuthUser | null> {
   try {
@@ -70,7 +70,7 @@ export function useAuth() {
     refresh();
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, [hydrated, pathname]);
+  }, [hydrated]);
 
   const authenticated = !!user;
   const loading = !hydrated;

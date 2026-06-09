@@ -15,6 +15,7 @@ import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Eye, UserPlus, EyeOff } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
 
 interface Props {
   open: boolean;
@@ -31,8 +32,6 @@ type ServiceDeskOption = {
   name: string;
   externalId: number | null;
 };
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 function sortByName<T extends { name: string }>(rows: T[]) {
   return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));

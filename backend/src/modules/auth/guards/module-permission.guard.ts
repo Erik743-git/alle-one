@@ -65,14 +65,6 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('INVENTARIO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role === 'COLLABORATOR'
-    ) {
-      return true;
-    }
-
-    if (
-      meta.module === ('INVENTARIO' as PermissionModule) &&
-      meta.flag === 'canView' &&
       user.role === 'CLIENT'
     ) {
       const entry = user.permissions.find(
@@ -110,18 +102,6 @@ export class ModulePermissionGuard implements CanActivate {
         (p) => p.module === ('FINANCIAL' as PermissionModule),
       );
       if (!entry || entry.canView) return true;
-    }
-
-    if (
-      meta.module === ('INVENTARIO' as PermissionModule) &&
-      ['canCreate', 'canEdit', 'canDelete'].includes(meta.flag) &&
-      user.role === 'COLLABORATOR'
-    ) {
-      const entry = user.permissions.find(
-        (p) => p.module === ('INVENTARIO' as PermissionModule),
-      );
-      if (entry?.[meta.flag]) return true;
-      return meta.flag !== 'canDelete';
     }
 
     // Justificativas na própria agenda (lacuna ou voluntária): colaborador só precisa canView.

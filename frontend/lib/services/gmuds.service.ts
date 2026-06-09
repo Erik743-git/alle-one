@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
 
 export type GmudStatus =
   | "DRAFT"
@@ -131,8 +132,6 @@ export const gmudsService = {
     note?: string;
     evidence: File;
   }) {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
     const form = new FormData();
     form.append("onBehalfOfUserId", params.onBehalfOfUserId);
     form.append("decision", params.decision);
@@ -179,8 +178,6 @@ export const gmudsService = {
   },
 
   async addAttachment(id: string, file: File) {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
     const form = new FormData();
     form.append("file", file);
 

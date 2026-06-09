@@ -1,3 +1,4 @@
+import { API_URL } from "@/lib/env";
 import type { ModulePermission } from "./permission-modules";
 
 export type AuthUser = {
@@ -86,7 +87,6 @@ export function clearSession() {
   if (typeof window === "undefined") {
     return;
   }
-  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
   void fetch(`${API_URL}/auth/logout`, {
     method: "POST",
     credentials: "include",

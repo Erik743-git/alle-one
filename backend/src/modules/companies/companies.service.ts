@@ -19,6 +19,7 @@ import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { StreamableFile } from '@nestjs/common';
 import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
+import { assertAllowedUploadMime } from '../../common/upload.config';
 
 const contractRelationsInclude = {
   contractFiles: {
@@ -619,6 +620,7 @@ export class CompaniesService {
     if (!file) {
       throw new BadRequestException('Arquivo não enviado');
     }
+    assertAllowedUploadMime(file.mimetype);
 
     const company = await this.findOne(companyId);
     const contract = await this.prisma.contract.findFirst({
@@ -687,6 +689,10 @@ export class CompaniesService {
     file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('Arquivo não enviado');
+    const mime = (file.mimetype || '').toLowerCase();
+    if (!mime.startsWith('image/')) {
+      throw new BadRequestException('Logo deve ser uma imagem (PNG, JPG, etc.).');
+    }
     const company = await this.findOne(companyId);
 
     const maxBytes = 5 * 1024 * 1024;

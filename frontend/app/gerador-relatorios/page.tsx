@@ -356,7 +356,7 @@ export default function GeradorRelatoriosPage() {
                     }
                     placeholder={
                       !isRendimento
-                        ? "Só no relatório Rendimento"
+                        ? "Só no relatório de Apontamentos"
                         : "Todos os colaboradores"
                     }
                   />
@@ -388,7 +388,7 @@ export default function GeradorRelatoriosPage() {
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Rendimento: empresa padrão Alle (alterável); apontamentos dos
+                  Apontamentos: empresa padrão Alle (alterável); horas dos
                   tickets da empresa no período; colaborador opcional. Estatística
                   Geral: visão da empresa (sem colaborador); CSV com as mesmas
                   tabelas do XLSX em seções separadas (gráficos só no XLSX).

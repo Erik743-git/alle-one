@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
 
 export type ReportFormat = "CSV" | "XLSX";
 
@@ -74,8 +75,6 @@ export const reportsService = {
   },
 
   async download(reportId: string) {
-    const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
     const res = await authFetch(`${API_URL}/reports/${reportId}/download`, {
       method: "GET",
     });

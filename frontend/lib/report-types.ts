@@ -3,7 +3,7 @@ export type ReportFormatOption = "CSV" | "XLSX";
 export const REPORT_TYPES = [
   {
     value: "1",
-    label: "Rendimento",
+    label: "Apontamentos",
     formats: ["CSV", "XLSX"] as const,
   },
   {

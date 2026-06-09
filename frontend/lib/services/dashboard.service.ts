@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
 
 export type DashboardSummary = {
   totalChamados: number;
@@ -194,8 +195,6 @@ export async function downloadDebugDump(params: {
   start: string; // YYYY-MM-DD
   end: string; // YYYY-MM-DD
 }) {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
   const search = new URLSearchParams();
   // Para o dump, o companyId é o mais importante. group pode ser um placeholder.
   search.set("group", params.group?.trim() ? params.group.trim() : "AUTO");

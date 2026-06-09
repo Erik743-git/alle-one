@@ -31,6 +31,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { setSession, setStoredUser, type AuthUser } from "@/lib/session";
+import { API_URL } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
 
 type LoginResponse = {
@@ -45,7 +46,6 @@ type ErrorResponse = {
   statusCode?: number;
 };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 const SUPPORT_EMAIL = "contato@alletecnologia.com";
 
 const LOGIN_CONNECTION_ERROR =

@@ -16,7 +16,8 @@
 | `SWAGGER_ENABLED` | `false` (padrão) |
 | `AUTH_COOKIE_SECURE` | `false` só em HTTP sem TLS; em HTTPS use cookie Secure |
 | `TRUST_PROXY` | `1` atrás de Nginx |
-| Uploads | `backend/uploads/` fora do Git; backup na VM |
+| Uploads | Tipos MIME validados (GMUD, Inventário, contratos, tickets, logos); `backend/uploads/` fora do Git |
+| Backup DB | `deploy/scripts/backup-postgres.sh` + retenção via cron (ver [MAINTENANCE.md](./MAINTENANCE.md)) |
 | Debug | `ENABLE_DEBUG_DUMP` desligado em produção |
 
 ## Autenticação

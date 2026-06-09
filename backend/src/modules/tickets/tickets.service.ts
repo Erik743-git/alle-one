@@ -7,7 +7,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { TICKET_APPOINTMENT_UPLOAD_MAX_BYTES } from '../../common/upload.config';
+import {
+  assertAllowedUploadMime,
+  TICKET_APPOINTMENT_UPLOAD_MAX_BYTES,
+} from '../../common/upload.config';
 import {
   PortalTicketAppointmentSyncStatus,
   PortalTifluxOutboxKind,
@@ -870,6 +873,7 @@ export class TicketsService {
     });
 
     for (const file of uniqueFiles) {
+      assertAllowedUploadMime(file.mimetype);
       if (file.size > TICKET_APPOINTMENT_UPLOAD_MAX_BYTES) {
         throw new BadRequestException(
           `Arquivo "${file.originalname}" excede o limite de 25MB.`,

@@ -141,11 +141,16 @@ export default function InventarioPage() {
                   const { countLabel, expiredSuffix } = formatAssetsLabel(company);
                   return (
                     <Link key={company.id} href={`/inventario/${company.id}`}>
-                      <Card className="h-full transition-colors hover:border-primary/40 hover:bg-muted/30">
+                      <Card className="h-full overflow-hidden transition-colors hover:border-primary/40 hover:bg-muted/30">
                         <CardHeader className="pb-2">
-                          <CardTitle className="text-base flex items-center gap-2">
+                          <CardTitle className="flex min-w-0 items-center gap-2 text-base">
                             <Building2 className="h-4 w-4 shrink-0 text-primary" />
-                            <span className="truncate">{company.name}</span>
+                            <span
+                              className="min-w-0 truncate"
+                              title={company.name}
+                            >
+                              {company.name}
+                            </span>
                           </CardTitle>
                         </CardHeader>
                         <CardContent className="flex items-center justify-between text-sm text-muted-foreground">

@@ -32,6 +32,7 @@ import {
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
 
 type ApiUser = {
   id: string;
@@ -95,8 +96,6 @@ type ServiceDeskOption = {
 function sortByName<T extends { name: string }>(rows: T[]) {
   return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
 function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
   switch (role) {

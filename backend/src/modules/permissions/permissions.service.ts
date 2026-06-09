@@ -239,7 +239,7 @@ export class PermissionsService {
       include: { permissions: true },
     });
 
-    if (!user || user.status !== UserStatus.ACTIVE) {
+    if (!user || user.deletedAt || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Sessão inválida ou usuário inativo');
     }
 

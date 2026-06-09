@@ -35,9 +35,13 @@ export default function PermissionGate({
 
   if (!allowed) {
     return (
-      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 font-sans text-foreground">
-        <Loader2 className="h-7 w-7 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Verificando permissões…</p>
+      <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 text-center font-sans text-foreground">
+        <p className="text-sm font-medium">Sem permissão para este módulo</p>
+        <p className="text-sm text-muted-foreground">
+          Você será redirecionado ao dashboard. Peça acesso ao administrador se
+          precisar desta área.
+        </p>
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
