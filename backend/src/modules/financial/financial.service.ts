@@ -211,6 +211,61 @@ export class FinancialService {
     };
   }
 
+  /** Contratos da empresa para perfis com FINANCIAL (CLIENT, colaborador, etc.). */
+  async listContracts(
+    user: AuthenticatedRequestUser,
+    query: FinancialOverviewQueryDto,
+  ) {
+    const resolvedCompanyId = await this.resolveCompanyId(
+      user,
+      query.companyId,
+    );
+
+    const company = await this.prisma.company.findFirst({
+      where: { id: resolvedCompanyId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+
+    if (!company) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { companyId: company.id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        contractFiles: {
+          include: {
+            file: {
+              select: {
+                id: true,
+                originalName: true,
+                mimeType: true,
+                size: true,
+                createdAt: true,
+              },
+            },
+          },
+          orderBy: { id: 'desc' },
+        },
+      },
+    });
+
+    const now = new Date();
+    const normalized = contracts.map((c) => {
+      const effectiveStatus =
+        c.endDate && c.endDate.getTime() < now.getTime()
+          ? ContractStatus.EXPIRED
+          : c.status;
+      return { ...c, status: effectiveStatus };
+    });
+
+    return {
+      company: { id: company.id, name: company.name },
+      contracts: normalized,
+    };
+  }
+
   async downloadContractFile(
     user: AuthenticatedRequestUser,
     query: FinancialOverviewQueryDto,

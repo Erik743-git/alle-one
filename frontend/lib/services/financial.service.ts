@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import type { ListCompanyContractsResponse } from "@/lib/services/company-contracts.service";
 
 export type FinancialOverviewContract = {
   id: string;
@@ -36,6 +37,15 @@ export type FinancialOverviewResponse = {
 };
 
 export const financialService = {
+  async listContracts(params: { companyId?: string }) {
+    const search = new URLSearchParams();
+    if (params.companyId) search.set("companyId", params.companyId);
+    const qs = search.toString();
+    return apiRequest<ListCompanyContractsResponse>(
+      `/financial/contracts${qs ? `?${qs}` : ""}`,
+    );
+  },
+
   async overview(params: { companyId?: string }) {
     const search = new URLSearchParams();
     if (params.companyId) search.set("companyId", params.companyId);

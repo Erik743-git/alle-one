@@ -72,6 +72,13 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
     return true;
   }
 
+  // CLIENT: Financeiro liberado por padrão (ROLE_FALLBACK no backend), salvo revogação explícita.
+  if (flag === "canView" && module === "FINANCIAL" && isClient()) {
+    const entry = getModuleEntry("FINANCIAL");
+    if (entry && entry.canView === false) return false;
+    return true;
+  }
+
   const user = getStoredUser();
   if (flag === "canView" && user && isCollaboratorRole(user.role)) {
     const lacksExplicit =
@@ -105,6 +112,11 @@ export function canAccessAdmin() {
 }
 
 export function canAccessFinanceiro() {
+  if (isClient()) {
+    const entry = getModuleEntry("FINANCIAL");
+    if (entry && entry.canView === false) return false;
+    return true;
+  }
   return canViewModule("FINANCIAL");
 }
 

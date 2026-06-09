@@ -26,6 +26,15 @@ export class FinancialController {
     return this.service.getOverview(user, query);
   }
 
+  @Get('contracts')
+  @RequirePermission(PermissionModule.FINANCIAL, 'canView')
+  listContracts(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Query() query: FinancialOverviewQueryDto,
+  ) {
+    return this.service.listContracts(user, query);
+  }
+
   @Get('contracts/:contractId/file')
   @RequirePermission(PermissionModule.FINANCIAL, 'canView')
   async downloadContractFile(

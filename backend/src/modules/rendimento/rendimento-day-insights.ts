@@ -255,10 +255,22 @@ function isSameLocalDate(a: Date, b: Date): boolean {
   );
 }
 
+/** Dia civil atual (fuso local) — alertas de lacuna/almoço só valem até ontem. */
+export function isRendimentoDateToday(dateIsoLike: string): boolean {
+  const raw = String(dateIsoLike).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  const now = new Date();
+  return (
+    now.getFullYear() === y && now.getMonth() === mo && now.getDate() === d
+  );
+}
+
 function isToday(dateIsoLike: string): boolean {
-  const d = new Date(String(dateIsoLike));
-  if (Number.isNaN(d.getTime())) return false;
-  return isSameLocalDate(d, new Date());
+  return isRendimentoDateToday(dateIsoLike);
 }
 
 export function analyzeRendimentoDay(
@@ -292,6 +304,24 @@ export function analyzeRendimentoDay(
   const regularEntries =
     firstRegularIdx >= 0 ? enriched.slice(firstRegularIdx).filter((e) => !e.isOvertime) : [];
   const regularWorkedMinutes = regularEntries.reduce((sum, e) => sum + e.minutes, 0);
+  const overtimeMinutes = enriched
+    .filter((e) => e.isOvertime)
+    .reduce((sum, e) => sum + e.minutes, 0);
+
+  // Expediente em andamento: não gera lacuna/almoço até o dia fechar (D+1).
+  if (dayIsToday) {
+    return {
+      entries: enriched,
+      insights: {
+        regularMinutes: regularWorkedMinutes,
+        overtimeMinutes,
+        hasOvertime: enriched.some((e) => e.isOvertime),
+        hasIdleGapAlert: false,
+        hasExpectedLunch: false,
+        gaps: [],
+      },
+    };
+  }
 
   // Alertas valem só enquanto a jornada "regular" (8h) não foi completada.
   let runningRegularMinutes = 0;
@@ -395,9 +425,6 @@ export function analyzeRendimentoDay(
   }
 
   const totalMinutes = enriched.reduce((sum, e) => sum + e.minutes, 0);
-  const overtimeMinutes = enriched
-    .filter((e) => e.isOvertime)
-    .reduce((sum, e) => sum + e.minutes, 0);
   const hasIdleGapAlert = gaps.some((g) => g.type === 'idle');
 
   return {

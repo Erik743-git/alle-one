@@ -9,6 +9,10 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import {
+  pickCompanyIdFromList,
+  setPersistedCompanyId,
+} from "@/lib/selected-company";
 import { getStoredUser } from "@/lib/session";
 import {
   getFormatsForReportType,
@@ -148,10 +152,14 @@ export default function GeradorRelatoriosPage() {
       const alleId =
         comps.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "";
       const defaultCompanyId =
-        alleId ||
-        (user?.role === "CLIENT" && user.companyId ? user.companyId : "") ||
-        comps[0]?.id ||
-        "";
+        pickCompanyIdFromList(comps, {
+          userId: user?.id,
+          preferredIds: [
+            companyId,
+            alleId,
+            user?.role === "CLIENT" ? user.companyId : null,
+          ],
+        }) ?? "";
 
       setCompanyId(defaultCompanyId);
 
@@ -321,7 +329,10 @@ export default function GeradorRelatoriosPage() {
                   </label>
                   <SearchableSelectField
                     value={companyId}
-                    onChange={setCompanyId}
+                    onChange={(id) => {
+                      setCompanyId(id);
+                      if (user?.id) setPersistedCompanyId(user.id, id || null);
+                    }}
                     options={companyOptions}
                     loading={carregando}
                     disabled={carregando || companies.length === 0}

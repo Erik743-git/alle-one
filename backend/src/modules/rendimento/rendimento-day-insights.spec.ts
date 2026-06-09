@@ -541,7 +541,7 @@ describe('rendimento-day-insights', () => {
     ).toHaveLength(0);
   });
 
-  it('no dia atual, não estende alerta final até agora além do que falta para 8h', () => {
+  it('no dia atual, não gera alertas de lacuna nem almoço (expediente em andamento)', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(2026, 5, 3, 20, 36, 0));
 
@@ -571,12 +571,9 @@ describe('rendimento-day-insights', () => {
     ]);
 
     expect(insights.regularMinutes).toBe(450);
-    const tailIdle = insights.gaps.find(
-      (g) => g.type === 'idle' && g.fromTime === '18:00',
-    );
-    // Faltam 30 min para 8h → 18:00–18:30 (não até 20:36); abaixo de 60 min não gera alerta.
-    expect(tailIdle).toBeUndefined();
+    expect(insights.gaps).toHaveLength(0);
     expect(insights.hasIdleGapAlert).toBe(false);
+    expect(insights.hasExpectedLunch).toBe(false);
 
     jest.useRealTimers();
   });

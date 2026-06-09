@@ -49,6 +49,11 @@ import {
   type RendimentoCompany,
   type RendimentoCompanyAgenda,
 } from "@/lib/services/rendimento.service";
+import {
+  getPersistedCompanyId,
+  pickCompanyIdFromList,
+  setPersistedCompanyId,
+} from "@/lib/selected-company";
 import { ensureArray } from "@/lib/utils";
 
 export default function FinanceiroPage() {
@@ -57,9 +62,10 @@ export default function FinanceiroPage() {
   const isAdmin = user?.role === "ADMIN";
 
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [companyId, setCompanyId] = useState<string>(
-    isClient ? user?.companyId ?? "" : ""
-  );
+  const [companyId, setCompanyId] = useState<string>(() => {
+    if (isClient) return user?.companyId ?? "";
+    return user?.id ? getPersistedCompanyId(user.id) ?? "" : "";
+  });
   const [q, setQ] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -87,8 +93,12 @@ export default function FinanceiroPage() {
       const list = await companiesService.list();
       const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
       setCompanies(sorted);
-      if (!companyId && sorted.length) {
-        setCompanyId(sorted[0].id);
+      const picked = pickCompanyIdFromList(sorted, {
+        userId: user?.id,
+        preferredIds: [companyId],
+      });
+      if (picked) {
+        setCompanyId(picked);
       }
     } catch {
       // silencioso
@@ -102,8 +112,11 @@ export default function FinanceiroPage() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const cid = isClient ? user?.companyId ?? "" : companyId;
-      const res = await companyContractsService.list(cid);
+      const res = isAdmin
+        ? await companyContractsService.list(companyId)
+        : await financialService.listContracts({
+            companyId: isClient ? undefined : companyId,
+          });
       setContracts(Array.isArray(res.contracts) ? res.contracts : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar contratos");
@@ -322,7 +335,10 @@ export default function FinanceiroPage() {
               {!isClient ? (
                 <SearchableSelectField
                   value={companyId}
-                  onChange={setCompanyId}
+                  onChange={(id) => {
+                    setCompanyId(id);
+                    if (user?.id) setPersistedCompanyId(user.id, id || null);
+                  }}
                   options={companyOptions}
                   emptyLabel="Selecione a empresa..."
                   className="min-w-[220px]"

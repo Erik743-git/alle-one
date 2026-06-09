@@ -78,6 +78,18 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
+    // Financeiro: padrão liberado para cliente; matriz explícita pode revogar.
+    if (
+      meta.module === ('FINANCIAL' as PermissionModule) &&
+      meta.flag === 'canView' &&
+      user.role === 'CLIENT'
+    ) {
+      const entry = user.permissions.find(
+        (p) => p.module === ('FINANCIAL' as PermissionModule),
+      );
+      if (!entry || entry.canView) return true;
+    }
+
     if (
       meta.module === ('INVENTARIO' as PermissionModule) &&
       ['canCreate', 'canEdit', 'canDelete'].includes(meta.flag) &&

@@ -14,6 +14,7 @@ import type { RendimentoCalendarView } from './rendimento.dto';
 import {
   analyzeRendimentoDay,
   GAP_ALERT_MINUTES,
+  isRendimentoDateToday,
   LUNCH_MINUTES,
   type RendimentoDayInsightsDto,
   type RendimentoGapDto,
@@ -863,11 +864,14 @@ export class RendimentoService {
     const voluntaryJustifications = dayJustifications
       .filter((j) => j.kind === 'VOLUNTARY')
       .map((j) => this.mapJustificationDto(j));
-    const patchedInsights = this.applyJustificationsToDay(
+    let patchedInsights = this.applyJustificationsToDay(
       dateOnly,
       insights,
       dayJustifications,
     );
+    if (isRendimentoDateToday(dateOnly)) {
+      patchedInsights = this.emptyGapInsights(patchedInsights);
+    }
     return {
       date,
       totalMinutes,
@@ -876,6 +880,37 @@ export class RendimentoService {
       insights: patchedInsights,
       voluntaryJustifications,
     };
+  }
+
+  private emptyGapInsights(
+    insights: RendimentoDayInsightsDto,
+  ): RendimentoDayInsightsDto {
+    return {
+      ...insights,
+      gaps: [],
+      hasIdleGapAlert: false,
+      hasExpectedLunch: false,
+    };
+  }
+
+  private yesterdayDateOnly(): Date {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() - 1);
+    return d;
+  }
+
+  private stripTodayGapAlerts(
+    days: RendimentoDaySummaryDto[],
+  ): RendimentoDaySummaryDto[] {
+    return days.map((day) => {
+      const dateOnly = day.date.slice(0, 10);
+      if (!isRendimentoDateToday(dateOnly)) return day;
+      return {
+        ...day,
+        insights: this.emptyGapInsights(day.insights),
+      };
+    });
   }
 
   private groupByDay(
@@ -1169,6 +1204,9 @@ export class RendimentoService {
     for (const day of days) {
       if (!day.insights) continue;
       await this.purgeAutoGapEventsForDay(userId, day.date);
+      if (isRendimentoDateToday(day.date.slice(0, 10))) {
+        continue;
+      }
       const upserts = collectDayEventUpserts({
         userId,
         dateRef: day.date,
@@ -1216,9 +1254,14 @@ export class RendimentoService {
       );
     }
 
-    const end = params.to
+    let end = params.to
       ? this.parseDateOnly(params.to)
-      : new Date();
+      : this.yesterdayDateOnly();
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (end >= today) {
+      end = this.yesterdayDateOnly();
+    }
     const start = params.from
       ? this.parseDateOnly(params.from)
       : new Date(end.getFullYear(), end.getMonth() - 6, end.getDate());
@@ -1283,6 +1326,7 @@ export class RendimentoService {
         daysProcessed += days.length;
         for (const day of days) {
           if (!day.insights) continue;
+          if (isRendimentoDateToday(day.date.slice(0, 10))) continue;
           const upserts = collectDayEventUpserts({
             userId: collaborator.id,
             dateRef: day.date,
@@ -1617,10 +1661,9 @@ export class RendimentoService {
       reference,
     );
 
-    const timesheetDays =
-      user.role === UserRole.PJ
-        ? this.stripPjTimesheetDays(days)
-        : days;
+    const timesheetDays = this.stripTodayGapAlerts(
+      user.role === UserRole.PJ ? this.stripPjTimesheetDays(days) : days,
+    );
 
     return {
       userId: user.id,

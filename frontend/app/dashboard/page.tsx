@@ -15,6 +15,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import {
+  getPersistedCompanyId,
+  pickCompanyIdFromList,
+  setPersistedCompanyId,
+} from "@/lib/selected-company";
 import { getStoredUser } from "@/lib/session";
 import {
   companiesService,
@@ -269,9 +274,11 @@ export default function DashboardPage() {
 
   const [dashboard, setDashboard] = useState<DashboardCompleteResponse | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(
-    user?.companyId ?? null,
-  );
+  const canSelectCompany = user?.role === "ADMIN" || user?.role === "COLLABORATOR";
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
+    if (!canSelectCompany) return user?.companyId ?? null;
+    return user?.id ? getPersistedCompanyId(user.id) : null;
+  });
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [manualRefreshing, setManualRefreshing] = useState(false);
@@ -279,8 +286,6 @@ export default function DashboardPage() {
 
   const [refreshCooldownUntil, setRefreshCooldownUntil] = useState(0);
   const [cooldownRemainingMs, setCooldownRemainingMs] = useState(0);
-
-  const canSelectCompany = user?.role === "ADMIN" || user?.role === "COLLABORATOR";
 
   const today = new Date();
   const sevenDaysAgo = new Date();
@@ -323,8 +328,12 @@ export default function DashboardPage() {
         const normalized = Array.isArray(list) ? sortByName(list) : [];
         setCompanies(normalized);
 
-        if (!selectedCompanyId && normalized.length > 0) {
-          setSelectedCompanyId(normalized[0].id);
+        const picked = pickCompanyIdFromList(normalized, {
+          userId: user?.id,
+          preferredIds: [selectedCompanyId, user?.companyId],
+        });
+        if (picked) {
+          setSelectedCompanyId(picked);
         }
       } catch (err) {
         console.error(err);
@@ -665,7 +674,11 @@ export default function DashboardPage() {
                   </p>
                   <SearchableSelectField
                     value={selectedCompanyId ?? ""}
-                    onChange={(next) => setSelectedCompanyId(next || null)}
+                    onChange={(next) => {
+                      const id = next || null;
+                      setSelectedCompanyId(id);
+                      if (user?.id) setPersistedCompanyId(user.id, id);
+                    }}
                     options={companyOptions}
                     loading={companies.length === 0}
                     emptyLabel={
