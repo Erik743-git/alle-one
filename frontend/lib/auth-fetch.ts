@@ -6,6 +6,9 @@ export function authFetch(
   init: RequestInit = {},
 ): Promise<Response> {
   const headers = new Headers(init.headers ?? undefined);
+  if (!headers.has("X-Alleone-Api")) {
+    headers.set("X-Alleone-Api", "1");
+  }
   const token = getStoredToken();
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);

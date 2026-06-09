@@ -57,10 +57,12 @@ export async function apiRequest<T>(
         "Content-Type": "application/json",
       };
 
+  const headerRecord = headers as Record<string, string>;
   if (auth) {
+    headerRecord["X-Alleone-Api"] = "1";
     const token = getStoredToken();
     if (token) {
-      (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+      headerRecord.Authorization = `Bearer ${token}`;
     }
   }
 
