@@ -25,9 +25,11 @@ const nextConfig: NextConfig = {
         destination: "/apontamentos",
         permanent: true,
       },
+      // Só páginas de colaborador (UUID). Não redirecionar /rendimento/companies/* (API).
       {
-        source: "/rendimento/:path*",
-        destination: "/apontamentos/:path*",
+        source:
+          "/rendimento/:userId(([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}))",
+        destination: "/apontamentos/:userId",
         permanent: true,
       },
       {
