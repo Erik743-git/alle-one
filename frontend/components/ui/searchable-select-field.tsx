@@ -95,7 +95,13 @@ export function SearchableSelectField({
       </PopoverTrigger>
 
       <PopoverContent
+        side="bottom"
         align="start"
+        sideOffset={8}
+        collisionPadding={16}
+        collisionBoundary={
+          typeof document !== "undefined" ? [document.documentElement] : undefined
+        }
         className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] p-2"
       >
         {showSearch ? (

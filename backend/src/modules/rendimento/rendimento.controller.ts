@@ -22,9 +22,11 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import {
   AnswerRendimentoAppointmentQuestionDto,
   CreateRendimentoAppointmentQuestionDto,
+  BulkDecideRendimentoDayEventsDto,
   CreateRendimentoJustificationDto,
   DecideRendimentoDayEventDto,
   DecideRendimentoJustificationDto,
+  ListPendingOvertimeQueryDto,
   ListCompanyQuestionsQueryDto,
   RendimentoCompanyAgendaQueryDto,
   RendimentoTimesheetQueryDto,
@@ -203,6 +205,37 @@ export class RendimentoController {
       justificationId: id,
       decision: body.decision,
       note: body.note,
+    });
+  }
+
+  @Get('overtime/pending')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  listPendingOvertime(
+    @Query() query: ListPendingOvertimeQueryDto,
+  ) {
+    return this.rendimentoService.listPendingOvertimeEvents({
+      start: query.start,
+      end: query.end,
+      userId: query.userId,
+    });
+  }
+
+  @Patch('events/bulk-decision')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  @AuditMeta({
+    entity: 'RendimentoDayEvent',
+    action: 'BULK_DECIDE',
+  })
+  bulkDecideDayEvents(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: BulkDecideRendimentoDayEventsDto,
+  ) {
+    return this.rendimentoService.bulkDecideDayEvents({
+      actor: req.user,
+      ids: body.ids,
+      decision: body.decision,
     });
   }
 

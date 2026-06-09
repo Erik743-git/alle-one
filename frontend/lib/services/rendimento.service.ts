@@ -328,4 +328,61 @@ export const rendimentoService = {
       body: { decision: params.decision },
     });
   },
+
+  listPendingOvertime(params: {
+    start: string;
+    end: string;
+    userId?: string;
+  }) {
+    const search = new URLSearchParams();
+    search.set("start", params.start);
+    search.set("end", params.end);
+    if (params.userId) search.set("userId", params.userId);
+    return apiRequest<PendingOvertimeItem[]>(
+      `/rendimento/overtime/pending?${search.toString()}`,
+    );
+  },
+
+  bulkDecideDayEvents(params: {
+    ids: string[];
+    decision: "APPROVED" | "REJECTED";
+  }) {
+    return apiRequest<BulkDecideDayEventsResult>(
+      "/rendimento/events/bulk-decision",
+      {
+        method: "PATCH",
+        body: params,
+      },
+    );
+  },
+};
+
+export type PendingOvertimeItem = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  date: string;
+  eventType: "OVERTIME" | "PLANTAO";
+  typeLabel: string;
+  fromTime: string | null;
+  toTime: string | null;
+  minutes: number;
+  hoursFormatted: string;
+  label: string | null;
+  description: string | null;
+  appointmentExternalId: number | null;
+};
+
+export type BulkDecideDayEventsResult = {
+  decision: "APPROVED" | "REJECTED";
+  total: number;
+  succeeded: number;
+  failed: number;
+  results: Array<{
+    id: string;
+    ok: boolean;
+    status?: "APPROVED" | "REJECTED";
+    error?: string;
+  }>;
 };

@@ -2034,4 +2034,125 @@ export class RendimentoService {
 
     return { id: params.justificationId, status: params.decision };
   }
+
+  async listPendingOvertimeEvents(params: {
+    start: string;
+    end: string;
+    userId?: string;
+  }) {
+    const start = params.start.slice(0, 10);
+    const end = params.end.slice(0, 10);
+    const userId = params.userId?.trim() || null;
+
+    const rows =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          user_id: string;
+          user_name: string;
+          user_email: string;
+          date_ref: string;
+          event_type: 'OVERTIME' | 'PLANTAO';
+          from_time: string | null;
+          to_time: string | null;
+          minutes: number;
+          label: string | null;
+          description: string | null;
+          appointment_external_id: number | null;
+        }>
+      >(
+        `
+        SELECT
+          e.id,
+          e.user_id,
+          u.name AS user_name,
+          u.email AS user_email,
+          e.date_ref::text AS date_ref,
+          e.event_type,
+          e.from_time::text AS from_time,
+          e.to_time::text AS to_time,
+          e.minutes,
+          e.label,
+          e.description,
+          e.appointment_external_id
+        FROM rendimento_day_events e
+        INNER JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
+        WHERE e.deleted_at IS NULL
+          AND e.status = 'PENDING'
+          AND e.event_type IN ('OVERTIME', 'PLANTAO')
+          AND e.date_ref >= $1::date
+          AND e.date_ref <= $2::date
+          AND ($3::text IS NULL OR e.user_id = $3::text)
+        ORDER BY e.date_ref DESC, u.name ASC, e.from_time ASC NULLS LAST
+      `,
+        start,
+        end,
+        userId,
+      )) ?? [];
+
+    return rows.map((row) => {
+      const minutes = Number(row.minutes) || 0;
+      const appointmentExternalId =
+        row.appointment_external_id != null
+          ? Number(row.appointment_external_id)
+          : null;
+
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userName: row.user_name,
+        userEmail: row.user_email,
+        date: row.date_ref.slice(0, 10),
+        eventType: row.event_type,
+        typeLabel: row.event_type === 'PLANTAO' ? 'Plantão' : 'Hora extra',
+        fromTime: row.from_time?.slice(0, 5) ?? null,
+        toTime: row.to_time?.slice(0, 5) ?? null,
+        minutes,
+        hoursFormatted: this.formatMinutes(minutes),
+        label: row.label,
+        description: row.description,
+        appointmentExternalId,
+      };
+    });
+  }
+
+  async bulkDecideDayEvents(params: {
+    actor: AuthenticatedRequestUser;
+    ids: string[];
+    decision: 'APPROVED' | 'REJECTED';
+  }) {
+    const uniqueIds = [...new Set(params.ids.map((id) => id.trim()).filter(Boolean))];
+    const results: Array<{
+      id: string;
+      ok: boolean;
+      status?: 'APPROVED' | 'REJECTED';
+      error?: string;
+    }> = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const res = await this.decideDayEvent({
+          actor: params.actor,
+          eventId: id,
+          decision: params.decision,
+        });
+        results.push({ id, ok: true, status: res.status });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Falha ao decidir registro.';
+        results.push({ id, ok: false, error: message });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.ok).length;
+    const failed = results.length - succeeded;
+
+    return {
+      decision: params.decision,
+      total: results.length,
+      succeeded,
+      failed,
+      results,
+    };
+  }
 }

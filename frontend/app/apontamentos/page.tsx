@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Loader2, Search, Users } from "lucide-react";
+import { CalendarDays, Clock, Loader2, Search, Users } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -97,18 +97,28 @@ export default function ApontamentosPage() {
       <PermissionGate module="RENDIMENTO">
         <AppShell>
           <div className="font-sans w-full space-y-8">
-            <div className="space-y-2">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                <Users size={24} />
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-2">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <Users size={24} />
+                </div>
+                <h1 className="text-3xl font-bold text-foreground">
+                  Apontamentos
+                </h1>
+                <p className="max-w-2xl text-muted-foreground">
+                  Acompanhe os apontamentos de horas dos colaboradores no TiFlux. A
+                  coluna «Horas no mês» usa total sem sobreposição no mesmo dia; na
+                  agenda, cada apontamento continua listado normalmente.
+                </p>
               </div>
-              <h1 className="text-3xl font-bold text-foreground">
-                Apontamentos
-              </h1>
-              <p className="max-w-2xl text-muted-foreground">
-                Acompanhe os apontamentos de horas dos colaboradores no TiFlux. A
-                coluna «Horas no mês» usa total sem sobreposição no mesmo dia; na
-                agenda, cada apontamento continua listado normalmente.
-              </p>
+              {isAdmin ? (
+                <Button asChild className="shrink-0">
+                  <Link href="/apontamentos/aprovar-horas-extras">
+                    <Clock className="mr-2 size-4" />
+                    Aprovar horas extras
+                  </Link>
+                </Button>
+              ) : null}
             </div>
 
             <Card>

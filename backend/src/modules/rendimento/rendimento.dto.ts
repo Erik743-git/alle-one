@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsIn,
@@ -73,6 +76,29 @@ export class DecideRendimentoJustificationDto {
 }
 
 export class DecideRendimentoDayEventDto {
+  @IsIn(['APPROVED', 'REJECTED'])
+  decision!: 'APPROVED' | 'REJECTED';
+}
+
+export class ListPendingOvertimeQueryDto {
+  @IsDateString()
+  start!: string;
+
+  @IsDateString()
+  end!: string;
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+}
+
+export class BulkDecideRendimentoDayEventsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  ids!: string[];
+
   @IsIn(['APPROVED', 'REJECTED'])
   decision!: 'APPROVED' | 'REJECTED';
 }
