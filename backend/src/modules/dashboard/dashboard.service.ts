@@ -30,6 +30,7 @@ import {
   countDaysInRange,
   getDefaultDateRange,
 } from './dashboard-date.utils';
+import { DashboardChartsService } from './dashboard-charts.service';
 import type {
   AppointmentLike,
   DashboardFilters,
@@ -126,7 +127,6 @@ export class DashboardService {
    */
   private readonly dbCacheRequireFullEndCoverage =
     process.env.TIFLUX_DB_CACHE_REQUIRE_FULL_COVERAGE === 'true';
-  private readonly chartTicketsLimit = 200;
   private readonly tifluxAppointmentsPageSize = 200;
   private readonly tifluxAppointmentsMaxPages = 20;
   private loggedAppointmentSample = false;
@@ -171,6 +171,7 @@ export class DashboardService {
     private readonly tifluxService: TifluxService,
     private readonly zabbixService: ZabbixService,
     private readonly prisma: PrismaService,
+    private readonly dashboardCharts: DashboardChartsService,
   ) {}
 
   private buildCacheKey(params: DashboardFilters) {
@@ -1068,62 +1069,6 @@ export class DashboardService {
       zabbixGroupName,
       tifluxClientId,
     };
-  }
-
-  private async getTicketsForCharts(filters: {
-    startDate: Date;
-    endDate: Date;
-    tifluxClientId: number | null;
-  }): Promise<Array<Record<string, unknown>>> {
-    if (filters.tifluxClientId === null) {
-      this.devDebug('getTicketsForCharts: tifluxClientId nulo, retornando []');
-      return [];
-    }
-
-    const { startISO, endISO } = buildTifluxDateRange(
-      filters.startDate,
-      filters.endDate,
-    );
-
-    this.devDebug('==================================================');
-    this.devDebug('getTicketsForCharts');
-    this.devDebug('clientId:', filters.tifluxClientId);
-    this.devDebug('startISO:', startISO);
-    this.devDebug('endISO:', endISO);
-    this.devDebug('limit:', this.chartTicketsLimit);
-    this.devDebug('==================================================');
-
-    if (!this.allowRuntimeTifluxApi) {
-      return [];
-    }
-
-    try {
-      const tickets = await this.tifluxService.getTickets({
-        filter_by: 'all',
-        client_ids: [filters.tifluxClientId],
-        date_type: 'created_at',
-        start_datetime: startISO,
-        end_datetime: endISO,
-        limit: this.chartTicketsLimit,
-        offset: 1,
-      });
-
-      this.devDebug(
-        'getTicketsForCharts retorno:',
-        (tickets as Array<Record<string, unknown>>).map((ticket) => ({
-          ticket_number: ticket.ticket_number,
-          title: ticket.title,
-          created_at: ticket.created_at,
-          client: ticket.client,
-          desk: ticket.desk,
-        })),
-      );
-
-      return tickets as Array<Record<string, unknown>>;
-    } catch (error) {
-      console.error('Erro ao buscar tickets para gráficos:', error);
-      return [];
-    }
   }
 
   private async getTicketsForHours(filters: {
@@ -2455,60 +2400,42 @@ export class DashboardService {
               tifluxClientId: integrations.tifluxClientId,
               startISO,
               endISO,
-              chartLimit: this.chartTicketsLimit,
+              chartLimit: this.dashboardCharts.chartTicketsLimit,
             });
 
             if (this.allowRuntimeTifluxApi) {
               // Sanity-check opcional para ambientes onde fallback da API está habilitado.
               try {
-                const tifluxListParams = {
-                  filter_by: 'all' as const,
-                  client_ids: [integrations.tifluxClientId],
-                  date_type: 'created_at' as const,
-                  start_datetime: startISO,
-                  end_datetime: endISO,
-                  // O portal tipicamente fica bem abaixo disso; 200 cobre os casos comuns (ex.: 65 tickets).
+                const apiPage = await this.dashboardCharts.fetchTicketsPage({
+                  tifluxClientId: integrations.tifluxClientId,
+                  startISO,
+                  endISO,
                   limit: 200,
-                  offset: 1,
-                };
-
-                const [openCountApi, allPageApi] = await Promise.all([
-                  this.tifluxService.getTicketsTotalItems({
-                    filter_by: 'open',
-                    client_ids: [integrations.tifluxClientId],
-                    date_type: 'created_at',
-                    start_datetime: startISO,
-                    end_datetime: endISO,
-                  }),
-                  this.tifluxService.getTicketsWithTotal(tifluxListParams),
-                ]);
-
-                const apiTotal = Number(allPageApi.totalItems ?? 0) || 0;
-                const apiOpen = Number(openCountApi ?? 0) || 0;
-                const apiTickets = (allPageApi.tickets ?? []) as Array<
-                  Record<string, unknown>
-                >;
+                });
 
                 const dbTotal = Number(fromDb.totalTickets ?? 0) || 0;
 
                 // Se a API trouxer mais tickets que o banco, preferimos a API (dados mais completos).
-                if (apiTotal > dbTotal) {
+                if (apiPage.totalItems > dbTotal) {
                   return {
                     ...fromDb,
-                    totalTickets: apiTotal,
-                    totalOpenTickets: apiOpen,
-                    ticketsForCharts: apiTickets.slice(0, this.chartTicketsLimit),
+                    totalTickets: apiPage.totalItems,
+                    totalOpenTickets: apiPage.openCount,
+                    ticketsForCharts: apiPage.tickets.slice(
+                      0,
+                      this.dashboardCharts.chartTicketsLimit,
+                    ),
                     ticketsForAggregation:
-                      apiTickets.length &&
-                      apiTickets.length >= Math.min(apiTotal, 200)
-                        ? apiTickets
+                      apiPage.tickets.length &&
+                      apiPage.tickets.length >=
+                        Math.min(apiPage.totalItems, 200)
+                        ? apiPage.tickets
                         : fromDb.ticketsForAggregation,
                   };
                 }
               } catch (apiCheckError) {
-                console.error(
-                  'Sanity-check TiFlux API falhou; mantendo banco:',
-                  apiCheckError,
+                this.logger.warn(
+                  `Sanity-check TiFlux API falhou; mantendo banco: ${apiCheckError instanceof Error ? apiCheckError.message : String(apiCheckError)}`,
                 );
               }
             }
@@ -2550,39 +2477,19 @@ export class DashboardService {
         }
 
         try {
-          const tifluxListParams = {
-            filter_by: 'all' as const,
-            client_ids: [integrations.tifluxClientId],
-            date_type: 'created_at' as const,
-            start_datetime: startISO,
-            end_datetime: endISO,
-            limit: this.chartTicketsLimit,
-            offset: 1,
-          };
-
-          const [openCount, allPage] = await Promise.all([
-            this.tifluxService.getTicketsTotalItems({
-              filter_by: 'open',
-              client_ids: [integrations.tifluxClientId],
-              date_type: 'created_at',
-              start_datetime: startISO,
-              end_datetime: endISO,
-            }),
-            this.tifluxService.getTicketsWithTotal(tifluxListParams),
-          ]);
-
-          const recentTickets = allPage.tickets as Array<
-            Record<string, unknown>
-          >;
-          const allCount = allPage.totalItems;
+          const apiPage = await this.dashboardCharts.fetchTicketsPage({
+            tifluxClientId: integrations.tifluxClientId,
+            startISO,
+            endISO,
+          });
 
           this.devDebug('==================================================');
           this.devDebug('TIFLUX resumo rápido (API)');
-          this.devDebug('totalTickets:', allCount);
-          this.devDebug('totalOpenTickets:', openCount);
+          this.devDebug('totalTickets:', apiPage.totalItems);
+          this.devDebug('totalOpenTickets:', apiPage.openCount);
           this.devDebug(
             'ticketsForCharts:',
-            recentTickets.map((ticket) => ({
+            apiPage.tickets.map((ticket) => ({
               ticket_number: ticket.ticket_number,
               title: ticket.title,
               created_at: ticket.created_at,
@@ -2593,12 +2500,14 @@ export class DashboardService {
           this.devDebug('==================================================');
 
           return {
-            ticketsForCharts: recentTickets,
-            totalTickets: allCount,
-            totalOpenTickets: openCount,
+            ticketsForCharts: apiPage.tickets,
+            totalTickets: apiPage.totalItems,
+            totalOpenTickets: apiPage.openCount,
           };
         } catch (error) {
-          console.error('Erro ao buscar dados rápidos do TiFlux:', error);
+          this.logger.warn(
+            `Erro ao buscar dados rápidos do TiFlux: ${error instanceof Error ? error.message : String(error)}`,
+          );
           return {
             ticketsForCharts: [] as Array<Record<string, unknown>>,
             totalTickets: 0,

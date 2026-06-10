@@ -1,4 +1,5 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Public } from './common/decorators/public.decorator';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -9,11 +10,13 @@ export class AppController {
     private readonly prisma: PrismaService,
   ) {}
 
+  @Public()
   @Get()
   getHello(): string {
     return this.appService.getHello();
   }
 
+  @Public()
   @Get('health')
   async health(): Promise<{
     ok: boolean;

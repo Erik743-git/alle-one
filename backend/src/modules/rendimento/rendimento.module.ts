@@ -7,11 +7,17 @@ import { RendimentoController } from './rendimento.controller';
 import { RendimentoCompanyService } from './rendimento-company.service';
 import { RendimentoMailService } from './rendimento-mail.service';
 import { RendimentoService } from './rendimento.service';
+import { RendimentoStoreService } from './rendimento-store.service';
 
 @Module({
   imports: [PrismaModule, TifluxModule, AuditModule, MailModule],
   controllers: [RendimentoController],
-  providers: [RendimentoService, RendimentoCompanyService, RendimentoMailService],
+  providers: [
+    RendimentoService,
+    RendimentoStoreService,
+    RendimentoCompanyService,
+    RendimentoMailService,
+  ],
   exports: [RendimentoService, RendimentoCompanyService],
 })
 export class RendimentoModule {}

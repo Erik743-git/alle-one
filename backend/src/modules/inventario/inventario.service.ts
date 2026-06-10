@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { createReadStream, existsSync } from 'fs';
+import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { StreamableFile } from '@nestjs/common';
@@ -188,11 +189,10 @@ export class InventarioService {
     assertAllowedUploadMime(file.mimetype);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'inventory');
-    mkdirSync(uploadsDir, { recursive: true });
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const targetName = `${Date.now()}-${randomUUID()}-${safeName}`;
     const targetPath = join(uploadsDir, targetName);
-    writeFileSync(targetPath, file.buffer);
+    await writeUploadedBuffer(targetPath, file.buffer);
 
     return this.prisma.file.create({
       data: {

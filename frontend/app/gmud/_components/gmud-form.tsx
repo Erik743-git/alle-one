@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { sortByName } from "@/lib/collections";
 import { companiesService, type Company } from "@/lib/services/companies.service";
 import { getStoredUser } from "@/lib/session";
 import {
@@ -61,10 +62,6 @@ function hoursFromMinutes(minutes: number) {
 function minutesFromHours(hours: number) {
   if (!Number.isFinite(hours) || hours <= 0) return 30;
   return Math.max(5, Math.round(hours * 60));
-}
-
-function sortByName<T extends { name: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
 
 export function GmudForm({

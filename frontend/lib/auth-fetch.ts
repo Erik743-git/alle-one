@@ -1,7 +1,14 @@
-import { getStoredToken } from "@/lib/session";
+import { getStoredToken, clearSession } from "@/lib/session";
+
+function handleUnauthorized(): void {
+  clearSession();
+  if (typeof window !== "undefined") {
+    window.location.replace("/login");
+  }
+}
 
 /** fetch autenticado: envia cookie httpOnly e, se existir, Bearer legado. */
-export function authFetch(
+export async function authFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
@@ -13,9 +20,16 @@ export function authFetch(
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
-  return fetch(input, {
+
+  const response = await fetch(input, {
     ...init,
     credentials: "include",
     headers,
   });
+
+  if (response.status === 401) {
+    handleUnauthorized();
+  }
+
+  return response;
 }

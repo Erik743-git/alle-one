@@ -97,7 +97,6 @@ model User {
 
   company             Company?             @relation(fields: [companyId], references: [id])
   permissions         Permission[]
-  refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   uploadedFiles       File[]               @relation("UserUploadedFiles")
   createdGmuds        Gmud[]               @relation("UserCreatedGmuds")
@@ -115,6 +114,9 @@ model User {
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
   appointmentQuestionsAsked RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAskedBy")
   appointmentQuestionsAnswered RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAnsweredBy")
+  rendimentoDayEvents          RendimentoDayEvent[]           @relation("RendimentoDayEvents")
+  rendimentoGapJustifications  RendimentoGapJustification[]   @relation("RendimentoGapJustifications")
+  rendimentoOvertimeBalance    RendimentoOvertimeBalance?     @relation("RendimentoOvertimeBalances")
 
   @@index([companyId])
   @@map("users")
@@ -358,17 +360,19 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
-model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  token     String    @unique
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
+enum ReportType {
+  RENDIMENTO        @map("1")
+  ESTATISTICA_GERAL @map("4")
+}
 
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum ReportStatus {
+  READY
+  FAILED
+}
 
-  @@index([userId])
-  @@map("refresh_tokens")
+enum ReportFormat {
+  CSV
+  XLSX
 }
 
 model Gmud {
@@ -478,11 +482,11 @@ model GmudAttachment {
 }
 
 model Report {
-  id           String    @id @default(uuid())
-  companyId    String    @map("company_id")
-  type         String
-  format       String    @default("CSV")
-  status       String    @default("READY")
+  id           String       @id @default(uuid())
+  companyId    String       @map("company_id")
+  type         ReportType
+  format       ReportFormat @default(CSV)
+  status       ReportStatus @default(READY)
   periodStart  DateTime  @map("period_start")
   periodEnd    DateTime  @map("period_end")
   filters      Json?     
@@ -716,4 +720,72 @@ model RendimentoAppointmentQuestion {
   @@index([companyId, appointmentDate])
   @@index([status])
   @@map("rendimento_appointment_questions")
+}
+
+/// Tabelas de rendimento criadas via SQL — mapeadas para evitar drift com migrations.
+model RendimentoDayEvent {
+  id                    String    @id
+  userId                String    @map("user_id")
+  dateRef               DateTime  @map("date_ref") @db.Date
+  eventType             String    @map("event_type")
+  fromTime              DateTime? @map("from_time") @db.Time
+  toTime                DateTime? @map("to_time") @db.Time
+  minutes               Int       @default(0)
+  appointmentExternalId BigInt?   @map("appointment_external_id")
+  justificationId       String?   @map("justification_id")
+  label                 String?
+  description           String?
+  reason                String?
+  status                String    @default("ACTIVE")
+  debitProtected        Boolean   @default(false) @map("debit_protected")
+  sourceKey             String    @map("source_key")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+  approvedBy            String?   @map("approved_by")
+  approvedAt            DateTime? @map("approved_at")
+  deletedAt             DateTime? @map("deleted_at")
+
+  user User @relation("RendimentoDayEvents", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceKey])
+  @@index([userId, dateRef])
+  @@index([eventType, status])
+  @@map("rendimento_day_events")
+}
+
+model RendimentoGapJustification {
+  id              String    @id
+  userId          String    @map("user_id")
+  dateRef         DateTime  @map("date_ref") @db.Date
+  fromTime        DateTime  @map("from_time") @db.Time
+  toTime          DateTime  @map("to_time") @db.Time
+  gapType         String    @map("gap_type")
+  gapMinutes      Int       @map("gap_minutes")
+  kind            String
+  status          String    @default("PENDING")
+  reason          String
+  debitOvertime   Boolean   @default(false) @map("debit_overtime")
+  overtimeMinutes Int       @default(0) @map("overtime_minutes")
+  createdBy       String    @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  approvedBy      String?   @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+  note            String?
+  deletedAt       DateTime? @map("deleted_at")
+
+  user User @relation("RendimentoGapJustifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dateRef])
+  @@index([status])
+  @@map("rendimento_gap_justifications")
+}
+
+model RendimentoOvertimeBalance {
+  userId    String   @id @map("user_id")
+  minutes   Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  user User @relation("RendimentoOvertimeBalances", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("rendimento_overtime_balances")
 }

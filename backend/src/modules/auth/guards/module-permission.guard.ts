@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { PermissionModule } from '@prisma/client';
@@ -12,6 +13,14 @@ import {
   type RequirePermissionMeta,
 } from '../decorators/require-permission.decorator';
 
+/**
+ * Regras de produto (sobrescrevem a matriz `permissions` do banco):
+ * - REPORTS: somente ADMIN
+ * - TICKETS canCreate: somente ADMIN
+ * - DASHBOARD canView: liberado para autenticados (escopo por empresa no service)
+ * - CORREIO canView: não-CLIENT
+ * - INVENTARIO/FINANCIAL/RENDIMENTO: defaults por role documentados abaixo
+ */
 @Injectable()
 export class ModulePermissionGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -31,7 +40,7 @@ export class ModulePermissionGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      return false;
+      throw new UnauthorizedException('Não autenticado');
     }
 
     if (user.role === 'ADMIN') {

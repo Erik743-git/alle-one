@@ -22,6 +22,7 @@ import {
   attachAccessTokenCookie,
   clearAccessTokenCookie,
 } from './auth-cookie.helper';
+import { Public } from '../../common/decorators/public.decorator';
 
 type AuthenticatedRequest = Request & {
   user: AuthenticatedRequestUser;
@@ -31,6 +32,7 @@ type AuthenticatedRequest = Request & {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   async login(
@@ -43,30 +45,35 @@ export class AuthController {
     return safe;
   }
 
+  @Public()
   @Throttle({ default: { limit: 12, ttl: 60_000 } })
   @Post('primeiro-acesso')
   firstAccess(@Body() data: FirstAccessDto) {
     return this.authService.firstAccess(data);
   }
 
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
   @Post('esqueci-senha')
   forgotPassword(@Body() data: ForgotPasswordDto) {
     return this.authService.forgotPassword(data);
   }
 
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Post('validar-token-redefinicao')
   validateResetToken(@Body() data: ValidateResetTokenDto) {
     return this.authService.validateResetToken(data);
   }
 
+  @Public()
   @Throttle({ default: { limit: 5, ttl: 900_000 } })
   @Post('redefinir-senha')
   resetPassword(@Body() data: ResetPasswordDto) {
     return this.authService.resetPassword(data);
   }
 
+  @Public()
   @HttpCode(200)
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {

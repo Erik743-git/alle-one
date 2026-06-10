@@ -31,6 +31,10 @@ import {
 import { computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
 import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
 import { AuditService } from '../audit/audit.service';
+import {
+  RendimentoStoreService,
+  type GapJustificationRow,
+} from './rendimento-store.service';
 
 export type { RendimentoDayInsightsDto, RendimentoGapDto };
 
@@ -128,24 +132,6 @@ type AppointmentRow = {
 };
 
 type TifluxUserLink = { id: number; name: string };
-type GapJustificationRow = {
-  id: string;
-  user_id: string;
-  date_ref: string;
-  from_time: string;
-  to_time: string;
-  gap_type: 'idle' | 'lunch';
-  gap_minutes: number;
-  kind: RendimentoJustificationKind;
-  status: RendimentoJustificationStatus;
-  reason: string;
-  debit_overtime: boolean;
-  overtime_minutes: number;
-  created_by: string;
-  created_at: string;
-  approved_by: string | null;
-  approved_at: string | null;
-};
 
 type TifluxUserDbRow = {
   external_id: number;
@@ -172,6 +158,7 @@ export class RendimentoService {
     private readonly prisma: PrismaService,
     private readonly tifluxService: TifluxService,
     private readonly audit: AuditService,
+    private readonly rendimentoStore: RendimentoStoreService,
   ) {}
 
   formatMinutes(totalMinutes: number): string {
@@ -438,16 +425,11 @@ export class RendimentoService {
   }
 
   private async getOvertimeBalanceMinutes(userId: string): Promise<number> {
-    const rows =
-      (await this.prisma.$queryRawUnsafe<Array<{ minutes: number }>>(
-        `
-        SELECT minutes
-        FROM rendimento_overtime_balances
-        WHERE user_id = $1
-      `,
-        userId,
-      )) ?? [];
-    return Number(rows[0]?.minutes) || 0;
+    const row = await this.prisma.rendimentoOvertimeBalance.findUnique({
+      where: { userId },
+      select: { minutes: true },
+    });
+    return row?.minutes ?? 0;
   }
 
   private async listJustifications(params: {
@@ -455,39 +437,7 @@ export class RendimentoService {
     start: Date;
     end: Date;
   }): Promise<GapJustificationRow[]> {
-    const rows =
-      (await this.prisma.$queryRawUnsafe<GapJustificationRow[]>(
-        `
-        SELECT
-          j.id,
-          j.user_id,
-          j.date_ref::text as date_ref,
-          to_char(j.from_time, 'HH24:MI') as from_time,
-          to_char(j.to_time, 'HH24:MI') as to_time,
-          j.gap_type,
-          j.gap_minutes,
-          j.kind,
-          j.status,
-          j.reason,
-          j.debit_overtime,
-          j.overtime_minutes,
-          creator.name as created_by,
-          j.created_at::text as created_at,
-          approver.name as approved_by,
-          j.approved_at::text as approved_at
-        FROM rendimento_gap_justifications j
-        INNER JOIN users creator ON creator.id = j.created_by
-        LEFT JOIN users approver ON approver.id = j.approved_by
-        WHERE j.user_id = $1
-          AND j.deleted_at IS NULL
-          AND j.date_ref BETWEEN $2::date AND $3::date
-        ORDER BY j.date_ref ASC, j.from_time ASC, j.created_at DESC
-      `,
-        params.userId,
-        this.toDateOnlyString(params.start),
-        this.toDateOnlyString(params.end),
-      )) ?? [];
-    return rows;
+    return this.rendimentoStore.listJustifications(params);
   }
 
   private mapJustificationDto(
@@ -1371,36 +1321,7 @@ export class RendimentoService {
     start: Date;
     end: Date;
   }): Promise<RendimentoDayEventRow[]> {
-    return (
-      (await this.prisma.$queryRawUnsafe<RendimentoDayEventRow[]>(
-        `
-        SELECT
-          id,
-          user_id,
-          date_ref::text AS date_ref,
-          event_type,
-          to_char(from_time, 'HH24:MI') AS from_time,
-          to_char(to_time, 'HH24:MI') AS to_time,
-          minutes,
-          appointment_external_id,
-          justification_id,
-          label,
-          description,
-          reason,
-          status,
-          debit_protected,
-          source_key
-        FROM rendimento_day_events
-        WHERE user_id = $1
-          AND date_ref BETWEEN $2::date AND $3::date
-          AND deleted_at IS NULL
-        ORDER BY date_ref ASC, from_time ASC NULLS LAST
-      `,
-        params.userId,
-        this.toDateOnlyString(params.start),
-        this.toDateOnlyString(params.end),
-      )) ?? []
-    );
+    return this.rendimentoStore.listDayEvents(params);
   }
 
   private attachDayEventsToDays(

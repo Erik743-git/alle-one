@@ -1,4 +1,5 @@
-import { createReadStream, mkdirSync, writeFileSync } from 'node:fs';
+import { createReadStream } from 'node:fs';
+import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
@@ -1039,7 +1040,6 @@ export class TicketsService {
     if (!files.length) return [];
 
     const uploadsDir = join(process.cwd(), 'uploads', 'tickets', String(ticketNumber));
-    mkdirSync(uploadsDir, { recursive: true });
     const saved: Array<{
       id: string;
       originalName: string;
@@ -1065,7 +1065,7 @@ export class TicketsService {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       const targetName = `${Date.now()}-${randomUUID()}-${safeName}`;
       const targetPath = join(uploadsDir, targetName);
-      writeFileSync(targetPath, file.buffer);
+      await writeUploadedBuffer(targetPath, file.buffer);
 
       const createdFile = await this.prisma.file.create({
         data: {

@@ -20,6 +20,7 @@ import {
   pickCompanyIdFromList,
   setPersistedCompanyId,
 } from "@/lib/selected-company";
+import { sortByName } from "@/lib/collections";
 import { getStoredUser } from "@/lib/session";
 import {
   companiesService,
@@ -63,10 +64,6 @@ const DashboardLazyChart = dynamic(
 
 const MANUAL_REFRESH_COOLDOWN_MS = 20000;
 const AUTO_REFRESH_INTERVAL_MS = 120000;
-
-function sortByName<T extends { name: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-}
 
 function MetricCard({
   title,

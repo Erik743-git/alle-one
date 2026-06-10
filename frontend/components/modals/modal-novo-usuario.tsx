@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Eye, UserPlus, EyeOff } from "lucide-react";
+import { sortByName } from "@/lib/collections";
 import { companiesService } from "@/lib/services/companies.service";
 import { usersService } from "@/lib/services/users.service";
 
@@ -32,10 +33,6 @@ type ServiceDeskOption = {
   name: string;
   externalId: number | null;
 };
-
-function sortByName<T extends { name: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-}
 
 export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   const [nome, setNome] = useState("");

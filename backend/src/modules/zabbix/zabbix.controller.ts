@@ -3,67 +3,110 @@ import {
   Controller,
   Get,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { PermissionModule } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { ZabbixService } from './zabbix.service';
+
+type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
 @Controller('zabbix')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
 export class ZabbixController {
-  constructor(private readonly service: ZabbixService) {}
+  constructor(
+    private readonly service: ZabbixService,
+    private readonly tenantScope: TenantScopeService,
+  ) {}
 
   @Get('groups')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getGroups() {
+  async getGroups(@Req() req: AuthenticatedRequest) {
+    const clientGroup = await this.tenantScope.resolveZabbixGroupForList(
+      req.user,
+    );
+    if (clientGroup) {
+      return [{ name: clientGroup }];
+    }
     return this.service.getGroups();
   }
 
   @Get('hosts')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getHosts() {
+  async getHosts(@Req() req: AuthenticatedRequest) {
+    const clientGroup = await this.tenantScope.resolveZabbixGroupForList(
+      req.user,
+    );
+    if (clientGroup) {
+      return this.service.getHostsByGroup(clientGroup);
+    }
     return this.service.getHosts();
   }
 
   @Get('hosts-by-company')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getByCompany(@Query('group') group: string) {
+  async getByCompany(
+    @Req() req: AuthenticatedRequest,
+    @Query('group') group: string,
+  ) {
     if (!group?.trim()) {
       throw new BadRequestException('O parâmetro "group" é obrigatório.');
     }
 
-    return this.service.getHostsByGroup(group);
+    const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+      req.user,
+      group,
+    );
+    return this.service.getHostsByGroup(scopedGroup);
   }
 
   @Get('hosts-by-group-detailed')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getHostsDetailedByGroup(@Query('group') group: string) {
+  async getHostsDetailedByGroup(
+    @Req() req: AuthenticatedRequest,
+    @Query('group') group: string,
+  ) {
     if (!group?.trim()) {
       throw new BadRequestException('O parâmetro "group" é obrigatório.');
     }
 
-    return this.service.getHostsDetailedByGroup(group);
+    const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+      req.user,
+      group,
+    );
+    return this.service.getHostsDetailedByGroup(scopedGroup);
   }
 
   @Get('templates-by-group')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getTemplatesByGroup(@Query('group') group: string) {
+  async getTemplatesByGroup(
+    @Req() req: AuthenticatedRequest,
+    @Query('group') group: string,
+  ) {
     if (!group?.trim()) {
       throw new BadRequestException('O parâmetro "group" é obrigatório.');
     }
 
-    return this.service.getTemplatesByGroup(group);
+    const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+      req.user,
+      group,
+    );
+    return this.service.getTemplatesByGroup(scopedGroup);
   }
 
   @Get('events-by-group')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getEventsByGroup(
+  async getEventsByGroup(
+    @Req() req: AuthenticatedRequest,
     @Query('group') group: string,
     @Query('days') days?: string,
   ) {
@@ -79,28 +122,46 @@ export class ZabbixController {
       );
     }
 
-    return this.service.getEventsByGroup(group, parsedDays);
+    const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+      req.user,
+      group,
+    );
+    return this.service.getEventsByGroup(scopedGroup, parsedDays);
   }
 
   @Get('problems')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getProblems() {
+  async getProblems(@Req() req: AuthenticatedRequest) {
+    const clientGroup = await this.tenantScope.resolveZabbixGroupForList(
+      req.user,
+    );
+    if (clientGroup) {
+      return this.service.getOverviewByGroup(clientGroup);
+    }
     return this.service.getProblems();
   }
 
   @Get('overview')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getOverview(@Query('group') group: string) {
+  async getOverview(
+    @Req() req: AuthenticatedRequest,
+    @Query('group') group: string,
+  ) {
     if (!group?.trim()) {
       throw new BadRequestException('O parâmetro "group" é obrigatório.');
     }
 
-    return this.service.getOverviewByGroup(group);
+    const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+      req.user,
+      group,
+    );
+    return this.service.getOverviewByGroup(scopedGroup);
   }
 
   @Get('dashboard-details')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getDashboardDetails(
+  async getDashboardDetails(
+    @Req() req: AuthenticatedRequest,
     @Query('group') group: string,
     @Query('days') days?: string,
   ) {
@@ -116,15 +177,41 @@ export class ZabbixController {
       );
     }
 
-    return this.service.getDashboardDetailsByGroup(group, parsedDays);
+    const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+      req.user,
+      group,
+    );
+    return this.service.getDashboardDetailsByGroup(scopedGroup, parsedDays);
   }
 
   @Get('host-items-summary')
   @RequirePermission(PermissionModule.MONITORING, 'canView')
-  getHostItemsSummary(@Query('hostid') hostid: string) {
+  async getHostItemsSummary(
+    @Req() req: AuthenticatedRequest,
+    @Query('hostid') hostid: string,
+    @Query('group') group?: string,
+  ) {
     if (!hostid?.trim()) {
       throw new BadRequestException('O parâmetro "hostid" é obrigatório.');
     }
+
+    if (req.user.role === 'CLIENT') {
+      if (!group?.trim()) {
+        throw new BadRequestException(
+          'O parâmetro "group" é obrigatório para clientes.',
+        );
+      }
+      const scopedGroup = await this.tenantScope.assertZabbixGroupAccess(
+        req.user,
+        group,
+      );
+      return this.service.getHostItemsSummaryForGroup(scopedGroup, hostid);
+    }
+
+    if (group?.trim()) {
+      return this.service.getHostItemsSummaryForGroup(group, hostid);
+    }
+
     return this.service.getHostItemsSummary(hostid);
   }
 }

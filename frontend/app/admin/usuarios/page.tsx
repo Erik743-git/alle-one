@@ -29,6 +29,7 @@ import {
   UserCog,
   TriangleAlert,
 } from "lucide-react";
+import { sortByName } from "@/lib/collections";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { authFetch } from "@/lib/auth-fetch";
@@ -93,10 +94,6 @@ type ServiceDeskOption = {
   name: string;
   externalId: number | null;
 };
-
-function sortByName<T extends { name: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-}
 
 function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
   switch (role) {

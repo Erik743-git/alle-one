@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { readBlobDownload } from "@/lib/download-blob";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
 
@@ -286,14 +287,6 @@ export const ticketsService = {
       }
       throw new Error(message);
     }
-    const blob = await response.blob();
-    const disposition = response.headers.get("Content-Disposition") ?? "";
-    const match = /filename\*=UTF-8''([^;]+)|filename="([^"]+)"/i.exec(disposition);
-    const filename = decodeURIComponent(match?.[1] ?? match?.[2] ?? "anexo");
-    const mimeType =
-      response.headers.get("Content-Type") ??
-      blob.type ??
-      "application/octet-stream";
-    return { blob, filename, mimeType };
+    return readBlobDownload(response, "anexo");
   },
 };

@@ -30,9 +30,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { setSession, setStoredUser, type AuthUser } from "@/lib/session";
+import { setSession, type AuthUser } from "@/lib/session";
 import { API_URL } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
+import { useAuth } from "@/lib/use-auth";
 
 type LoginResponse = {
   message: string;
@@ -68,8 +69,11 @@ export default function LoginPage() {
   });
 
   const router = useRouter();
+  const { loading: authLoading, establishSession } = useAuth();
 
   useEffect(() => {
+    if (authLoading) return;
+
     let cancelled = false;
     void (async () => {
       try {
@@ -79,7 +83,7 @@ export default function LoginPage() {
         if (!cancelled && res.ok) {
           const data = (await res.json()) as LoginResponse;
           if (data?.user) {
-            setStoredUser(data.user);
+            establishSession(data.user);
             router.replace(
               data.user.firstAccess ? "/primeiro-acesso" : "/dashboard",
             );
@@ -92,7 +96,7 @@ export default function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [authLoading, establishSession, router]);
 
   async function handleLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -131,13 +135,14 @@ export default function LoginPage() {
       const loginData = data as LoginResponse;
 
       setSession(undefined, loginData.user);
+      establishSession(loginData.user);
 
       let user: AuthUser = loginData.user;
       try {
         const meData = await authService.me();
         if (meData?.user) {
           user = meData.user;
-          setStoredUser(user);
+          establishSession(user);
         }
       } catch {
         setErro(LOGIN_SESSION_ERROR);

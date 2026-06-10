@@ -26,7 +26,7 @@ import {
 } from '../../common/upload.config';
 import { GmudMailService } from './mail/gmud-mail.service';
 import { randomUUID } from 'crypto';
-import { mkdirSync, writeFileSync } from 'fs';
+import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
 
 function parseOptionalDate(value?: string | null) {
@@ -609,11 +609,10 @@ export class GmudService {
       gmud.id,
       'on-behalf',
     );
-    mkdirSync(uploadsDir, { recursive: true });
     const safeName = evidence.originalname.replace(/[^\w.\-() ]+/g, '_');
     const targetName = `${randomUUID()}-${safeName}`;
     const targetPath = join(uploadsDir, targetName);
-    writeFileSync(targetPath, evidence.buffer);
+    await writeUploadedBuffer(targetPath, evidence.buffer);
 
     const createdFile = await this.prisma.file.create({
       data: {
@@ -823,13 +822,12 @@ export class GmudService {
     assertAllowedUploadMime(file.mimetype);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'gmud', gmud.id);
-    mkdirSync(uploadsDir, { recursive: true });
 
     const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_');
     const targetName = `${randomUUID()}-${safeName}`;
     const targetPath = join(uploadsDir, targetName);
 
-    writeFileSync(targetPath, file.buffer);
+    await writeUploadedBuffer(targetPath, file.buffer);
 
     const created = await this.prisma.file.create({
       data: {

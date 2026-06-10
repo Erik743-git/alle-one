@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { SecurityModule } from './common/security/security.module';
+import { JwtGlobalAuthGuard } from './modules/auth/guards/jwt-global-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -38,6 +40,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
       },
     ]),
     ScheduleModule.forRoot(),
+    SecurityModule,
     PrismaModule,
     AuditModule,
     AuthModule,
@@ -64,6 +67,10 @@ import { TicketsModule } from './modules/tickets/tickets.module';
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: JwtGlobalAuthGuard,
     },
     {
       provide: APP_INTERCEPTOR,

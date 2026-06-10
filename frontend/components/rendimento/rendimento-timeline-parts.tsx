@@ -148,6 +148,41 @@ export function RendimentoTimelineTrack({
     : TIMELINE_BAR_HEIGHT.default;
   const trackHeight = height ?? barHeight + (compact ? 8 : 12);
   const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
+  const leaveTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const activateBar = React.useCallback(
+    (barKey: string) => {
+      if (compact) return;
+      if (leaveTimeoutRef.current) {
+        clearTimeout(leaveTimeoutRef.current);
+        leaveTimeoutRef.current = null;
+      }
+      setActiveBarKey(barKey);
+    },
+    [compact],
+  );
+
+  const deactivateBar = React.useCallback(() => {
+    if (compact) return;
+    if (leaveTimeoutRef.current) {
+      clearTimeout(leaveTimeoutRef.current);
+    }
+    leaveTimeoutRef.current = setTimeout(() => {
+      setActiveBarKey(null);
+      leaveTimeoutRef.current = null;
+    }, 120);
+  }, [compact]);
+
+  React.useEffect(
+    () => () => {
+      if (leaveTimeoutRef.current) {
+        clearTimeout(leaveTimeoutRef.current);
+      }
+    },
+    [],
+  );
 
   return (
     <div className={cn("space-y-1", className)}>
@@ -169,22 +204,12 @@ export function RendimentoTimelineTrack({
             );
             const barKey = `${block.tone}-${block.startMin}-${column}-${index}`;
             const isActive = activeBarKey === barKey;
+            const isNarrow = widthPct < 7;
 
             return (
               <div
                 key={barKey}
-                title={[block.label, block.sub].filter(Boolean).join(" · ")}
-                onMouseEnter={() => !compact && setActiveBarKey(barKey)}
-                onMouseLeave={() => !compact && setActiveBarKey(null)}
-                className={cn(
-                  "group/bar absolute bottom-1.5 overflow-hidden rounded-md border",
-                  "origin-bottom transition-[height,width,transform,box-shadow] duration-200 ease-out",
-                  !compact &&
-                    isActive &&
-                    "z-[100] h-auto min-h-[5rem] min-w-[10.5rem] max-w-[16rem] scale-[1.02] overflow-visible shadow-lg ring-1 ring-white/25",
-                  timelineBlockClass(block.tone),
-                  compact && "pointer-events-none",
-                )}
+                className="pointer-events-none absolute bottom-1.5"
                 style={{
                   left: `${leftPct}%`,
                   width: `${widthPct}%`,
@@ -192,23 +217,40 @@ export function RendimentoTimelineTrack({
                   zIndex: isActive ? 100 : activeBarKey ? 1 : column + 1,
                 }}
               >
-                {!compact ? (
-                  <div
-                    className={cn(
-                      "flex h-full flex-col justify-end px-2 pb-1.5 transition-opacity duration-200",
-                      isActive ? "opacity-100" : "opacity-0",
-                    )}
-                  >
-                    <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-white">
-                      {block.label}
-                    </p>
-                    {block.sub ? (
-                      <p className="mt-0.5 line-clamp-4 text-[10px] leading-snug text-white/90">
-                        {block.sub}
+                <div
+                  title={[block.label, block.sub].filter(Boolean).join(" · ")}
+                  onMouseEnter={() => activateBar(barKey)}
+                  onMouseLeave={deactivateBar}
+                  className={cn(
+                    "absolute bottom-0 left-0 overflow-hidden rounded-md border",
+                    "transition-[height,box-shadow] duration-200 ease-out",
+                    isActive
+                      ? "z-[100] h-auto min-h-[5rem] overflow-visible shadow-lg ring-1 ring-white/25"
+                      : "h-full w-full",
+                    isActive && isNarrow && "min-w-[10.5rem] max-w-[16rem]",
+                    isActive && !isNarrow && "w-full",
+                    timelineBlockClass(block.tone),
+                    compact ? "pointer-events-none" : "pointer-events-auto",
+                  )}
+                >
+                  {!compact ? (
+                    <div
+                      className={cn(
+                        "flex h-full min-h-[inherit] flex-col justify-end px-2 pb-1.5 transition-opacity duration-200",
+                        isActive ? "opacity-100" : "opacity-0",
+                      )}
+                    >
+                      <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-white">
+                        {block.label}
                       </p>
-                    ) : null}
-                  </div>
-                ) : null}
+                      {block.sub ? (
+                        <p className="mt-0.5 line-clamp-4 text-[10px] leading-snug text-white/90">
+                          {block.sub}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             );
           })

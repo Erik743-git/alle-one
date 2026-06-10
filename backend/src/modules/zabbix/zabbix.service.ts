@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
@@ -574,6 +575,28 @@ export class ZabbixService {
    * Resumo de “itens” (métricas) por host para uso em detalhamento no front.
    * Observação: os `key_` abaixo são os mais comuns, mas podem variar por template/SO.
    */
+  async getHostItemsSummaryForGroup(
+    groupName: string,
+    hostid: string,
+  ): Promise<{
+    hostid: string;
+    items: ZabbixItem[];
+  }> {
+    const normalizedHostId = String(hostid ?? '').trim();
+    const hosts = await this.getHostsByGroup(groupName);
+    const allowed = hosts.some(
+      (host) => String(host.hostid) === normalizedHostId,
+    );
+
+    if (!allowed) {
+      throw new ForbiddenException(
+        'Host não pertence ao grupo informado.',
+      );
+    }
+
+    return this.getHostItemsSummary(normalizedHostId);
+  }
+
   async getHostItemsSummary(hostid: string): Promise<{
     hostid: string;
     items: ZabbixItem[];

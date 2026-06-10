@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ReportFormat, ReportStatus, ReportType } from '@prisma/client';
 import { mapWithConcurrency } from '../../common/concurrency.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -12,7 +13,8 @@ import { TifluxService } from '../tiflux/tiflux.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { randomUUID } from 'crypto';
 import { StreamableFile } from '@nestjs/common';
-import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { createReadStream, existsSync } from 'fs';
+import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
 import ExcelJS from 'exceljs';
 import { isMonitoringPeriodWeekly } from '../../common/monitoring-period';
@@ -24,8 +26,7 @@ import { computeUnionWorkedMinutes } from '../rendimento/rendimento-worked-minut
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
 
-type ReportFormat = 'CSV' | 'XLSX';
-type ReportStatus = 'READY' | 'FAILED';
+import { toReportFormat, toReportType } from './reports-type.helper';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4']);
 
@@ -2372,7 +2373,9 @@ export class ReportsService {
     return this.prisma.report.findMany({
       where: {
         companyId: companyId ? companyId : { in: scopeCompanyIds },
-        ...(query.type?.trim() ? { type: query.type.trim() } : {}),
+        ...(query.type?.trim()
+          ? { type: toReportType(query.type.trim()) }
+          : {}),
         ...(normalized
           ? {
               periodStart: { gte: normalized.start },
@@ -2410,7 +2413,9 @@ export class ReportsService {
     return this.prisma.report.findFirst({
       where: {
         companyId: companyId ? companyId : { in: scopeCompanyIds },
-        ...(query.type?.trim() ? { type: query.type.trim() } : {}),
+        ...(query.type?.trim()
+          ? { type: toReportType(query.type.trim()) }
+          : {}),
       },
       include: {
         company: { select: { id: true, name: true } },
@@ -2458,11 +2463,8 @@ export class ReportsService {
       );
     }
 
-    const format = (payload.format?.trim().toUpperCase() ||
-      'XLSX') as ReportFormat;
-    if (!['CSV', 'XLSX'].includes(format)) {
-      throw new BadRequestException('format inválido (use CSV ou XLSX)');
-    }
+    const format = toReportFormat(payload.format?.trim() || 'XLSX');
+    const reportType = toReportType(type);
 
     const userId = payload.userId?.trim() || null;
     if (type === '4' && userId) {
@@ -2478,11 +2480,11 @@ export class ReportsService {
     const reportId = randomUUID();
 
     const uploadsDir = join(process.cwd(), 'uploads', 'reports', reportId);
-    mkdirSync(uploadsDir, { recursive: true });
 
     const companyPart = safeFilenamePart(company.name) || 'empresa';
     const typePart =
-      REPORT_TYPE_SLUGS[type] ?? `tipo-${safeFilenamePart(type) || 'x'}`;
+      REPORT_TYPE_SLUGS[type] ??
+      `tipo-${safeFilenamePart(reportType) || 'x'}`;
     const startPart = toDateOnlyISO(range.start);
     const endPart = toDateOnlyISO(range.end);
     const baseName = `${companyPart}-${typePart}-${startPart}-a-${endPart}`;
@@ -2539,7 +2541,7 @@ export class ReportsService {
             };
 
     const targetPath = join(uploadsDir, built.filename);
-    writeFileSync(targetPath, built.buffer);
+    await writeUploadedBuffer(targetPath, built.buffer);
 
     const file = await this.prisma.file.create({
       data: {
@@ -2555,9 +2557,9 @@ export class ReportsService {
       data: {
         id: reportId,
         companyId,
-        type,
+        type: reportType,
         format,
-        status: 'READY' as ReportStatus,
+        status: ReportStatus.READY,
         periodStart: range.start,
         periodEnd: range.end,
         filters: {

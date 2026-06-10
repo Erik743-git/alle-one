@@ -13,7 +13,8 @@ import {
   UpdateCompanyContractDto,
 } from './dto/company-contract.dto';
 import { randomUUID } from 'crypto';
-import { createReadStream, existsSync, mkdirSync, writeFileSync } from 'fs';
+import { createReadStream, existsSync } from 'fs';
+import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { StreamableFile } from '@nestjs/common';
@@ -636,12 +637,11 @@ export class CompaniesService {
     }
 
     const uploadsDir = join(process.cwd(), 'uploads', 'contracts', contract.id);
-    mkdirSync(uploadsDir, { recursive: true });
 
     const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_');
     const targetName = `${randomUUID()}-${safeName}`;
     const targetPath = join(uploadsDir, targetName);
-    writeFileSync(targetPath, file.buffer);
+    await writeUploadedBuffer(targetPath, file.buffer);
 
     const created = await this.prisma.file.create({
       data: {
@@ -707,12 +707,10 @@ export class CompaniesService {
       company.id,
       'logo',
     );
-    mkdirSync(uploadsDir, { recursive: true });
-
     const safeName = file.originalname.replace(/[^\w.\-() ]+/g, '_');
     const targetName = `${randomUUID()}-${safeName}`;
     const targetPath = join(uploadsDir, targetName);
-    writeFileSync(targetPath, file.buffer);
+    await writeUploadedBuffer(targetPath, file.buffer);
 
     const created = await this.prisma.file.create({
       data: {

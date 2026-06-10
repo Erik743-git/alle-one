@@ -15,6 +15,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { sortByName } from "@/lib/collections";
 import { getStoredUser } from "@/lib/session";
 import { companiesService, type Company } from "@/lib/services/companies.service";
 import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
@@ -43,10 +44,6 @@ type StatusFilter =
   | "REJECTED"
   | "CANCELED"
   | "DRAFT";
-
-function sortByName<T extends { name: string }>(rows: T[]) {
-  return [...rows].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-}
 
 function companyFromGmudRef(ref: { id: string; name: string }): Company {
   return {

@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { parseContentDispositionFilename } from "@/lib/download-blob";
 import { API_URL } from "@/lib/env";
 
 export type ReportFormat = "CSV" | "XLSX";
@@ -90,8 +91,10 @@ export const reportsService = {
 
     const blob = await res.blob();
     const disposition = res.headers.get("content-disposition") ?? "";
-    const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
-    const filename = filenameMatch?.[1] ? decodeURIComponent(filenameMatch[1]) : `report-${reportId}`;
+    const filename = parseContentDispositionFilename(
+      disposition,
+      `report-${reportId}`,
+    );
     return { blob, filename };
   },
 };

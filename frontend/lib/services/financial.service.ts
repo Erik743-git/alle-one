@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { parseContentDispositionFilename } from "@/lib/download-blob";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
 import type { ListCompanyContractsResponse } from "@/lib/services/company-contracts.service";
@@ -71,9 +72,7 @@ export const financialService = {
 
     const blob = await res.blob();
     const cd = res.headers.get("content-disposition") ?? "";
-    const fallbackName = "contrato.pdf";
-    const nameMatch = cd.match(/filename=\"?([^\";]+)\"?/i);
-    const filename = nameMatch?.[1] ? decodeURIComponent(nameMatch[1]) : fallbackName;
+    const filename = parseContentDispositionFilename(cd, "contrato.pdf");
     return { blob, filename };
   },
 };

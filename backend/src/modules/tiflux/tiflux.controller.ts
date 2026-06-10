@@ -5,15 +5,21 @@ import {
   Get,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { PermissionModule } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
+import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { TifluxService } from './tiflux.service';
+
+type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
 type TifluxRequestDto = {
   path: string;
@@ -24,7 +30,10 @@ type TifluxRequestDto = {
 @Controller('tiflux')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class TifluxController {
-  constructor(private readonly tifluxService: TifluxService) {}
+  constructor(
+    private readonly tifluxService: TifluxService,
+    private readonly tenantScope: TenantScopeService,
+  ) {}
 
   private assertUnsafeTifluxEndpointsEnabled(): void {
     if (process.env.NODE_ENV === 'production') {
@@ -130,7 +139,8 @@ export class TifluxController {
   @Get('tickets')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
-  getTickets(
+  async getTickets(
+    @Req() req: AuthenticatedRequest,
     @Query('offset') offset?: string,
     @Query('limit') limit?: string,
     @Query('filter_by') filterBy?: 'open' | 'closed' | 'all',
@@ -189,12 +199,17 @@ export class TifluxController {
             .filter((item) => !Number.isNaN(item))
         : undefined;
 
+    const scopedClientIds = await this.tenantScope.resolveTifluxClientIds(
+      req.user,
+      parseIds(clientIds),
+    );
+
     return this.tifluxService.getTickets({
       offset: parsedOffset,
       limit: parsedLimit,
       filter_by: filterBy,
       desk_ids: parseIds(deskIds),
-      client_ids: parseIds(clientIds),
+      client_ids: scopedClientIds,
       responsible_ids: parseIds(responsibleIds),
       status_id: parsedStatusId,
       priority_ids: parseIds(priorityIds),

@@ -10,7 +10,7 @@ import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { toDateInputValue } from "@/components/rendimento/rendimento-calendar";
+import { monthRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -32,15 +32,6 @@ import {
   rendimentoService,
   type RendimentoCollaborator,
 } from "@/lib/services/rendimento.service";
-
-function monthRangeFor(date: Date) {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  return {
-    start: toDateInputValue(start),
-    end: toDateInputValue(end),
-  };
-}
 
 export default function ApontamentosPage() {
   const router = useRouter();

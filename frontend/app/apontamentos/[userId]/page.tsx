@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -66,7 +66,17 @@ function minutesBetweenTimes(from: string, to: string): number {
 
 export default function RendimentoAgendaPage() {
   const params = useParams<{ userId: string }>();
+  const router = useRouter();
   const userId = params.userId;
+
+  useEffect(() => {
+    if (!userId) return;
+    const stored = getStoredUser();
+    if (!stored) return;
+    if (stored.role !== "ADMIN" && stored.id !== userId) {
+      router.replace(`/apontamentos/${stored.id}`);
+    }
+  }, [userId, router]);
 
   const [view, setView] = useState<RendimentoCalendarView>("month");
   const [referenceDate, setReferenceDate] = useState(() => new Date());
