@@ -15,17 +15,29 @@ ALTER TABLE "reports"
   );
 
 ALTER TABLE "reports"
+  ALTER COLUMN "format" DROP DEFAULT;
+
+ALTER TABLE "reports"
   ALTER COLUMN "format" TYPE "ReportFormat" USING (
     CASE
-      WHEN UPPER("format") = 'XLSX' THEN 'XLSX'::"ReportFormat"
+      WHEN UPPER("format"::text) = 'XLSX' THEN 'XLSX'::"ReportFormat"
       ELSE 'CSV'::"ReportFormat"
     END
   );
 
 ALTER TABLE "reports"
+  ALTER COLUMN "format" SET DEFAULT 'CSV'::"ReportFormat";
+
+ALTER TABLE "reports"
+  ALTER COLUMN "status" DROP DEFAULT;
+
+ALTER TABLE "reports"
   ALTER COLUMN "status" TYPE "ReportStatus" USING (
     CASE
-      WHEN UPPER("status") = 'FAILED' THEN 'FAILED'::"ReportStatus"
+      WHEN UPPER("status"::text) = 'FAILED' THEN 'FAILED'::"ReportStatus"
       ELSE 'READY'::"ReportStatus"
     END
   );
+
+ALTER TABLE "reports"
+  ALTER COLUMN "status" SET DEFAULT 'READY'::"ReportStatus";
