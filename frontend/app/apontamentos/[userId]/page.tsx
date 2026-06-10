@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,14 @@ import {
   RENDIMENTO_LUNCH_MAX_MINUTES,
   rendimentoLunchMaxLabel,
 } from "@/lib/rendimento/constants";
+import {
+  APONTAMENTOS_AGENDA_SUBTITLE,
+  APONTAMENTOS_PJ_SUBTITLE,
+  RENDIMENTO_DEBIT_OVERTIME_LABEL,
+  RENDIMENTO_DEFINE_LUNCH_HINT,
+  RENDIMENTO_JUSTIFICATION_ALERT_DESC,
+  RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC,
+} from "@/lib/module-copy";
 import { getStoredUser } from "@/lib/session";
 import {
   RendimentoCalendar,
@@ -214,8 +222,8 @@ export default function RendimentoAgendaPage() {
       await rendimentoService.decideDayEvent({ id, decision });
       notifySuccess(
         decision === "APPROVED"
-          ? "Hora extra/plantão aprovado (protegido contra débito)."
-          : "Registro rejeitado.",
+          ? "Registro aprovado."
+          : "Registro não aprovado.",
       );
       await loadTimesheet();
     } catch (err) {
@@ -231,7 +239,7 @@ export default function RendimentoAgendaPage() {
       notifySuccess(
         decision === "APPROVED"
           ? "Justificativa aprovada."
-          : "Justificativa rejeitada.",
+          : "Justificativa não aprovada.",
       );
       await loadTimesheet();
     } catch (err) {
@@ -246,27 +254,15 @@ export default function RendimentoAgendaPage() {
       <PermissionGate module="RENDIMENTO">
         <AppShell>
           <div className="font-sans w-full space-y-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2">
-                {!isPjUser ? (
-                  <Button asChild variant="outline" size="sm" className="w-fit">
-                    <Link href="/apontamentos">
-                      <ArrowLeft className="mr-2 size-4" />
-                      Voltar à lista
-                    </Link>
-                  </Button>
-                ) : null}
-                <h1 className="text-3xl font-bold text-foreground">
-                  Apontamentos
-                </h1>
-                <p className="text-muted-foreground">
-                  {timesheet?.userName ?? "Colaborador"} · apontamentos TiFlux
-                  {isPjUser
-                    ? " · visão terceiro (sem alertas de lacuna ou almoço)"
-                    : ""}
-                </p>
-              </div>
-            </div>
+            <PageHeader
+              icon={<CalendarDays size={24} />}
+              title="Apontamentos"
+              description={`${timesheet?.userName ?? "Colaborador"} · ${
+                isPjUser ? APONTAMENTOS_PJ_SUBTITLE : APONTAMENTOS_AGENDA_SUBTITLE
+              }`}
+              backHref={!isPjUser ? "/apontamentos" : undefined}
+              backLabel="Voltar à lista"
+            />
 
             <RendimentoCalendar
               timesheet={timesheet}
@@ -299,8 +295,8 @@ export default function RendimentoAgendaPage() {
                   </DialogTitle>
                   <DialogDescription>
                     {justMode === "VOLUNTARY"
-                      ? "Informe o intervalo exato (ex.: consulta, café). Não usa regra de almoço — é um registro pontual para aprovação."
-                      : "As justificativas ficam auditáveis e podem debitar horas extras após aprovação do administrador."}
+                      ? RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC
+                      : RENDIMENTO_JUSTIFICATION_ALERT_DESC}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-3">
@@ -364,8 +360,7 @@ export default function RendimentoAgendaPage() {
                       <span>
                         Definir almoço
                         <span className="mt-0.5 block text-xs text-muted-foreground">
-                          Marque se este intervalo é almoço e o sistema marcou como alerta por engano.
-                          Desmarque se não for almoço.
+                          {RENDIMENTO_DEFINE_LUNCH_HINT}
                         </span>
                       </span>
                     </label>
@@ -375,7 +370,7 @@ export default function RendimentoAgendaPage() {
                       checked={debitOvertime}
                       onChange={(e) => setDebitOvertime(e.target.checked)}
                     />
-                    Debitar horas extras
+                    {RENDIMENTO_DEBIT_OVERTIME_LABEL}
                   </label>
                   <div className="flex justify-end gap-2">
                     <Button

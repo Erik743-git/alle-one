@@ -521,7 +521,7 @@ export class RendimentoService {
       const formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       return `Almoço (${formatted})`;
     }
-    return `${gapMinutes} min sem apontamento`;
+    return `${gapMinutes} min sem registro de horas`;
   }
 
   private formatMinutesAsTime(totalMinutes: number): string {
@@ -2049,7 +2049,6 @@ export class RendimentoService {
         Array<{
           id: string;
           user_id: string;
-          user_name: string;
           user_email: string;
           date_ref: string;
           event_type: 'OVERTIME' | 'PLANTAO';
@@ -2059,13 +2058,14 @@ export class RendimentoService {
           label: string | null;
           description: string | null;
           appointment_external_id: number | null;
+          ticket_number: number | null;
+          company_name: string | null;
         }>
       >(
         `
         SELECT
           e.id,
           e.user_id,
-          u.name AS user_name,
           u.email AS user_email,
           e.date_ref::text AS date_ref,
           e.event_type,
@@ -2074,16 +2074,24 @@ export class RendimentoService {
           e.minutes,
           e.label,
           e.description,
-          e.appointment_external_id
+          e.appointment_external_id,
+          ta.ticket_number,
+          COALESCE(co_ticket.name, ta.client_name, co_user.name) AS company_name
         FROM rendimento_day_events e
         INNER JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
+        LEFT JOIN companies co_user ON co_user.id = u.company_id
+        LEFT JOIN tiflux.ticket_appointments ta
+          ON ta.external_id = e.appointment_external_id
+        LEFT JOIN tiflux.tickets tk ON tk.ticket_number = ta.ticket_number
+        LEFT JOIN companies co_ticket
+          ON co_ticket.tiflux_client_id = COALESCE(tk.client_external_id, ta.client_external_id)
         WHERE e.deleted_at IS NULL
           AND e.status = 'PENDING'
           AND e.event_type IN ('OVERTIME', 'PLANTAO')
           AND e.date_ref >= $1::date
           AND e.date_ref <= $2::date
           AND ($3::text IS NULL OR e.user_id = $3::text)
-        ORDER BY e.date_ref DESC, u.name ASC, e.from_time ASC NULLS LAST
+        ORDER BY e.date_ref DESC, u.email ASC, e.from_time ASC NULLS LAST
       `,
         start,
         end,
@@ -2096,11 +2104,14 @@ export class RendimentoService {
         row.appointment_external_id != null
           ? Number(row.appointment_external_id)
           : null;
+      const ticketNumber =
+        row.ticket_number != null ? Number(row.ticket_number) : null;
+      const companyName = row.company_name?.trim() || null;
+      const rawDescription = row.description?.trim() || row.label?.trim() || null;
 
       return {
         id: row.id,
         userId: row.user_id,
-        userName: row.user_name,
         userEmail: row.user_email,
         date: row.date_ref.slice(0, 10),
         eventType: row.event_type,
@@ -2110,8 +2121,10 @@ export class RendimentoService {
         minutes,
         hoursFormatted: this.formatMinutes(minutes),
         label: row.label,
-        description: row.description,
+        description: rawDescription,
         appointmentExternalId,
+        companyName,
+        ticketNumber,
       };
     });
   }

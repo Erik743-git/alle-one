@@ -268,8 +268,8 @@ export class MailboxService {
         return [
           {
             kind: MailboxNotificationKind.RENDIMENTO_ALERT,
-            title: 'Alerta de rendimento',
-            body: `Você tem lacuna sem apontamento em ${dateLabel} (${monthLabel}).`,
+            title: 'Intervalo sem registro de horas',
+            body: `Há um intervalo sem registro de horas em ${dateLabel} (${monthLabel}). Confira sua agenda.`,
             href: `/apontamentos/${userId}`,
             dedupeKey: `rendimento:alert:${day.date.slice(0, 10)}`,
             payload: { date: day.date.slice(0, 10), userId },
@@ -280,9 +280,9 @@ export class MailboxService {
       return [
         {
           kind: MailboxNotificationKind.RENDIMENTO_ALERT,
-          title: 'Alertas de rendimento',
-          body: `Você tem ${alertDays.length} dia(s) com alerta de lacuna em ${monthLabel}.`,
-          href: `/rendimento/${userId}`,
+          title: 'Intervalos na agenda',
+          body: `Há ${alertDays.length} dia(s) com intervalo sem registro de horas em ${monthLabel}. Confira sua agenda.`,
+          href: `/apontamentos/${userId}`,
           dedupeKey: `rendimento:alert:month:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
           payload: {
             count: alertDays.length,
@@ -323,8 +323,8 @@ export class MailboxService {
 
     return rows.map((row) => ({
       kind: MailboxNotificationKind.RENDIMENTO_APPROVAL_PENDING,
-      title: 'Justificativa de rendimento pendente',
-      body: `${row.user_name} · ${row.date_ref.slice(0, 10)} (${row.from_time}–${row.to_time}) aguarda aprovação.`,
+      title: 'Justificativa aguardando análise',
+      body: `${row.user_name} · ${row.date_ref.slice(0, 10)} (${row.from_time}–${row.to_time}) — justificativa aguardando análise.`,
       href: `/apontamentos/${row.user_id}`,
       dedupeKey: `rendimento:justification:${row.id}`,
       payload: { justificationId: row.id, userId: row.user_id },
@@ -473,8 +473,8 @@ export class MailboxService {
 
       drafts.push({
         kind: MailboxNotificationKind.TICKET_NO_APPOINTMENT_24H,
-        title: 'Chamado sem apontamento (24h+)',
-        body: `Ticket #${row.ticket_number}${row.title ? ` — ${row.title}` : ''}: aberto há mais de 24h sem nenhum apontamento.`,
+        title: 'Chamado sem registro de horas (24h+)',
+        body: `Chamado #${row.ticket_number}${row.title ? ` — ${row.title}` : ''}: aberto há mais de 24h sem registro de horas.`,
         href: '/dashboard',
         dedupeKey: `ticket:no-appt:24h:${row.ticket_number}`,
         payload: { ticketNumber: row.ticket_number },
@@ -504,7 +504,7 @@ export class MailboxService {
         drafts.push({
           kind: MailboxNotificationKind.TICKET_STALLED_48H,
           title: 'Chamado parado (48h+)',
-          body: `Ticket #${row.ticket_number}${row.title ? ` — ${row.title}` : ''}: sem movimentação há mais de 48 horas.`,
+          body: `Chamado #${row.ticket_number}${row.title ? ` — ${row.title}` : ''}: sem atualização há mais de 48 horas.`,
           href: '/dashboard',
           dedupeKey: `ticket:stalled:48h:${row.ticket_number}`,
           payload: { ticketNumber: row.ticket_number },
@@ -532,7 +532,7 @@ export class MailboxService {
         drafts.push({
           kind: MailboxNotificationKind.TICKET_STALLED_7D,
           title: 'Chamado parado (7 dias+)',
-          body: `Ticket #${row.ticket_number}${row.title ? ` — ${row.title}` : ''}: sem movimentação há mais de 7 dias.`,
+          body: `Chamado #${row.ticket_number}${row.title ? ` — ${row.title}` : ''}: sem atualização há mais de 7 dias.`,
           href: '/dashboard',
           dedupeKey: `ticket:stalled:7d:${row.ticket_number}`,
           payload: { ticketNumber: row.ticket_number },

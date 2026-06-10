@@ -149,6 +149,41 @@ function sortEntriesByStart(entries: RendimentoEntryInput[]) {
   });
 }
 
+type TimeInterval = { from: number; to: number };
+
+function entryToInterval(entry: RendimentoEntryInput): TimeInterval | null {
+  const from = parseTimeToMinutes(entry.initTime);
+  const to =
+    parseTimeToMinutes(entry.endTime) ??
+    (from != null ? from + Math.max(0, Math.trunc(Number(entry.minutes) || 0)) : null);
+  if (from == null || to == null || to <= from) return null;
+  return { from, to };
+}
+
+/** Une apontamentos sobrepostos para calcular lacunas e minutos reais do dia. */
+function mergeOverlappingIntervals(intervals: TimeInterval[]): TimeInterval[] {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a.from - b.from || a.to - b.to);
+  const merged: TimeInterval[] = [{ ...sorted[0] }];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const current = sorted[i];
+    const last = merged[merged.length - 1];
+    if (current.from <= last.to) {
+      last.to = Math.max(last.to, current.to);
+    } else {
+      merged.push({ ...current });
+    }
+  }
+  return merged;
+}
+
+function mergedRegularWorkedMinutes(intervals: TimeInterval[]): number {
+  return mergeOverlappingIntervals(intervals).reduce(
+    (sum, interval) => sum + (interval.to - interval.from),
+    0,
+  );
+}
+
 function workMinutesBeforeTime(
   entries: RendimentoEntryInput[],
   gapStartMinutes: number,
@@ -215,7 +250,7 @@ function splitGapAtIndexIntoLunchAndIdle(
         fromTime: formatMinutesAsTime(lunchEnd),
         toTime: formatMinutesAsTime(to),
         gapMinutes: remainingMinutes,
-        label: `${remainingMinutes} min sem apontamento`,
+        label: `${remainingMinutes} min sem registro de horas`,
       });
     }
   }
@@ -242,7 +277,7 @@ function addIdleGap(
       fromTime: formatMinutesAsTime(fromMinutes),
       toTime: formatMinutesAsTime(toMinutes),
       gapMinutes,
-      label: `${gapMinutes} min sem apontamento`,
+      label: `${gapMinutes} min sem registro de horas`,
     });
   }
 }
@@ -303,7 +338,11 @@ export function analyzeRendimentoDay(
   const firstRegularIdx = enriched.findIndex((e) => !e.isOvertime);
   const regularEntries =
     firstRegularIdx >= 0 ? enriched.slice(firstRegularIdx).filter((e) => !e.isOvertime) : [];
-  const regularWorkedMinutes = regularEntries.reduce((sum, e) => sum + e.minutes, 0);
+  const regularIntervals = regularEntries
+    .map(entryToInterval)
+    .filter((interval): interval is TimeInterval => interval != null);
+  const mergedRegularIntervals = mergeOverlappingIntervals(regularIntervals);
+  const regularWorkedMinutes = mergedRegularWorkedMinutes(regularIntervals);
   const overtimeMinutes = enriched
     .filter((e) => e.isOvertime)
     .reduce((sum, e) => sum + e.minutes, 0);
@@ -323,30 +362,18 @@ export function analyzeRendimentoDay(
     };
   }
 
-  // Alertas valem só enquanto a jornada "regular" (8h) não foi completada.
-  let runningRegularMinutes = 0;
-
-  for (let index = 0; index < regularEntries.length; index += 1) {
-    const entry = regularEntries[index];
-    const startMin = parseTimeToMinutes(entry.initTime);
-    const entryMinutes = Math.max(0, Math.trunc(Number(entry.minutes) || 0));
-
-    if (index > 0 && startMin != null) {
-      const prev = regularEntries[index - 1];
-      const prevEnd =
-        parseTimeToMinutes(prev.endTime) ??
-        (parseTimeToMinutes(prev.initTime) != null
-          ? parseTimeToMinutes(prev.initTime)! + prev.minutes
-          : null);
-
-      if (prevEnd != null) {
-        if (runningRegularMinutes < REGULAR_DAY_MINUTES) {
-          addIdleGap(gaps, prevEnd, startMin);
-        }
-      }
+  // Lacunas entre blocos cobertos (apontamentos sobrepostos viram um único intervalo).
+  let coveredRegularMinutes = 0;
+  for (let index = 0; index < mergedRegularIntervals.length; index += 1) {
+    const interval = mergedRegularIntervals[index];
+    if (index > 0 && coveredRegularMinutes < REGULAR_DAY_MINUTES) {
+      addIdleGap(
+        gaps,
+        mergedRegularIntervals[index - 1].to,
+        interval.from,
+      );
     }
-
-    runningRegularMinutes += entryMinutes;
+    coveredRegularMinutes += interval.to - interval.from;
   }
 
   // Se existir um gap compatível, ele vira almoço.
@@ -364,38 +391,28 @@ export function analyzeRendimentoDay(
     }
   } else if (splitFirstLongIdleGapIntoLunch(gaps)) {
     lunchFound = true;
-  } else if (regularEntries.length === 1) {
-    const last = regularEntries[regularEntries.length - 1];
-    const lastStart = parseTimeToMinutes(last.initTime);
-    const lastEnd =
-      parseTimeToMinutes(last.endTime) ??
-      (lastStart != null ? lastStart + last.minutes : null);
-    if (lastEnd != null) {
-      const lunchEnd = lastEnd + LUNCH_MINUTES;
-      if (lunchEnd > lastEnd) {
-        lunchFound = true;
-        gaps.push({
-          type: 'lunch',
-          fromTime: formatMinutesAsTime(lastEnd),
-          toTime: formatMinutesAsTime(lunchEnd),
-          gapMinutes: lunchEnd - lastEnd,
-          label: `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`,
-        });
-      }
+  } else if (mergedRegularIntervals.length === 1) {
+    const lastEnd = mergedRegularIntervals[0].to;
+    const lunchEnd = lastEnd + LUNCH_MINUTES;
+    if (lunchEnd > lastEnd) {
+      lunchFound = true;
+      gaps.push({
+        type: 'lunch',
+        fromTime: formatMinutesAsTime(lastEnd),
+        toTime: formatMinutesAsTime(lunchEnd),
+        gapMinutes: lunchEnd - lastEnd,
+        label: `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`,
+      });
     }
   }
 
   // Gap final: se ainda não completou 8h (HORA NORMAL) no dia, cria um aviso de "faltou apontar".
   // - Se for hoje: mede até agora.
   // - Se for dia passado: mede até o ponto "virtual" onde completaria 8h se continuasse sem pausas.
-  if (regularEntries.length > 0) {
-    const last = regularEntries[regularEntries.length - 1];
-    const lastStart = parseTimeToMinutes(last.initTime);
-    const lastEnd =
-      parseTimeToMinutes(last.endTime) ??
-      (lastStart != null ? lastStart + last.minutes : null);
+  if (mergedRegularIntervals.length > 0) {
+    const lastEnd = Math.max(...mergedRegularIntervals.map((interval) => interval.to));
 
-    if (lastEnd != null && regularWorkedMinutes < REGULAR_DAY_MINUTES) {
+    if (regularWorkedMinutes < REGULAR_DAY_MINUTES) {
       const minutesStillNeeded = REGULAR_DAY_MINUTES - regularWorkedMinutes;
 
       // Se criamos almoço fixo, o gap final deve começar depois dele.

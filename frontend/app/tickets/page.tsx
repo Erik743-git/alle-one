@@ -5,16 +5,22 @@ import Link from "next/link";
 import { Filter, Loader2, Plus, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePickerField } from "@/components/ui/date-picker-field";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicketsAndAppointments,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
+import { TICKETS_LIST_SUBTITLE } from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -113,51 +119,95 @@ export default function TicketsPage() {
     void load();
   }, [load]);
 
+  const stageOptions = useMemo(
+    () => [
+      { value: "", label: "Todos os estágios" },
+      ...(catalogs?.stages ?? []).map((s) => ({ value: s, label: s })),
+    ],
+    [catalogs],
+  );
+
+  const clientOptions = useMemo(
+    () => [
+      { value: "", label: "Todos os clientes" },
+      ...(catalogs?.clients ?? []).map((c) => ({
+        value: String(c.externalId),
+        label: c.name,
+      })),
+    ],
+    [catalogs],
+  );
+
+  const responsibleOptions = useMemo(
+    () => [
+      { value: "", label: "Todos os responsáveis" },
+      ...(catalogs?.responsibles ?? []).map((r) => ({
+        value: String(r.externalId),
+        label: r.name,
+      })),
+    ],
+    [catalogs],
+  );
+
+  const statusOptions = useMemo(
+    () => [
+      { value: "", label: "Todos os status" },
+      ...(catalogs?.statuses ?? []).map((s) => ({ value: s, label: s })),
+    ],
+    [catalogs],
+  );
+
+  const deskOptions = useMemo(
+    () => [
+      { value: "", label: "Todas as mesas" },
+      ...(catalogs?.desks ?? []).map((d) => ({ value: d, label: d })),
+    ],
+    [catalogs],
+  );
+
   return (
     <ProtectedPage>
       <PermissionGate module="TICKETS">
         <AppShell>
           <div className="font-sans w-full space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-2">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Ticket size={24} />
-                </div>
-                <h1 className="text-3xl font-bold text-foreground">Tickets</h1>
-                <p className="text-muted-foreground">
-                  Por padrão, exibe apenas tickets em que você é o responsável.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {canCreateTicketsAndAppointments() ? (
-                  <Button asChild>
-                    <Link href="/tickets/new">
-                      <Plus className="mr-2 size-4" />
-                      Novo ticket
-                    </Link>
+            <PageHeader
+              icon={<Ticket size={24} />}
+              title="Chamados"
+              description={
+                canCreateTicketsAndAppointments()
+                  ? TICKETS_LIST_SUBTITLE
+                  : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
+              }
+              actions={
+                <>
+                  {canCreateTicketsAndAppointments() ? (
+                    <Button asChild>
+                      <Link href="/tickets/new">
+                        <Plus className="mr-2 size-4" />
+                        Novo chamado
+                      </Link>
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={refreshing}
+                    onClick={() => void load(true)}
+                  >
+                    <RefreshCw
+                      className={cn("mr-2 size-4", refreshing && "animate-spin")}
+                    />
+                    Atualizar
                   </Button>
-                ) : (
-                  <p className="max-w-sm text-xs text-muted-foreground">
-                    {TICKETS_CREATE_ADMIN_ONLY_MESSAGE}
-                  </p>
-                )}
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={refreshing}
-                  onClick={() => void load(true)}
-                >
-                  <RefreshCw className={cn("mr-2 size-4", refreshing && "animate-spin")} />
-                  Atualizar
-                </Button>
-              </div>
-            </div>
+                </>
+              }
+            />
 
-            <Card>
+            <Card className="overflow-visible">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-lg">
                   {mineOnly
-                    ? "Meus tickets"
+                    ? "Meus chamados"
                     : "Busca ampliada"}
                 </CardTitle>
                 <Button
@@ -172,7 +222,7 @@ export default function TicketsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {data?.message ? (
-                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+                  <p className="alle-alert-banner rounded-lg px-3 py-2 text-sm">
                     {data.message}
                   </p>
                 ) : null}
@@ -188,10 +238,8 @@ export default function TicketsPage() {
 
                 {showAdvanced ? (
                   <div className="space-y-4">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="size-4 rounded border-input"
+                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                      <FlipCheckbox
                         checked={includeAllResponsibles}
                         onChange={(e) => {
                           const checked = e.target.checked;
@@ -199,103 +247,98 @@ export default function TicketsPage() {
                           if (!checked) setResponsibleExternalId("");
                         }}
                       />
-                      Ver tickets de outros responsáveis
+                      Incluir chamados de outros responsáveis
                     </label>
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">De</Label>
-                      <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Até</Label>
-                      <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Número</Label>
-                      <Input
-                        inputMode="numeric"
-                        value={ticketNumber}
-                        onChange={(e) => setTicketNumber(e.target.value)}
-                        placeholder="Ex.: 69197"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Estágio</Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-transparent px-2 text-sm"
-                        value={stageName}
-                        onChange={(e) => setStageName(e.target.value)}
-                      >
-                        <option value="">Todos</option>
-                        {(catalogs?.stages ?? []).map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Cliente</Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-transparent px-2 text-sm"
-                        value={clientExternalId}
-                        onChange={(e) => setClientExternalId(e.target.value)}
-                      >
-                        <option value="">Todos</option>
-                        {(catalogs?.clients ?? []).map((c) => (
-                          <option key={c.externalId} value={String(c.externalId)}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {includeAllResponsibles ? (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Responsável</Label>
-                        <select
-                          className="h-9 w-full rounded-lg border border-input bg-transparent px-2 text-sm"
-                          value={responsibleExternalId}
-                          onChange={(e) => setResponsibleExternalId(e.target.value)}
-                        >
-                          <option value="">Todos os responsáveis</option>
-                          {(catalogs?.responsibles ?? []).map((r) => (
-                            <option key={r.externalId} value={String(r.externalId)}>
-                              {r.name}
-                            </option>
-                          ))}
-                        </select>
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          De
+                        </Label>
+                        <DatePickerField
+                          value={from}
+                          onChange={setFrom}
+                          max={to || undefined}
+                        />
                       </div>
-                    ) : null}
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Status</Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-transparent px-2 text-sm"
-                        value={statusName}
-                        onChange={(e) => setStatusName(e.target.value)}
-                      >
-                        <option value="">Todos</option>
-                        {(catalogs?.statuses ?? []).map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Mesa</Label>
-                      <select
-                        className="h-9 w-full rounded-lg border border-input bg-transparent px-2 text-sm"
-                        value={deskName}
-                        onChange={(e) => setDeskName(e.target.value)}
-                      >
-                        <option value="">Todas</option>
-                        {(catalogs?.desks ?? []).map((d) => (
-                          <option key={d} value={d}>
-                            {d}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Até
+                        </Label>
+                        <DatePickerField
+                          value={to}
+                          onChange={setTo}
+                          min={from || undefined}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Número
+                        </Label>
+                        <Input
+                          inputMode="numeric"
+                          value={ticketNumber}
+                          onChange={(e) => setTicketNumber(e.target.value)}
+                          placeholder="Ex.: 69197"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Estágio
+                        </Label>
+                        <SearchableSelectField
+                          value={stageName}
+                          onChange={setStageName}
+                          options={stageOptions}
+                          emptyLabel="Todos os estágios"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Cliente
+                        </Label>
+                        <SearchableSelectField
+                          value={clientExternalId}
+                          onChange={setClientExternalId}
+                          options={clientOptions}
+                          emptyLabel="Todos os clientes"
+                        />
+                      </div>
+                      {includeAllResponsibles ? (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Responsável
+                          </Label>
+                          <SearchableSelectField
+                            value={responsibleExternalId}
+                            onChange={setResponsibleExternalId}
+                            options={responsibleOptions}
+                            emptyLabel="Todos os responsáveis"
+                          />
+                        </div>
+                      ) : null}
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Status
+                        </Label>
+                        <SearchableSelectField
+                          value={statusName}
+                          onChange={setStatusName}
+                          options={statusOptions}
+                          emptyLabel="Todos os status"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Mesa
+                        </Label>
+                        <SearchableSelectField
+                          value={deskName}
+                          onChange={setDeskName}
+                          options={deskOptions}
+                          emptyLabel="Todas as mesas"
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -303,8 +346,15 @@ export default function TicketsPage() {
             </Card>
 
             {loading ? (
-              <div className="flex min-h-[240px] items-center justify-center">
-                <Loader2 className="size-8 animate-spin text-primary" />
+              <div className="space-y-4">
+                <Skeleton className="h-4 w-48" />
+                <Card>
+                  <CardContent className="space-y-3 py-6">
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-full" />
+                    <Skeleton className="h-10 w-3/4" />
+                  </CardContent>
+                </Card>
               </div>
             ) : !(data?.groups?.length) ? (
               <Card>

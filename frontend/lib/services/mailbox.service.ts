@@ -1,4 +1,8 @@
 import { apiRequest } from "@/lib/api";
+import {
+  MAILBOX_RENDIMENTO_ALERT_FILTER_DESC,
+  MAILBOX_RENDIMENTO_APPROVAL_FILTER_DESC,
+} from "@/lib/module-copy";
 
 export type MailboxNotificationKind =
   | "RENDIMENTO_ALERT"
@@ -42,13 +46,13 @@ export const MAILBOX_KIND_OPTIONS: {
 }[] = [
   {
     kind: "RENDIMENTO_ALERT",
-    label: "Alertas de rendimento",
-    description: "Lacunas e pendências na sua agenda do mês.",
+    label: "Intervalos na agenda",
+    description: MAILBOX_RENDIMENTO_ALERT_FILTER_DESC,
   },
   {
     kind: "RENDIMENTO_APPROVAL_PENDING",
-    label: "Justificativas de rendimento",
-    description: "Colaboradores aguardando sua aprovação.",
+    label: "Justificativas na agenda",
+    description: MAILBOX_RENDIMENTO_APPROVAL_FILTER_DESC,
   },
   {
     kind: "CONTRACT_USAGE",
@@ -62,18 +66,18 @@ export const MAILBOX_KIND_OPTIONS: {
   },
   {
     kind: "TICKET_NO_APPOINTMENT_24H",
-    label: "Chamado sem apontamento (24h+)",
-    description: "Ticket seu, aberto há mais de 24h sem apontamento.",
+    label: "Chamado sem registro de horas (24h+)",
+    description: "Chamado seu, aberto há mais de 24h sem registro de horas.",
   },
   {
     kind: "TICKET_STALLED_48H",
     label: "Chamado parado (48h+)",
-    description: "Ticket aberto sem movimentação há mais de 48 horas.",
+    description: "Chamado aberto sem atualização há mais de 48 horas.",
   },
   {
     kind: "TICKET_STALLED_7D",
     label: "Chamado parado (7 dias+)",
-    description: "Ticket aberto sem movimentação há mais de 7 dias.",
+    description: "Chamado aberto sem atualização há mais de 7 dias.",
   },
   {
     kind: "INVENTORY_EXPIRY",

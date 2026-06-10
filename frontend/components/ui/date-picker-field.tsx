@@ -75,11 +75,8 @@ export function DatePickerField({
         className="z-[100] w-auto overflow-visible border-border bg-card p-2 font-sans shadow-lg"
         side="bottom"
         align="start"
-        sideOffset={8}
-        collisionPadding={16}
-        collisionBoundary={
-          typeof document !== "undefined" ? [document.documentElement] : undefined
-        }
+        sideOffset={10}
+        avoidCollisions={false}
       >
         <AlleCalendarPanel
           selected={selected}

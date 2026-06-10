@@ -599,7 +599,7 @@ export default function FinanceiroPage() {
                     )}
                   </div>
                   {pendingQuestionsCount > 0 ? (
-                    <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
+                    <p className="alle-alert-banner mt-3 rounded-lg px-3 py-2 text-xs">
                       Há questionamentos pendentes nesta empresa. Responda pelo
                       painel abaixo ou use o botão acima.
                     </p>

@@ -17,6 +17,10 @@ import {
   resolveRendimentoOvertimeDisplay,
 } from "@/lib/rendimento/entry-overtime";
 import { cn } from "@/lib/utils";
+import {
+  RENDIMENTO_GAP_LEGEND,
+  RENDIMENTO_LUNCH_LEGEND,
+} from "@/lib/module-copy";
 import type {
   RendimentoDaySummary,
   RendimentoEntry,
@@ -41,11 +45,11 @@ export function RendimentoLegend({ simplified = false }: { simplified?: boolean 
           <span className="inline-flex items-center gap-1.5">
             <span className="size-2.5 rounded-sm bg-orange-500" />
             <AlertTriangle className="size-3 text-orange-500" />
-            &gt; 1h sem apontar
+            {RENDIMENTO_GAP_LEGEND}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Coffee className="size-3 text-emerald-600" />
-            Almoço (perdoa 1 alerta/dia)
+            {RENDIMENTO_LUNCH_LEGEND}
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Hourglass className="size-3 text-sky-500" />
@@ -109,7 +113,7 @@ export function RendimentoDayIndicators({
     <div className={cn("flex flex-wrap gap-1", compact ? "mt-1" : "mt-2")}>
       {hasHoraExtra ? (
         <span
-          className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 px-1 py-0.5 text-[9px] font-bold text-amber-700 dark:text-amber-300"
+          className="alle-badge-overtime inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-bold"
           title="Hora extra no dia"
         >
           <Clock className="size-2.5" />
@@ -127,8 +131,8 @@ export function RendimentoDayIndicators({
       ) : null}
       {!hideGapAlerts && insights?.hasIdleGapAlert ? (
         <span
-          className="inline-flex items-center gap-0.5 rounded bg-orange-500/20 px-1 py-0.5 text-[9px] font-bold text-orange-700 dark:text-orange-300"
-          title="Intervalo sem apontamento (> 1h)"
+          className="alle-badge-idle inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-bold"
+          title="Intervalo sem registro de horas (> 1h)"
         >
           <AlertTriangle className="size-2.5" />
           !
@@ -184,7 +188,7 @@ export function RendimentoGapBlock({
               ? "border-rose-500/45 bg-rose-500/15 text-rose-800 dark:text-rose-200"
               : isLunch
                 ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
-                : "border-orange-500/40 bg-orange-500/15 text-orange-800 dark:text-orange-200",
+                : "alle-surface-idle",
       )}
     >
       <div>
@@ -206,7 +210,7 @@ export function RendimentoGapBlock({
                 ? "Justificativa pendente"
                 : justification.status === "APPROVED"
                   ? "Justificativa aprovada"
-                  : "Justificativa rejeitada"}
+                  : "Justificativa não aprovada"}
             </span>
           </div>
           {justification.reason.trim() ? (
@@ -217,7 +221,7 @@ export function RendimentoGapBlock({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1">
-        {onJustify ? (
+        {onJustify && !isLunch ? (
           <button
             type="button"
             className="rounded bg-background/70 px-2 py-0.5 text-[10px] font-bold text-foreground hover:bg-background"
@@ -241,7 +245,7 @@ export function RendimentoGapBlock({
             className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-500"
             onClick={onReject}
           >
-            Rejeitar
+            Não aprovar
           </button>
         ) : null}
       </div>
@@ -281,7 +285,7 @@ export function RendimentoEntryCard({
   );
 }
 
-/** Aviso pontual — independente do alerta de lacuna (sem apontamento). */
+/** Aviso pontual — independente do intervalo sem registro de horas. */
 export function RendimentoVoluntaryJustificationBlock({
   item,
   canApprove,
@@ -347,7 +351,7 @@ export function RendimentoVoluntaryJustificationBlock({
             className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-500"
             onClick={onReject}
           >
-            Rejeitar
+            Não aprovar
           </button>
         </div>
       ) : null}

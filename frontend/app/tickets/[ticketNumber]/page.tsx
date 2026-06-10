@@ -15,6 +15,10 @@ import {
   canCreateTicketsAndAppointments,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
+import {
+  SYNC_STATUS_PENDING,
+  SYNC_STATUS_PORTAL_ONLY,
+} from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
 import {
   ticketsService,
@@ -42,8 +46,8 @@ function appointmentRowKey(row: {
 }
 
 function syncStatusLabel(status: string) {
-  if (status === "PORTAL_ONLY") return "Só portal";
-  if (status === "PENDING_TIFLUX") return "Aguardando TiFlux";
+  if (status === "PORTAL_ONLY") return SYNC_STATUS_PORTAL_ONLY;
+  if (status === "PENDING_TIFLUX") return SYNC_STATUS_PENDING;
   return null;
 }
 
@@ -261,7 +265,7 @@ export default function TicketDetailPage() {
                               <td className="px-4 py-2">
                                 <div>{row.userName ?? "—"}</div>
                                 {status ? (
-                                  <span className="mt-1 inline-block rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                                  <span className="alle-badge-overtime mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium">
                                     {status}
                                   </span>
                                 ) : null}

@@ -114,7 +114,7 @@ function DayQuestionIndicator({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-0.5 rounded font-bold text-amber-800 dark:text-amber-200",
+        "alle-badge-overtime inline-flex items-center gap-0.5 rounded font-bold",
         compact
           ? "bg-amber-500/25 px-1 py-0.5 text-[9px]"
           : "bg-amber-500/30 px-1.5 py-0.5 text-[10px]",
@@ -138,7 +138,7 @@ function CompanyAgendaLegend() {
         Horas no dia
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-200">
+        <span className="alle-badge-overtime inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold">
           <MessageSquare className="size-3" />
           Quest.
         </span>
@@ -238,7 +238,7 @@ function CompanyEntryCard({
             </div>
           ) : null}
           {q?.status === "PENDING" && isClientUser && !dense ? (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs alle-stat-overtime">
               Questionamento enviado — aguardando resposta.
             </p>
           ) : null}
@@ -251,7 +251,7 @@ function CompanyEntryCard({
               </span>
             ) : null}
             {q?.status === "PENDING" ? (
-              <span className="rounded-md border border-amber-500/50 px-2 py-0.5 text-[10px] font-medium text-amber-600">
+              <span className="alle-badge-overtime rounded-md border border-amber-500/40 px-2 py-0.5 text-[10px] font-medium">
                 Aguardando
               </span>
             ) : null}
@@ -396,7 +396,7 @@ export function CompanyAgendaCalendar({
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Questionamentos</p>
-            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+            <p className="text-2xl font-bold alle-stat-overtime">
               {loading && !agenda ? "—" : totalPendingQuestions}
             </p>
             <p className="text-xs text-muted-foreground">
@@ -481,7 +481,7 @@ export function CompanyAgendaCalendar({
                         {summary.appointmentCount} ap.
                       </span>
                     ) : summary?.pendingQuestions ? (
-                      <span className="text-[9px] font-medium text-amber-700 dark:text-amber-300">
+                      <span className="alle-badge-overtime text-[9px] font-medium">
                         Só questionamento
                       </span>
                     ) : null}

@@ -329,9 +329,9 @@ export default function CorreioPage() {
                 <span>
                   <strong>Contratos:</strong> no dia 15 de cada mês o sistema verifica o
                   consumo de horas (alerta abaixo de 30% ou acima de 70%).{" "}
-                  <strong>Chamados:</strong> colaboradores recebem aviso de ticket aberto há
-                  24h+ sem apontamento; administradores recebem chamados parados há 48h ou 7
-                  dias.
+                  <strong>Chamados:</strong> colaboradores recebem aviso quando um chamado
+                  próprio está aberto há 24h+ sem registro de horas; administradores
+                  recebem alertas de chamados sem atualização há 48h ou 7 dias.
                 </span>
               </p>
             </div>

@@ -63,7 +63,7 @@ export function AdminAnswerQuestionDialog({
         {target ? (
           <div className="space-y-4">
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-              <p className="font-medium text-amber-700 dark:text-amber-400">
+              <p className="font-medium alle-stat-overtime">
                 Justificativa do cliente
               </p>
               <p className="mt-1 text-muted-foreground">{target.message}</p>

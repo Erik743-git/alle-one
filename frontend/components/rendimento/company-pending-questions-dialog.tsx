@@ -214,7 +214,7 @@ export function PendingQuestionsBadge({
       type="button"
       size="sm"
       variant="outline"
-      className="border-amber-500/50 text-amber-600 hover:bg-amber-500/10"
+      className="border-amber-500/50 text-amber-900 hover:bg-amber-500/10 dark:text-amber-300"
       onClick={onClick}
     >
       <MessageSquare className="mr-1.5 size-3.5" />

@@ -541,6 +541,69 @@ describe('rendimento-day-insights', () => {
     ).toHaveLength(0);
   });
 
+  it('não alerta ociosidade quando apontamento menor está dentro de um maior (sobreposição)', () => {
+    const { insights } = analyzeRendimentoDay([
+      {
+        id: 1,
+        date: '2026-06-09',
+        initTime: '08:30:00',
+        endTime: '12:00:00',
+        minutes: 210,
+        hoursFormatted: '03:30',
+        ticketNumber: 70714,
+        clientName: 'Apodi',
+        description: 'Reunião diária',
+      },
+      {
+        id: 2,
+        date: '2026-06-09',
+        initTime: '09:05:00',
+        endTime: '09:15:00',
+        minutes: 10,
+        hoursFormatted: '00:10',
+        ticketNumber: 69866,
+        clientName: 'I7',
+        description: 'Serviço no ar',
+      },
+      {
+        id: 3,
+        date: '2026-06-09',
+        initTime: '13:35:00',
+        endTime: '14:40:00',
+        minutes: 65,
+        hoursFormatted: '01:05',
+        ticketNumber: 70730,
+        clientName: 'Nasser',
+        description: null,
+      },
+      {
+        id: 4,
+        date: '2026-06-09',
+        initTime: '16:00:00',
+        endTime: '18:00:00',
+        minutes: 120,
+        hoursFormatted: '02:00',
+        ticketNumber: 70714,
+        clientName: 'Apodi',
+        description: null,
+      },
+    ]);
+
+    expect(insights.regularMinutes).toBe(210 + 65 + 120);
+    expect(
+      insights.gaps.some(
+        (g) => g.type === 'idle' && g.fromTime === '09:15',
+      ),
+    ).toBe(false);
+    expect(
+      insights.gaps.some(
+        (g) =>
+          (g.type === 'lunch' && g.fromTime === '12:00') ||
+          (g.type === 'idle' && g.fromTime === '12:00'),
+      ),
+    ).toBe(true);
+  });
+
   it('no dia atual, não gera alertas de lacuna nem almoço (expediente em andamento)', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(2026, 5, 3, 20, 36, 0));

@@ -1,23 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Check,
   Clock,
   Loader2,
+  MoreVertical,
   RefreshCw,
   X,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
+import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { toDateInputValue } from "@/components/rendimento/rendimento-calendar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { Label } from "@/components/ui/label";
@@ -44,6 +50,19 @@ function formatDateBr(iso: string) {
   const [y, m, d] = iso.split("-");
   if (!y || !m || !d) return iso;
   return `${d}/${m}/${y}`;
+}
+
+function emailLocalPart(email: string) {
+  const local = email.split("@")[0]?.trim();
+  return local || email;
+}
+
+function formatDescription(row: PendingOvertimeItem) {
+  const text = row.description?.trim() || row.label?.trim() || "";
+  if (!text && row.ticketNumber == null) return "—";
+  if (row.ticketNumber == null) return text || "—";
+  if (!text) return `#${row.ticketNumber}`;
+  return `#${row.ticketNumber} — ${text}`;
 }
 
 export default function AprovarHorasExtrasPage() {
@@ -154,7 +173,7 @@ export default function AprovarHorasExtrasPage() {
       notifySuccess(
         decision === "APPROVED"
           ? "Hora extra aprovada."
-          : "Hora extra rejeitada.",
+          : "Registro não aprovado.",
       );
       await load(true);
     } catch (err) {
@@ -185,7 +204,7 @@ export default function AprovarHorasExtrasPage() {
         notifySuccess(
           decision === "APPROVED"
             ? `${res.succeeded} hora(s) extra(s) aprovada(s).`
-            : `${res.succeeded} hora(s) extra(s) rejeitada(s).`,
+            : `${res.succeeded} registro(s) não aprovado(s).`,
         );
       }
       await load(true);
@@ -205,38 +224,26 @@ export default function AprovarHorasExtrasPage() {
       <PermissionGate module="RENDIMENTO">
         <AppShell>
           <div className="font-sans w-full space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-2">
-                <Button asChild variant="outline" size="sm" className="w-fit">
-                  <Link href="/apontamentos">
-                    <ArrowLeft className="mr-2 size-4" />
-                    Voltar aos apontamentos
-                  </Link>
+            <PageHeader
+              backHref="/apontamentos"
+              backLabel="Voltar aos apontamentos"
+              icon={<Clock size={24} />}
+              title="Aprovar horas extras"
+              description="Registros de hora extra e plantão aguardando análise. O período inicia no mês atual; use os filtros para refinar a lista."
+              actions={
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={refreshing || loading || acting}
+                  onClick={() => void load(true)}
+                >
+                  <RefreshCw
+                    className={cn("mr-2 size-4", refreshing && "animate-spin")}
+                  />
+                  Atualizar
                 </Button>
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Clock size={24} />
-                </div>
-                <h1 className="text-3xl font-bold text-foreground">
-                  Aprovar horas extras
-                </h1>
-                <p className="max-w-2xl text-sm text-muted-foreground">
-                  Horas extras e plantões registrados no TiFlux aguardando
-                  aprovação do administrador. O período inicia no mês atual;
-                  use os filtros para refinar a lista.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={refreshing || loading || acting}
-                onClick={() => void load(true)}
-              >
-                <RefreshCw
-                  className={cn("mr-2 size-4", refreshing && "animate-spin")}
-                />
-                Atualizar
-              </Button>
-            </div>
+              }
+            />
 
             <Card className="overflow-visible">
               <CardHeader>
@@ -303,11 +310,11 @@ export default function AprovarHorasExtrasPage() {
                     onClick={() => void decideBulk("REJECTED")}
                   >
                     <X className="mr-2 size-4" />
-                    Rejeitar selecionados
+                    Não aprovar selecionados
                   </Button>
                 </div>
               </CardHeader>
-              <CardContent className="overflow-x-auto p-0">
+              <CardContent className="overflow-x-scroll p-0 [scrollbar-gutter:stable]">
                 {loading ? (
                   <div className="flex min-h-[200px] items-center justify-center">
                     <Loader2 className="size-8 animate-spin text-primary" />
@@ -317,7 +324,7 @@ export default function AprovarHorasExtrasPage() {
                     Nenhuma hora extra ou plantão pendente no período.
                   </p>
                 ) : (
-                  <table className="w-full min-w-[960px] text-left text-sm">
+                  <table className="w-full min-w-[1080px] text-left text-sm">
                     <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-4 py-3 w-12">
@@ -330,12 +337,13 @@ export default function AprovarHorasExtrasPage() {
                           </label>
                         </th>
                         <th className="px-4 py-3">Usuário</th>
+                        <th className="px-4 py-3">Empresa</th>
                         <th className="px-4 py-3">Data</th>
                         <th className="px-4 py-3">Horário</th>
                         <th className="px-4 py-3">Duração</th>
                         <th className="px-4 py-3">Tipo</th>
                         <th className="px-4 py-3">Descrição</th>
-                        <th className="px-4 py-3 text-right">Ações</th>
+                        <th className="px-4 py-3 w-12 text-right" />
                       </tr>
                     </thead>
                     <tbody>
@@ -354,15 +362,15 @@ export default function AprovarHorasExtrasPage() {
                                     [row.id]: e.target.checked,
                                   }))
                                 }
-                                aria-label={`Selecionar ${row.userName}`}
+                                aria-label={`Selecionar ${emailLocalPart(row.userEmail)}`}
                               />
                             </label>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="font-medium">{row.userName}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {row.userEmail}
-                            </div>
+                          <td className="px-4 py-3 font-medium whitespace-nowrap">
+                            {emailLocalPart(row.userEmail)}
+                          </td>
+                          <td className="px-4 py-3 max-w-[12rem] font-medium text-foreground">
+                            {row.companyName || "—"}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {formatDateBr(row.date)}
@@ -377,33 +385,48 @@ export default function AprovarHorasExtrasPage() {
                           </td>
                           <td className="px-4 py-3">{row.typeLabel}</td>
                           <td className="px-4 py-3 max-w-xs text-muted-foreground">
-                            {row.description?.trim() || row.label || "—"}
+                            {formatDescription(row)}
                           </td>
-                          <td className="px-4 py-3 text-right whitespace-nowrap">
-                            <div className="flex justify-end gap-1">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                disabled={acting}
-                                onClick={() =>
-                                  void decideOne(row.id, "APPROVED")
-                                }
+                          <td className="px-4 py-3 text-right">
+                            <DropdownMenu modal={false}>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                  disabled={acting}
+                                  aria-label={`Ações para ${emailLocalPart(row.userEmail)}`}
+                                >
+                                  <MoreVertical className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                sideOffset={6}
+                                className="min-w-[9.5rem] w-auto"
                               >
-                                Aprovar
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                disabled={acting}
-                                onClick={() =>
-                                  void decideOne(row.id, "REJECTED")
-                                }
-                              >
-                                Rejeitar
-                              </Button>
-                            </div>
+                                <DropdownMenuItem
+                                  disabled={acting}
+                                  onClick={() =>
+                                    void decideOne(row.id, "APPROVED")
+                                  }
+                                >
+                                  <Check className="mr-2 size-4 text-emerald-600" />
+                                  Aprovar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={acting}
+                                  variant="destructive"
+                                  onClick={() =>
+                                    void decideOne(row.id, "REJECTED")
+                                  }
+                                >
+                                  <X className="mr-2 size-4" />
+                                  Não aprovar
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </td>
                         </tr>
                       ))}

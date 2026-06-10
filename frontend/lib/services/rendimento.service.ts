@@ -360,7 +360,6 @@ export const rendimentoService = {
 export type PendingOvertimeItem = {
   id: string;
   userId: string;
-  userName: string;
   userEmail: string;
   date: string;
   eventType: "OVERTIME" | "PLANTAO";
@@ -372,6 +371,8 @@ export type PendingOvertimeItem = {
   label: string | null;
   description: string | null;
   appointmentExternalId: number | null;
+  companyName: string | null;
+  ticketNumber: number | null;
 };
 
 export type BulkDecideDayEventsResult = {

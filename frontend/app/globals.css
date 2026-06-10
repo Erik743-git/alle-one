@@ -550,3 +550,48 @@ body::-webkit-scrollbar-thumb:hover,
   padding-top: 0.625rem;
   border-top: 1px solid var(--border);
 }
+
+/* Alertas e métricas — contraste legível em modo claro e escuro */
+.alle-stat-overtime {
+  color: color-mix(in oklab, var(--color-amber-800) 96%, var(--foreground));
+}
+.dark .alle-stat-overtime {
+  color: color-mix(in oklab, var(--color-amber-300) 96%, var(--foreground));
+}
+
+.alle-badge-overtime {
+  background-color: color-mix(in oklab, var(--color-amber-500) 28%, transparent);
+  color: color-mix(in oklab, var(--color-amber-900) 96%, var(--foreground));
+  border: 1px solid color-mix(in oklab, var(--color-amber-500) 45%, transparent);
+}
+.dark .alle-badge-overtime {
+  background-color: color-mix(in oklab, var(--color-amber-500) 24%, transparent);
+  color: color-mix(in oklab, var(--color-amber-200) 96%, var(--foreground));
+  border-color: color-mix(in oklab, var(--color-amber-400) 50%, transparent);
+}
+
+.alle-badge-idle {
+  background-color: color-mix(in oklab, var(--color-orange-500) 20%, transparent);
+  color: color-mix(in oklab, var(--color-orange-950) 90%, var(--foreground));
+}
+.dark .alle-badge-idle {
+  color: color-mix(in oklab, var(--color-orange-200) 96%, var(--foreground));
+}
+
+.alle-surface-idle {
+  border-color: color-mix(in oklab, var(--color-orange-500) 42%, var(--border));
+  background-color: color-mix(in oklab, var(--color-orange-500) 12%, var(--card));
+  color: color-mix(in oklab, var(--color-orange-950) 88%, var(--foreground));
+}
+.dark .alle-surface-idle {
+  color: color-mix(in oklab, var(--color-orange-200) 96%, var(--foreground));
+}
+
+.alle-alert-banner {
+  border-color: color-mix(in oklab, var(--color-amber-500) 38%, var(--border));
+  background-color: color-mix(in oklab, var(--color-amber-500) 12%, var(--card));
+  color: color-mix(in oklab, var(--color-amber-950) 92%, var(--foreground));
+}
+.dark .alle-alert-banner {
+  color: color-mix(in oklab, var(--color-amber-100) 96%, var(--foreground));
+}
