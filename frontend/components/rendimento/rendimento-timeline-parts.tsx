@@ -1,11 +1,15 @@
 "use client";
 
+import * as React from "react";
+
 import { cn } from "@/lib/utils";
 import { resolveRendimentoOvertimeDisplay } from "@/lib/rendimento/entry-overtime";
 import {
+  assignTimelineColumns,
   buildTimelineMarks,
   formatTimelineMark,
   intervalMinutes,
+  layoutTimelineBlockRect,
   resolveTimelineRange,
   workdayFillPercent,
   type TimelineBlock,
@@ -124,67 +128,90 @@ type TimelineTrackProps = {
   className?: string;
 };
 
+const TIMELINE_BAR_HEIGHT = {
+  default: 44,
+  compact: 28,
+} as const;
+
 export function RendimentoTimelineTrack({
   blocks,
   range: rangeProp,
-  height = 56,
+  height,
   compact = false,
   className,
 }: TimelineTrackProps) {
   const range = rangeProp ?? resolveTimelineRange(blocks);
   const hourMarks = buildTimelineMarks(range);
+  const { items } = assignTimelineColumns(blocks);
+  const barHeight = compact
+    ? TIMELINE_BAR_HEIGHT.compact
+    : TIMELINE_BAR_HEIGHT.default;
+  const trackHeight = height ?? barHeight + (compact ? 8 : 12);
+  const [activeBarKey, setActiveBarKey] = React.useState<string | null>(null);
 
   return (
     <div className={cn("space-y-1", className)}>
       <div
-        className="relative rounded-md border border-border bg-muted/30"
-        style={{ height }}
+        className="relative isolate overflow-visible rounded-md border border-border bg-muted/30"
+        style={{ height: trackHeight }}
       >
         {blocks.length === 0 ? (
           <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">
             sem registro
           </span>
         ) : (
-          [...blocks]
-            .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
-            .map((block, index) => {
-              const left =
-                ((block.startMin - range.startMin) / range.spanMin) * 100;
-              const width =
-                ((block.endMin - block.startMin) / range.spanMin) * 100;
-              const minWidth =
-                block.tone === "gap" ? (compact ? 3 : 2) : compact ? 1.5 : 1;
+          items.map(({ block, column, columns }, index) => {
+            const { leftPct, widthPct } = layoutTimelineBlockRect(
+              block,
+              range,
+              column,
+              columns,
+            );
+            const barKey = `${block.tone}-${block.startMin}-${column}-${index}`;
+            const isActive = activeBarKey === barKey;
 
-              return (
-                <div
-                  key={`${block.tone}-${block.startMin}-${index}`}
-                  title={[block.label, block.sub].filter(Boolean).join(" · ")}
-                  className={cn(
-                    "absolute overflow-hidden rounded border px-1.5 py-0.5",
-                    timelineBlockClass(block.tone),
-                    compact ? "top-1 bottom-1" : "top-1.5 bottom-1.5",
-                    block.tone === "gap" && "z-10",
-                  )}
-                  style={{
-                    left: `${left}%`,
-                    width: `${Math.max(width, minWidth)}%`,
-                  }}
-                >
-                  {!compact ? (
-                    <>
-                      <p className="truncate text-[10px] font-semibold text-white">
-                        {block.label}
+            return (
+              <div
+                key={barKey}
+                title={[block.label, block.sub].filter(Boolean).join(" · ")}
+                onMouseEnter={() => !compact && setActiveBarKey(barKey)}
+                onMouseLeave={() => !compact && setActiveBarKey(null)}
+                className={cn(
+                  "group/bar absolute bottom-1.5 overflow-hidden rounded-md border",
+                  "origin-bottom transition-[height,width,transform,box-shadow] duration-200 ease-out",
+                  !compact &&
+                    isActive &&
+                    "z-[100] h-auto min-h-[5rem] min-w-[10.5rem] max-w-[16rem] scale-[1.02] overflow-visible shadow-lg ring-1 ring-white/25",
+                  timelineBlockClass(block.tone),
+                  compact && "pointer-events-none",
+                )}
+                style={{
+                  left: `${leftPct}%`,
+                  width: `${widthPct}%`,
+                  height: barHeight,
+                  zIndex: isActive ? 100 : activeBarKey ? 1 : column + 1,
+                }}
+              >
+                {!compact ? (
+                  <div
+                    className={cn(
+                      "flex h-full flex-col justify-end px-2 pb-1.5 transition-opacity duration-200",
+                      isActive ? "opacity-100" : "opacity-0",
+                    )}
+                  >
+                    <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-white">
+                      {block.label}
+                    </p>
+                    {block.sub ? (
+                      <p className="mt-0.5 line-clamp-4 text-[10px] leading-snug text-white/90">
+                        {block.sub}
                       </p>
-                      {block.sub ? (
-                        <p className="truncate text-[9px] text-white/85">
-                          {block.sub}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              );
-            })
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })
         )}
       </div>
 

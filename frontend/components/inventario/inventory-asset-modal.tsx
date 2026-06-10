@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { InventoryAssetTypeDialog } from "@/components/inventario/inventory-asset-type-dialog";
 import {
   INVENTORY_REMINDER_OPTIONS,
@@ -211,14 +212,15 @@ export function InventoryAssetModal({
 
             <div className="space-y-2">
               <Label htmlFor="inv-due">Data de vencimento</Label>
-              <Input
-                id="inv-due"
-                type="date"
+              <DatePickerField
+                modal
+                allowClear
                 value={dueDate}
-                onChange={(e) => {
-                  setDueDate(e.target.value);
-                  if (!e.target.value) setReminderDaysBefore("");
+                onChange={(value) => {
+                  setDueDate(value);
+                  if (!value) setReminderDaysBefore("");
                 }}
+                placeholder="Selecione a data"
               />
             </div>
 

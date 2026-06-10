@@ -106,3 +106,106 @@ export function workdayFillPercent(totalMinutes: number): number {
   if (totalMinutes <= 0) return 0;
   return Math.min(100, Math.round((totalMinutes / WORKDAY_TARGET_MINUTES) * 100));
 }
+
+export type TimelineColumnItem = {
+  block: TimelineBlock;
+  column: number;
+  columns: number;
+};
+
+function buildOverlapClusters(blocks: TimelineBlock[]): TimelineBlock[][] {
+  const sorted = [...blocks].sort(
+    (a, b) => a.startMin - b.startMin || a.endMin - b.endMin,
+  );
+  const clusters: TimelineBlock[][] = [];
+  let current: TimelineBlock[] = [];
+  let clusterEnd = -Infinity;
+
+  for (const block of sorted) {
+    if (current.length === 0 || block.startMin < clusterEnd) {
+      current.push(block);
+      clusterEnd = Math.max(clusterEnd, block.endMin);
+    } else {
+      clusters.push(current);
+      current = [block];
+      clusterEnd = block.endMin;
+    }
+  }
+
+  if (current.length > 0) {
+    clusters.push(current);
+  }
+
+  return clusters;
+}
+
+function assignColumnsInCluster(
+  cluster: TimelineBlock[],
+): TimelineColumnItem[] {
+  const sorted = [...cluster].sort(
+    (a, b) =>
+      a.startMin - b.startMin ||
+      b.endMin - b.startMin - (a.endMin - a.startMin),
+  );
+  const columnEnds: number[] = [];
+  const assignments: Array<{ block: TimelineBlock; column: number }> = [];
+
+  for (const block of sorted) {
+    let column = columnEnds.findIndex((endMin) => endMin <= block.startMin);
+    if (column === -1) {
+      column = columnEnds.length;
+      columnEnds.push(block.endMin);
+    } else {
+      columnEnds[column] = block.endMin;
+    }
+    assignments.push({ block, column });
+  }
+
+  const columns = Math.max(1, columnEnds.length);
+  return assignments.map(({ block, column }) => ({
+    block,
+    column,
+    columns,
+  }));
+}
+
+/** Divide blocos sobrepostos lado a lado na mesma linha (estilo agenda). */
+export function assignTimelineColumns(blocks: TimelineBlock[]): {
+  items: TimelineColumnItem[];
+} {
+  if (blocks.length === 0) {
+    return { items: [] };
+  }
+
+  const items = buildOverlapClusters(blocks).flatMap(assignColumnsInCluster);
+  items.sort(
+    (a, b) =>
+      a.block.startMin - b.block.startMin ||
+      a.column - b.column ||
+      a.block.endMin - b.block.endMin,
+  );
+
+  return { items };
+}
+
+export function layoutTimelineBlockRect(
+  block: TimelineBlock,
+  range: TimelineRange,
+  column: number,
+  columns: number,
+): { leftPct: number; widthPct: number } {
+  const leftPct = ((block.startMin - range.startMin) / range.spanMin) * 100;
+  const widthPct = ((block.endMin - block.startMin) / range.spanMin) * 100;
+
+  if (columns <= 1) {
+    return { leftPct, widthPct };
+  }
+
+  const gapPct = 0.15;
+  const sliceWidth = widthPct / columns;
+
+  return {
+    leftPct: leftPct + column * sliceWidth + column * gapPct,
+    widthPct: Math.max(sliceWidth - gapPct, 0.25),
+  };
+}

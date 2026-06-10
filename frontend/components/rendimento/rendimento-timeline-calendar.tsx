@@ -622,7 +622,7 @@ export function RendimentoTimelineCalendar({
 
                   <RendimentoTimelineTrack
                     blocks={blocks}
-                    height={32}
+                    height={36}
                     compact
                   />
 
@@ -709,7 +709,7 @@ export function RendimentoTimelineCalendar({
               ) : null}
             </div>
 
-            <RendimentoTimelineTrack blocks={dayBlocks} height={64} />
+            <RendimentoTimelineTrack blocks={dayBlocks} />
           </div>
 
           <DayDetailList

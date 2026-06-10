@@ -117,6 +117,16 @@ function toQuery(params: TicketsListParams): string {
   return s ? `?${s}` : "";
 }
 
+export type TicketClassificationNode = {
+  id: string;
+  name: string;
+  level: number;
+  active: boolean;
+  sortOrder: number;
+  parentId: string | null;
+  children: TicketClassificationNode[];
+};
+
 export type TicketCreateCatalogs = {
   clients: Array<{ id: number; name: string }>;
   desks: Array<{
@@ -126,6 +136,11 @@ export type TicketCreateCatalogs = {
     requireServiceCatalog: boolean;
   }>;
   responsibles: Array<{ id: number; name: string; email: string | null }>;
+  portalServiceDesk: { id: string; name: string } | null;
+  classification: {
+    levelLabels: Array<{ level: number; label: string }>;
+    tree: TicketClassificationNode[];
+  } | null;
   desk: {
     id: number;
     name: string;
@@ -144,6 +159,7 @@ export type CreateTicketPayload = {
   deskId: number;
   priorityId?: number;
   servicesCatalogsItemId?: number;
+  classificationId?: string;
   responsibleId?: number;
   requestorName?: string;
   requestorEmail?: string;

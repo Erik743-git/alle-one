@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { FileText, Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { AppAlert } from "@/components/ui/app-alert";
@@ -384,21 +385,23 @@ export default function ModalContratosEmpresa({
 
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">Início</label>
-                    <Input
-                      type="date"
+                    <DatePickerField
+                      modal
                       value={form.startDate}
-                      onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
-                      className="h-10"
+                      onChange={(startDate) => setForm((p) => ({ ...p, startDate }))}
+                      max={form.endDate || undefined}
                     />
                   </div>
 
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">Fim (opcional)</label>
-                    <Input
-                      type="date"
+                    <DatePickerField
+                      modal
+                      allowClear
                       value={form.endDate}
-                      onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))}
-                      className="h-10"
+                      onChange={(endDate) => setForm((p) => ({ ...p, endDate }))}
+                      min={form.startDate || undefined}
+                      placeholder="Sem data de fim"
                     />
                   </div>
 

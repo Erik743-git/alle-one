@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   MaxLength,
   MinLength,
@@ -37,6 +38,10 @@ export class CreateTicketDto {
   @IsInt()
   @Type(() => Number)
   servicesCatalogsItemId?: number;
+
+  @IsOptional()
+  @IsUUID()
+  classificationId?: string;
 
   @IsOptional()
   @IsInt()

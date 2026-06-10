@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  assignTimelineColumns,
   buildTimelineMarks,
   formatTimelineMark,
   intervalMinutes,
+  layoutTimelineBlockRect,
   resolveTimelineRange,
   TIMELINE_EDGE_PADDING_MIN,
   workdayFillPercent,
@@ -91,6 +93,68 @@ describe("buildTimelineMarks", () => {
     const marks = buildTimelineMarks(range);
     expect(marks[0]).toBe(range.startMin);
     expect(marks[marks.length - 1]).toBe(range.endMin);
+  });
+});
+
+describe("assignTimelineColumns", () => {
+  it("mantém um bloco em coluna única", () => {
+    const blocks: TimelineBlock[] = [
+      { startMin: 600, endMin: 720, label: "a", tone: "work" },
+    ];
+    expect(assignTimelineColumns(blocks)).toEqual({
+      items: [{ block: blocks[0], column: 0, columns: 1 }],
+    });
+  });
+
+  it("divide blocos sobrepostos em colunas lado a lado", () => {
+    const blocks: TimelineBlock[] = [
+      { startMin: 14 * 60, endMin: 14 * 60 + 30, label: "a", tone: "work" },
+      { startMin: 14 * 60, endMin: 15 * 60, label: "b", tone: "work" },
+    ];
+    const result = assignTimelineColumns(blocks);
+    expect(result.items.map((item) => item.columns)).toEqual([2, 2]);
+    expect(result.items.map((item) => item.column)).toEqual([0, 1]);
+  });
+
+  it("reutiliza coluna quando não há sobreposição", () => {
+    const blocks: TimelineBlock[] = [
+      { startMin: 10 * 60, endMin: 11 * 60, label: "a", tone: "work" },
+      { startMin: 11 * 60, endMin: 12 * 60, label: "b", tone: "work" },
+    ];
+    const result = assignTimelineColumns(blocks);
+    expect(result.items.every((item) => item.column === 0)).toBe(true);
+    expect(result.items.every((item) => item.columns === 1)).toBe(true);
+  });
+});
+
+describe("layoutTimelineBlockRect", () => {
+  const range = { startMin: 480, endMin: 960, spanMin: 480 };
+
+  it("usa largura total sem conflito", () => {
+    const block: TimelineBlock = {
+      startMin: 600,
+      endMin: 720,
+      label: "a",
+      tone: "work",
+    };
+    expect(layoutTimelineBlockRect(block, range, 0, 1)).toEqual({
+      leftPct: 25,
+      widthPct: 25,
+    });
+  });
+
+  it("divide largura entre colunas em conflito", () => {
+    const block: TimelineBlock = {
+      startMin: 600,
+      endMin: 720,
+      label: "a",
+      tone: "work",
+    };
+    const first = layoutTimelineBlockRect(block, range, 0, 2);
+    const second = layoutTimelineBlockRect(block, range, 1, 2);
+    expect(first.leftPct).toBeLessThan(second.leftPct);
+    expect(first.widthPct).toBeCloseTo(second.widthPct, 1);
+    expect(first.widthPct).toBeLessThan(25);
   });
 });
 

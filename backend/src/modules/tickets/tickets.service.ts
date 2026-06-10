@@ -134,6 +134,183 @@ export class TicketsService {
     return email.trim().toLowerCase();
   }
 
+  private async listResponsibleUsersForTicketCreate(): Promise<
+    Array<{ id: number; name: string; email: string | null }>
+  > {
+    const rows =
+      (await this.prisma.$queryRaw<
+        Array<{ external_id: number; name: string; email: string | null }>
+      >`
+        SELECT DISTINCT tu.external_id, tu.name, tu.email
+        FROM users u
+        INNER JOIN tiflux.users tu
+          ON lower(trim(tu.email)) = lower(trim(u.email))
+        WHERE u.responsible = true
+          AND u.deleted_at IS NULL
+          AND u.status = 'ACTIVE'
+          AND COALESCE(tu.active, true) = true
+        ORDER BY tu.name ASC
+      `) ?? [];
+
+    return rows.map((row) => ({
+      id: Number(row.external_id),
+      name: row.name,
+      email: row.email,
+    }));
+  }
+
+  private buildClassificationTree(
+    rows: Array<{
+      id: string;
+      name: string;
+      level: number;
+      active: boolean;
+      sortOrder: number;
+      parentId: string | null;
+    }>,
+  ) {
+    type Node = {
+      id: string;
+      name: string;
+      level: number;
+      active: boolean;
+      sortOrder: number;
+      parentId: string | null;
+      children: Node[];
+    };
+
+    const byParent = new Map<string | null, typeof rows>();
+    for (const row of rows) {
+      const bucket = byParent.get(row.parentId);
+      if (bucket) bucket.push(row);
+      else byParent.set(row.parentId, [row]);
+    }
+
+    const sortRows = (list: typeof rows) =>
+      [...list].sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'),
+      );
+
+    const toNode = (row: (typeof rows)[number]): Node => ({
+      ...row,
+      children:
+        row.level < 3
+          ? sortRows(byParent.get(row.id) ?? []).map(toNode)
+          : [],
+    });
+
+    return sortRows(byParent.get(null) ?? []).map(toNode);
+  }
+
+  private async loadClassificationBundle(tifluxDeskId: number) {
+    const portalDesk = await this.prisma.serviceDesk.findFirst({
+      where: { externalId: tifluxDeskId, deletedAt: null, active: true },
+      select: { id: true, name: true },
+    });
+    if (!portalDesk) {
+      return { portalServiceDesk: null, classification: null };
+    }
+
+    const rows = await this.prisma.serviceDeskClassification.findMany({
+      where: { serviceDeskId: portalDesk.id, active: true },
+      orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        level: true,
+        active: true,
+        sortOrder: true,
+        parentId: true,
+      },
+    });
+
+    return {
+      portalServiceDesk: portalDesk,
+      classification: {
+        levelLabels: [
+          { level: 1, label: 'Categoria' },
+          { level: 2, label: 'Subcategoria' },
+          { level: 3, label: 'Produto/solução' },
+        ],
+        tree: this.buildClassificationTree(rows),
+      },
+    };
+  }
+
+  private async resolveClassificationPathLabel(
+    classificationId: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.serviceDeskClassification.findFirst({
+      where: { id: classificationId, active: true },
+      select: { id: true, name: true, parentId: true, level: true },
+    });
+    if (!row) return null;
+
+    const names: string[] = [row.name];
+    let parentId = row.parentId;
+    while (parentId) {
+      const parent = await this.prisma.serviceDeskClassification.findUnique({
+        where: { id: parentId },
+        select: { name: true, parentId: true },
+      });
+      if (!parent) break;
+      names.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+
+    const desk = await this.prisma.serviceDeskClassification.findUnique({
+      where: { id: row.id },
+      select: {
+        serviceDesk: { select: { name: true } },
+      },
+    });
+
+    if (desk?.serviceDesk?.name) {
+      names.unshift(desk.serviceDesk.name);
+    }
+
+    return names.join(' → ');
+  }
+
+  private async assertValidClassificationForDesk(
+    tifluxDeskId: number,
+    classificationId?: string | null,
+  ) {
+    const bundle = await this.loadClassificationBundle(tifluxDeskId);
+    const tree = bundle.classification?.tree ?? [];
+    if (tree.length === 0) {
+      return;
+    }
+
+    if (!classificationId?.trim()) {
+      throw new BadRequestException(
+        'Selecione a classificação cadastrada para esta mesa.',
+      );
+    }
+
+    const node = await this.prisma.serviceDeskClassification.findFirst({
+      where: {
+        id: classificationId,
+        active: true,
+        serviceDeskId: bundle.portalServiceDesk?.id,
+      },
+      select: { id: true, level: true },
+    });
+    if (!node) {
+      throw new BadRequestException('Classificação inválida para esta mesa.');
+    }
+
+    const hasChildren = await this.prisma.serviceDeskClassification.count({
+      where: { parentId: node.id, active: true },
+    });
+    if (hasChildren > 0) {
+      throw new BadRequestException(
+        'Selecione o nível mais específico da classificação.',
+      );
+    }
+  }
+
   private async resolveTifluxExternalIdForUser(
     email: string,
   ): Promise<{ externalId: number; name: string | null } | null> {
@@ -700,37 +877,43 @@ export class TicketsService {
   }
 
   async getCreateCatalogs(deskId?: number) {
-    const [clientsRaw, desksRaw, attendants, admins] = await Promise.all([
+    const [clientsRaw, desksRaw, responsibles] = await Promise.all([
       this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
       this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
-      this.tiflux.getUsersAll({
-        active: true,
-        type: 'attendant',
-        maxPages: 30,
-      }),
-      this.tiflux.getUsersAll({ active: true, type: 'admin', maxPages: 10 }),
+      this.listResponsibleUsersForTicketCreate(),
     ]);
-
-    const responsiblesMap = new Map<number, { id: number; name: string; email: string | null }>();
-    for (const user of [...attendants, ...admins]) {
-      responsiblesMap.set(user.id, {
-        id: user.id,
-        name: user.name,
-        email: user.email ?? null,
-      });
-    }
 
     let desk: Record<string, unknown> | null = null;
     let priorities: Array<{ id: number; name: string }> = [];
     let catalogItems: Array<{ id: number; name: string }> = [];
+    let portalServiceDesk: { id: string; name: string } | null = null;
+    let classification: {
+      levelLabels: Array<{ level: number; label: string }>;
+      tree: Array<{
+        id: string;
+        name: string;
+        level: number;
+        active: boolean;
+        sortOrder: number;
+        parentId: string | null;
+        children: unknown[];
+      }>;
+    } | null = null;
 
     if (deskId != null && Number.isFinite(deskId)) {
       desk = await this.tiflux.getDesk(deskId);
+      const bundle = await this.loadClassificationBundle(deskId);
+      portalServiceDesk = bundle.portalServiceDesk;
+      classification = bundle.classification;
+
       const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
-      if (requiresCatalog) {
+      const hasPortalClassification =
+        (classification?.tree?.length ?? 0) > 0;
+
+      if (requiresCatalog && !hasPortalClassification) {
         const items = await this.tiflux.getDeskServicesCatalogItems(deskId);
         catalogItems = items.map((row) => this.mapCatalogItem(row));
-      } else {
+      } else if (!requiresCatalog) {
         const rows = await this.tiflux.getDeskPriorities(deskId);
         priorities = rows.map((row) => this.mapCatalogItem(row));
       }
@@ -751,9 +934,9 @@ export class TicketsService {
           requireServiceCatalog: Boolean(d.require_service_catalog_open_ticket),
         }))
         .filter((d) => Number.isFinite(d.id)),
-      responsibles: [...responsiblesMap.values()].sort((a, b) =>
-        a.name.localeCompare(b.name, 'pt-BR'),
-      ),
+      responsibles,
+      portalServiceDesk,
+      classification,
       desk: desk
         ? {
             id: Number(desk.id),
@@ -958,27 +1141,53 @@ export class TicketsService {
   async createTicket(actor: AuthenticatedRequestUser, dto: CreateTicketDto) {
     const desk = await this.tiflux.getDesk(dto.deskId);
     const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
+    const classificationBundle = await this.loadClassificationBundle(dto.deskId);
+    const hasPortalClassification =
+      (classificationBundle.classification?.tree?.length ?? 0) > 0;
 
-    if (requiresCatalog && !dto.servicesCatalogsItemId) {
+    await this.assertValidClassificationForDesk(
+      dto.deskId,
+      dto.classificationId,
+    );
+
+    if (requiresCatalog && !hasPortalClassification && !dto.servicesCatalogsItemId) {
       throw new BadRequestException(
-        'Esta mesa exige um item do catálogo de serviços (services_catalogs_item_id).',
+        'Esta mesa exige um item do catálogo de serviços.',
       );
     }
     if (!requiresCatalog && !dto.priorityId) {
       throw new BadRequestException(
-        'Esta mesa exige uma prioridade (priority_id).',
+        'Esta mesa exige uma prioridade.',
       );
     }
 
+    const allowedResponsibles = await this.listResponsibleUsersForTicketCreate();
     let responsibleId = dto.responsibleId ?? null;
     if (responsibleId == null) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
-      responsibleId = mine?.externalId ?? null;
+      const mineAllowed = mine
+        ? allowedResponsibles.some((row) => row.id === mine.externalId)
+        : false;
+      responsibleId = mineAllowed ? mine?.externalId ?? null : null;
+    } else if (!allowedResponsibles.some((row) => row.id === responsibleId)) {
+      throw new BadRequestException(
+        'O responsável deve ser um usuário marcado como responsável no cadastro.',
+      );
+    }
+
+    let description = dto.description.trim();
+    if (dto.classificationId) {
+      const pathLabel = await this.resolveClassificationPathLabel(
+        dto.classificationId,
+      );
+      if (pathLabel) {
+        description = `Classificação: ${pathLabel}\n\n${description}`;
+      }
     }
 
     const payload = {
       title: dto.title.trim(),
-      description: dto.description.trim(),
+      description,
       client_id: dto.clientId,
       desk_id: dto.deskId,
       priority_id: dto.priorityId ?? undefined,

@@ -6,6 +6,7 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Button } from "@/components/ui/button";
 import {
   adminService,
@@ -179,24 +180,24 @@ export default function AdminAuditoriaPage() {
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">De</p>
-                  <Input
-                    type="date"
+                  <DatePickerField
                     value={from}
-                    onChange={(e) => {
-                      setFrom(e.target.value);
+                    onChange={(value) => {
+                      setFrom(value);
                       setPage(1);
                     }}
+                    max={to || undefined}
                   />
                 </div>
                 <div className="space-y-1">
                   <p className="text-xs font-semibold text-muted-foreground">Até</p>
-                  <Input
-                    type="date"
+                  <DatePickerField
                     value={to}
-                    onChange={(e) => {
-                      setTo(e.target.value);
+                    onChange={(value) => {
+                      setTo(value);
                       setPage(1);
                     }}
+                    min={from || undefined}
                   />
                 </div>
               </CardContent>
