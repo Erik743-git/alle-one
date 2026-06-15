@@ -343,6 +343,34 @@ export const rendimentoService = {
     );
   },
 
+  listPendingJustifications(params: {
+    start: string;
+    end: string;
+    userId?: string;
+  }) {
+    const search = new URLSearchParams();
+    search.set("start", params.start);
+    search.set("end", params.end);
+    if (params.userId) search.set("userId", params.userId);
+    return apiRequest<PendingJustificationItem[]>(
+      `/rendimento/justifications/pending?${search.toString()}`,
+    );
+  },
+
+  bulkDecideJustifications(params: {
+    ids: string[];
+    decision: "APPROVED" | "REJECTED";
+    note?: string;
+  }) {
+    return apiRequest<BulkDecideDayEventsResult>(
+      "/rendimento/justifications/bulk-decision",
+      {
+        method: "PATCH",
+        body: params,
+      },
+    );
+  },
+
   bulkDecideDayEvents(params: {
     ids: string[];
     decision: "APPROVED" | "REJECTED";
@@ -355,6 +383,26 @@ export const rendimentoService = {
       },
     );
   },
+};
+
+export type PendingJustificationItem = {
+  id: string;
+  userId: string;
+  userEmail: string;
+  date: string;
+  fromTime: string | null;
+  toTime: string | null;
+  gapType: "idle" | "lunch";
+  gapTypeLabel: string;
+  gapMinutes: number;
+  gapLabel: string;
+  kind: "ALERT" | "VOLUNTARY";
+  kindLabel: string;
+  reason: string;
+  debitOvertime: boolean;
+  overtimeMinutes: number;
+  overtimeFormatted: string;
+  companyName: string | null;
 };
 
 export type PendingOvertimeItem = {

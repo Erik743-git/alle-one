@@ -7,6 +7,7 @@ import {
   IsUUID,
   Matches,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -62,6 +63,13 @@ export class CreateTicketDto {
   @IsString()
   @MaxLength(50)
   requestorTelephone?: string;
+
+  /** Referência GMUD externa informada pelo cliente. */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  externalGmudRef?: string;
 }
 
 export class CreateTicketAppointmentDto {

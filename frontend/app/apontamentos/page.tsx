@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Clock, Search, Users } from "lucide-react";
+import { CalendarDays, Search, Users } from "lucide-react";
 
 import { ApontamentosAdminHub } from "@/components/apontamentos/apontamentos-admin-hub";
 import AppShell from "@/components/layout/app-shell";
@@ -41,6 +41,11 @@ export default function ApontamentosPage() {
 
   const [loading, setLoading] = useState(true);
   const [pendingOvertimeCount, setPendingOvertimeCount] = useState<
+    number | null
+  >(null);
+  const [pendingJustificationVoluntary, setPendingJustificationVoluntary] =
+    useState<number | null>(null);
+  const [pendingJustificationAlert, setPendingJustificationAlert] = useState<
     number | null
   >(null);
   const [loadingPending, setLoadingPending] = useState(true);
@@ -93,13 +98,28 @@ export default function ApontamentosPage() {
     void (async () => {
       try {
         setLoadingPending(true);
-        const pending = await rendimentoService.listPendingOvertime({
-          start: range.start,
-          end: range.end,
-        });
-        setPendingOvertimeCount(pending.length);
+        const [pendingOvertime, pendingJustifications] = await Promise.all([
+          rendimentoService.listPendingOvertime({
+            start: range.start,
+            end: range.end,
+          }),
+          rendimentoService.listPendingJustifications({
+            start: range.start,
+            end: range.end,
+          }),
+        ]);
+        setPendingOvertimeCount(pendingOvertime.length);
+        setPendingJustificationVoluntary(
+          pendingJustifications.filter((item) => item.kind === "VOLUNTARY")
+            .length,
+        );
+        setPendingJustificationAlert(
+          pendingJustifications.filter((item) => item.kind === "ALERT").length,
+        );
       } catch {
         setPendingOvertimeCount(null);
+        setPendingJustificationVoluntary(null);
+        setPendingJustificationAlert(null);
       } finally {
         setLoadingPending(false);
       }
@@ -132,19 +152,13 @@ export default function ApontamentosPage() {
               icon={<Users size={24} />}
               title="Apontamentos"
               description={APONTAMENTOS_ADMIN_SUBTITLE}
-              actions={
-                <Button asChild className="shrink-0">
-                  <Link href="/apontamentos/aprovar-horas-extras">
-                    <Clock className="mr-2 size-4" />
-                    Aprovar horas extras
-                  </Link>
-                </Button>
-              }
             />
 
             <ApontamentosAdminHub
               collaboratorCount={collaborators.length}
               pendingOvertimeCount={pendingOvertimeCount}
+              pendingJustificationVoluntary={pendingJustificationVoluntary}
+              pendingJustificationAlert={pendingJustificationAlert}
               loadingPending={loadingPending}
             />
 

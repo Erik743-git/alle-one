@@ -17,6 +17,7 @@ export type TicketListItem = {
   createdAt: string | null;
   updatedAt: string | null;
   stageGroup: TicketStageGroupKey;
+  externalGmudRef: string | null;
 };
 
 export type TicketListGroup = {
@@ -55,6 +56,7 @@ export type TicketAppointment = {
     originalName: string;
     mimeType: string;
     size: number;
+    previewDataUrl: string | null;
   }>;
 };
 
@@ -73,6 +75,7 @@ export type TicketDetailResponse = {
     appointmentsCount: number;
   };
   appointments: TicketAppointment[];
+  externalGmudRef: string | null;
 };
 
 export type TicketFilterCatalogs = {
@@ -95,6 +98,7 @@ export type TicketsListParams = {
   ticketNumber?: number;
   search?: string;
   limit?: number;
+  externalGmudRef?: string;
 };
 
 function toQuery(params: TicketsListParams): string {
@@ -114,6 +118,9 @@ function toQuery(params: TicketsListParams): string {
   if (params.ticketNumber != null) q.set("ticketNumber", String(params.ticketNumber));
   if (params.search?.trim()) q.set("search", params.search.trim());
   if (params.limit != null) q.set("limit", String(params.limit));
+  if (params.externalGmudRef?.trim()) {
+    q.set("externalGmudRef", params.externalGmudRef.trim());
+  }
   const s = q.toString();
   return s ? `?${s}` : "";
 }
@@ -165,6 +172,7 @@ export type CreateTicketPayload = {
   requestorName?: string;
   requestorEmail?: string;
   requestorTelephone?: string;
+  externalGmudRef?: string;
 };
 
 export type AppointmentCatalogs = {
@@ -241,6 +249,13 @@ export const ticketsService = {
 
   detail(ticketNumber: number) {
     return apiRequest<TicketDetailResponse>(`/tickets/${ticketNumber}`);
+  },
+
+  linkGmud(ticketNumber: number, externalGmudRef: string | null) {
+    return apiRequest<{ ok: boolean; externalGmudRef: string | null }>(
+      `/tickets/${ticketNumber}/gmud`,
+      { method: "PATCH", body: { externalGmudRef } },
+    );
   },
 
   appointmentCatalogs(ticketNumber: number) {

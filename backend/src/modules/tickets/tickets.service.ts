@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -7,6 +7,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   assertAllowedUploadMime,
@@ -30,6 +31,11 @@ import {
   TICKET_STAGE_GROUPS,
   type TicketStageGroupKey,
 } from './tickets-stage-groups';
+import {
+  appointmentDescriptionToPlainText,
+  enrichAppointmentDescriptionWithImages,
+  type SavedAppointmentImage,
+} from './appointment-doc.util';
 
 type TicketRow = {
   ticket_number: number;
@@ -47,6 +53,7 @@ type TicketRow = {
   created_at_source: Date | null;
   updated_at_source: Date | null;
   is_closed: boolean | null;
+  external_gmud_ref?: string | null;
 };
 
 type AppointmentRow = {
@@ -73,6 +80,7 @@ export type TicketListItemDto = {
   createdAt: string | null;
   updatedAt: string | null;
   stageGroup: TicketStageGroupKey;
+  externalGmudRef: string | null;
 };
 
 export type TicketAppointmentDto = {
@@ -95,6 +103,7 @@ export type TicketAppointmentDto = {
     originalName: string;
     mimeType: string;
     size: number;
+    previewDataUrl: string | null;
   }>;
 };
 
@@ -395,7 +404,44 @@ export class TicketsService {
       createdAt: this.toIso(row.created_at_source),
       updatedAt: this.toIso(row.updated_at_source),
       stageGroup: resolveTicketStageGroup(row.stage_name),
+      externalGmudRef: row.external_gmud_ref?.trim() || null,
     };
+  }
+
+  private normalizeExternalGmudRef(value: string | null | undefined) {
+    const trimmed = value?.trim() ?? '';
+    if (!trimmed) return null;
+    if (trimmed.length > 120) {
+      throw new BadRequestException(
+        'Referência GMUD externa deve ter no máximo 120 caracteres.',
+      );
+    }
+    return trimmed;
+  }
+
+  private async loadExternalGmudRef(ticketNumber: number) {
+    const link = await this.prisma.portalTicketGmudLink.findUnique({
+      where: { ticketNumber },
+      select: { externalGmudRef: true },
+    });
+    const ref = link?.externalGmudRef?.trim();
+    return ref || null;
+  }
+
+  private async upsertTicketGmudLink(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    externalGmudRef: string,
+  ) {
+    await this.prisma.portalTicketGmudLink.upsert({
+      where: { ticketNumber },
+      create: {
+        ticketNumber,
+        externalGmudRef,
+        createdBy: actor.userId,
+      },
+      update: { externalGmudRef },
+    });
   }
 
   async listGrouped(
@@ -442,6 +488,7 @@ export class TicketsService {
     const toDate = query.to?.trim() ? new Date(`${query.to}T23:59:59`) : null;
     const search = query.search?.trim() ?? '';
     const ticketNumberFilter = query.ticketNumber ?? null;
+    const externalGmudRefFilter = query.externalGmudRef?.trim() ?? '';
 
     const rows =
       mineOnly
@@ -460,8 +507,10 @@ export class TicketsService {
               t.desk_name,
               t.created_at_source,
               t.updated_at_source,
-              t.is_closed
+              t.is_closed,
+              l.external_gmud_ref
             FROM tiflux.tickets t
+            LEFT JOIN portal_ticket_gmud_links l ON l.ticket_number = t.ticket_number
             WHERE COALESCE(t.is_closed, false) = false
               AND t.responsible_external_id = ${responsibleFilter}
               AND (${query.clientExternalId ?? null}::int IS NULL OR t.client_external_id = ${query.clientExternalId ?? null})
@@ -471,6 +520,7 @@ export class TicketsService {
               AND (${fromDate}::timestamptz IS NULL OR t.created_at_source >= ${fromDate})
               AND (${toDate}::timestamptz IS NULL OR t.created_at_source <= ${toDate})
               AND (${ticketNumberFilter}::int IS NULL OR t.ticket_number = ${ticketNumberFilter})
+              AND (${externalGmudRefFilter}::text = '' OR l.external_gmud_ref ILIKE ${externalGmudRefFilter ? `%${externalGmudRefFilter}%` : ''})
               AND (
                 ${search}::text = ''
                 OR t.title ILIKE ${search ? `%${search}%` : ''}
@@ -494,8 +544,10 @@ export class TicketsService {
               t.desk_name,
               t.created_at_source,
               t.updated_at_source,
-              t.is_closed
+              t.is_closed,
+              l.external_gmud_ref
             FROM tiflux.tickets t
+            LEFT JOIN portal_ticket_gmud_links l ON l.ticket_number = t.ticket_number
             WHERE COALESCE(t.is_closed, false) = false
               AND (${responsibleFilter}::int IS NULL OR t.responsible_external_id = ${responsibleFilter})
               AND (${query.clientExternalId ?? null}::int IS NULL OR t.client_external_id = ${query.clientExternalId ?? null})
@@ -505,6 +557,7 @@ export class TicketsService {
               AND (${fromDate}::timestamptz IS NULL OR t.created_at_source >= ${fromDate})
               AND (${toDate}::timestamptz IS NULL OR t.created_at_source <= ${toDate})
               AND (${ticketNumberFilter}::int IS NULL OR t.ticket_number = ${ticketNumberFilter})
+              AND (${externalGmudRefFilter}::text = '' OR l.external_gmud_ref ILIKE ${externalGmudRefFilter ? `%${externalGmudRefFilter}%` : ''})
               AND (
                 ${search}::text = ''
                 OR t.title ILIKE ${search ? `%${search}%` : ''}
@@ -578,7 +631,10 @@ export class TicketsService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
-    const appointments = await this.listMergedAppointments(ticketNumber);
+    const [appointments, externalGmudRef] = await Promise.all([
+      this.listMergedAppointments(ticketNumber),
+      this.loadExternalGmudRef(ticketNumber),
+    ]);
 
     const totalMinutes = appointments.reduce((sum, a) => sum + a.minutes, 0);
     const attendants = new Set(
@@ -603,7 +659,43 @@ export class TicketsService {
         appointmentsCount: appointments.length,
       },
       appointments,
+      externalGmudRef,
     };
+  }
+
+  async linkTicketGmud(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    externalGmudRef: string | null | undefined,
+  ) {
+    const rows =
+      (await this.prisma.$queryRaw<Array<{ ticket_number: number }>>`
+        SELECT t.ticket_number
+        FROM tiflux.tickets t
+        WHERE t.ticket_number = ${ticketNumber}
+        LIMIT 1
+      `) ?? [];
+
+    if (!rows[0]) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    if (externalGmudRef === undefined) {
+      throw new BadRequestException(
+        'Informe externalGmudRef (referência do cliente) ou null para remover o vínculo.',
+      );
+    }
+
+    const normalized = this.normalizeExternalGmudRef(externalGmudRef);
+    if (!normalized) {
+      await this.prisma.portalTicketGmudLink.deleteMany({
+        where: { ticketNumber },
+      });
+      return { ok: true, externalGmudRef: null };
+    }
+
+    await this.upsertTicketGmudLink(actor, ticketNumber, normalized);
+    return { ok: true, externalGmudRef: normalized };
   }
 
   async listAppointments(ticketNumber: number): Promise<TicketAppointmentDto[]> {
@@ -642,6 +734,44 @@ export class TicketsService {
     }));
   }
 
+  private buildPreviewDataUrl(
+    previewDataBase64: string | null | undefined,
+    file: { mimeType: string; path: string },
+  ): string | null {
+    if (previewDataBase64?.trim()) {
+      return `data:${file.mimeType};base64,${previewDataBase64.trim()}`;
+    }
+    if (!file.mimeType.startsWith('image/') || !existsSync(file.path)) {
+      return null;
+    }
+    try {
+      const buffer = readFileSync(file.path);
+      if (buffer.length < 12) return null;
+      return `data:${file.mimeType};base64,${buffer.toString('base64')}`;
+    } catch {
+      return null;
+    }
+  }
+
+  private async loadAttachmentPreviewMap(
+    attachmentIds: string[],
+  ): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (!attachmentIds.length) return map;
+
+    const rows = await this.prisma.portalTicketAppointmentAttachment.findMany({
+      where: { id: { in: attachmentIds } },
+      select: { id: true, previewDataBase64: true },
+    });
+
+    for (const row of rows) {
+      if (row.previewDataBase64?.trim()) {
+        map.set(row.id, row.previewDataBase64.trim());
+      }
+    }
+    return map;
+  }
+
   private mapPortalAttachments(
     rows: Array<{
       id: string;
@@ -650,9 +780,11 @@ export class TicketsService {
         originalName: string;
         mimeType: string;
         size: number;
+        path: string;
         deletedAt: Date | null;
       };
     }>,
+    previewMap?: Map<string, string>,
   ) {
     return rows
       .filter((row) => !row.file.deletedAt)
@@ -662,6 +794,10 @@ export class TicketsService {
         originalName: row.file.originalName,
         mimeType: row.file.mimeType,
         size: row.file.size,
+        previewDataUrl: this.buildPreviewDataUrl(
+          previewMap?.get(row.id) ?? null,
+          row.file,
+        ),
       }));
   }
 
@@ -689,6 +825,7 @@ export class TicketsService {
           originalName: string;
           mimeType: string;
           size: number;
+          path: string;
           deletedAt: Date | null;
         };
       }>;
@@ -736,6 +873,10 @@ export class TicketsService {
       }
     }
 
+    const previewMap = await this.loadAttachmentPreviewMap(
+      portalRows.flatMap((portal) => portal.attachments.map((item) => item.id)),
+    );
+
     const portalByTifluxId = new Map(
       portalRows
         .filter((row) => row.tifluxAppointmentExternalId != null)
@@ -765,14 +906,17 @@ export class TicketsService {
         syncStatus: portal ? 'SYNCED' : 'SYNCED',
         attachmentCount: portal?.attachments.length ?? 0,
         attachments: portal
-          ? this.mapPortalAttachments(portal.attachments)
+          ? this.mapPortalAttachments(portal.attachments, previewMap)
           : [],
       });
     }
 
     for (const portal of portalRows) {
       if (claimedPortalIds.has(portal.id)) continue;
-      const mappedAttachments = this.mapPortalAttachments(portal.attachments);
+      const mappedAttachments = this.mapPortalAttachments(
+        portal.attachments,
+        previewMap,
+      );
 
       merged.push({
         externalId: portal.tifluxAppointmentExternalId,
@@ -1042,9 +1186,11 @@ export class TicketsService {
     const uploadsDir = join(process.cwd(), 'uploads', 'tickets', String(ticketNumber));
     const saved: Array<{
       id: string;
+      fileId: string;
       originalName: string;
       mimeType: string;
       size: number;
+      base64: string | null;
     }> = [];
 
     const seen = new Set<string>();
@@ -1077,6 +1223,11 @@ export class TicketsService {
         },
       });
 
+      const previewDataBase64 =
+        file.mimetype?.startsWith('image/') && file.buffer.length > 0
+          ? file.buffer.toString('base64')
+          : null;
+
       const link = await this.prisma.portalTicketAppointmentAttachment.create({
         data: {
           ticketNumber,
@@ -1089,11 +1240,21 @@ export class TicketsService {
         include: { file: true },
       });
 
+      if (previewDataBase64) {
+        await this.prisma.$executeRaw`
+          UPDATE portal_ticket_appointment_attachments
+          SET preview_data_base64 = ${previewDataBase64}
+          WHERE id = ${link.id}
+        `;
+      }
+
       saved.push({
         id: link.id,
+        fileId: createdFile.id,
         originalName: createdFile.originalName,
         mimeType: createdFile.mimeType,
         size: createdFile.size,
+        base64: previewDataBase64,
       });
     }
 
@@ -1128,8 +1289,12 @@ export class TicketsService {
       throw new NotFoundException('Anexo não encontrado.');
     }
 
+    if (!existsSync(row.file.path)) {
+      throw new NotFoundException('Arquivo não encontrado no servidor.');
+    }
+
     return {
-      stream: createReadStream(row.file.path),
+      stream: new StreamableFile(createReadStream(row.file.path)),
       meta: {
         originalName: row.file.originalName,
         mimeType: row.file.mimeType,
@@ -1220,6 +1385,11 @@ export class TicketsService {
         createdBy: actor.userId,
       });
 
+      const externalGmudRef = this.normalizeExternalGmudRef(dto.externalGmudRef);
+      if (externalGmudRef) {
+        await this.upsertTicketGmudLink(actor, ticketNumber, externalGmudRef);
+      }
+
       return {
         ok: true,
         ticketNumber,
@@ -1265,13 +1435,16 @@ export class TicketsService {
 
     this.validateAppointmentDto(dto);
 
+    const descriptionRaw = dto.description.trim();
+    const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
+
     const portalAppointment = await this.prisma.portalTicketAppointment.create({
       data: {
         ticketNumber,
         appointmentDate: new Date(`${dto.date}T12:00:00.000Z`),
         initTime: dto.initTime,
         endTime: dto.endTime,
-        description: dto.description.trim(),
+        description: descriptionRaw,
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
         syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
@@ -1289,7 +1462,7 @@ export class TicketsService {
         date: dto.date,
         init_time: dto.initTime,
         end_time: dto.endTime,
-        description: dto.description.trim(),
+        description: descriptionPlain,
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
       },
@@ -1310,6 +1483,30 @@ export class TicketsService {
       outboxId,
       null,
     );
+
+    const savedImages: SavedAppointmentImage[] = attachments
+      .filter(
+        (item): item is typeof item & { base64: string } =>
+          Boolean(item.base64?.trim()),
+      )
+      .map((item) => ({
+        fileId: item.fileId,
+        mimeType: item.mimeType,
+        base64: item.base64,
+      }));
+
+    if (savedImages.length > 0) {
+      const enrichedDescription = enrichAppointmentDescriptionWithImages(
+        descriptionRaw,
+        savedImages,
+      );
+      if (enrichedDescription !== descriptionRaw) {
+        await this.prisma.portalTicketAppointment.update({
+          where: { id: portalAppointment.id },
+          data: { description: enrichedDescription },
+        });
+      }
+    }
 
     const attachmentNote =
       attachments.length > 0

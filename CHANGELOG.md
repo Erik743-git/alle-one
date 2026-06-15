@@ -6,6 +6,44 @@ O versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/) (`MA
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-02
+
+### GMUD
+
+- Correção dos filtros na lista (empresa `ALL`, acordeões vazios).
+- Exportação PDF com logos (`GET /gmuds/:id/pdf`, `pdfkit`).
+- Botão **Exportar PDF** no detalhe da GMUD.
+
+### Tickets
+
+- **GMUD do cliente**: campo textual `externalGmudRef` (sem FK para GMUD interna).
+- Lista, filtro, criação e edição de ticket atualizados.
+- Apontamentos com **descrição rica** (blocos texto + imagem, formato `__ALLEONE_DOC_V1__`).
+- Preview de prints em **base64** (`preview_data_base64`) e download corrigido (`StreamableFile`).
+- UI: miniaturas, modal, texto compacto com expansão.
+
+### Apontamentos (admin)
+
+- Hub com cards: colaboradores, HE pendentes, **justificativas pendentes** (voluntária / alerta).
+- Nova rota `/apontamentos/aprovar-justificativas`.
+- API: `GET /rendimento/justifications/pending`, `PATCH /rendimento/justifications/bulk-decision`.
+- Descrição compacta na aprovação de HE (`CompactExpandableText`).
+
+### Auth (opcional)
+
+- OAuth Google e Microsoft (`auth-oauth.service`, variáveis `OAUTH_*`).
+
+### Migrações
+
+- `20260817120000_user_microsoft_id`
+- `20260818120000_portal_ticket_gmud_links`
+- `20260819120000_ticket_external_gmud_ref`
+- `20260820120000_appointment_attachment_preview`
+
+### Deploy
+
+- Roteiro: [`deploy/RELEASE_0.5.0.md`](deploy/RELEASE_0.5.0.md)
+
 ### TiFlux outbox e performance
 
 - Worker cron para `CREATE_APPOINTMENT` (portal → TiFlux); retry em `POST /admin/reprocess-tiflux-outbox`.

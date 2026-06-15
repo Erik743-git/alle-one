@@ -23,6 +23,8 @@ import { GmudStatusBadge } from "../_components/gmud-status-badge";
 import { GmudForm } from "../_components/gmud-form";
 import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { triggerBrowserDownload } from "@/lib/download-blob";
+import { FileDown } from "lucide-react";
 
 function approverStatusLabel(status: "PENDING" | "APPROVED" | "REJECTED") {
   if (status === "APPROVED") return "Aprovou";
@@ -49,6 +51,7 @@ export default function GmudDetailPage() {
   const [onBehalfNote, setOnBehalfNote] = useState<string>("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmDecision, setConfirmDecision] = useState<"APPROVE" | "REJECT">("APPROVE");
+  const [pdfExporting, setPdfExporting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -310,6 +313,29 @@ export default function GmudDetailPage() {
                   Voltar
                 </Button>
               </Link>
+              {gmud ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11"
+                  disabled={pdfExporting}
+                  onClick={async () => {
+                    setPdfExporting(true);
+                    setError(null);
+                    try {
+                      const { blob, filename } = await gmudsService.exportPdf(gmud.id);
+                      triggerBrowserDownload(blob, filename);
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Falha ao exportar PDF");
+                    } finally {
+                      setPdfExporting(false);
+                    }
+                  }}
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  {pdfExporting ? "Gerando PDF..." : "Exportar PDF"}
+                </Button>
+              ) : null}
               {gmud && (gmud.status === "DRAFT" || gmud.status === "PENDING_APPROVAL") ? (
                 <Link href={`/gmud/${gmud.id}?mode=${mode === "edit" ? "view" : "edit"}`}>
                   <Button className="h-11">

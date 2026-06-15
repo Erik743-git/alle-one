@@ -103,6 +103,21 @@ export class BulkDecideRendimentoDayEventsDto {
   decision!: 'APPROVED' | 'REJECTED';
 }
 
+export class BulkDecideRendimentoJustificationsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsString({ each: true })
+  ids!: string[];
+
+  @IsIn(['APPROVED', 'REJECTED'])
+  decision!: 'APPROVED' | 'REJECTED';
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
 export class RendimentoCompanyAgendaQueryDto {
   @IsIn(['month', 'week', 'day'])
   view!: 'month' | 'week' | 'day';

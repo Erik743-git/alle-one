@@ -25,6 +25,7 @@ import {
   UPLOAD_MAX_BYTES,
 } from '../../common/upload.config';
 import { GmudMailService } from './mail/gmud-mail.service';
+import { GmudPdfService } from './gmud-pdf.service';
 import { randomUUID } from 'crypto';
 import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
@@ -45,6 +46,7 @@ export class GmudService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: GmudMailService,
+    private readonly pdf: GmudPdfService,
   ) {}
 
   private async getAccessibleCompanyIds(
@@ -179,6 +181,55 @@ export class GmudService {
     this.ensureCompanyInScope(gmud.companyId, scopeCompanyIds);
 
     return gmud;
+  }
+
+  async exportPdf(user: AuthenticatedRequestUser, id: string) {
+    const gmud = await this.prisma.gmud.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        company: {
+          select: {
+            id: true,
+            name: true,
+            logoFile: { select: { path: true, mimeType: true } },
+          },
+        },
+        creator: { select: { id: true, name: true, email: true } },
+        responsible: { select: { id: true, name: true, email: true } },
+        executors: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+        approvers: {
+          include: { user: { select: { id: true, name: true, email: true } } },
+        },
+        activities: {
+          where: { deletedAt: null },
+          orderBy: { scheduledAt: 'asc' },
+        },
+        attachments: {
+          include: {
+            file: { select: { originalName: true, size: true } },
+            uploader: { select: { id: true, name: true, email: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    });
+
+    if (!gmud) {
+      throw new NotFoundException('GMUD não encontrada');
+    }
+
+    if (seesGmudsByParticipationOnly(user.role)) {
+      if (!userParticipatesInGmud(user.userId, gmud)) {
+        throw new ForbiddenException('Sem acesso a esta GMUD');
+      }
+    } else {
+      const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
+      this.ensureCompanyInScope(gmud.companyId, scopeCompanyIds);
+    }
+
+    return this.pdf.build(gmud);
   }
 
   private async validateCompanyAndUsersScope(

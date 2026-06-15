@@ -206,8 +206,10 @@ export default function GmudPage() {
   const filteredGroups = useMemo<CompanyGroup[]>(() => {
     const term = search.trim().toLowerCase();
 
-    const companyPass = (companyId: string) =>
-      selectedCompanyId === "ALL" || selectedCompanyId === companyId;
+    const companyPass = (companyId: string) => {
+      const filter = selectedCompanyId.trim();
+      return !filter || filter === "ALL" || filter === companyId;
+    };
 
     return scopedCompanies
       .filter((g) => companyPass(g.company.id))
@@ -223,7 +225,7 @@ export default function GmudPage() {
 
         return { company: g.company, gmuds: filtered };
       })
-      .filter((g) => g.gmuds.length > 0 || term.length > 0 || statusFilter !== "ALL");
+      .filter((g) => g.gmuds.length > 0);
   }, [scopedCompanies, search, selectedCompanyId, statusFilter]);
 
   const totals = useMemo(() => {
@@ -364,8 +366,8 @@ export default function GmudPage() {
                       />
 
                       <SearchableSelectField
-                        value={selectedCompanyId}
-                        onChange={setSelectedCompanyId}
+                        value={selectedCompanyId === "ALL" ? "" : selectedCompanyId}
+                        onChange={(value) => setSelectedCompanyId(value || "ALL")}
                         disabled={user?.role === "CLIENT"}
                         options={scopedCompanies.map((g) => ({
                           value: g.company.id,

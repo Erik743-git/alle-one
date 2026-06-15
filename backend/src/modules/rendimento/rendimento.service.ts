@@ -1956,6 +1956,137 @@ export class RendimentoService {
     return { id: params.justificationId, status: params.decision };
   }
 
+  async listPendingJustifications(params: {
+    start: string;
+    end: string;
+    userId?: string;
+  }) {
+    const start = params.start.slice(0, 10);
+    const end = params.end.slice(0, 10);
+    const userId = params.userId?.trim() || null;
+
+    const rows =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          user_id: string;
+          user_email: string;
+          date_ref: string;
+          from_time: string | null;
+          to_time: string | null;
+          gap_type: string;
+          gap_minutes: number;
+          kind: RendimentoJustificationKind;
+          reason: string;
+          debit_overtime: boolean;
+          overtime_minutes: number;
+          company_name: string | null;
+        }>
+      >(
+        `
+        SELECT
+          j.id,
+          j.user_id,
+          u.email AS user_email,
+          j.date_ref::text AS date_ref,
+          j.from_time::text AS from_time,
+          j.to_time::text AS to_time,
+          j.gap_type,
+          j.gap_minutes,
+          j.kind,
+          j.reason,
+          j.debit_overtime,
+          j.overtime_minutes,
+          co.name AS company_name
+        FROM rendimento_gap_justifications j
+        INNER JOIN users u ON u.id = j.user_id AND u.deleted_at IS NULL
+        LEFT JOIN companies co ON co.id = u.company_id
+        WHERE j.deleted_at IS NULL
+          AND j.status = 'PENDING'
+          AND j.date_ref >= $1::date
+          AND j.date_ref <= $2::date
+          AND ($3::text IS NULL OR j.user_id = $3::text)
+        ORDER BY j.date_ref DESC, u.email ASC, j.from_time ASC NULLS LAST
+      `,
+        start,
+        end,
+        userId,
+      )) ?? [];
+
+    return rows.map((row) => {
+      const gapMinutes = Number(row.gap_minutes) || 0;
+      const gapType = row.gap_type === 'lunch' ? 'lunch' : 'idle';
+      const kind = row.kind === 'VOLUNTARY' ? 'VOLUNTARY' : 'ALERT';
+
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userEmail: row.user_email,
+        date: row.date_ref.slice(0, 10),
+        fromTime: row.from_time?.slice(0, 5) ?? null,
+        toTime: row.to_time?.slice(0, 5) ?? null,
+        gapType,
+        gapTypeLabel:
+          gapType === 'lunch'
+            ? 'Almoço'
+            : 'Intervalo sem apontamento',
+        gapMinutes,
+        gapLabel: this.gapLabelForType(gapType, gapMinutes),
+        kind,
+        kindLabel: kind === 'VOLUNTARY' ? 'Voluntária' : 'Alerta',
+        reason: row.reason?.trim() || '',
+        debitOvertime: Boolean(row.debit_overtime),
+        overtimeMinutes: Number(row.overtime_minutes) || 0,
+        overtimeFormatted: this.formatMinutes(
+          Number(row.overtime_minutes) || 0,
+        ),
+        companyName: row.company_name?.trim() || null,
+      };
+    });
+  }
+
+  async bulkDecideGapJustifications(params: {
+    actor: AuthenticatedRequestUser;
+    ids: string[];
+    decision: 'APPROVED' | 'REJECTED';
+    note?: string;
+  }) {
+    const uniqueIds = [...new Set(params.ids.map((id) => id.trim()).filter(Boolean))];
+    const results: Array<{
+      id: string;
+      ok: boolean;
+      status?: 'APPROVED' | 'REJECTED';
+      error?: string;
+    }> = [];
+
+    for (const id of uniqueIds) {
+      try {
+        const res = await this.decideGapJustification({
+          actor: params.actor,
+          justificationId: id,
+          decision: params.decision,
+          note: params.note,
+        });
+        results.push({ id, ok: true, status: res.status });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Falha ao decidir justificativa.';
+        results.push({ id, ok: false, error: message });
+      }
+    }
+
+    const succeeded = results.filter((r) => r.ok).length;
+    const failed = results.length - succeeded;
+
+    return {
+      decision: params.decision,
+      total: results.length,
+      succeeded,
+      failed,
+      results,
+    };
+  }
+
   async listPendingOvertimeEvents(params: {
     start: string;
     end: string;

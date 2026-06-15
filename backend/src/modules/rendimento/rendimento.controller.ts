@@ -23,6 +23,7 @@ import {
   AnswerRendimentoAppointmentQuestionDto,
   CreateRendimentoAppointmentQuestionDto,
   BulkDecideRendimentoDayEventsDto,
+  BulkDecideRendimentoJustificationsDto,
   CreateRendimentoJustificationDto,
   DecideRendimentoDayEventDto,
   DecideRendimentoJustificationDto,
@@ -203,6 +204,38 @@ export class RendimentoController {
     return this.rendimentoService.decideGapJustification({
       actor: req.user,
       justificationId: id,
+      decision: body.decision,
+      note: body.note,
+    });
+  }
+
+  @Get('justifications/pending')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  listPendingJustifications(
+    @Query() query: ListPendingOvertimeQueryDto,
+  ) {
+    return this.rendimentoService.listPendingJustifications({
+      start: query.start,
+      end: query.end,
+      userId: query.userId,
+    });
+  }
+
+  @Patch('justifications/bulk-decision')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  @AuditMeta({
+    entity: 'RendimentoGapJustification',
+    action: 'BULK_DECIDE',
+  })
+  bulkDecideJustifications(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: BulkDecideRendimentoJustificationsDto,
+  ) {
+    return this.rendimentoService.bulkDecideGapJustifications({
+      actor: req.user,
+      ids: body.ids,
       decision: body.decision,
       note: body.note,
     });

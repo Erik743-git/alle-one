@@ -90,6 +90,7 @@ model User {
   responsible         Boolean              @default(false)
   companyId           String?              @map("company_id")
   googleId            String?              @unique @map("google_id")
+  microsoftId         String?              @unique @map("microsoft_id")
   provider            String?
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
@@ -112,6 +113,7 @@ model User {
   tifluxOutboxEntries    PortalTifluxOutbox[]
   portalTicketAppointments PortalTicketAppointment[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
+  portalTicketGmudLinks PortalTicketGmudLink[]
   appointmentQuestionsAsked RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAskedBy")
   appointmentQuestionsAnswered RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAnsweredBy")
   rendimentoDayEvents          RendimentoDayEvent[]           @relation("RendimentoDayEvents")
@@ -671,6 +673,7 @@ model PortalTicketAppointmentAttachment {
   outboxId                  String?  @map("outbox_id")
   tifluxAppointmentExternalId Int?   @map("tiflux_appointment_external_id")
   fileId                    String   @map("file_id")
+  previewDataBase64         String?  @map("preview_data_base64") @db.Text
   createdBy                 String   @map("created_by")
   createdAt                 DateTime @default(now()) @map("created_at")
 
@@ -683,6 +686,20 @@ model PortalTicketAppointmentAttachment {
   @@index([outboxId])
   @@index([portalAppointmentId])
   @@map("portal_ticket_appointment_attachments")
+}
+
+/// Referência GMUD externa (informada pelo cliente) vinculada ao ticket TiFlux.
+model PortalTicketGmudLink {
+  ticketNumber    Int      @id @map("ticket_number")
+  externalGmudRef String   @map("external_gmud_ref") @db.VarChar(120)
+  createdBy       String   @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  creator User @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([externalGmudRef])
+  @@map("portal_ticket_gmud_links")
 }
 
 enum RendimentoAppointmentQuestionStatus {

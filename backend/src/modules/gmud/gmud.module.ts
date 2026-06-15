@@ -3,11 +3,12 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { GmudController } from './gmud.controller';
 import { GmudService } from './gmud.service';
 import { GmudMailService } from './mail/gmud-mail.service';
+import { GmudPdfService } from './gmud-pdf.service';
 import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [PrismaModule, MailModule],
   controllers: [GmudController],
-  providers: [GmudService, GmudMailService],
+  providers: [GmudService, GmudMailService, GmudPdfService],
 })
 export class GmudModule {}

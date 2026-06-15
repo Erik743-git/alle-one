@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { useRouter } from "next/navigation";
 import {
@@ -34,6 +35,10 @@ import { setSession, type AuthUser } from "@/lib/session";
 import { API_URL } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
 import { useAuth } from "@/lib/use-auth";
+import {
+  GoogleIcon,
+  MicrosoftIcon,
+} from "@/components/auth/oauth-provider-icons";
 
 type LoginResponse = {
   message: string;
@@ -55,7 +60,33 @@ const LOGIN_CONNECTION_ERROR =
 const LOGIN_SESSION_ERROR =
   "Não foi possível concluir o login. Tente novamente ou entre em contato com um administrador.";
 
-export default function LoginPage() {
+const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_not_registered:
+    "Este e-mail não está cadastrado no portal. Peça acesso a um administrador.",
+  oauth_not_verified:
+    "O provedor não confirmou o e-mail. Tente outra conta ou use senha.",
+  oauth_inactive: "Usuário inativo. Entre em contato com um administrador.",
+  oauth_provider_mismatch:
+    "Esta conta Google/Microsoft não está vinculada ao seu usuário.",
+  oauth_cancelled: "Login social cancelado.",
+  oauth_invalid_state: "Sessão expirada. Tente entrar novamente.",
+  oauth_failed: "Não foi possível concluir o login social. Tente novamente.",
+  oauth_microsoft_secret:
+    "Configuração Microsoft inválida. No Azure, copie o Valor do segredo do cliente (não o ID do segredo) para MICROSOFT_OAUTH_CLIENT_SECRET.",
+  oauth_microsoft_profile:
+    "Não foi possível obter o e-mail da conta Microsoft. Tente outra conta ou use senha.",
+};
+
+function buildOAuthUrl(provider: "google" | "microsoft", emailHint: string) {
+  const params = new URLSearchParams();
+  if (emailHint.trim()) {
+    params.set("email", emailHint.trim());
+  }
+  const query = params.toString();
+  return `${API_URL}/auth/${provider}${query ? `?${query}` : ""}`;
+}
+
+function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -69,7 +100,39 @@ export default function LoginPage() {
   });
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { loading: authLoading, establishSession } = useAuth();
+  const [oauthProviders, setOauthProviders] = useState({
+    google: false,
+    microsoft: false,
+  });
+
+  useEffect(() => {
+    const oauthError = searchParams.get("error");
+    if (oauthError) {
+      setErro(OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.oauth_failed);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${API_URL}/auth/oauth/providers`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { google?: boolean; microsoft?: boolean } | null) => {
+        if (!cancelled && data) {
+          setOauthProviders({
+            google: Boolean(data.google),
+            microsoft: Boolean(data.microsoft),
+          });
+        }
+      })
+      .catch(() => {
+        /* OAuth opcional — ignora falha */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -296,6 +359,57 @@ export default function LoginPage() {
                   "Entrar"
                 )}
               </Button>
+
+              {oauthProviders.google || oauthProviders.microsoft ? (
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/10" />
+                    <span className="text-xs font-medium text-slate-400">
+                      ou continue com
+                    </span>
+                    <div className="h-px flex-1 bg-white/10" />
+                  </div>
+
+                  <p className="text-center text-xs text-slate-400">
+                    Só é possível entrar se o e-mail já estiver cadastrado no
+                    portal.
+                  </p>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {oauthProviders.google ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={carregando}
+                        onClick={() => {
+                          window.location.href = buildOAuthUrl("google", email);
+                        }}
+                        className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                      >
+                        <GoogleIcon className="h-5 w-5 shrink-0" />
+                        Google
+                      </Button>
+                    ) : null}
+                    {oauthProviders.microsoft ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={carregando}
+                        onClick={() => {
+                          window.location.href = buildOAuthUrl(
+                            "microsoft",
+                            email,
+                          );
+                        }}
+                        className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                      >
+                        <MicrosoftIcon className="h-5 w-5 shrink-0" />
+                        Microsoft
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </form>
 
             <Dialog>
@@ -486,5 +600,19 @@ export default function LoginPage() {
         </Card>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#020b1b]">
+          <Loader2 className="h-8 w-8 animate-spin text-[#12b5d9]" />
+        </main>
+      }
+    >
+      <LoginPageContent />
+    </Suspense>
   );
 }

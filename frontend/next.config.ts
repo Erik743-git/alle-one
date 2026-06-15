@@ -17,7 +17,23 @@ const securityHeaders = [
   },
 ];
 
+const apiBase =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
+  "http://127.0.0.1:3002";
+
 const nextConfig: NextConfig = {
+  async rewrites() {
+    // Dev local: se o redirect OAuth cair no :3000, repassa para a API (:3002).
+    if (isProd) {
+      return [];
+    }
+    return [
+      {
+        source: "/auth/:path*",
+        destination: `${apiBase}/auth/:path*`,
+      },
+    ];
+  },
   async redirects() {
     return [
       {

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Paperclip, User2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Loader2, User2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
@@ -16,7 +16,10 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  AppointmentDescriptionComposer,
+  type AppointmentBlockComposerHandle,
+} from "@/components/tickets/appointment-description-composer";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   ticketsService,
@@ -64,8 +67,8 @@ export function TicketAppointmentModal({
   const [endTime, setEndTime] = useState(nowTime);
   const [serviceName, setServiceName] = useState("");
   const [attendance, setAttendance] = useState("Remote");
-  const [description, setDescription] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
+  const composerRef = useRef<AppointmentBlockComposerHandle>(null);
+  const [composerKey, setComposerKey] = useState(0);
 
   const serviceTypeOptions = useMemo(
     () => SERVICE_TYPES.map((s) => ({ value: s, label: s })),
@@ -93,29 +96,10 @@ export function TicketAppointmentModal({
     if (open) {
       setInitTime(nowTime());
       setEndTime(nowTime());
-      setFiles([]);
+      setComposerKey((k) => k + 1);
       void loadTicketMeta();
     }
   }, [open, loadTicketMeta]);
-
-  function onPickFiles(list: FileList | null) {
-    if (!list?.length) return;
-    setFiles((prev) => {
-      const merged = [...prev, ...Array.from(list)];
-      const seen = new Set<string>();
-      const unique = merged.filter((file) => {
-        const key = `${file.name}:${file.size}:${file.lastModified}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      return unique.slice(0, 10);
-    });
-  }
-
-  function removeFile(index: number) {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -124,8 +108,9 @@ export function TicketAppointmentModal({
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
-    if (!description.trim()) {
-      notifyError("Informe a descrição do apontamento.");
+    const exported = composerRef.current?.exportContent();
+    if (!exported?.isValid) {
+      notifyError("Informe a descrição do apontamento (texto e/ou imagens).");
       return;
     }
 
@@ -133,18 +118,20 @@ export function TicketAppointmentModal({
       date,
       initTime,
       endTime,
-      description: description.trim(),
+      description: exported.description,
       serviceName: serviceName.trim(),
       attendance: attendance as CreateAppointmentPayload["attendance"],
     };
 
     try {
       setSaving(true);
-      const res = await ticketsService.createAppointment(ticketNumber, payload, files);
+      const res = await ticketsService.createAppointment(
+        ticketNumber,
+        payload,
+        exported.files,
+      );
       notifySuccess(res.message);
-      setDescription("");
       setServiceName("");
-      setFiles([]);
       onOpenChange(false);
       onCreated?.();
     } catch (err) {
@@ -250,61 +237,12 @@ export function TicketAppointmentModal({
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className={FIELD_LABEL}>Descrição *</Label>
-              <Textarea
-                rows={6}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[140px] font-sans text-sm"
-                required
-              />
-            </div>
-
-            <div className="space-y-3 rounded-xl border border-dashed border-border p-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <Label className={`${FIELD_LABEL} mb-0`}>Anexos do portal</Label>
-                <span className="text-xs text-muted-foreground">
-                  até 10 arquivos × 25MB — ficam só no Alle One
-                </span>
-              </div>
-              <Button type="button" variant="outline" size="sm" className="h-10" asChild>
-                <label className="cursor-pointer">
-                  <Paperclip className="mr-2 size-4" />
-                  Adicionar arquivos
-                  <input
-                    type="file"
-                    multiple
-                    className="sr-only"
-                    onChange={(e) => {
-                      onPickFiles(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </Button>
-              {files.length > 0 ? (
-                <ul className="space-y-1 text-sm">
-                  {files.map((file, index) => (
-                    <li
-                      key={`${file.name}-${index}`}
-                      className="flex items-center justify-between gap-2 rounded-lg bg-muted/40 px-3 py-2"
-                    >
-                      <span className="truncate">
-                        {file.name} ({Math.round(file.size / 1024)} KB)
-                      </span>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground"
-                        onClick={() => removeFile(index)}
-                      >
-                        <X className="size-4" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
+            <AppointmentDescriptionComposer
+              key={composerKey}
+              ref={composerRef}
+              disabled={saving}
+              labelClassName={FIELD_LABEL}
+            />
           </div>
 
           <SheetFooter className="shrink-0 flex-row justify-end gap-2 border-t border-border px-6 py-4">

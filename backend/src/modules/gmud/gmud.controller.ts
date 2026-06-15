@@ -7,9 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  Res,
+  StreamableFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PermissionModule } from '@prisma/client';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -58,6 +61,23 @@ export class GmudController {
     @Query() query: SearchUsersQueryDto,
   ) {
     return this.service.searchUsers(user, query);
+  }
+
+  @Get(':id/pdf')
+  @RequirePermission(PermissionModule.GMUD, 'canView')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  async exportPdf(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, filename } = await this.service.exportPdf(user, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(filename)}"`,
+    );
+    return new StreamableFile(buffer);
   }
 
   @Get(':id')

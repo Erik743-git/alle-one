@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { readBlobDownload } from "@/lib/download-blob";
 import { API_URL } from "@/lib/env";
 
 export type GmudStatus =
@@ -111,6 +112,20 @@ export const gmudsService = {
 
   async getById(id: string) {
     return apiRequest<Gmud>(`/gmuds/${id}`);
+  },
+
+  async exportPdf(id: string) {
+    const response = await authFetch(`${API_URL}/gmuds/${id}/pdf`);
+    if (response.status === 401) {
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { message?: string | string[] } | null;
+      const apiMessage = data?.message ? (Array.isArray(data.message) ? data.message[0] : data.message) : null;
+      const textMessage = apiMessage ? "" : await response.text().catch(() => "");
+      throw new Error(apiMessage || textMessage || "Falha ao exportar PDF da GMUD.");
+    }
+    return readBlobDownload(response, `GMUD-${id}.pdf`);
   },
 
   async create(payload: CreateGmudPayload) {

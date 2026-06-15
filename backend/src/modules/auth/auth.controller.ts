@@ -4,12 +4,14 @@ import {
   Get,
   HttpCode,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
+import { AuthOAuthService } from './auth-oauth.service';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { FirstAccessDto } from './dto/first-access.dto';
@@ -30,7 +32,54 @@ type AuthenticatedRequest = Request & {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly authOAuth: AuthOAuthService,
+  ) {}
+
+  @Public()
+  @Get('oauth/providers')
+  oauthProviders() {
+    return this.authOAuth.getProvidersStatus();
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('google')
+  googleLogin(
+    @Res() res: Response,
+    @Query('email') email?: string,
+  ): void {
+    this.authOAuth.startGoogle(res, email);
+  }
+
+  @Public()
+  @Get('google/callback')
+  async googleCallback(
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.authOAuth.handleGoogleCallback(req, res);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('microsoft')
+  microsoftLogin(
+    @Res() res: Response,
+    @Query('email') email?: string,
+  ): void {
+    this.authOAuth.startMicrosoft(res, email);
+  }
+
+  @Public()
+  @Get('microsoft/callback')
+  async microsoftCallback(
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.authOAuth.handleMicrosoftCallback(req, res);
+  }
 
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

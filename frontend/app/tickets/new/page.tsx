@@ -65,6 +65,7 @@ export default function NewTicketPage() {
   const [requestorName, setRequestorName] = useState("");
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorTelephone, setRequestorTelephone] = useState("");
+  const [externalGmudRef, setExternalGmudRef] = useState("");
 
   const selectedDesk = useMemo(
     () => catalogs?.desks.find((d) => String(d.id) === deskId) ?? null,
@@ -205,6 +206,7 @@ export default function NewTicketPage() {
         requestorName: requestorName.trim() || undefined,
         requestorEmail: requestorEmail.trim() || undefined,
         requestorTelephone: requestorTelephone.trim() || undefined,
+        externalGmudRef: externalGmudRef.trim() || undefined,
       });
       notifySuccess(res.message);
       router.push(`/tickets/${res.ticketNumber}`);
@@ -409,6 +411,20 @@ export default function NewTicketPage() {
                           className="h-11"
                         />
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">
+                        Referência GMUD do cliente (opcional)
+                      </Label>
+                      <Input
+                        value={externalGmudRef}
+                        onChange={(e) => setExternalGmudRef(e.target.value)}
+                        placeholder="Ex.: GMUD-2024-001 ou número interno do cliente"
+                        className="h-11"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Código ou identificador da GMUD no sistema do cliente — não é a GMUD cadastrada no Alle.
+                      </p>
                     </div>
                   </CardContent>
                 </Card>

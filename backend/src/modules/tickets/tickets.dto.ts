@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -69,4 +70,10 @@ export class TicketsListQueryDto {
   @Max(500)
   @Type(() => Number)
   limit?: number;
+
+  /** Filtra tickets pela referência GMUD externa do cliente. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  externalGmudRef?: string;
 }

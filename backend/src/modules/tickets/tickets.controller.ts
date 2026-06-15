@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Query,
   Res,
@@ -31,6 +32,7 @@ import {
   CreateTicketDto,
 } from './tickets-create.dto';
 import { TicketsListQueryDto } from './tickets.dto';
+import { LinkTicketGmudDto } from './tickets-gmud.dto';
 import { TicketsService } from './tickets.service';
 
 @ApiTags('Tickets')
@@ -106,6 +108,20 @@ export class TicketsController {
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   detail(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
     return this.ticketsService.getDetail(ticketNumber);
+  }
+
+  @Patch(':ticketNumber/gmud')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  linkGmud(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Body() body: LinkTicketGmudDto,
+  ) {
+    return this.ticketsService.linkTicketGmud(
+      actor,
+      ticketNumber,
+      body.externalGmudRef,
+    );
   }
 
   @Post(':ticketNumber/appointments')

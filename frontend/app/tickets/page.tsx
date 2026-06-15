@@ -61,6 +61,7 @@ export default function TicketsPage() {
   const [statusName, setStatusName] = useState("");
   const [deskName, setDeskName] = useState("");
   const [ticketNumber, setTicketNumber] = useState("");
+  const [externalGmudRef, setExternalGmudRef] = useState("");
 
   const queryParams = useMemo((): TicketsListParams => {
     const parsedTicket = ticketNumber.trim() ? Number(ticketNumber.trim()) : undefined;
@@ -81,6 +82,7 @@ export default function TicketsPage() {
           ? parsedTicket
           : undefined,
       search: search.trim() || undefined,
+      externalGmudRef: externalGmudRef.trim() || undefined,
     };
   }, [
     mineOnly,
@@ -92,6 +94,7 @@ export default function TicketsPage() {
     from,
     to,
     ticketNumber,
+    externalGmudRef,
     search,
   ]);
 
@@ -284,6 +287,17 @@ export default function TicketsPage() {
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
+                          GMUD (cliente)
+                        </Label>
+                        <Input
+                          value={externalGmudRef}
+                          onChange={(e) => setExternalGmudRef(e.target.value)}
+                          placeholder="Ex.: GMUD-2024-001"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
                           Estágio
                         </Label>
                         <SearchableSelectField
@@ -389,6 +403,7 @@ export default function TicketsPage() {
                             <th className="px-4 py-2">Número</th>
                             <th className="px-4 py-2">Título</th>
                             <th className="px-4 py-2">Cliente</th>
+                            <th className="px-4 py-2">GMUD</th>
                             <th className="px-4 py-2">Origem</th>
                             <th className="px-4 py-2">Prioridade</th>
                             <th className="px-4 py-2">Status</th>
@@ -414,6 +429,9 @@ export default function TicketsPage() {
                                 {ticket.title ?? "—"}
                               </td>
                               <td className="px-4 py-2">{ticket.clientName ?? "—"}</td>
+                              <td className="px-4 py-2">
+                                {ticket.externalGmudRef ?? "—"}
+                              </td>
                               <td className="px-4 py-2">{ticket.origin ?? "—"}</td>
                               <td className="px-4 py-2">{ticket.priorityName ?? "—"}</td>
                               <td className="px-4 py-2">{ticket.statusName ?? "—"}</td>

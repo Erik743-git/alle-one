@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { FirstAccessDto } from './dto/first-access.dto';
@@ -71,6 +71,71 @@ export class AuthService {
       throw new UnauthorizedException('Usuário ou senha inválidos');
     }
 
+    return this.createSessionForUser(user);
+  }
+
+  async loginWithOAuth(params: {
+    provider: 'google' | 'microsoft';
+    providerId: string;
+    email: string;
+    emailVerified: boolean;
+  }) {
+    if (!params.emailVerified) {
+      throw new UnauthorizedException('oauth_not_verified');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: params.email.trim(), mode: 'insensitive' },
+        deletedAt: null,
+      },
+      include: { company: true },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('oauth_not_registered');
+    }
+
+    if (user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException('oauth_inactive');
+    }
+
+    if (params.provider === 'google') {
+      if (user.googleId && user.googleId !== params.providerId) {
+        throw new UnauthorizedException('oauth_provider_mismatch');
+      }
+      if (!user.googleId) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { googleId: params.providerId, provider: 'google' },
+        });
+      }
+    }
+
+    if (params.provider === 'microsoft') {
+      if (user.microsoftId && user.microsoftId !== params.providerId) {
+        throw new UnauthorizedException('oauth_provider_mismatch');
+      }
+      if (!user.microsoftId) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { microsoftId: params.providerId, provider: 'microsoft' },
+        });
+      }
+    }
+
+    return this.createSessionForUser(user);
+  }
+
+  private async createSessionForUser(user: {
+    id: string;
+    name: string;
+    email: string;
+    role: UserRole;
+    companyId: string | null;
+    firstAccess: boolean;
+    company?: { name: string } | null;
+  }) {
     const payload = {
       sub: user.id,
       email: user.email,
@@ -79,7 +144,6 @@ export class AuthService {
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
-
     const requestUser = await this.permissionsService.buildRequestUser(user.id);
 
     return {

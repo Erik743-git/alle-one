@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Check,
-  Clock,
+  FileText,
   Loader2,
   MoreVertical,
   RefreshCw,
@@ -15,6 +15,8 @@ import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
+import { CompactExpandableText } from "@/components/ui/compact-expandable-text";
+import { JustificationKindBadge } from "@/components/rendimento/justification-kind-badge";
 import { monthRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,11 +32,10 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { getStoredUser } from "@/lib/session";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { OvertimeDescriptionCell } from "@/components/rendimento/overtime-description-cell";
 import { cn } from "@/lib/utils";
 import {
   rendimentoService,
-  type PendingOvertimeItem,
+  type PendingJustificationItem,
   type RendimentoCollaborator,
 } from "@/lib/services/rendimento.service";
 
@@ -49,7 +50,7 @@ function emailLocalPart(email: string) {
   return local || email;
 }
 
-export default function AprovarHorasExtrasPage() {
+export default function AprovarJustificativasPage() {
   const router = useRouter();
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
@@ -63,7 +64,7 @@ export default function AprovarHorasExtrasPage() {
     [],
   );
   const [loadingCollaborators, setLoadingCollaborators] = useState(true);
-  const [items, setItems] = useState<PendingOvertimeItem[]>([]);
+  const [items, setItems] = useState<PendingJustificationItem[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,7 +88,7 @@ export default function AprovarHorasExtrasPage() {
       try {
         if (silent) setRefreshing(true);
         else setLoading(true);
-        const data = await rendimentoService.listPendingOvertime({
+        const data = await rendimentoService.listPendingJustifications({
           start,
           end,
           userId: userId || undefined,
@@ -104,7 +105,7 @@ export default function AprovarHorasExtrasPage() {
         notifyError(
           err instanceof Error
             ? err.message
-            : "Não foi possível carregar horas extras pendentes.",
+            : "Não foi possível carregar justificativas pendentes.",
         );
         setItems([]);
       } finally {
@@ -153,17 +154,15 @@ export default function AprovarHorasExtrasPage() {
   async function decideOne(id: string, decision: "APPROVED" | "REJECTED") {
     try {
       setActing(true);
-      await rendimentoService.decideDayEvent({ id, decision });
+      await rendimentoService.decideJustification({ id, decision });
       notifySuccess(
         decision === "APPROVED"
-          ? "Hora extra aprovada."
-          : "Registro não aprovado.",
+          ? "Justificativa aprovada."
+          : "Justificativa não aprovada.",
       );
       await load(true);
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível concluir a ação.",
-      );
+      notifyError(err instanceof Error ? err.message : "Não foi possível concluir a ação.");
     } finally {
       setActing(false);
     }
@@ -176,7 +175,7 @@ export default function AprovarHorasExtrasPage() {
     }
     try {
       setActing(true);
-      const res = await rendimentoService.bulkDecideDayEvents({
+      const res = await rendimentoService.bulkDecideJustifications({
         ids: selectedIds,
         decision,
       });
@@ -187,8 +186,8 @@ export default function AprovarHorasExtrasPage() {
       } else {
         notifySuccess(
           decision === "APPROVED"
-            ? `${res.succeeded} hora(s) extra(s) aprovada(s).`
-            : `${res.succeeded} registro(s) não aprovado(s).`,
+            ? `${res.succeeded} justificativa(s) aprovada(s).`
+            : `${res.succeeded} justificativa(s) não aprovada(s).`,
         );
       }
       await load(true);
@@ -211,9 +210,9 @@ export default function AprovarHorasExtrasPage() {
             <PageHeader
               backHref="/apontamentos"
               backLabel="Voltar aos apontamentos"
-              icon={<Clock size={24} />}
-              title="Aprovar horas extras"
-              description="Registros de hora extra e plantão aguardando análise. O período inicia no mês atual; use os filtros para refinar a lista."
+              icon={<FileText size={24} />}
+              title="Aprovar justificativas"
+              description="Justificativas voluntárias e de alerta aguardando análise. Voluntária é iniciada pelo colaborador; alerta vem de lacunas detectadas na agenda."
               actions={
                 <Button
                   type="button"
@@ -305,13 +304,13 @@ export default function AprovarHorasExtrasPage() {
                   </div>
                 ) : items.length === 0 ? (
                   <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    Nenhuma hora extra ou plantão pendente no período.
+                    Nenhuma justificativa pendente no período.
                   </p>
                 ) : (
                   <table className="w-full min-w-[1080px] text-left text-sm">
                     <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3 w-12">
+                        <th className="w-12 px-4 py-3">
                           <label className="flex cursor-pointer items-center justify-center">
                             <FlipCheckbox
                               checked={allVisibleSelected}
@@ -324,10 +323,10 @@ export default function AprovarHorasExtrasPage() {
                         <th className="px-4 py-3">Empresa</th>
                         <th className="px-4 py-3">Data</th>
                         <th className="px-4 py-3">Horário</th>
-                        <th className="px-4 py-3">Duração</th>
                         <th className="px-4 py-3">Tipo</th>
-                        <th className="px-4 py-3">Descrição</th>
-                        <th className="px-4 py-3 w-12 text-right" />
+                        <th className="px-4 py-3">Lacuna</th>
+                        <th className="px-4 py-3">Motivo</th>
+                        <th className="w-12 px-4 py-3 text-right" />
                       </tr>
                     </thead>
                     <tbody>
@@ -350,26 +349,39 @@ export default function AprovarHorasExtrasPage() {
                               />
                             </label>
                           </td>
-                          <td className="px-4 py-3 font-medium whitespace-nowrap">
+                          <td className="whitespace-nowrap px-4 py-3 font-medium">
                             {emailLocalPart(row.userEmail)}
                           </td>
-                          <td className="px-4 py-3 max-w-[12rem] font-medium text-foreground">
+                          <td className="max-w-[12rem] px-4 py-3 font-medium text-foreground">
                             {row.companyName || "—"}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="whitespace-nowrap px-4 py-3">
                             {formatDateBr(row.date)}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="whitespace-nowrap px-4 py-3">
                             {row.fromTime && row.toTime
                               ? `${row.fromTime} – ${row.toTime}`
                               : "—"}
                           </td>
-                          <td className="px-4 py-3 font-medium text-primary">
-                            {row.hoursFormatted}
+                          <td className="px-4 py-3">
+                            <JustificationKindBadge
+                              kind={row.kind}
+                              label={row.kindLabel}
+                            />
                           </td>
-                          <td className="px-4 py-3">{row.typeLabel}</td>
-                          <td className="px-4 py-3 align-top">
-                            <OvertimeDescriptionCell row={row} />
+                          <td className="px-4 py-3 text-muted-foreground">
+                            <p className="font-medium text-foreground/90">
+                              {row.gapTypeLabel}
+                            </p>
+                            <p className="text-xs">{row.gapLabel}</p>
+                            {row.debitOvertime ? (
+                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                                Débito HE: {row.overtimeFormatted}
+                              </p>
+                            ) : null}
+                          </td>
+                          <td className="max-w-xs px-4 py-3">
+                            <CompactExpandableText text={row.reason} maxLines={3} />
                           </td>
                           <td className="px-4 py-3 text-right">
                             <DropdownMenu modal={false}>

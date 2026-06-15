@@ -3,13 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Clock, Download, ExternalLink, Loader2, Paperclip, Ticket } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  Download,
+  Link2,
+  Loader2,
+  Paperclip,
+  Ticket,
+} from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import {
   canCreateTicketsAndAppointments,
@@ -25,6 +34,9 @@ import {
   type TicketAppointment,
   type TicketDetailResponse,
 } from "@/lib/services/tickets.service";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { notifySuccess } from "@/lib/notify";
 
 function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -84,6 +96,8 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TicketDetailResponse | null>(null);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [externalGmudRefInput, setExternalGmudRefInput] = useState("");
+  const [gmudLinking, setGmudLinking] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
@@ -104,7 +118,33 @@ export default function TicketDetailPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setExternalGmudRefInput(data?.externalGmudRef ?? "");
+  }, [data?.externalGmudRef]);
+
   const ticket = data?.ticket;
+  const externalGmudRef = data?.externalGmudRef;
+
+  async function handleSaveGmudLink() {
+    if (!Number.isFinite(ticketNumber)) return;
+    const trimmed = externalGmudRefInput.trim();
+    try {
+      setGmudLinking(true);
+      const res = await ticketsService.linkGmud(ticketNumber, trimmed || null);
+      setData((prev) =>
+        prev ? { ...prev, externalGmudRef: res.externalGmudRef } : prev,
+      );
+      notifySuccess(
+        res.externalGmudRef
+          ? `Referência GMUD "${res.externalGmudRef}" salva no ticket.`
+          : "Referência GMUD removida.",
+      );
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Não foi possível atualizar a GMUD.");
+    } finally {
+      setGmudLinking(false);
+    }
+  }
 
   return (
     <ProtectedPage>
@@ -226,6 +266,58 @@ export default function TicketDetailPage() {
                 </div>
 
                 <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Link2 className="size-4 text-primary" />
+                      GMUD do cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {externalGmudRef ? (
+                      <p className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm font-medium text-foreground">
+                        {externalGmudRef}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma referência GMUD informada para este ticket.
+                      </p>
+                    )}
+
+                    {canCreateTicketsAndAppointments() ? (
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <div className="flex-1 space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Referência GMUD do cliente
+                          </Label>
+                          <Input
+                            value={externalGmudRefInput}
+                            onChange={(e) => setExternalGmudRefInput(e.target.value)}
+                            placeholder="Ex.: GMUD-2024-001 (vazio remove)"
+                            className="h-11"
+                            disabled={gmudLinking}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11"
+                          disabled={gmudLinking}
+                          onClick={() => void handleSaveGmudLink()}
+                        >
+                          {gmudLinking ? (
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                          ) : null}
+                          Salvar
+                        </Button>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card>
                   <CardHeader className="space-y-2">
                     <CardTitle className="text-base">Apontamentos</CardTitle>
                     {!canCreateTicketsAndAppointments() ? (
@@ -282,13 +374,17 @@ export default function TicketDetailPage() {
                               <td className="px-4 py-2">{formatMinutes(row.minutes)}</td>
                               <td className="px-4 py-2">{row.valorizationLabel ?? "—"}</td>
                               <td className="px-4 py-2">{row.attendanceLabel ?? "—"}</td>
-                              <td className="max-w-[280px] px-4 py-2 text-muted-foreground">
-                                <p>{row.description?.trim() || "—"}</p>
-                                {row.attachments?.length > 0 ? (
+                              <td className="max-w-[360px] px-4 py-2 text-muted-foreground">
+                                <AppointmentDescriptionView
+                                  description={row.description}
+                                  attachments={row.attachments ?? []}
+                                />
+                                {(row.attachments ?? []).some(
+                                  (a) => !a.mimeType.startsWith("image/"),
+                                ) ? (
                                   <ul className="mt-2 space-y-1">
                                     {row.attachments.map((attachment) => {
-                                      const isImage =
-                                        attachment.mimeType.startsWith("image/");
+                                      if (attachment.mimeType.startsWith("image/")) return null;
                                       return (
                                         <li
                                           key={attachment.id}
@@ -298,26 +394,6 @@ export default function TicketDetailPage() {
                                           <span className="min-w-0 truncate">
                                             {attachment.originalName} ({formatFileSize(attachment.size)})
                                           </span>
-                                          {isImage ? (
-                                            <Button
-                                              type="button"
-                                              variant="ghost"
-                                              size="sm"
-                                              className="h-6 px-2 text-xs"
-                                              onClick={() =>
-                                                void openPortalAttachment(attachment, true).catch(
-                                                  (err) =>
-                                                    notifyError(
-                                                      err instanceof Error
-                                                        ? err.message
-                                                        : "Não foi possível abrir o anexo.",
-                                                    ),
-                                                )
-                                              }
-                                            >
-                                              Ver
-                                            </Button>
-                                          ) : null}
                                           <Button
                                             type="button"
                                             variant="ghost"
