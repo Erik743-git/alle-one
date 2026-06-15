@@ -461,6 +461,21 @@ export class RendimentoService {
     };
   }
 
+  private normalizeBulkStatusFilters(
+    filters?: Array<'PENDING' | 'APPROVED' | 'REJECTED'>,
+  ): Array<'PENDING' | 'APPROVED' | 'REJECTED'> {
+    const allowed = new Set(['PENDING', 'APPROVED', 'REJECTED']);
+    const input = filters?.length ? filters : ['PENDING'];
+    const unique = [
+      ...new Set(
+        input.filter((entry): entry is 'PENDING' | 'APPROVED' | 'REJECTED' =>
+          allowed.has(entry),
+        ),
+      ),
+    ];
+    return unique.length ? unique : ['PENDING'];
+  }
+
   private gapLabelForType(
     type: 'idle' | 'lunch',
     gapMinutes: number,
@@ -1960,10 +1975,12 @@ export class RendimentoService {
     start: string;
     end: string;
     userId?: string;
+    statusFilters?: Array<'PENDING' | 'APPROVED' | 'REJECTED'>;
   }) {
     const start = params.start.slice(0, 10);
     const end = params.end.slice(0, 10);
     const userId = params.userId?.trim() || null;
+    const statusFilters = this.normalizeBulkStatusFilters(params.statusFilters);
 
     const rows =
       (await this.prisma.$queryRawUnsafe<
@@ -1981,6 +1998,9 @@ export class RendimentoService {
           debit_overtime: boolean;
           overtime_minutes: number;
           company_name: string | null;
+          status: RendimentoJustificationStatus;
+          approved_by_name: string | null;
+          approved_at: string | null;
         }>
       >(
         `
@@ -1997,20 +2017,34 @@ export class RendimentoService {
           j.reason,
           j.debit_overtime,
           j.overtime_minutes,
-          co.name AS company_name
+          co.name AS company_name,
+          j.status,
+          approver.name AS approved_by_name,
+          j.approved_at::text AS approved_at
         FROM rendimento_gap_justifications j
         INNER JOIN users u ON u.id = j.user_id AND u.deleted_at IS NULL
         LEFT JOIN companies co ON co.id = u.company_id
+        LEFT JOIN users approver ON approver.id = j.approved_by
         WHERE j.deleted_at IS NULL
-          AND j.status = 'PENDING'
           AND j.date_ref >= $1::date
           AND j.date_ref <= $2::date
           AND ($3::text IS NULL OR j.user_id = $3::text)
-        ORDER BY j.date_ref DESC, u.email ASC, j.from_time ASC NULLS LAST
+          AND j.status = ANY($4::text[])
+        ORDER BY
+          CASE j.status
+            WHEN 'PENDING' THEN 0
+            WHEN 'APPROVED' THEN 1
+            WHEN 'REJECTED' THEN 2
+            ELSE 3
+          END,
+          j.date_ref DESC,
+          u.email ASC,
+          j.from_time ASC NULLS LAST
       `,
         start,
         end,
         userId,
+        statusFilters,
       )) ?? [];
 
     return rows.map((row) => {
@@ -2041,6 +2075,9 @@ export class RendimentoService {
           Number(row.overtime_minutes) || 0,
         ),
         companyName: row.company_name?.trim() || null,
+        status: row.status,
+        approvedByName: row.approved_by_name?.trim() || null,
+        approvedAt: row.approved_at ?? null,
       };
     });
   }
@@ -2091,10 +2128,12 @@ export class RendimentoService {
     start: string;
     end: string;
     userId?: string;
+    statusFilters?: Array<'PENDING' | 'APPROVED' | 'REJECTED'>;
   }) {
     const start = params.start.slice(0, 10);
     const end = params.end.slice(0, 10);
     const userId = params.userId?.trim() || null;
+    const statusFilters = this.normalizeBulkStatusFilters(params.statusFilters);
 
     const rows =
       (await this.prisma.$queryRawUnsafe<
@@ -2112,6 +2151,9 @@ export class RendimentoService {
           appointment_external_id: number | null;
           ticket_number: number | null;
           company_name: string | null;
+          status: string;
+          approved_by_name: string | null;
+          approved_at: string | null;
         }>
       >(
         `
@@ -2128,26 +2170,40 @@ export class RendimentoService {
           e.description,
           e.appointment_external_id,
           ta.ticket_number,
-          COALESCE(co_ticket.name, ta.client_name, co_user.name) AS company_name
+          COALESCE(co_ticket.name, ta.client_name, co_user.name) AS company_name,
+          e.status,
+          approver.name AS approved_by_name,
+          e.approved_at::text AS approved_at
         FROM rendimento_day_events e
         INNER JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
         LEFT JOIN companies co_user ON co_user.id = u.company_id
+        LEFT JOIN users approver ON approver.id = e.approved_by
         LEFT JOIN tiflux.ticket_appointments ta
           ON ta.external_id = e.appointment_external_id
         LEFT JOIN tiflux.tickets tk ON tk.ticket_number = ta.ticket_number
         LEFT JOIN companies co_ticket
           ON co_ticket.tiflux_client_id = COALESCE(tk.client_external_id, ta.client_external_id)
         WHERE e.deleted_at IS NULL
-          AND e.status = 'PENDING'
           AND e.event_type IN ('OVERTIME', 'PLANTAO')
           AND e.date_ref >= $1::date
           AND e.date_ref <= $2::date
           AND ($3::text IS NULL OR e.user_id = $3::text)
-        ORDER BY e.date_ref DESC, u.email ASC, e.from_time ASC NULLS LAST
+          AND e.status = ANY($4::text[])
+        ORDER BY
+          CASE e.status
+            WHEN 'PENDING' THEN 0
+            WHEN 'APPROVED' THEN 1
+            WHEN 'REJECTED' THEN 2
+            ELSE 3
+          END,
+          e.date_ref DESC,
+          u.email ASC,
+          e.from_time ASC NULLS LAST
       `,
         start,
         end,
         userId,
+        statusFilters,
       )) ?? [];
 
     return rows.map((row) => {
@@ -2177,6 +2233,9 @@ export class RendimentoService {
         appointmentExternalId,
         companyName,
         ticketNumber,
+        status: row.status as 'PENDING' | 'APPROVED' | 'REJECTED',
+        approvedByName: row.approved_by_name?.trim() || null,
+        approvedAt: row.approved_at ?? null,
       };
     });
   }

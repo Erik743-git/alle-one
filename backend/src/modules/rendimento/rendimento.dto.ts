@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -90,6 +90,27 @@ export class ListPendingOvertimeQueryDto {
   @IsOptional()
   @IsUUID()
   userId?: string;
+
+  /** Um ou mais: PENDING, APPROVED, REJECTED (padrão: PENDING). */
+  @IsOptional()
+  @Transform(({ value }) => {
+    const raw =
+      value == null || value === ''
+        ? ['PENDING']
+        : Array.isArray(value)
+          ? value
+          : [value];
+    const flat = raw
+      .flatMap((entry) => String(entry).split(','))
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    const allowed = new Set(['PENDING', 'APPROVED', 'REJECTED']);
+    const unique = [...new Set(flat.filter((entry) => allowed.has(entry)))];
+    return unique.length ? unique : ['PENDING'];
+  })
+  @IsArray()
+  @IsIn(['PENDING', 'APPROVED', 'REJECTED'], { each: true })
+  statusFilters?: Array<'PENDING' | 'APPROVED' | 'REJECTED'>;
 }
 
 export class BulkDecideRendimentoDayEventsDto {

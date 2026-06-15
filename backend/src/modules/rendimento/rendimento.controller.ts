@@ -219,6 +219,7 @@ export class RendimentoController {
       start: query.start,
       end: query.end,
       userId: query.userId,
+      statusFilters: query.statusFilters,
     });
   }
 
@@ -251,6 +252,7 @@ export class RendimentoController {
       start: query.start,
       end: query.end,
       userId: query.userId,
+      statusFilters: query.statusFilters,
     });
   }
 

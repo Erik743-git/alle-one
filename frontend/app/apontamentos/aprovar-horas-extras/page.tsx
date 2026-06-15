@@ -31,23 +31,26 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { getStoredUser } from "@/lib/session";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { OvertimeDescriptionCell } from "@/components/rendimento/overtime-description-cell";
+import { ApprovalAuditCell } from "@/components/apontamentos/approval-audit-cell";
+import { BulkApprovalStatusFilterField } from "@/components/apontamentos/bulk-approval-status-filter";
 import { cn } from "@/lib/utils";
+import {
+  DEFAULT_BULK_STATUS_FILTERS,
+  bulkApprovalEmptyMessage,
+  bulkApprovalListTitle,
+  emailLocalPart,
+  formatDateBr,
+  includesPendingFilter,
+  isBulkRowDecided,
+  pendingBulkRows,
+  syncBulkSelection,
+  type BulkApprovalStatusFilter,
+} from "@/lib/apontamentos/bulk-approval";
 import {
   rendimentoService,
   type PendingOvertimeItem,
   type RendimentoCollaborator,
 } from "@/lib/services/rendimento.service";
-
-function formatDateBr(iso: string) {
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
-}
-
-function emailLocalPart(email: string) {
-  const local = email.split("@")[0]?.trim();
-  return local || email;
-}
 
 export default function AprovarHorasExtrasPage() {
   const router = useRouter();
@@ -59,6 +62,9 @@ export default function AprovarHorasExtrasPage() {
   const [start, setStart] = useState(defaultRange.start);
   const [end, setEnd] = useState(defaultRange.end);
   const [userId, setUserId] = useState("");
+  const [statusFilters, setStatusFilters] = useState<BulkApprovalStatusFilter[]>(
+    [...DEFAULT_BULK_STATUS_FILTERS],
+  );
   const [collaborators, setCollaborators] = useState<RendimentoCollaborator[]>(
     [],
   );
@@ -74,13 +80,19 @@ export default function AprovarHorasExtrasPage() {
     [collaborators],
   );
 
+  const pendingItems = useMemo(() => pendingBulkRows(items), [items]);
+
   const selectedIds = useMemo(
-    () => items.filter((row) => selected[row.id]).map((row) => row.id),
-    [items, selected],
+    () =>
+      pendingItems
+        .filter((row) => selected[row.id])
+        .map((row) => row.id),
+    [pendingItems, selected],
   );
 
-  const allVisibleSelected =
-    items.length > 0 && items.every((row) => selected[row.id]);
+  const allPendingSelected =
+    pendingItems.length > 0 &&
+    pendingItems.every((row) => selected[row.id]);
 
   const load = useCallback(
     async (silent = false) => {
@@ -91,15 +103,10 @@ export default function AprovarHorasExtrasPage() {
           start,
           end,
           userId: userId || undefined,
+          statusFilters,
         });
         setItems(data);
-        setSelected((prev) => {
-          const next: Record<string, boolean> = {};
-          for (const row of data) {
-            if (prev[row.id]) next[row.id] = true;
-          }
-          return next;
-        });
+        setSelected((prev) => syncBulkSelection(data, prev));
       } catch (err) {
         notifyError(
           err instanceof Error
@@ -112,7 +119,7 @@ export default function AprovarHorasExtrasPage() {
         setRefreshing(false);
       }
     },
-    [end, start, userId],
+    [end, start, statusFilters, userId],
   );
 
   useEffect(() => {
@@ -139,15 +146,23 @@ export default function AprovarHorasExtrasPage() {
   }, [isAdmin, load]);
 
   function toggleAllVisible() {
-    if (allVisibleSelected) {
-      setSelected({});
+    if (allPendingSelected) {
+      setSelected((prev) => {
+        const next = { ...prev };
+        for (const row of pendingItems) {
+          delete next[row.id];
+        }
+        return syncBulkSelection(items, next);
+      });
       return;
     }
-    const next: Record<string, boolean> = {};
-    for (const row of items) {
-      next[row.id] = true;
-    }
-    setSelected(next);
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const row of pendingItems) {
+        next[row.id] = true;
+      }
+      return syncBulkSelection(items, next);
+    });
   }
 
   async function decideOne(id: string, decision: "APPROVED" | "REJECTED") {
@@ -268,14 +283,21 @@ export default function AprovarHorasExtrasPage() {
                     placeholder="Todos os usuários"
                   />
                 </div>
+                <BulkApprovalStatusFilterField
+                  value={statusFilters}
+                  onChange={setStatusFilters}
+                  disabled={loading || acting}
+                  className="sm:col-span-2 lg:col-span-4"
+                />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-base">
-                  Pendentes ({items.length})
+                  {bulkApprovalListTitle(statusFilters, items)}
                 </CardTitle>
+                {includesPendingFilter(statusFilters) ? (
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -297,6 +319,7 @@ export default function AprovarHorasExtrasPage() {
                     Não aprovar selecionados
                   </Button>
                 </div>
+                ) : null}
               </CardHeader>
               <CardContent className="overflow-x-scroll p-0 [scrollbar-gutter:stable]">
                 {loading ? (
@@ -305,18 +328,26 @@ export default function AprovarHorasExtrasPage() {
                   </div>
                 ) : items.length === 0 ? (
                   <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-                    Nenhuma hora extra ou plantão pendente no período.
+                    {bulkApprovalEmptyMessage(statusFilters, "overtime")}
                   </p>
                 ) : (
-                  <table className="w-full min-w-[1080px] text-left text-sm">
+                  <table className="w-full min-w-[1180px] text-left text-sm">
                     <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="px-4 py-3 w-12">
-                          <label className="flex cursor-pointer items-center justify-center">
+                          <label
+                            className={cn(
+                              "flex items-center justify-center",
+                              pendingItems.length > 0
+                                ? "cursor-pointer"
+                                : "cursor-not-allowed opacity-50",
+                            )}
+                          >
                             <FlipCheckbox
-                              checked={allVisibleSelected}
+                              checked={allPendingSelected}
+                              disabled={pendingItems.length === 0}
                               onChange={toggleAllVisible}
-                              aria-label="Marcar todos visíveis"
+                              aria-label="Marcar todos pendentes"
                             />
                           </label>
                         </th>
@@ -327,19 +358,31 @@ export default function AprovarHorasExtrasPage() {
                         <th className="px-4 py-3">Duração</th>
                         <th className="px-4 py-3">Tipo</th>
                         <th className="px-4 py-3">Descrição</th>
+                        <th className="px-4 py-3">Aprovação</th>
                         <th className="px-4 py-3 w-12 text-right" />
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map((row) => (
+                      {items.map((row) => {
+                        const decided = isBulkRowDecided(row.status);
+                        return (
                         <tr
                           key={row.id}
-                          className="border-t border-border align-top hover:bg-muted/20"
+                          className={cn(
+                            "border-t border-border align-top hover:bg-muted/20",
+                            decided && "bg-muted/30 opacity-90",
+                          )}
                         >
                           <td className="px-4 py-3">
-                            <label className="flex cursor-pointer items-center justify-center">
+                            <label
+                              className={cn(
+                                "flex items-center justify-center",
+                                decided ? "cursor-not-allowed" : "cursor-pointer",
+                              )}
+                            >
                               <FlipCheckbox
                                 checked={Boolean(selected[row.id])}
+                                disabled={decided}
                                 onChange={(e) =>
                                   setSelected((prev) => ({
                                     ...prev,
@@ -371,6 +414,13 @@ export default function AprovarHorasExtrasPage() {
                           <td className="px-4 py-3 align-top">
                             <OvertimeDescriptionCell row={row} />
                           </td>
+                          <td className="px-4 py-3 align-top">
+                            <ApprovalAuditCell
+                              status={row.status}
+                              approvedByName={row.approvedByName}
+                              approvedAt={row.approvedAt}
+                            />
+                          </td>
                           <td className="px-4 py-3 text-right">
                             <DropdownMenu modal={false}>
                               <DropdownMenuTrigger asChild>
@@ -379,7 +429,7 @@ export default function AprovarHorasExtrasPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="size-8"
-                                  disabled={acting}
+                                  disabled={acting || decided}
                                   aria-label={`Ações para ${emailLocalPart(row.userEmail)}`}
                                 >
                                   <MoreVertical className="size-4" />
@@ -391,7 +441,7 @@ export default function AprovarHorasExtrasPage() {
                                 className="min-w-[9.5rem] w-auto"
                               >
                                 <DropdownMenuItem
-                                  disabled={acting}
+                                  disabled={acting || decided}
                                   onClick={() =>
                                     void decideOne(row.id, "APPROVED")
                                   }
@@ -400,7 +450,7 @@ export default function AprovarHorasExtrasPage() {
                                   Aprovar
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
-                                  disabled={acting}
+                                  disabled={acting || decided}
                                   variant="destructive"
                                   onClick={() =>
                                     void decideOne(row.id, "REJECTED")
@@ -413,7 +463,8 @@ export default function AprovarHorasExtrasPage() {
                             </DropdownMenu>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

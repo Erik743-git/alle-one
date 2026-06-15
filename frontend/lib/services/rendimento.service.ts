@@ -333,11 +333,15 @@ export const rendimentoService = {
     start: string;
     end: string;
     userId?: string;
+    statusFilters?: Array<"PENDING" | "APPROVED" | "REJECTED">;
   }) {
     const search = new URLSearchParams();
     search.set("start", params.start);
     search.set("end", params.end);
     if (params.userId) search.set("userId", params.userId);
+    for (const status of params.statusFilters ?? ["PENDING"]) {
+      search.append("statusFilters", status);
+    }
     return apiRequest<PendingOvertimeItem[]>(
       `/rendimento/overtime/pending?${search.toString()}`,
     );
@@ -347,11 +351,15 @@ export const rendimentoService = {
     start: string;
     end: string;
     userId?: string;
+    statusFilters?: Array<"PENDING" | "APPROVED" | "REJECTED">;
   }) {
     const search = new URLSearchParams();
     search.set("start", params.start);
     search.set("end", params.end);
     if (params.userId) search.set("userId", params.userId);
+    for (const status of params.statusFilters ?? ["PENDING"]) {
+      search.append("statusFilters", status);
+    }
     return apiRequest<PendingJustificationItem[]>(
       `/rendimento/justifications/pending?${search.toString()}`,
     );
@@ -403,6 +411,9 @@ export type PendingJustificationItem = {
   overtimeMinutes: number;
   overtimeFormatted: string;
   companyName: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  approvedByName: string | null;
+  approvedAt: string | null;
 };
 
 export type PendingOvertimeItem = {
@@ -421,6 +432,9 @@ export type PendingOvertimeItem = {
   appointmentExternalId: number | null;
   companyName: string | null;
   ticketNumber: number | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  approvedByName: string | null;
+  approvedAt: string | null;
 };
 
 export type BulkDecideDayEventsResult = {
