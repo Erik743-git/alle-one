@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Montserrat, Nunito } from "next/font/google";
 
 import { ClientProviders } from "@/components/providers/client-providers";
@@ -24,14 +24,32 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Alle One",
   description: "Portal Alle One",
+  applicationName: "Alle One",
+  appleWebApp: {
+    capable: true,
+    title: "Alle One",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
   icons: {
     icon: [
       { url: "/icon", type: "image/png", sizes: "32x32" },
+      { url: "/icon-192", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512", type: "image/png", sizes: "512x512" },
       { url: "/alle-simbolo.png", type: "image/png", sizes: "512x512" },
     ],
     shortcut: "/alle-simbolo.png",
     apple: [{ url: "/apple-icon", type: "image/png", sizes: "180x180" }],
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#08182f",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
