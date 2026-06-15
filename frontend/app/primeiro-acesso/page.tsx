@@ -108,9 +108,9 @@ export default function PrimeiroAcessoPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim(),
-          currentPassword: senhaProvisoria,
-          newPassword: novaSenha,
+          email: email.trim().toLowerCase(),
+          currentPassword: senhaProvisoria.trim(),
+          newPassword: novaSenha.trim(),
         }),
       });
 

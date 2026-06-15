@@ -9,6 +9,7 @@ import {
   IsArray,
   MinLength,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { UserRole, UserStatus } from '@prisma/client';
 
 export class CreateUserDto {
@@ -16,10 +17,16 @@ export class CreateUserDto {
   name: string;
 
   @IsEmail()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
   email: string;
 
   @IsOptional()
   @MinLength(6)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   password?: string;
 
   @IsEnum(UserRole)

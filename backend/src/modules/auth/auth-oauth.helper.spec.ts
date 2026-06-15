@@ -87,11 +87,11 @@ describe('auth-oauth.helper', () => {
   });
 
   describe('oauthEmailsMatch', () => {
-    it('exige hint e compara sem diferenciar maiúsculas', () => {
+    it('ignora validação sem hint e compara com hint informado', () => {
+      expect(oauthEmailsMatch(undefined, 'user@empresa.com')).toBe(true);
       expect(oauthEmailsMatch('User@Empresa.com', 'user@empresa.com')).toBe(
         true,
       );
-      expect(oauthEmailsMatch(undefined, 'user@empresa.com')).toBe(false);
       expect(oauthEmailsMatch('outro@empresa.com', 'user@empresa.com')).toBe(
         false,
       );

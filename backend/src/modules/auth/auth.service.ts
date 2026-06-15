@@ -43,8 +43,11 @@ export class AuthService {
   ) {}
 
   async login(data: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: data.email },
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: data.email, mode: 'insensitive' },
+        deletedAt: null,
+      },
       include: {
         company: true,
       },
@@ -188,9 +191,10 @@ export class AuthService {
   }
 
   async firstAccess(data: FirstAccessDto) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findFirst({
       where: {
-        email: data.email,
+        email: { equals: data.email, mode: 'insensitive' },
+        deletedAt: null,
       },
     });
 

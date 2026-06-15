@@ -143,7 +143,7 @@ export function oauthEmailsMatch(
   profileEmail: string,
 ): boolean {
   const hint = emailHint?.trim();
-  if (!hint) return false;
+  if (!hint) return true;
   return hint.toLowerCase() === profileEmail.trim().toLowerCase();
 }
 

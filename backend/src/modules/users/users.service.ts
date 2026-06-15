@@ -154,10 +154,19 @@ export class UsersService {
       throw new BadRequestException('Já existe um usuário com este e-mail');
     }
 
+    const firstAccess = data.firstAccess ?? true;
+    const plainPassword = data.password?.trim();
+
+    if (firstAccess && !plainPassword) {
+      throw new BadRequestException(
+        'Informe uma senha provisória para o primeiro acesso.',
+      );
+    }
+
     let passwordHash: string | null = null;
 
-    if (data.password) {
-      passwordHash = await bcrypt.hash(data.password, 10);
+    if (plainPassword) {
+      passwordHash = await bcrypt.hash(plainPassword, 10);
     }
 
     const serviceDeskIds = await this.validateServiceDeskIds(
@@ -172,7 +181,7 @@ export class UsersService {
         role: data.role,
         status: data.status ?? UserStatus.ACTIVE,
         companyId: data.companyId ?? null,
-        firstAccess: data.firstAccess ?? true,
+        firstAccess,
         responsible: data.responsible ?? false,
         serviceDeskLinks:
           serviceDeskIds.length > 0

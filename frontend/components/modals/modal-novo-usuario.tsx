@@ -97,9 +97,9 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setErro("");
 
       await usersService.create({
-        name: nome,
-        email,
-        password,
+        name: nome.trim(),
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
         role: role as "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT",
         companyId,
         status: "ACTIVE",
@@ -268,6 +268,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
     value={password}
     onChange={(e) => setPassword(e.target.value)}
     placeholder="Digite a senha inicial"
+    autoComplete="new-password"
     className="font-sans h-11 pr-10"
   />
 

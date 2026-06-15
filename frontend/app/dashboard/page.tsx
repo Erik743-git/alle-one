@@ -11,6 +11,7 @@ import {
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
+import { useAuth } from "@/lib/use-auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
@@ -21,7 +22,6 @@ import {
   setPersistedCompanyId,
 } from "@/lib/selected-company";
 import { sortByName } from "@/lib/collections";
-import { getStoredUser } from "@/lib/session";
 import {
   companiesService,
   type Company,
@@ -267,10 +267,11 @@ function normalizeDashboardResponse(
 }
 
 export default function DashboardPage() {
-  const user = getStoredUser();
+  const { user } = useAuth();
 
   const [dashboard, setDashboard] = useState<DashboardCompleteResponse | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [companiesLoading, setCompaniesLoading] = useState(false);
   const canSelectCompany = user?.role === "ADMIN" || user?.role === "COLLABORATOR";
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
     if (!canSelectCompany) return user?.companyId ?? null;
@@ -314,6 +315,7 @@ export default function DashboardPage() {
 
     async function loadCompanies() {
       try {
+        setCompaniesLoading(true);
         const list =
           user?.role === "ADMIN"
             ? await companiesService.list()
@@ -337,6 +339,10 @@ export default function DashboardPage() {
         if (active) {
           setCompanies([]);
         }
+      } finally {
+        if (active) {
+          setCompaniesLoading(false);
+        }
       }
     }
 
@@ -345,7 +351,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [canSelectCompany, selectedCompanyId, user?.companyId, user?.role]);
+  }, [canSelectCompany, selectedCompanyId, user?.companyId, user?.id, user?.role]);
 
   const getEffectiveCompanyId = useCallback(() => {
     return canSelectCompany ? selectedCompanyId : user?.companyId ?? null;
@@ -356,6 +362,12 @@ export default function DashboardPage() {
       const effectiveCompanyId = getEffectiveCompanyId();
 
       if (!effectiveCompanyId) {
+        if (!canSelectCompany && user?.companyId) {
+          return;
+        }
+        if (canSelectCompany && companiesLoading) {
+          return;
+        }
         setError(
           canSelectCompany
             ? "Selecione uma empresa para visualizar o dashboard."
@@ -509,7 +521,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [companies, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, startDate, user?.role],
+    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, startDate, user?.companyId, user?.role],
   );
 
   useEffect(() => {
@@ -652,6 +664,26 @@ export default function DashboardPage() {
       ? `Aguarde ${Math.ceil(cooldownRemainingMs / 1000)}s`
       : "Atualizar";
 
+  const companyDisplayName = useMemo(() => {
+    if (!user) return "Carregando...";
+    if (canSelectCompany) {
+      const selected = companies.find((company) => company.id === selectedCompanyId);
+      if (selected?.name) return selected.name;
+      if (companiesLoading || companies.length === 0) return "Carregando...";
+      if (!selectedCompanyId) return "Selecione uma empresa";
+      return "Carregando...";
+    }
+    if (user.companyName?.trim()) return user.companyName;
+    if (user.companyId) return "Carregando...";
+    return "Empresa não vinculada";
+  }, [
+    canSelectCompany,
+    companies,
+    companiesLoading,
+    selectedCompanyId,
+    user,
+  ]);
+
   return (
     <ProtectedPage>
       <PermissionGate module="DASHBOARD">
@@ -721,12 +753,7 @@ export default function DashboardPage() {
                   {canSelectCompany ? "Empresa selecionada" : "Empresa logada"}
                 </p>
                 <div className="mt-1 flex items-center gap-3">
-                  <p className="text-sm font-bold">
-                    {canSelectCompany
-                      ? companies.find((c) => c.id === selectedCompanyId)?.name ??
-                        "Selecione uma empresa"
-                      : user?.companyName ?? "Empresa não vinculada"}
-                  </p>
+                  <p className="text-sm font-bold">{companyDisplayName}</p>
                 </div>
               </div>
             </div>

@@ -61,8 +61,6 @@ const LOGIN_SESSION_ERROR =
   "Não foi possível concluir o login. Tente novamente ou entre em contato com um administrador.";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  oauth_email_required:
-    "Informe o e-mail cadastrado no portal antes de usar Google ou Microsoft.",
   oauth_not_registered:
     "Este e-mail não está cadastrado no portal. Peça acesso a um administrador.",
   oauth_email_mismatch:
@@ -81,22 +79,16 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     "Não foi possível obter o e-mail da conta Microsoft. Tente outra conta ou use senha.",
 };
 
-function buildOAuthUrl(provider: "google" | "microsoft", emailHint: string) {
-  const params = new URLSearchParams({ email: emailHint });
-  return `${API_URL}/auth/${provider}?${params.toString()}`;
+function buildOAuthUrl(provider: "google" | "microsoft", emailHint?: string) {
+  const trimmed = emailHint?.trim();
+  if (!trimmed) {
+    return `${API_URL}/auth/${provider}`;
+  }
+  return `${API_URL}/auth/${provider}?${new URLSearchParams({ email: trimmed }).toString()}`;
 }
 
-function startOAuth(
-  provider: "google" | "microsoft",
-  emailHint: string,
-  setErro: (msg: string) => void,
-) {
-  const trimmed = emailHint.trim();
-  if (!trimmed) {
-    setErro(OAUTH_ERROR_MESSAGES.oauth_email_required);
-    return;
-  }
-  window.location.href = buildOAuthUrl(provider, trimmed);
+function startOAuth(provider: "google" | "microsoft", emailHint?: string) {
+  window.location.href = buildOAuthUrl(provider, emailHint);
 }
 
 function LoginPageContent() {
@@ -193,7 +185,7 @@ function LoginPageContent() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim(),
+          email: email.trim().toLowerCase(),
           password: senha,
         }),
       });
@@ -384,8 +376,8 @@ function LoginPageContent() {
                   </div>
 
                   <p className="text-center text-xs text-slate-400">
-                    Só é possível entrar se o e-mail já estiver cadastrado no
-                    portal.
+                    Google e Microsoft são independentes do login com senha. Só
+                    entram contas já cadastradas no portal.
                   </p>
 
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -395,7 +387,7 @@ function LoginPageContent() {
                         variant="outline"
                         disabled={carregando}
                         onClick={() => {
-                          startOAuth("google", email, setErro);
+                          startOAuth("google", email);
                         }}
                         className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
                       >
@@ -409,7 +401,7 @@ function LoginPageContent() {
                         variant="outline"
                         disabled={carregando}
                         onClick={() => {
-                          startOAuth("microsoft", email, setErro);
+                          startOAuth("microsoft", email);
                         }}
                         className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
                       >

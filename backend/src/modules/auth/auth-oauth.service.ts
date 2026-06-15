@@ -99,16 +99,12 @@ export class AuthOAuthService {
     }
 
     const email = emailHint?.trim();
-    if (!email) {
-      res.redirect(oauthLoginRedirect('oauth_email_required'));
-      return;
-    }
-    if (!(await this.assertOAuthUserAvailable(email))) {
+    if (email && !(await this.assertOAuthUserAvailable(email))) {
       res.redirect(oauthLoginRedirect('oauth_not_registered'));
       return;
     }
 
-    const state = createOAuthState(provider, email);
+    const state = createOAuthState(provider, email || undefined);
     attachOAuthStateCookie(res, state);
 
     if (provider === 'google') {
@@ -120,8 +116,10 @@ export class AuthOAuthService {
         state,
         access_type: 'online',
         prompt: 'select_account',
-        login_hint: email,
       });
+      if (email) {
+        params.set('login_hint', email);
+      }
       res.redirect(
         `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
       );
@@ -138,8 +136,10 @@ export class AuthOAuthService {
       state,
       response_mode: 'query',
       prompt: 'select_account',
-      login_hint: email,
     });
+    if (email) {
+      params.set('login_hint', email);
+    }
     res.redirect(
       `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`,
     );
