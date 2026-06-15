@@ -6,6 +6,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
+import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 
 type AppointmentOutboxPayload = {
   portalAppointmentId: string;
@@ -32,6 +33,10 @@ export class TicketsOutboxService {
     synced: number;
     failed: number;
   }> {
+    if (!isTifluxAppointmentSyncEnabled()) {
+      return { processed: 0, synced: 0, failed: 0 };
+    }
+
     const rows = await this.prisma.portalTifluxOutbox.findMany({
       where: {
         status: PortalTifluxOutboxStatus.PENDING,
@@ -61,6 +66,10 @@ export class TicketsOutboxService {
 
   /** Reenfileira entradas FAILED para nova tentativa (admin). */
   async retryFailed(limit = 20): Promise<number> {
+    if (!isTifluxAppointmentSyncEnabled()) {
+      return 0;
+    }
+
     const rows = await this.prisma.portalTifluxOutbox.findMany({
       where: {
         status: PortalTifluxOutboxStatus.FAILED,

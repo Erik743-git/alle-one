@@ -5,7 +5,8 @@
 | Camada | Estratégia |
 |--------|------------|
 | **Leitura canônica** | `tiflux.tickets` + `tiflux.ticket_appointments` (sync `alleone-tiflux-sync`) |
-| **Escrita apontamento** | Portal → `portal_ticket_appointments` + outbox `CREATE_APPOINTMENT` → API TiFlux |
+| **Escrita apontamento** | Portal → `portal_ticket_appointments` (`PORTAL_ONLY` por padrão) |
+| **Sync TiFlux apontamento** | Opcional: `TIFLUX_APPOINTMENT_SYNC_ENABLED=true` + outbox |
 | **Escrita ticket** | `POST /tickets` → API TiFlux + outbox `CREATE_TICKET` (auditoria SYNCED) |
 | **Cutover futuro** | ETL único `tiflux.*` → `public` quando divergência = 0 |
 

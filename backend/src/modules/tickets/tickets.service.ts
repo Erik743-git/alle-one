@@ -36,6 +36,7 @@ import {
   enrichAppointmentDescriptionWithImages,
   type SavedAppointmentImage,
 } from './appointment-doc.util';
+import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 
 type TicketRow = {
   ticket_number: number;
@@ -1440,6 +1441,7 @@ export class TicketsService {
 
     const descriptionRaw = dto.description.trim();
     const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
+    const syncToTiflux = isTifluxAppointmentSyncEnabled();
 
     const portalAppointment = await this.prisma.portalTicketAppointment.create({
       data: {
@@ -1450,33 +1452,38 @@ export class TicketsService {
         description: descriptionRaw,
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
-        syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
+        syncStatus: syncToTiflux
+          ? PortalTicketAppointmentSyncStatus.PENDING_TIFLUX
+          : PortalTicketAppointmentSyncStatus.PORTAL_ONLY,
         createdBy: actor.userId,
       },
     });
 
-    const outboxId = await this.recordOutbox({
-      kind: PortalTifluxOutboxKind.CREATE_APPOINTMENT,
-      status: PortalTifluxOutboxStatus.PENDING,
-      ticketNumber,
-      tifluxExternalId: null,
-      payload: {
-        portalAppointmentId: portalAppointment.id,
-        date: dto.date,
-        init_time: dto.initTime,
-        end_time: dto.endTime,
-        description: descriptionPlain,
-        serviceName: dto.serviceName.trim(),
-        attendance: dto.attendance,
-      },
-      errorMessage: null,
-      createdBy: actor.userId,
-    });
+    let outboxId: string | null = null;
+    if (syncToTiflux) {
+      outboxId = await this.recordOutbox({
+        kind: PortalTifluxOutboxKind.CREATE_APPOINTMENT,
+        status: PortalTifluxOutboxStatus.PENDING,
+        ticketNumber,
+        tifluxExternalId: null,
+        payload: {
+          portalAppointmentId: portalAppointment.id,
+          date: dto.date,
+          init_time: dto.initTime,
+          end_time: dto.endTime,
+          description: descriptionPlain,
+          serviceName: dto.serviceName.trim(),
+          attendance: dto.attendance,
+        },
+        errorMessage: null,
+        createdBy: actor.userId,
+      });
 
-    await this.prisma.portalTicketAppointment.update({
-      where: { id: portalAppointment.id },
-      data: { outboxId },
-    });
+      await this.prisma.portalTicketAppointment.update({
+        where: { id: portalAppointment.id },
+        data: { outboxId },
+      });
+    }
 
     const attachments = await this.saveAppointmentFiles(
       actor,
@@ -1523,8 +1530,10 @@ export class TicketsService {
       outboxId,
       attachmentsCount: attachments.length,
       tifluxSynced: false,
-      portalOnly: false,
-      message: `Apontamento salvo. Sincronização com TiFlux em andamento.${attachmentNote}`,
+      portalOnly: !syncToTiflux,
+      message: syncToTiflux
+        ? `Apontamento salvo. Sincronização com TiFlux em andamento.${attachmentNote}`
+        : `Apontamento salvo no portal (sem envio ao TiFlux).${attachmentNote}`,
     };
   }
 }
