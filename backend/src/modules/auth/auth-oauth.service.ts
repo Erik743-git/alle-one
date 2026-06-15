@@ -296,14 +296,21 @@ export class AuthOAuthService {
     ).trim();
 
     let providerId = claims.oid || claims.sub || '';
+    let emailVerified = microsoftEmailVerified(claims);
 
-    if ((!email || !providerId) && token.access_token) {
-      const me = await this.fetchMicrosoftGraphMe(token.access_token);
-      if (!email) {
-        email = (me.mail || me.userPrincipalName || '').trim();
-      }
-      if (!providerId && me.id) {
-        providerId = me.id;
+    if (token.access_token) {
+      const needsGraph = !email || !providerId || !emailVerified;
+      if (needsGraph) {
+        const me = await this.fetchMicrosoftGraphMe(token.access_token);
+        if (!email) {
+          email = (me.mail || me.userPrincipalName || '').trim();
+        }
+        if (!providerId && me.id) {
+          providerId = me.id;
+        }
+        if (!emailVerified && email) {
+          emailVerified = true;
+        }
       }
     }
 
@@ -314,7 +321,7 @@ export class AuthOAuthService {
     return {
       providerId,
       email,
-      emailVerified: microsoftEmailVerified(claims),
+      emailVerified,
     };
   }
 

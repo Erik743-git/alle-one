@@ -32,7 +32,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { setSession, type AuthUser } from "@/lib/session";
-import { API_URL } from "@/lib/env";
+import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
 import { useAuth } from "@/lib/use-auth";
 import {
@@ -80,11 +80,12 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 function buildOAuthUrl(provider: "google" | "microsoft", emailHint?: string) {
+  const base = getBrowserApiBase();
   const trimmed = emailHint?.trim();
   if (!trimmed) {
-    return `${API_URL}/auth/${provider}`;
+    return `${base}/auth/${provider}`;
   }
-  return `${API_URL}/auth/${provider}?${new URLSearchParams({ email: trimmed }).toString()}`;
+  return `${base}/auth/${provider}?${new URLSearchParams({ email: trimmed }).toString()}`;
 }
 
 function startOAuth(provider: "google" | "microsoft", emailHint?: string) {
@@ -111,29 +112,56 @@ function LoginPageContent() {
     google: false,
     microsoft: false,
   });
+  const [oauthProvidersLoading, setOauthProvidersLoading] = useState(true);
 
   useEffect(() => {
     const oauthError = searchParams.get("error");
-    if (oauthError) {
-      setErro(OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.oauth_failed);
-    }
-  }, [searchParams]);
+    if (!oauthError) return;
+    setErro(
+      OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.oauth_failed,
+    );
+    router.replace("/login", { scroll: false });
+  }, [searchParams, router]);
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(`${API_URL}/auth/oauth/providers`, { credentials: "include" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { google?: boolean; microsoft?: boolean } | null) => {
-        if (!cancelled && data) {
-          setOauthProviders({
-            google: Boolean(data.google),
-            microsoft: Boolean(data.microsoft),
-          });
+
+    async function loadOAuthProviders() {
+      const base = getBrowserApiBase();
+      const url = `${base}/auth/oauth/providers`;
+
+      for (let attempt = 0; attempt < 2 && !cancelled; attempt += 1) {
+        try {
+          const res = await fetch(url, { credentials: "include" });
+          if (!res.ok) continue;
+          const data = (await res.json()) as {
+            google?: boolean;
+            microsoft?: boolean;
+          };
+          if (!cancelled) {
+            setOauthProviders({
+              google: Boolean(data.google),
+              microsoft: Boolean(data.microsoft),
+            });
+          }
+          return;
+        } catch {
+          /* retry */
         }
-      })
-      .catch(() => {
-        /* OAuth opcional — ignora falha */
-      });
+        if (attempt === 0) {
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
+
+      if (!cancelled) {
+        setOauthProviders({ google: false, microsoft: false });
+      }
+    }
+
+    void loadOAuthProviders().finally(() => {
+      if (!cancelled) setOauthProvidersLoading(false);
+    });
+
     return () => {
       cancelled = true;
     };
@@ -178,7 +206,7 @@ function LoginPageContent() {
     try {
       setCarregando(true);
 
-      const response = await fetch(`${API_URL}/auth/login`, {
+      const response = await fetch(`${getBrowserApiBase()}/auth/login`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -365,7 +393,27 @@ function LoginPageContent() {
                 )}
               </Button>
 
-              {oauthProviders.google || oauthProviders.microsoft ? (
+              {oauthProvidersLoading ? (
+                <div
+                  className="space-y-3 pt-1"
+                  aria-hidden
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-white/10" />
+                    <span className="text-xs font-medium text-slate-500">
+                      Carregando login social…
+                    </span>
+                    <div className="h-px flex-1 bg-white/10" />
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
+                    <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
+                  </div>
+                </div>
+              ) : null}
+
+              {!oauthProvidersLoading &&
+              (oauthProviders.google || oauthProviders.microsoft) ? (
                 <div className="space-y-3 pt-1">
                   <div className="flex items-center gap-3">
                     <div className="h-px flex-1 bg-white/10" />

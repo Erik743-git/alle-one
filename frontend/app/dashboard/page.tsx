@@ -57,7 +57,7 @@ const DashboardLazyChart = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="h-[360px] animate-pulse rounded-xl bg-muted/40" />
+      <div className="h-[380px] min-h-[380px] animate-pulse rounded-xl bg-muted/40 sm:h-[360px] sm:min-h-0" />
     ),
   },
 );
@@ -81,7 +81,7 @@ function MetricCard({
         {icon}
       </CardHeader>
       <CardContent>
-        <p className="text-3xl font-bold">{value}</p>
+        <p className="text-2xl font-bold sm:text-3xl">{value}</p>
       </CardContent>
     </Card>
   );
@@ -688,10 +688,10 @@ export default function DashboardPage() {
     <ProtectedPage>
       <PermissionGate module="DASHBOARD">
       <AppShell>
-        <div className="font-sans w-full space-y-8">
+        <div className="font-sans w-full space-y-6 sm:space-y-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold">Dashboard</h1>
+              <h1 className="text-2xl font-bold sm:text-3xl">Dashboard</h1>
               <p className="text-muted-foreground">Tudo sobre seu ambiente.</p>
             </div>
 
@@ -774,7 +774,7 @@ export default function DashboardPage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 2xl:grid-cols-6">
             <MetricCard
               title="Total de tickets"
               value={
@@ -829,9 +829,9 @@ export default function DashboardPage() {
                 alinhados aos cartões de tickets/horas quando existirem dados de apontamento).
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-[1020px] w-full text-left text-sm">
+            <CardContent className="space-y-4 sm:space-y-6">
+              <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
+                <table className="min-w-[720px] w-full text-left text-xs sm:min-w-[1020px] sm:text-sm">
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
@@ -941,9 +941,9 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle>Apontamento de horas</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-[1020px] w-full text-left text-sm">
+            <CardContent className="space-y-4 sm:space-y-6">
+              <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
+                <table className="min-w-[720px] w-full text-left text-xs sm:min-w-[1020px] sm:text-sm">
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
