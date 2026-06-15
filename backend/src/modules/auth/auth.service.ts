@@ -137,13 +137,16 @@ export class AuthService {
     role: UserRole;
     companyId: string | null;
     firstAccess: boolean;
+    tokenVersion?: number;
     company?: { name: string } | null;
   }) {
+    const tokenVersion = user.tokenVersion ?? 0;
     const payload = {
       sub: user.id,
       email: user.email,
       role: user.role,
       companyId: user.companyId,
+      tv: tokenVersion,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
@@ -234,6 +237,7 @@ export class AuthService {
       data: {
         passwordHash: newPasswordHash,
         firstAccess: false,
+        tokenVersion: { increment: 1 },
       },
     });
 
@@ -362,6 +366,7 @@ export class AuthService {
       data: {
         passwordHash: newPasswordHash,
         firstAccess: false,
+        tokenVersion: { increment: 1 },
       },
     });
 

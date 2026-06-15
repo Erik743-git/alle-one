@@ -13,7 +13,7 @@ export type AuthUser = {
   permissions?: ModulePermission[];
 };
 
-/** Legado: token em localStorage (Bearer). Novo fluxo usa cookie httpOnly. */
+/** @deprecated Sessão usa apenas cookie httpOnly — chave mantida para limpeza de legado. */
 export const TOKEN_KEY = "alleone.token";
 export const USER_KEY = "alleone.user";
 
@@ -27,11 +27,21 @@ function readUserRaw(): string | null {
   );
 }
 
+/** Legado removido — sempre null; use cookie httpOnly. */
 export function getStoredToken(): string | null {
+  purgeLegacyToken();
+  return null;
+}
+
+function purgeLegacyToken(): void {
   if (typeof window === "undefined") {
-    return null;
+    return;
   }
-  return window.localStorage.getItem(TOKEN_KEY);
+  try {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function getStoredUser(): AuthUser | null {

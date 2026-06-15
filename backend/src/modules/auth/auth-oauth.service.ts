@@ -20,6 +20,11 @@ import {
   parseOAuthState,
   type OAuthProvider,
 } from './auth-oauth.helper';
+import {
+  microsoftEmailVerified,
+  verifyMicrosoftIdToken,
+  type MicrosoftIdTokenClaims,
+} from './microsoft-id-token.verifier';
 
 type OAuthTokenResponse = {
   access_token?: string;
@@ -31,15 +36,6 @@ type GoogleUserInfo = {
   sub?: string;
   email?: string;
   email_verified?: boolean;
-};
-
-type MicrosoftIdTokenClaims = {
-  oid?: string;
-  sub?: string;
-  email?: string;
-  preferred_username?: string;
-  upn?: string;
-  unique_name?: string;
 };
 
 type MicrosoftGraphMe = {
@@ -269,7 +265,28 @@ export class AuthOAuthService {
     email: string;
     emailVerified: boolean;
   }> {
-    const claims = this.decodeIdTokenClaims(token.id_token);
+    if (!token.id_token) {
+      throw new UnauthorizedException('oauth_profile');
+    }
+
+    const tenant =
+      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+    const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim();
+
+    let claims: MicrosoftIdTokenClaims;
+    try {
+      claims = await verifyMicrosoftIdToken(
+        token.id_token,
+        tenant,
+        clientId,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Microsoft id_token inválido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new UnauthorizedException('oauth_profile');
+    }
+
     let email = (
       claims.email ||
       claims.preferred_username ||
@@ -297,7 +314,7 @@ export class AuthOAuthService {
     return {
       providerId,
       email,
-      emailVerified: email.includes('@'),
+      emailVerified: microsoftEmailVerified(claims),
     };
   }
 
@@ -390,20 +407,6 @@ export class AuthOAuthService {
       throw new Error(detail || 'microsoft_token_exchange_failed');
     }
     return data;
-  }
-
-  private decodeIdTokenClaims(idToken?: string): MicrosoftIdTokenClaims {
-    if (!idToken) {
-      throw new Error('microsoft_missing_id_token');
-    }
-    const parts = idToken.split('.');
-    if (parts.length < 2) {
-      throw new Error('microsoft_invalid_id_token');
-    }
-    const payload = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf8'),
-    ) as MicrosoftIdTokenClaims;
-    return payload;
   }
 
   async assertOAuthUserAvailable(email: string): Promise<boolean> {

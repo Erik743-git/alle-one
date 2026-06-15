@@ -1,6 +1,6 @@
 {
   "name": "backend",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "",
   "author": "",
   "private": true,
@@ -12,7 +12,12 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main",
+    "start:outbox": "node dist/src/workers/outbox-runner.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+    "lint:ci": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
@@ -37,6 +42,7 @@
     "dotenv": "^17.3.1",
     "exceljs": "^4.4.0",
     "helmet": "^8.1.0",
+    "jose": "^6.2.3",
     "nodemailer": "^8.0.4",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
@@ -91,6 +97,12 @@
       "**/*.(t|j)s"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "transformIgnorePatterns": [
+      "node_modules/(?!jose)"
+    ]
+  },
+  "optionalDependencies": {
+    "@aws-sdk/client-s3": "^3.1068.0"
   }
 }

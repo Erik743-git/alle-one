@@ -10,7 +10,10 @@ export const TICKETS_LIST_SUBTITLE =
   "Por padrão, são exibidos os chamados em que você é o responsável.";
 
 export const TICKETS_CREATE_RESTRICTED =
-  "A abertura de novos chamados e apontamentos é feita pela equipe administrativa. Você pode consultar os chamados existentes.";
+  "A abertura de novos chamados é feita pela equipe administrativa. Você pode consultar os chamados existentes.";
+
+export const TICKETS_APPOINTMENT_CREATE_RESTRICTED =
+  "Você não tem permissão para registrar apontamentos neste módulo. Consulte os chamados existentes ou fale com o administrador.";
 
 export const APONTAMENTOS_ADMIN_SUBTITLE =
   "Consulte a agenda e as horas registradas de cada colaborador.";

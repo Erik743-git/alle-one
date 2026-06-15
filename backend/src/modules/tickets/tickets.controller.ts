@@ -33,17 +33,21 @@ import {
 } from './tickets-create.dto';
 import { TicketsListQueryDto } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
+import { TicketsReconcileService } from './tickets-reconcile.service';
 import { TicketsService } from './tickets.service';
 
 @ApiTags('Tickets')
 @ApiBearerAuth()
 @Controller('tickets')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
-@Roles('ADMIN')
 export class TicketsController {
-  constructor(private readonly ticketsService: TicketsService) {}
+  constructor(
+    private readonly ticketsService: TicketsService,
+    private readonly reconcileService: TicketsReconcileService,
+  ) {}
 
   @Get()
+  @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   list(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -53,12 +57,14 @@ export class TicketsController {
   }
 
   @Get('catalogs/filters')
+  @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   filterCatalogs() {
     return this.ticketsService.getFilterCatalogs();
   }
 
   @Get('catalogs/create')
+  @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   createCatalogs(@Query('deskId') deskIdRaw?: string) {
     const deskId =
@@ -71,6 +77,7 @@ export class TicketsController {
   }
 
   @Get('attachments/:fileId')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   async downloadAttachment(
     @Param('fileId') fileId: string,
@@ -89,7 +96,17 @@ export class TicketsController {
     return stream;
   }
 
+  @Post('reconcile')
+  @Roles('ADMIN')
+  @RequirePermission(PermissionModule.TICKETS, 'canEdit')
+  reconcile(@Query('retry') retry?: string) {
+    return this.reconcileService.reconcile({
+      autoRetry: retry === 'true' || retry === '1',
+    });
+  }
+
   @Post()
+  @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   create(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -99,18 +116,21 @@ export class TicketsController {
   }
 
   @Get(':ticketNumber/catalogs/appointment')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   appointmentCatalogs(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
     return this.ticketsService.getAppointmentCatalogs(ticketNumber);
   }
 
   @Get(':ticketNumber')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   detail(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
     return this.ticketsService.getDetail(ticketNumber);
   }
 
   @Patch(':ticketNumber/gmud')
+  @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   linkGmud(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -125,6 +145,7 @@ export class TicketsController {
   }
 
   @Post(':ticketNumber/appointments')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
   async createAppointment(

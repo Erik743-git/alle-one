@@ -41,4 +41,10 @@ export class AppController {
 
     return { ok: true, service: 'alle-one-api', database };
   }
+
+  @Public()
+  @Get('health/integrations')
+  async healthIntegrations() {
+    return this.appService.getIntegrationsHealth();
+  }
 }

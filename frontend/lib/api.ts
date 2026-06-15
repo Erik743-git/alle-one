@@ -1,5 +1,5 @@
 import { API_URL } from "@/lib/env";
-import { clearSession, getStoredToken } from "@/lib/session";
+import { clearSession } from "@/lib/session";
 
 export { API_URL };
 
@@ -60,10 +60,6 @@ export async function apiRequest<T>(
   const headerRecord = headers as Record<string, string>;
   if (auth) {
     headerRecord["X-Alleone-Api"] = "1";
-    const token = getStoredToken();
-    if (token) {
-      headerRecord.Authorization = `Bearer ${token}`;
-    }
   }
 
   const response = await fetch(`${API_URL}${endpoint}`, {

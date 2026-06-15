@@ -5,6 +5,7 @@ import { TicketsOutboxService } from './tickets-outbox.service';
 @Injectable()
 export class TicketsOutboxJob {
   private readonly logger = new Logger(TicketsOutboxJob.name);
+  private readonly disabled = process.env.TIFLUX_OUTBOX_DISABLED === 'true';
   private running = false;
 
   constructor(private readonly outbox: TicketsOutboxService) {}
@@ -12,6 +13,7 @@ export class TicketsOutboxJob {
   /** A cada minuto: envia apontamentos do portal para o TiFlux. */
   @Cron('0 * * * * *')
   async processPendingOutbox(): Promise<void> {
+    if (this.disabled) return;
     if (this.running) return;
     this.running = true;
     try {

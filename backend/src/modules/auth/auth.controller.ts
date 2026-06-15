@@ -54,6 +54,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('google/callback')
   async googleCallback(
     @Req() req: Request,
@@ -73,6 +74,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('microsoft/callback')
   async microsoftCallback(
     @Req() req: Request,

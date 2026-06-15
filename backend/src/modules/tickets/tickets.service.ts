@@ -1,7 +1,6 @@
-import { createReadStream, existsSync, readFileSync } from 'node:fs';
-import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
-import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   BadGatewayException,
   BadRequestException,
@@ -9,6 +8,7 @@ import {
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
+import { FileStorageService } from '../../common/storage/file-storage.service';
 import {
   assertAllowedUploadMime,
   TICKET_APPOINTMENT_UPLOAD_MAX_BYTES,
@@ -118,6 +118,7 @@ export class TicketsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tiflux: TifluxService,
+    private readonly fileStorage: FileStorageService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -1183,7 +1184,6 @@ export class TicketsService {
   ) {
     if (!files.length) return [];
 
-    const uploadsDir = join(process.cwd(), 'uploads', 'tickets', String(ticketNumber));
     const saved: Array<{
       id: string;
       fileId: string;
@@ -1210,8 +1210,9 @@ export class TicketsService {
       }
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       const targetName = `${Date.now()}-${randomUUID()}-${safeName}`;
-      const targetPath = join(uploadsDir, targetName);
-      await writeUploadedBuffer(targetPath, file.buffer);
+      const relativeKey = join('tickets', String(ticketNumber), targetName);
+      const stored = await this.fileStorage.saveBuffer(relativeKey, file.buffer);
+      const targetPath = stored.storagePath;
 
       const createdFile = await this.prisma.file.create({
         data: {
@@ -1289,12 +1290,14 @@ export class TicketsService {
       throw new NotFoundException('Anexo não encontrado.');
     }
 
-    if (!existsSync(row.file.path)) {
+    if (!(await this.fileStorage.exists(row.file.path))) {
       throw new NotFoundException('Arquivo não encontrado no servidor.');
     }
 
+    const buffer = await this.fileStorage.readBuffer(row.file.path);
+
     return {
-      stream: new StreamableFile(createReadStream(row.file.path)),
+      stream: new StreamableFile(buffer),
       meta: {
         originalName: row.file.originalName,
         mimeType: row.file.mimeType,

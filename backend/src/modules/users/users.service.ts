@@ -245,10 +245,12 @@ export class UsersService {
       );
     }
 
+    const passwordChanging = Boolean(data.password?.trim());
+
     let passwordHash = existingUser.passwordHash;
 
-    if (data.password?.trim()) {
-      passwordHash = await bcrypt.hash(data.password.trim(), 10);
+    if (passwordChanging) {
+      passwordHash = await bcrypt.hash(data.password!.trim(), 10);
     }
 
     if (data.firstAccess === true && !passwordHash) {
@@ -268,6 +270,7 @@ export class UsersService {
         ...(data.name !== undefined && { name: data.name.trim() }),
         ...(data.email !== undefined && { email: data.email.trim().toLowerCase() }),
         passwordHash,
+        ...(passwordChanging && { tokenVersion: { increment: 1 } }),
         role: data.role,
         status: data.status,
         companyId: data.companyId,

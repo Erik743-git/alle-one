@@ -17,7 +17,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  canCreateTicketsAndAppointments,
+  canCreateTicket,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import { TICKETS_LIST_SUBTITLE } from "@/lib/module-copy";
@@ -177,13 +177,13 @@ export default function TicketsPage() {
               icon={<Ticket size={24} />}
               title="Chamados"
               description={
-                canCreateTicketsAndAppointments()
+                canCreateTicket()
                   ? TICKETS_LIST_SUBTITLE
                   : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
               }
               actions={
                 <>
-                  {canCreateTicketsAndAppointments() ? (
+                  {canCreateTicket() ? (
                     <Button asChild>
                       <Link href="/tickets/new">
                         <Plus className="mr-2 size-4" />

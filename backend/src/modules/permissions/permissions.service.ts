@@ -233,7 +233,10 @@ export class PermissionsService {
     });
   }
 
-  async buildRequestUser(userId: string): Promise<AuthenticatedRequestUser> {
+  async buildRequestUser(
+    userId: string,
+    tokenVersion?: number,
+  ): Promise<AuthenticatedRequestUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: { permissions: true },
@@ -241,6 +244,11 @@ export class PermissionsService {
 
     if (!user || user.deletedAt || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Sessão inválida ou usuário inativo');
+    }
+
+    const expectedTv = tokenVersion ?? 0;
+    if ((user.tokenVersion ?? 0) !== expectedTv) {
+      throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
 
     const permissions = this.computeEffective(user);

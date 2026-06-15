@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function listenWithFallback(
   app: { listen: (port: number) => Promise<unknown> },
@@ -43,8 +44,14 @@ async function bootstrap() {
     adapter.set?.('trust proxy', 1);
   }
 
+  const apiPrefix = process.env.API_GLOBAL_PREFIX?.trim().replace(/^\/+|\/+$/g, '');
+  if (apiPrefix) {
+    app.setGlobalPrefix(apiPrefix);
+  }
+
   app.use(cookieParser());
   app.use(helmet());
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   const corsOriginsRaw =
     process.env.CORS_ORIGINS ?? process.env.FRONTEND_URL ?? '';

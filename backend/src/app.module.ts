@@ -27,6 +27,7 @@ import { RendimentoModule } from './modules/rendimento/rendimento.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
+import { IntegrationsHealthJob } from './integrations/integrations-health.job';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
   controllers: [AppController],
   providers: [
     AppService,
+    IntegrationsHealthJob,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

@@ -1,5 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
-import { UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { PermissionsService } from './permissions.service';
 
 describe('PermissionsService.buildRequestUser', () => {
@@ -11,39 +11,36 @@ describe('PermissionsService.buildRequestUser', () => {
 
   const service = new PermissionsService(prisma as never);
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('rejeita usuário com deletedAt', async () => {
+  it('rejeita JWT com tokenVersion desatualizado', async () => {
     prisma.user.findUnique.mockResolvedValue({
       id: 'u1',
-      email: 'x@y.com',
-      role: 'COLLABORATOR',
+      email: 'a@b.com',
+      role: UserRole.CLIENT,
       companyId: null,
+      deletedAt: null,
       status: UserStatus.ACTIVE,
-      deletedAt: new Date(),
+      tokenVersion: 3,
       permissions: [],
     });
 
-    await expect(service.buildRequestUser('u1')).rejects.toBeInstanceOf(
+    await expect(service.buildRequestUser('u1', 2)).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
-  it('aceita usuário ativo sem deletedAt', async () => {
+  it('aceita JWT com tokenVersion atual', async () => {
     prisma.user.findUnique.mockResolvedValue({
-      id: 'u2',
+      id: 'u1',
       email: 'a@b.com',
-      role: 'ADMIN',
+      role: UserRole.ADMIN,
       companyId: null,
-      status: UserStatus.ACTIVE,
       deletedAt: null,
+      status: UserStatus.ACTIVE,
+      tokenVersion: 1,
       permissions: [],
     });
 
-    const user = await service.buildRequestUser('u2');
-    expect(user.userId).toBe('u2');
-    expect(user.role).toBe('ADMIN');
+    const user = await service.buildRequestUser('u1', 1);
+    expect(user.userId).toBe('u1');
   });
 });

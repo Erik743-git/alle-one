@@ -64,6 +64,48 @@ export class MailboxService {
     return { ok: true };
   }
 
+  async notifyTifluxSyncStale(
+    userIds: string[],
+    message: string,
+    lastTicketUpdate: string | null,
+  ): Promise<void> {
+    const dedupeKey = 'integration:tiflux-sync-stale';
+    const body = lastTicketUpdate
+      ? `${message} Último ticket no espelho: ${lastTicketUpdate}.`
+      : message;
+
+    for (const userId of userIds) {
+      await this.prisma.mailboxNotification.upsert({
+        where: {
+          userId_dedupeKey: { userId, dedupeKey },
+        },
+        create: {
+          userId,
+          kind: MailboxNotificationKind.TIFLUX_SYNC_STALE,
+          title: 'Sync TiFlux atrasado',
+          body,
+          href: '/admin',
+          dedupeKey,
+          payload: { lastTicketUpdate } as Prisma.InputJsonValue,
+        },
+        update: {
+          kind: MailboxNotificationKind.TIFLUX_SYNC_STALE,
+          title: 'Sync TiFlux atrasado',
+          body,
+          href: '/admin',
+          readAt: null,
+          payload: { lastTicketUpdate } as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
+  async clearTifluxSyncStaleAlerts(): Promise<void> {
+    await this.prisma.mailboxNotification.deleteMany({
+      where: { kind: MailboxNotificationKind.TIFLUX_SYNC_STALE },
+    });
+  }
+
   async refreshForUser(actor: AuthenticatedRequestUser): Promise<void> {
     const user = await this.prisma.user.findFirst({
       where: { id: actor.userId, deletedAt: null, status: UserStatus.ACTIVE },

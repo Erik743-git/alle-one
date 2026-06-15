@@ -158,11 +158,28 @@ export function canAccessTickets() {
 }
 
 /** Mensagem exibida quando não-admin tenta criar ticket ou apontamento. */
-export { TICKETS_CREATE_RESTRICTED as TICKETS_CREATE_ADMIN_ONLY_MESSAGE } from "./module-copy";
+export {
+  TICKETS_CREATE_RESTRICTED as TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
+  TICKETS_APPOINTMENT_CREATE_RESTRICTED,
+} from "./module-copy";
 
-/** V2 Tickets: criar ticket ou apontamento no portal — somente ADMIN (visualização liberada por canView). */
+/** V2 Tickets: criar ticket no portal — somente ADMIN. */
+export function canCreateTicket() {
+  return isAdmin() && hasPermission("TICKETS", "canCreate");
+}
+
+/** Apontamento no ticket: ADMIN ou colaborador/PJ com canCreate em TICKETS. */
+export function canCreateTicketAppointment() {
+  if (isAdmin()) return hasPermission("TICKETS", "canCreate");
+  if (isCollaborator() || isPj()) {
+    return hasPermission("TICKETS", "canCreate");
+  }
+  return false;
+}
+
+/** @deprecated Use canCreateTicket ou canCreateTicketAppointment */
 export function canCreateTicketsAndAppointments() {
-  return isAdmin();
+  return canCreateTicket();
 }
 
 /** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */

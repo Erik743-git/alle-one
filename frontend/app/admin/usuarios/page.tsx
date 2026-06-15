@@ -364,9 +364,11 @@ export default function AdminUsuariosPage() {
     if (
       formEdicao.firstAccess &&
       senhaProvisoriaEdicao.trim() &&
-      senhaProvisoriaEdicao.trim().length < 6
+      senhaProvisoriaEdicao.trim().length < 8
     ) {
-      setErroEdicao("A senha provisória deve ter pelo menos 6 caracteres.");
+      setErroEdicao(
+        "A senha provisória deve ter pelo menos 8 caracteres, com maiúscula, minúscula, número e caractere especial.",
+      );
       return;
     }
 
@@ -901,7 +903,7 @@ export default function AdminUsuariosPage() {
                       type="password"
                       value={senhaProvisoriaEdicao}
                       onChange={(e) => setSenhaProvisoriaEdicao(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder="Mín. 8 caracteres (A a, 0-9, especial)"
                       autoComplete="new-password"
                       className="h-11"
                     />

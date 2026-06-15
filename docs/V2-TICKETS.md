@@ -4,123 +4,53 @@
 
 | Camada | Estratégia |
 |--------|------------|
-| **Leitura canônica (agora)** | `tiflux.tickets` + `tiflux.ticket_appointments` populados pelo sync `alleone-tiflux-sync` |
-| **Escrita apontamento (atual)** | **Somente portal** — `portal_ticket_appointments` (`PORTAL_ONLY`); sem POST TiFlux |
-| **Escrita ticket / retry (futuro)** | `portal_tiflux_outbox` + API TiFlux quando cutover |
-| **Cutover futuro** | ETL único `tiflux.*` → tabelas `public` quando divergência = 0 por período acordado |
+| **Leitura canônica** | `tiflux.tickets` + `tiflux.ticket_appointments` (sync `alleone-tiflux-sync`) |
+| **Escrita apontamento** | Portal → `portal_ticket_appointments` + outbox `CREATE_APPOINTMENT` → API TiFlux |
+| **Escrita ticket** | `POST /tickets` → API TiFlux + outbox `CREATE_TICKET` (auditoria SYNCED) |
+| **Cutover futuro** | ETL único `tiflux.*` → `public` quando divergência = 0 |
 
-**Não fazer agora:** `portal_tickets` espelhando todo o catálogo em paralelo.
-
-**V2.0 — somente ADMIN** cria ticket e aponta pelo portal. Colaboradores continuam no TiFlux até fase posterior.
+**Criar ticket:** somente ADMIN. **Apontar:** ADMIN ou colaborador/PJ com `TICKETS.canCreate`.
 
 ---
 
-## Referência TiFlux (telas enviadas)
-
-| Área | O que replicar na V2 |
-|------|----------------------|
-| Lista | Tickets agrupados por **estágio** (Pendente, Aguardando usuário, Em execução) |
-| Lista | Colunas: número, título, cliente, origem, prioridade, status, estágio |
-| Filtros | Meus tickets; filtros salvos (fase 2); busca avançada |
-| Busca avançada | Período (abertura), número, título, status, cliente, solicitante, atendente, mesa, estágio |
-| Detalhe | Abas: Informações gerais, **Apontamentos** (MVP); demais abas depois |
-| Apontamento | Painel lateral: dia, início/fim, tipo (HORA NORMAL/EXTRA/PLANTÃO), atendimento, descrição, anexos portal |
-| Ações | Fechar ticket, transferir, etc. — **fora do MVP** |
-
----
-
-## O que já existe no Alle One
-
-- Permissão `TICKETS` no Prisma e painel admin de permissões.
-- Sync em `tiflux.tickets` / `tiflux.ticket_appointments`.
-- Apontamentos (rendimento), dashboard, correio e relatórios **consumem** apontamentos do sync.
-- Módulo `tiflux` no backend (GET legado).
-
-### Implementado
+## Implementado
 
 | Item | Status |
 |------|--------|
-| Migration `portal_tiflux_outbox` | ✅ |
-| Migration `portal_ticket_appointments` | ✅ |
-| Migration `portal_ticket_appointment_attachments` | ✅ |
-| `backend/src/modules/tickets/` — lista, detalhe, catálogos, criar apontamento portal | ✅ |
-| `GET /tickets`, `GET /tickets/catalogs/filters`, `GET /tickets/:ticketNumber` | ✅ |
-| `POST /tickets/:ticketNumber/appointments` — grava só no portal (`PORTAL_ONLY`) | ✅ |
-| Merge leitura: sync TiFlux + apontamentos portal no detalhe | ✅ |
-| Anexos por apontamento (portal) | ✅ |
-| `frontend/app/tickets/` — lista, busca avançada, novo ticket | ✅ |
-| `frontend/app/tickets/[ticketNumber]/` — detalhe + painel apontamento (Sheet) | ✅ |
-| Sidebar **Tickets** + `canAccessTickets()` | ✅ |
-| Visão empresarial + questionamentos — ver [V2-APONTAMENTOS.md](./V2-APONTAMENTOS.md) | ✅ |
-
-### Pendente
-
-| Item | Fase |
-|------|------|
-| Dual-write apontamento → API TiFlux + outbox retry | **S3b** (opcional pós-MVP) |
-| `POST /tickets` criar ticket dual-write | **S4** |
-| Reconciliação portal vs `tiflux.*` | **S5** |
-| Colaborador apontar pelo portal | Fase posterior |
+| Lista, detalhe, catálogos, anexos portal | ✅ |
+| `POST /tickets` — dual-write TiFlux (S4) | ✅ |
+| `POST /tickets/:n/appointments` — portal + outbox TiFlux (S3b) | ✅ |
+| `POST /tickets/reconcile` — divergências portal vs espelho (S5) | ✅ |
+| Job outbox (API ou PM2 `alleone-outbox`) | ✅ |
+| Colaborador/PJ apontar com permissão | ✅ |
+| UI `frontend/app/tickets/` | ✅ |
 
 ---
 
-## Arquitetura (Opção A)
+## API
 
-```text
-Frontend /tickets
-    → Backend modules/tickets
-        → Leitura: tiflux.tickets / tiflux.ticket_appointments (sync)
-        → Leitura portal: portal_ticket_appointments (+ anexos)
-        → Escrita apontamento: portal_ticket_appointments (PORTAL_ONLY)
-        → Escrita futura: portal_tiflux_outbox → TiFlux API
-    ← alleone-tiflux-sync → tiflux.* (espelho)
-```
-
-### Tabelas `public`
-
-| Tabela | Função |
-|--------|--------|
-| `portal_tiflux_outbox` | Fila futura: CREATE_TICKET, sync retry |
-| `portal_ticket_appointments` | Apontamentos criados no portal (status `PORTAL_ONLY`) |
-| `portal_ticket_appointment_attachments` | Anexos do portal (não vão ao TiFlux) |
-| `rendimento_appointment_questions` | Questionamentos visão empresarial |
-
----
-
-## API (backend)
-
-| Método | Rota | Status |
+| Método | Rota | Papéis |
 |--------|------|--------|
-| GET | `/tickets` | ✅ |
-| GET | `/tickets/catalogs/filters` | ✅ |
-| GET | `/tickets/:ticketNumber` | ✅ |
-| POST | `/tickets/:ticketNumber/appointments` | ✅ portal-only |
-| POST | `/tickets` | S4 |
-| POST | `/tickets/reconcile` | S5 |
+| GET | `/tickets` | ADMIN |
+| GET | `/tickets/:ticketNumber` | ADMIN, COLLABORATOR, PJ |
+| POST | `/tickets` | ADMIN |
+| POST | `/tickets/:ticketNumber/appointments` | ADMIN, COLLABORATOR, PJ + canCreate |
+| POST | `/tickets/reconcile?retry=true` | ADMIN + canEdit |
+| POST | `/admin/reprocess-tiflux-outbox` | ADMIN |
 
-Guards: `@Roles('ADMIN')` + `@RequirePermission(TICKETS, canView|canCreate|canEdit)`.
-
----
-
-## Fases de entrega
-
-| Fase | Entrega | Status |
-|------|---------|--------|
-| **S1** | Migrations outbox + backend leitura (`tiflux.*`) | ✅ |
-| **S2** | UI lista + busca avançada + detalhe leitura | ✅ |
-| **S3** | Criar apontamento no portal + merge leitura + anexos | ✅ |
-| **S3b** | Dual-write TiFlux + outbox retry | Opcional |
-| **S4** | Criar ticket dual-write | — |
-| **S5** | Reconciliação + painel divergências | — |
+Guards: `@Roles` + `@RequirePermission(TICKETS, …)`.
 
 ---
 
-## Riscos e decisões
+## Reconciliação (S5)
 
-1. **Apontamento portal-only:** API TiFlux v2 exige mesa sem valorização; Alle adotou gravação só no portal até cutover.
-2. **Mapeamento usuário portal ↔ TiFlux:** e-mail → `tiflux.users.external_id`.
-3. **Leitura sync:** latência de minutos até worker atualizar `tiflux.*`.
-4. **IDs:** número exibido = `tiflux.tickets.ticket_number`.
+`POST /tickets/reconcile` retorna:
+
+- Outbox `FAILED` e `PENDING` antigo
+- Apontamentos `PENDING_TIFLUX`
+- Apontamentos `SYNCED` sem registro em `tiflux.ticket_appointments`
+
+Com `?retry=true`, reenfileira FAILED e processa lote.
 
 ---
 
@@ -131,8 +61,8 @@ cd backend && npx prisma migrate deploy && npm run build
 cd ../frontend && npm run build
 ```
 
-Migrations V2 tickets: `20260808120000` … `20260810120000`.
+Worker outbox opcional: `deploy/OUTBOX_WORKER.md`, `deploy/ecosystem.config.example.js`.
 
 ---
 
-*Documento vivo — Opção A; apontamento portal-only jun/2026.*
+*Documento vivo — jun/2026.*

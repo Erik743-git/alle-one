@@ -7,6 +7,7 @@ import { PermissionsService } from '../../permissions/permissions.service';
 
 type JwtPayload = {
   sub: string;
+  tv?: number;
 };
 
 @Injectable()
@@ -20,7 +21,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
         (req: Request) => {
           const v = req?.cookies?.[ACCESS_TOKEN_COOKIE];
           return typeof v === 'string' ? v : null;
@@ -32,6 +32,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   validate(payload: JwtPayload) {
-    return this.permissionsService.buildRequestUser(payload.sub);
+    return this.permissionsService.buildRequestUser(payload.sub, payload.tv);
   }
 }

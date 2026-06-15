@@ -55,6 +55,7 @@ enum MailboxNotificationKind {
   TICKET_STALLED_48H
   TICKET_STALLED_7D
   INVENTORY_EXPIRY
+  TIFLUX_SYNC_STALE
 }
 
 enum ContractFileType {
@@ -87,6 +88,7 @@ model User {
   role                UserRole
   status              UserStatus           @default(ACTIVE)
   firstAccess         Boolean              @default(true) @map("first_access")
+  tokenVersion        Int                  @default(0) @map("token_version")
   responsible         Boolean              @default(false)
   companyId           String?              @map("company_id")
   googleId            String?              @unique @map("google_id")

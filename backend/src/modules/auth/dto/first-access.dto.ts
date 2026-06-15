@@ -1,5 +1,6 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { IsStrongPassword } from '../../../common/validators/password-constraints';
 
 export class FirstAccessDto {
   @IsEmail()
@@ -15,7 +16,7 @@ export class FirstAccessDto {
   currentPassword: string;
 
   @IsString()
-  @MinLength(8)
+  @IsStrongPassword()
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim() : value,
   )

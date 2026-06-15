@@ -31,6 +31,7 @@ import {
   getDefaultDateRange,
 } from './dashboard-date.utils';
 import { DashboardChartsService } from './dashboard-charts.service';
+import { DashboardIntegrationsService } from './dashboard-integrations.service';
 import type {
   AppointmentLike,
   DashboardFilters,
@@ -39,7 +40,6 @@ import type {
   MonthlyAlertsRow,
   MonthlyHoursRow,
   MonthlyTicketRow,
-  ResolvedCompanyIntegration,
   TopHostsByMonthRow,
   TopTriggerRow,
   WeeklyAlertsRow,
@@ -172,6 +172,7 @@ export class DashboardService {
     private readonly zabbixService: ZabbixService,
     private readonly prisma: PrismaService,
     private readonly dashboardCharts: DashboardChartsService,
+    private readonly integrations: DashboardIntegrationsService,
   ) {}
 
   private buildCacheKey(params: DashboardFilters) {
@@ -1014,60 +1015,6 @@ export class DashboardService {
       limiteLinhas: maxLinhas,
       linhas,
       linhasTruncadas,
-    };
-  }
-
-  private async resolveIntegrations(
-    params: DashboardFilters,
-  ): Promise<ResolvedCompanyIntegration> {
-    let zabbixGroupName = params.group;
-    let tifluxClientId: number | null = null;
-
-    // Prioridade:
-    // 1) companyId (quando o front escolhe uma empresa específica)
-    // 2) zabbixGroupName (quando o front filtra pelo grupo, mas não troca companyId)
-    if (params.companyId) {
-      const company = await this.prisma.company.findFirst({
-        where: {
-          id: params.companyId,
-          deletedAt: null,
-        },
-      });
-
-      if (company?.zabbixGroupName?.trim()) {
-        zabbixGroupName = company.zabbixGroupName;
-      }
-
-      if (
-        company?.tifluxClientId !== null &&
-        company?.tifluxClientId !== undefined
-      ) {
-        tifluxClientId = company.tifluxClientId;
-      }
-    } else if (params.group?.trim()) {
-      const companyByGroup = await this.prisma.company.findFirst({
-        where: {
-          deletedAt: null,
-          zabbixGroupName: params.group.trim(),
-        },
-      });
-
-      if (
-        companyByGroup?.tifluxClientId !== null &&
-        companyByGroup?.tifluxClientId !== undefined
-      ) {
-        tifluxClientId = companyByGroup.tifluxClientId;
-      }
-
-      // Mantém o grupo informado; se existir um nome canônico salvo, usa.
-      if (companyByGroup?.zabbixGroupName?.trim()) {
-        zabbixGroupName = companyByGroup.zabbixGroupName;
-      }
-    }
-
-    return {
-      zabbixGroupName,
-      tifluxClientId,
     };
   }
 
@@ -2072,7 +2019,7 @@ export class DashboardService {
     const scoped = await this.scopeDashboardFilters(user, params);
     const { startDate, endDate } = getRange(scoped.start, scoped.end);
     const days = countDaysInRange(startDate, endDate);
-    const integrations = await this.resolveIntegrations(scoped);
+    const integrations = await this.integrations.resolveIntegrations(scoped);
     const { startISO, endISO } = buildTifluxDateRange(startDate, endDate);
     const hoursDateOpts = this.getDashboardHoursDateOptions();
 
@@ -2333,7 +2280,7 @@ export class DashboardService {
   ): Promise<DashboardResponse> {
     const { startDate, endDate } = getRange(params.start, params.end);
     const days = countDaysInRange(startDate, endDate);
-    const integrations = await this.resolveIntegrations(params);
+    const integrations = await this.integrations.resolveIntegrations(params);
     const { startISO, endISO } = buildTifluxDateRange(startDate, endDate);
 
     this.devDebug('==================================================');
@@ -2651,7 +2598,7 @@ export class DashboardService {
     params: DashboardFilters,
   ): Promise<DashboardHoursResponse> {
     const { startDate, endDate } = getRange(params.start, params.end);
-    const integrations = await this.resolveIntegrations(params);
+    const integrations = await this.integrations.resolveIntegrations(params);
 
     if (process.env.NODE_ENV !== 'production') {
       this.loggedAppointmentSample = false;

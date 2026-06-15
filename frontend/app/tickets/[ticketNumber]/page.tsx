@@ -21,7 +21,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import {
-  canCreateTicketsAndAppointments,
+  canCreateTicket,
+  canCreateTicketAppointment,
+  TICKETS_APPOINTMENT_CREATE_RESTRICTED,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import {
@@ -158,7 +160,7 @@ export default function TicketDetailPage() {
                   Voltar à lista
                 </Link>
               </Button>
-              {ticket && canCreateTicketsAndAppointments() ? (
+              {ticket && canCreateTicketAppointment() ? (
                 <Button
                   type="button"
                   size="sm"
@@ -283,7 +285,7 @@ export default function TicketDetailPage() {
                       </p>
                     )}
 
-                    {canCreateTicketsAndAppointments() ? (
+                    {canCreateTicket() ? (
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                         <div className="flex-1 space-y-2">
                           <Label className="text-xs font-semibold text-muted-foreground">
@@ -320,9 +322,9 @@ export default function TicketDetailPage() {
                 <Card>
                   <CardHeader className="space-y-2">
                     <CardTitle className="text-base">Apontamentos</CardTitle>
-                    {!canCreateTicketsAndAppointments() ? (
+                    {!canCreateTicketAppointment() ? (
                       <p className="text-xs font-normal text-muted-foreground">
-                        {TICKETS_CREATE_ADMIN_ONLY_MESSAGE}
+                        {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
                       </p>
                     ) : null}
                   </CardHeader>
@@ -427,7 +429,7 @@ export default function TicketDetailPage() {
                   </CardContent>
                 </Card>
 
-                {canCreateTicketsAndAppointments() ? (
+                {canCreateTicketAppointment() ? (
                   <TicketAppointmentModal
                     ticketNumber={ticket.ticketNumber}
                     open={appointmentOpen}

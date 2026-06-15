@@ -7,10 +7,10 @@ import {
   IsString,
   IsUUID,
   IsArray,
-  MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { UserRole, UserStatus } from '@prisma/client';
+import { IsStrongPassword } from '../../../common/validators/password-constraints';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -25,7 +25,7 @@ export class UpdateUserDto {
   email?: string;
 
   @IsOptional()
-  @MinLength(6)
+  @IsStrongPassword()
   @Transform(({ value }) =>
     typeof value === 'string' ? value.trim() : value,
   )

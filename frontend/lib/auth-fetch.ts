@@ -1,4 +1,4 @@
-import { getStoredToken, clearSession } from "@/lib/session";
+import { clearSession } from "@/lib/session";
 
 function handleUnauthorized(): void {
   clearSession();
@@ -7,7 +7,7 @@ function handleUnauthorized(): void {
   }
 }
 
-/** fetch autenticado: envia cookie httpOnly e, se existir, Bearer legado. */
+/** fetch autenticado via cookie httpOnly (sem Bearer legado). */
 export async function authFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
@@ -15,10 +15,6 @@ export async function authFetch(
   const headers = new Headers(init.headers ?? undefined);
   if (!headers.has("X-Alleone-Api")) {
     headers.set("X-Alleone-Api", "1");
-  }
-  const token = getStoredToken();
-  if (token && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(input, {

@@ -17,7 +17,7 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  canCreateTicketsAndAppointments,
+  canCreateTicket,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import { TICKETS_NEW_SUBTITLE } from "@/lib/module-copy";
@@ -219,7 +219,7 @@ export default function NewTicketPage() {
     }
   }
 
-  const canCreate = canCreateTicketsAndAppointments();
+  const canCreate = canCreateTicket();
 
   return (
     <ProtectedPage>

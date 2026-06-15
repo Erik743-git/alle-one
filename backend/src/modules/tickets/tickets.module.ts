@@ -2,14 +2,21 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { TifluxModule } from '../tiflux/tiflux.module';
 import { TicketsController } from './tickets.controller';
+import { FileStorageModule } from '../../common/storage/file-storage.module';
 import { TicketsOutboxJob } from './tickets-outbox.job';
 import { TicketsOutboxService } from './tickets-outbox.service';
+import { TicketsReconcileService } from './tickets-reconcile.service';
 import { TicketsService } from './tickets.service';
 
 @Module({
-  imports: [PrismaModule, TifluxModule],
+  imports: [PrismaModule, TifluxModule, FileStorageModule],
   controllers: [TicketsController],
-  providers: [TicketsService, TicketsOutboxService, TicketsOutboxJob],
-  exports: [TicketsService, TicketsOutboxService],
+  providers: [
+    TicketsService,
+    TicketsOutboxService,
+    TicketsOutboxJob,
+    TicketsReconcileService,
+  ],
+  exports: [TicketsService, TicketsOutboxService, TicketsReconcileService],
 })
 export class TicketsModule {}
