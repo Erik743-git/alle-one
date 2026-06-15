@@ -61,8 +61,12 @@ const LOGIN_SESSION_ERROR =
   "Não foi possível concluir o login. Tente novamente ou entre em contato com um administrador.";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_email_required:
+    "Informe o e-mail cadastrado no portal antes de usar Google ou Microsoft.",
   oauth_not_registered:
     "Este e-mail não está cadastrado no portal. Peça acesso a um administrador.",
+  oauth_email_mismatch:
+    "A conta Google/Microsoft não corresponde ao e-mail informado. Use a conta correta ou peça acesso a um administrador.",
   oauth_not_verified:
     "O provedor não confirmou o e-mail. Tente outra conta ou use senha.",
   oauth_inactive: "Usuário inativo. Entre em contato com um administrador.",
@@ -78,12 +82,21 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 function buildOAuthUrl(provider: "google" | "microsoft", emailHint: string) {
-  const params = new URLSearchParams();
-  if (emailHint.trim()) {
-    params.set("email", emailHint.trim());
+  const params = new URLSearchParams({ email: emailHint });
+  return `${API_URL}/auth/${provider}?${params.toString()}`;
+}
+
+function startOAuth(
+  provider: "google" | "microsoft",
+  emailHint: string,
+  setErro: (msg: string) => void,
+) {
+  const trimmed = emailHint.trim();
+  if (!trimmed) {
+    setErro(OAUTH_ERROR_MESSAGES.oauth_email_required);
+    return;
   }
-  const query = params.toString();
-  return `${API_URL}/auth/${provider}${query ? `?${query}` : ""}`;
+  window.location.href = buildOAuthUrl(provider, trimmed);
 }
 
 function LoginPageContent() {
@@ -382,7 +395,7 @@ function LoginPageContent() {
                         variant="outline"
                         disabled={carregando}
                         onClick={() => {
-                          window.location.href = buildOAuthUrl("google", email);
+                          startOAuth("google", email, setErro);
                         }}
                         className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
                       >
@@ -396,10 +409,7 @@ function LoginPageContent() {
                         variant="outline"
                         disabled={carregando}
                         onClick={() => {
-                          window.location.href = buildOAuthUrl(
-                            "microsoft",
-                            email,
-                          );
+                          startOAuth("microsoft", email, setErro);
                         }}
                         className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
                       >

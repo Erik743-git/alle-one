@@ -99,24 +99,52 @@ export function clearOAuthStateCookie(res: Response): void {
   });
 }
 
+function trimPublicBaseUrl(url: string): string {
+  return url.replace(/\/$/, '');
+}
+
+/** Evita usar localhost do FRONTEND_URL como callback (dev usa AUTH_OAUTH_CALLBACK_BASE_URL ou API direta). */
+function isLoopbackOrigin(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url);
+}
+
 export function getOAuthCallbackBaseUrl(): string {
   const explicit = process.env.AUTH_OAUTH_CALLBACK_BASE_URL?.trim();
   if (explicit) {
-    return explicit.replace(/\/$/, '');
+    return trimPublicBaseUrl(explicit);
   }
 
   const apiPublic = process.env.API_PUBLIC_URL?.trim();
   if (apiPublic) {
-    return apiPublic.replace(/\/$/, '');
+    return trimPublicBaseUrl(apiPublic);
   }
 
-  // Callback sempre na API — nunca usar FRONTEND_URL (porta 3000 não tem as rotas /auth).
+  // Produção (Nginx): /auth no domínio público é repassado para a API na mesma origem.
+  const portalPublic = process.env.PORTAL_PUBLIC_URL?.trim();
+  if (portalPublic) {
+    return trimPublicBaseUrl(portalPublic);
+  }
+
+  const frontend = process.env.FRONTEND_URL?.trim();
+  if (frontend && !isLoopbackOrigin(frontend)) {
+    return trimPublicBaseUrl(frontend);
+  }
+
   const port = process.env.PORT?.trim() || '3002';
   return `http://127.0.0.1:${port}`;
 }
 
 export function oauthCallbackUrl(provider: OAuthProvider): string {
   return `${getOAuthCallbackBaseUrl()}/auth/${provider}/callback`;
+}
+
+export function oauthEmailsMatch(
+  emailHint: string | undefined,
+  profileEmail: string,
+): boolean {
+  const hint = emailHint?.trim();
+  if (!hint) return false;
+  return hint.toLowerCase() === profileEmail.trim().toLowerCase();
 }
 
 export function oauthLoginRedirect(error?: string, firstAccess?: boolean): string {

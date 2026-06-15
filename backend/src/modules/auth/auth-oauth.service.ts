@@ -14,6 +14,7 @@ import {
   clearOAuthStateCookie,
   createOAuthState,
   oauthCallbackUrl,
+  oauthEmailsMatch,
   oauthLoginRedirect,
   OAUTH_STATE_COOKIE,
   parseOAuthState,
@@ -78,39 +79,54 @@ export class AuthOAuthService {
   }
 
   startGoogle(res: Response, emailHint?: string): void {
-    if (!this.isGoogleConfigured()) {
-      throw new BadRequestException('Login com Google não está configurado.');
-    }
-
-    const state = createOAuthState('google', emailHint?.trim() || undefined);
-    attachOAuthStateCookie(res, state);
-
-    const params = new URLSearchParams({
-      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!.trim(),
-      redirect_uri: oauthCallbackUrl('google'),
-      response_type: 'code',
-      scope: 'openid email profile',
-      state,
-      access_type: 'online',
-      prompt: 'select_account',
-    });
-
-    if (emailHint?.trim()) {
-      params.set('login_hint', emailHint.trim());
-    }
-
-    res.redirect(
-      `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
-    );
+    void this.startProvider(res, 'google', emailHint);
   }
 
   startMicrosoft(res: Response, emailHint?: string): void {
-    if (!this.isMicrosoftConfigured()) {
+    void this.startProvider(res, 'microsoft', emailHint);
+  }
+
+  private async startProvider(
+    res: Response,
+    provider: OAuthProvider,
+    emailHint?: string,
+  ): Promise<void> {
+    if (provider === 'google' && !this.isGoogleConfigured()) {
+      throw new BadRequestException('Login com Google não está configurado.');
+    }
+    if (provider === 'microsoft' && !this.isMicrosoftConfigured()) {
       throw new BadRequestException('Login com Microsoft não está configurado.');
     }
 
-    const state = createOAuthState('microsoft', emailHint?.trim() || undefined);
+    const email = emailHint?.trim();
+    if (!email) {
+      res.redirect(oauthLoginRedirect('oauth_email_required'));
+      return;
+    }
+    if (!(await this.assertOAuthUserAvailable(email))) {
+      res.redirect(oauthLoginRedirect('oauth_not_registered'));
+      return;
+    }
+
+    const state = createOAuthState(provider, email);
     attachOAuthStateCookie(res, state);
+
+    if (provider === 'google') {
+      const params = new URLSearchParams({
+        client_id: process.env.GOOGLE_OAUTH_CLIENT_ID!.trim(),
+        redirect_uri: oauthCallbackUrl('google'),
+        response_type: 'code',
+        scope: 'openid email profile',
+        state,
+        access_type: 'online',
+        prompt: 'select_account',
+        login_hint: email,
+      });
+      res.redirect(
+        `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      );
+      return;
+    }
 
     const tenant =
       process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
@@ -121,12 +137,9 @@ export class AuthOAuthService {
       scope: 'openid profile email User.Read offline_access',
       state,
       response_mode: 'query',
+      prompt: 'select_account',
+      login_hint: email,
     });
-
-    if (emailHint?.trim()) {
-      params.set('login_hint', emailHint.trim());
-    }
-
     res.redirect(
       `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`,
     );
@@ -192,6 +205,10 @@ export class AuthOAuthService {
         throw new UnauthorizedException('oauth_profile');
       }
 
+      if (!oauthEmailsMatch(parsedState.emailHint, profile.email)) {
+        throw new UnauthorizedException('oauth_email_mismatch');
+      }
+
       const session = await this.authService.loginWithOAuth({
         provider,
         providerId: profile.providerId,
@@ -216,6 +233,7 @@ export class AuthOAuthService {
 
   private mapOAuthError(message: string): string {
     if (message === 'oauth_not_registered') return 'oauth_not_registered';
+    if (message === 'oauth_email_mismatch') return 'oauth_email_mismatch';
     if (message === 'oauth_not_verified') return 'oauth_not_verified';
     if (message === 'oauth_inactive') return 'oauth_inactive';
     if (message === 'oauth_provider_mismatch') return 'oauth_provider_mismatch';
