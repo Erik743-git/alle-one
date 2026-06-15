@@ -80,7 +80,7 @@ export function PwaInstallHint() {
           <p className="text-sm font-semibold">Instalar Alle One no celular</p>
           {deferredPrompt ? (
             <p className="text-xs text-muted-foreground">
-              Adicione à tela inicial para abrir como app, em tela cheia.
+              Toque em Instalar agora para abrir em tela cheia, sem barra de endereco.
             </p>
           ) : isIos() ? (
             <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
@@ -89,8 +89,8 @@ export function PwaInstallHint() {
             </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No menu do navegador, escolha &quot;Instalar app&quot; ou &quot;Adicionar à tela
-              inicial&quot;.
+              Menu do Chrome: &quot;Instalar app&quot; (nao so atalho). Se aparecer URL no topo,
+              remova o atalho e instale de novo apos o deploy PWA.
             </p>
           )}
         </div>
