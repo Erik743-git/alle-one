@@ -1,21 +1,25 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { LogOut, Shield, User2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { roleDisplayLabel } from "@/lib/app-roles";
-import { clearSession, getStoredUser } from "@/lib/session";
+import { getStoredUser } from "@/lib/session";
+import { useAuth } from "@/lib/use-auth";
 
 export default function SessionPanel({ collapsed = false }: { collapsed?: boolean }) {
-  const router = useRouter();
+  const { signOut } = useAuth();
   const user = getStoredUser();
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  function handleLogout() {
-    clearSession();
-    router.replace("/login");
-    setTimeout(() => {
+  async function handleLogout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await signOut();
+    } finally {
       window.location.replace("/login");
-    }, 50);
+    }
   }
 
   if (!user) {
@@ -27,7 +31,8 @@ export default function SessionPanel({ collapsed = false }: { collapsed?: boolea
       <div className="flex w-full justify-center">
         <Button
           type="button"
-          onClick={handleLogout}
+          disabled={loggingOut}
+          onClick={() => void handleLogout()}
           variant="destructive"
           size="icon"
           className="h-10 w-10 shrink-0 rounded-xl"
@@ -62,7 +67,8 @@ export default function SessionPanel({ collapsed = false }: { collapsed?: boolea
 
       <Button
         type="button"
-        onClick={handleLogout}
+        disabled={loggingOut}
+        onClick={() => void handleLogout()}
         variant="destructive"
         className="mt-4 h-10 w-full rounded-xl"
       >

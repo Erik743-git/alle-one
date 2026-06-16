@@ -104,3 +104,17 @@ export function computeUnionWorkedMinutes(
   }
   return total;
 }
+
+/** Soma bruta dos minutos de cada apontamento (ticket a ticket), sem deduplicar sobreposição. */
+export function computeRawAppointmentMinutes(
+  rows: AppointmentMinutesInput[],
+  filter: WorkedMinutesFilter = 'ALL',
+): number {
+  let total = 0;
+  for (const row of rows) {
+    const kind = overtimeKindFromValorization(row.valorization_raw);
+    if (!matchesFilter(kind, filter)) continue;
+    total += Math.max(0, Math.trunc(Number(row.minutes) || 0));
+  }
+  return total;
+}

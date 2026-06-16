@@ -4,12 +4,22 @@ import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { isPublicRoute } from "./auth";
 import {
-  clearSession,
+  clearSessionSync,
   getStoredUser,
+  logoutSession,
   setStoredUser,
   type AuthUser,
 } from "./session";
-import { API_URL } from "@/lib/env";
+import { API_URL, getBrowserApiBase } from "@/lib/env";
+
+function authMeUrl(): string {
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/me`;
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/me`;
+  }
+  return `${API_URL.replace(/\/$/, "")}/auth/me`;
+}
 
 type AuthContextValue = {
   loading: boolean;
@@ -18,13 +28,14 @@ type AuthContextValue = {
   refreshUser: () => Promise<void>;
   /** Após POST /auth/login — atualiza estado sem depender só do sessionStorage. */
   establishSession: (user: AuthUser) => void;
+  signOut: () => Promise<void>;
 };
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 async function tryRestoreSessionFromCookie(): Promise<AuthUser | null> {
   try {
-    const res = await fetch(`${API_URL}/auth/me`, {
+    const res = await fetch(authMeUrl(), {
       method: "GET",
       credentials: "include",
     });
@@ -54,6 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(nextUser);
   }, []);
 
+  const signOut = React.useCallback(async () => {
+    setUser(null);
+    await logoutSession();
+  }, []);
+
   const refreshUser = React.useCallback(async () => {
     if (refreshInFlight.current) {
       await refreshInFlight.current;
@@ -73,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      clearSession();
+      clearSessionSync();
       setUser(null);
     })();
 
@@ -118,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     if (!authenticated) {
       if (!isPublicRoute(pathname)) {
-        clearSession();
+        void logoutSession().finally(() => setUser(null));
         router.replace("/login");
       }
       return;
@@ -135,8 +151,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       refreshUser,
       establishSession,
+      signOut,
     }),
-    [loading, authenticated, user, refreshUser, establishSession],
+    [loading, authenticated, user, refreshUser, establishSession, signOut],
   );
 
   return (

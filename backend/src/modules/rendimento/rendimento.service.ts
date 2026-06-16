@@ -28,7 +28,7 @@ import {
   type RendimentoDayEventStatus,
   type UpsertDayEventInput,
 } from './rendimento-day-events.helper';
-import { computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
+import { computeRawAppointmentMinutes, computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
 import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -109,6 +109,8 @@ export type RendimentoTimesheetDto = {
   rangeEnd: string;
   totalMinutes: number;
   totalHoursFormatted: string;
+  totalRawMinutes: number;
+  totalRawHoursFormatted: string;
   periodOvertimeMinutes: number;
   periodOvertimeFormatted: string;
   periodOvertimeRangeLabel: string;
@@ -1509,6 +1511,8 @@ export class RendimentoService {
         rangeEnd: this.toDateOnlyString(end),
         totalMinutes: 0,
         totalHoursFormatted: this.formatMinutes(0),
+        totalRawMinutes: 0,
+        totalRawHoursFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
         periodOvertimeFormatted: this.formatMinutes(0),
         periodOvertimeRangeLabel: resolvePayrollPeriodRange(reference).label,
@@ -1569,6 +1573,7 @@ export class RendimentoService {
     });
 
     let totalMinutes = computeUnionWorkedMinutes(rows, 'ALL');
+    let totalRawMinutes = computeRawAppointmentMinutes(rows, 'ALL');
     if (params.view === 'month') {
       const cal = this.resolveCalendarMonthBounds(reference);
       const calStart = this.toDateOnlyString(cal.start);
@@ -1578,6 +1583,7 @@ export class RendimentoService {
         return day >= calStart && day <= calEnd;
       });
       totalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
+      totalRawMinutes = computeRawAppointmentMinutes(monthRows, 'ALL');
     }
 
     const periodOvertimeMinutes = computeUnionWorkedMinutes(
@@ -1604,6 +1610,8 @@ export class RendimentoService {
       rangeEnd: this.toDateOnlyString(end),
       totalMinutes,
       totalHoursFormatted: this.formatMinutes(totalMinutes),
+      totalRawMinutes,
+      totalRawHoursFormatted: this.formatMinutes(totalRawMinutes),
       periodOvertimeMinutes,
       periodOvertimeFormatted: this.formatMinutes(periodOvertimeMinutes),
       periodOvertimeRangeLabel: payrollPeriod.label,

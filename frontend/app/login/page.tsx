@@ -36,6 +36,10 @@ import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
 import { useAuth } from "@/lib/use-auth";
 import {
+  fetchOAuthProviders,
+  getCachedOAuthProviders,
+} from "@/lib/oauth-providers";
+import {
   GoogleIcon,
   MicrosoftIcon,
 } from "@/components/auth/oauth-provider-icons";
@@ -81,15 +85,25 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 function buildOAuthUrl(provider: "google" | "microsoft", emailHint?: string) {
   const base = getBrowserApiBase();
+  const root = base || (typeof window !== "undefined" ? window.location.origin : API_URL.replace(/\/$/, ""));
   const trimmed = emailHint?.trim();
   if (!trimmed) {
-    return `${base}/auth/${provider}`;
+    return `${root}/auth/${provider}`;
   }
-  return `${base}/auth/${provider}?${new URLSearchParams({ email: trimmed }).toString()}`;
+  return `${root}/auth/${provider}?${new URLSearchParams({ email: trimmed }).toString()}`;
 }
 
 function startOAuth(provider: "google" | "microsoft", emailHint?: string) {
   window.location.href = buildOAuthUrl(provider, emailHint);
+}
+
+function authMeUrl(): string {
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/me`;
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/me`;
+  }
+  return `${API_URL.replace(/\/$/, "")}/auth/me`;
 }
 
 function LoginPageContent() {
@@ -108,11 +122,12 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { loading: authLoading, establishSession } = useAuth();
-  const [oauthProviders, setOauthProviders] = useState({
-    google: false,
-    microsoft: false,
+  const [oauthProviders, setOauthProviders] = useState(() => {
+    return getCachedOAuthProviders() ?? { google: false, microsoft: false };
   });
-  const [oauthProvidersLoading, setOauthProvidersLoading] = useState(true);
+  const [oauthProvidersLoading, setOauthProvidersLoading] = useState(
+    () => getCachedOAuthProviders() == null,
+  );
 
   useEffect(() => {
     const oauthError = searchParams.get("error");
@@ -127,43 +142,38 @@ function LoginPageContent() {
     let cancelled = false;
 
     async function loadOAuthProviders() {
-      const base = getBrowserApiBase();
-      const url = `${base}/auth/oauth/providers`;
-
-      for (let attempt = 0; attempt < 2 && !cancelled; attempt += 1) {
-        try {
-          const res = await fetch(url, { credentials: "include" });
-          if (!res.ok) continue;
-          const data = (await res.json()) as {
-            google?: boolean;
-            microsoft?: boolean;
-          };
-          if (!cancelled) {
-            setOauthProviders({
-              google: Boolean(data.google),
-              microsoft: Boolean(data.microsoft),
-            });
-          }
-          return;
-        } catch {
-          /* retry */
+      try {
+        const status = await fetchOAuthProviders({ retries: 4 });
+        if (!cancelled) {
+          setOauthProviders(status);
         }
-        if (attempt === 0) {
-          await new Promise((r) => setTimeout(r, 400));
+      } catch {
+        const cached = getCachedOAuthProviders();
+        if (!cancelled && cached) {
+          setOauthProviders(cached);
         }
-      }
-
-      if (!cancelled) {
-        setOauthProviders({ google: false, microsoft: false });
+      } finally {
+        if (!cancelled) {
+          setOauthProvidersLoading(false);
+        }
       }
     }
 
-    void loadOAuthProviders().finally(() => {
-      if (!cancelled) setOauthProvidersLoading(false);
+    void loadOAuthProviders();
+
+    const onPageShow = () => {
+      void loadOAuthProviders();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        void loadOAuthProviders();
+      }
     });
 
     return () => {
       cancelled = true;
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, []);
 
@@ -173,7 +183,7 @@ function LoginPageContent() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(`${API_URL}/auth/me`, {
+        const res = await fetch(authMeUrl(), {
           credentials: "include",
         });
         if (!cancelled && res.ok) {

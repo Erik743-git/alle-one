@@ -1,5 +1,6 @@
 import {
   appointmentToInterval,
+  computeRawAppointmentMinutes,
   computeUnionWorkedMinutes,
   mergeIntervals,
 } from './rendimento-worked-minutes.helper';
@@ -61,6 +62,25 @@ describe('rendimento-worked-minutes', () => {
     expect(computeUnionWorkedMinutes(rows, 'EXTRA')).toBe(120);
     expect(computeUnionWorkedMinutes(rows, 'PLANTAO')).toBe(240);
     expect(computeUnionWorkedMinutes(rows, 'ALL')).toBe(360);
+  });
+
+  it('computeRawAppointmentMinutes soma todos os tickets sem deduplicar', () => {
+    const rows = [
+      {
+        appointment_date: '2026-05-10',
+        init_time: '10:00',
+        end_time: '12:00',
+        minutes: 120,
+      },
+      {
+        appointment_date: '2026-05-10',
+        init_time: '10:00',
+        end_time: '11:00',
+        minutes: 60,
+      },
+    ];
+    expect(computeUnionWorkedMinutes(rows)).toBe(120);
+    expect(computeRawAppointmentMinutes(rows)).toBe(180);
   });
 
   it('mergeIntervals une blocos sobrepostos', () => {

@@ -102,6 +102,21 @@ export default function GeradorRelatoriosPage() {
   );
 
   useEffect(() => {
+    if (isRendimento && canSelectAllCompanies) {
+      setCompanyId((prev) =>
+        prev === ALL_COMPANIES_REPORT_VALUE || companies.some((c) => c.id === prev)
+          ? prev || ALL_COMPANIES_REPORT_VALUE
+          : ALL_COMPANIES_REPORT_VALUE,
+      );
+      return;
+    }
+    if (companyId === ALL_COMPANIES_REPORT_VALUE) {
+      setCompanyId(alleCompanyId || companies[0]?.id || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRendimento, canSelectAllCompanies, type]);
+
+  useEffect(() => {
     const allowed = getFormatsForReportType(type);
     if (!allowed.includes(format)) {
       setFormat(allowed[0] ?? "XLSX");
@@ -167,15 +182,18 @@ export default function GeradorRelatoriosPage() {
 
       const alleId =
         comps.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "";
-      const defaultCompanyId =
-        pickCompanyIdFromList(comps, {
-          userId: user?.id,
-          preferredIds: [
-            companyId,
-            alleId,
-            user?.role === "CLIENT" ? user.companyId : null,
-          ],
-        }) ?? "";
+      const canAll =
+        (type || "1") === "1" && user?.role !== "CLIENT";
+      const defaultCompanyId = canAll
+        ? ALL_COMPANIES_REPORT_VALUE
+        : pickCompanyIdFromList(comps, {
+            userId: user?.id,
+            preferredIds: [
+              companyId === ALL_COMPANIES_REPORT_VALUE ? null : companyId,
+              alleId,
+              user?.role === "CLIENT" ? user.companyId : null,
+            ],
+          }) ?? "";
 
       setCompanyId(defaultCompanyId);
 
@@ -353,7 +371,13 @@ export default function GeradorRelatoriosPage() {
                     value={companyId}
                     onChange={(id) => {
                       setCompanyId(id);
-                      if (user?.id) setPersistedCompanyId(user.id, id || null);
+                      if (
+                        user?.id &&
+                        id &&
+                        id !== ALL_COMPANIES_REPORT_VALUE
+                      ) {
+                        setPersistedCompanyId(user.id, id);
+                      }
                     }}
                     options={companyOptions}
                     loading={carregando}

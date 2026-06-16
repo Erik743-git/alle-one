@@ -419,6 +419,14 @@ export function RendimentoTimelineCalendar({
             <p className="text-2xl font-bold text-foreground">
               {loading && !timesheet ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
             </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Total apontamentos (ticket a ticket)
+            </p>
+            <p className="text-lg font-semibold text-foreground">
+              {loading && !timesheet
+                ? "—"
+                : timesheet?.totalRawHoursFormatted ?? "00:00"}
+            </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">

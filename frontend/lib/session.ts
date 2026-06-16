@@ -1,4 +1,4 @@
-import { API_URL } from "@/lib/env";
+import { API_URL, getBrowserApiBase } from "@/lib/env";
 import type { ModulePermission } from "./permission-modules";
 
 export type AuthUser = {
@@ -16,6 +16,15 @@ export type AuthUser = {
 /** @deprecated Sessão usa apenas cookie httpOnly — chave mantida para limpeza de legado. */
 export const TOKEN_KEY = "alleone.token";
 export const USER_KEY = "alleone.user";
+
+function authLogoutUrl(): string {
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/logout`;
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/logout`;
+  }
+  return `${API_URL.replace(/\/$/, "")}/auth/logout`;
+}
 
 function readUserRaw(): string | null {
   if (typeof window === "undefined") {
@@ -83,7 +92,7 @@ export function setSession(_token: string | null | undefined, user: AuthUser) {
   setStoredUser(user);
 }
 
-function clearSessionSync() {
+export function clearSessionSync() {
   if (typeof window === "undefined") {
     return;
   }
@@ -92,15 +101,22 @@ function clearSessionSync() {
   window.localStorage.removeItem(TOKEN_KEY);
 }
 
-export function clearSession() {
+/** Encerra sessão na API e limpa dados locais. */
+export async function logoutSession(): Promise<void> {
   clearSessionSync();
   if (typeof window === "undefined") {
     return;
   }
-  void fetch(`${API_URL}/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-  }).catch(() => {
+  try {
+    await fetch(authLogoutUrl(), {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch {
     /* API pode estar offline ao limpar sessão local */
-  });
+  }
+}
+
+export function clearSession() {
+  void logoutSession();
 }

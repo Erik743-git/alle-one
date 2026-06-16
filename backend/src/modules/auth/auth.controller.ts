@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import { AuthOAuthService } from './auth-oauth.service';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -38,6 +38,7 @@ export class AuthController {
   ) {}
 
   @Public()
+  @SkipThrottle()
   @Get('oauth/providers')
   oauthProviders() {
     return this.authOAuth.getProvidersStatus();

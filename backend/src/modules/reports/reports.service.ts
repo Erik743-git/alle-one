@@ -2572,7 +2572,14 @@ export class ReportsService {
     }
 
     const reportCompanyId =
-      rendimentoScope?.representativeCompanyId ?? companyId;
+      rendimentoScope?.representativeCompanyId ??
+      (companyId === ALL_COMPANIES_REPORT_ID ? '' : companyId);
+    if (!reportCompanyId) {
+      throw new BadRequestException(
+        'Não foi possível resolver o escopo de empresas para o relatório.',
+      );
+    }
+
     const company = await this.prisma.company.findFirst({
       where: { id: reportCompanyId, deletedAt: null },
       select: { id: true, name: true },
