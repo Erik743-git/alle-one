@@ -14,7 +14,6 @@ import {
   clearOAuthStateCookie,
   createOAuthState,
   oauthCallbackUrl,
-  oauthEmailsMatch,
   oauthLoginRedirect,
   OAUTH_STATE_COOKIE,
   parseOAuthState,
@@ -85,7 +84,7 @@ export class AuthOAuthService {
   private async startProvider(
     res: Response,
     provider: OAuthProvider,
-    emailHint?: string,
+    _emailHint?: string,
   ): Promise<void> {
     if (provider === 'google' && !this.isGoogleConfigured()) {
       throw new BadRequestException('Login com Google não está configurado.');
@@ -94,13 +93,7 @@ export class AuthOAuthService {
       throw new BadRequestException('Login com Microsoft não está configurado.');
     }
 
-    const email = emailHint?.trim();
-    if (email && !(await this.assertOAuthUserAvailable(email))) {
-      res.redirect(oauthLoginRedirect('oauth_not_registered'));
-      return;
-    }
-
-    const state = createOAuthState(provider, email || undefined);
+    const state = createOAuthState(provider);
     attachOAuthStateCookie(res, state);
 
     if (provider === 'google') {
@@ -113,9 +106,6 @@ export class AuthOAuthService {
         access_type: 'online',
         prompt: 'select_account',
       });
-      if (email) {
-        params.set('login_hint', email);
-      }
       res.redirect(
         `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
       );
@@ -133,9 +123,6 @@ export class AuthOAuthService {
       response_mode: 'query',
       prompt: 'select_account',
     });
-    if (email) {
-      params.set('login_hint', email);
-    }
     res.redirect(
       `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`,
     );
@@ -201,10 +188,6 @@ export class AuthOAuthService {
         throw new UnauthorizedException('oauth_profile');
       }
 
-      if (!oauthEmailsMatch(parsedState.emailHint, profile.email)) {
-        throw new UnauthorizedException('oauth_email_mismatch');
-      }
-
       const session = await this.authService.loginWithOAuth({
         provider,
         providerId: profile.providerId,
@@ -229,7 +212,6 @@ export class AuthOAuthService {
 
   private mapOAuthError(message: string): string {
     if (message === 'oauth_not_registered') return 'oauth_not_registered';
-    if (message === 'oauth_email_mismatch') return 'oauth_email_mismatch';
     if (message === 'oauth_not_verified') return 'oauth_not_verified';
     if (message === 'oauth_inactive') return 'oauth_inactive';
     if (message === 'oauth_provider_mismatch') return 'oauth_provider_mismatch';

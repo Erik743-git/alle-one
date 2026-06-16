@@ -67,8 +67,6 @@ const LOGIN_SESSION_ERROR =
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_not_registered:
     "Este e-mail não está cadastrado no portal. Peça acesso a um administrador.",
-  oauth_email_mismatch:
-    "A conta Google/Microsoft não corresponde ao e-mail informado. Use a conta correta ou peça acesso a um administrador.",
   oauth_not_verified:
     "O provedor não confirmou o e-mail. Tente outra conta ou use senha.",
   oauth_inactive: "Usuário inativo. Entre em contato com um administrador.",
@@ -83,18 +81,14 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     "Não foi possível obter o e-mail da conta Microsoft. Tente outra conta ou use senha.",
 };
 
-function buildOAuthUrl(provider: "google" | "microsoft", emailHint?: string) {
+function buildOAuthUrl(provider: "google" | "microsoft") {
   const base = getBrowserApiBase();
   const root = base || (typeof window !== "undefined" ? window.location.origin : API_URL.replace(/\/$/, ""));
-  const trimmed = emailHint?.trim();
-  if (!trimmed) {
-    return `${root}/auth/${provider}`;
-  }
-  return `${root}/auth/${provider}?${new URLSearchParams({ email: trimmed }).toString()}`;
+  return `${root}/auth/${provider}`;
 }
 
-function startOAuth(provider: "google" | "microsoft", emailHint?: string) {
-  window.location.href = buildOAuthUrl(provider, emailHint);
+function startOAuth(provider: "google" | "microsoft") {
+  window.location.href = buildOAuthUrl(provider);
 }
 
 function authMeUrl(): string {
@@ -445,7 +439,7 @@ function LoginPageContent() {
                         variant="outline"
                         disabled={carregando}
                         onClick={() => {
-                          startOAuth("google", email);
+                          startOAuth("google");
                         }}
                         className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
                       >
@@ -459,7 +453,7 @@ function LoginPageContent() {
                         variant="outline"
                         disabled={carregando}
                         onClick={() => {
-                          startOAuth("microsoft", email);
+                          startOAuth("microsoft");
                         }}
                         className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
                       >
