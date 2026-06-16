@@ -45,7 +45,14 @@ SYNC_API_KEY="gere_uma_chave_longa"
 PORT=3031
 ZABBIX_SYNC_AUTOSTART=true
 ZABBIX_SYNC_CRON_ENABLED=true
+ZABBIX_SYNC_CRON_INTERVAL_MINUTES=2
+ZABBIX_SYNC_CHAIN_BACKFILL=true
+ZABBIX_SYNC_CHAIN_DELAY_SEC=45
 ```
+
+Para popular o histórico mais rápido, use `ZABBIX_SYNC_CRON_INTERVAL_MINUTES=1` e aumente
+`ZABBIX_SYNC_EVENTS_MAX_PAGES` (ex.: `120`). Depois que `backfill_done` estiver `true` em todos
+os grupos, volte o intervalo para `5` ou `15` minutos.
 
 ---
 
