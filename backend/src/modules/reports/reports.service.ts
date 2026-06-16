@@ -496,7 +496,12 @@ export class ReportsService {
           ];
           this.styleTipo4DataRow(row, zebra, colCount);
           row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
-          row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+          row.getCell(2).alignment = {
+            horizontal: 'left',
+            indent: 1,
+            wrapText: true,
+            vertical: 'middle',
+          };
           row.getCell(3).font = this.tipo4SeverityFont(e.severity);
           row.getCell(3).alignment = { horizontal: 'center' };
           row.getCell(4).alignment = { horizontal: 'center' };
@@ -519,9 +524,9 @@ export class ReportsService {
     }
 
     sheet.getColumn(1).width = 22;
-    sheet.getColumn(2).width = 34;
-    sheet.getColumn(3).width = 42;
-    sheet.getColumn(4).width = 14;
+    sheet.getColumn(2).width = 48;
+    sheet.getColumn(3).width = 14;
+    sheet.getColumn(4).width = 8;
     sheet.getColumn(5).width = 10;
 
     sheet.views = [{ state: 'frozen', ySplit: 3, activeCell: 'A4' }];

@@ -1047,14 +1047,14 @@ export default function DashboardPage() {
                 {hostsPorMes.map((month) => (
                   <div
                     key={month.monthKey}
-                    className="overflow-hidden rounded-2xl border border-border"
+                    className="min-w-0 overflow-hidden rounded-2xl border border-border"
                   >
                     <div className="bg-primary/15 px-4 py-3 text-xl font-bold text-foreground">
                       {month.monthLabel}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2">
-                      <div className="border-r border-border">
+                      <div className="min-w-0 overflow-hidden border-border md:border-r">
                         <div className="bg-muted/60 px-4 py-3 font-bold text-foreground">
                           High
                         </div>
@@ -1062,10 +1062,15 @@ export default function DashboardPage() {
                           (item, index) => (
                             <div
                               key={`${month.monthKey}-high-${index}`}
-                              className="flex items-center justify-between border-t border-border/60 px-4 py-3"
+                              className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3"
                             >
-                              <span className="text-muted-foreground">{item.host}</span>
-                              <span className="font-bold text-foreground">
+                              <span
+                                className="min-w-0 flex-1 truncate text-sm text-muted-foreground"
+                                title={item.host}
+                              >
+                                {item.host}
+                              </span>
+                              <span className="shrink-0 tabular-nums font-bold text-foreground">
                                 {item.quantity}
                               </span>
                             </div>
@@ -1073,7 +1078,7 @@ export default function DashboardPage() {
                         )}
                       </div>
 
-                      <div>
+                      <div className="min-w-0 overflow-hidden">
                         <div className="bg-muted/60 px-4 py-3 font-bold text-foreground">
                           Disaster
                         </div>
@@ -1082,10 +1087,15 @@ export default function DashboardPage() {
                           : [{ host: "--", quantity: 0 }]).map((item, index) => (
                           <div
                             key={`${month.monthKey}-disaster-${index}`}
-                            className="flex items-center justify-between border-t border-border/60 px-4 py-3"
+                            className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3"
                           >
-                            <span className="text-muted-foreground">{item.host}</span>
-                            <span className="font-bold text-foreground">
+                            <span
+                              className="min-w-0 flex-1 truncate text-sm text-muted-foreground"
+                              title={item.host}
+                            >
+                              {item.host}
+                            </span>
+                            <span className="shrink-0 tabular-nums font-bold text-foreground">
                               {item.quantity}
                             </span>
                           </div>
