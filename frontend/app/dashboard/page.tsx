@@ -294,6 +294,11 @@ export default function DashboardPage() {
 
   const completeRequestIdRef = useRef(0);
   const autoRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dashboardSnapshotRef = useRef<DashboardCompleteResponse | null>(null);
+
+  useEffect(() => {
+    dashboardSnapshotRef.current = dashboard;
+  }, [dashboard]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -512,8 +517,12 @@ export default function DashboardPage() {
             ? err.message
             : "Não foi possível carregar o dashboard.";
 
-        setError(message);
-        setDashboard(null);
+        const hadData = dashboardSnapshotRef.current !== null;
+        setError(
+          hadData
+            ? `${message} Exibindo os últimos dados carregados (podem estar desatualizados).`
+            : message,
+        );
       } finally {
         if (requestId === completeRequestIdRef.current) {
           setInitialLoading(false);

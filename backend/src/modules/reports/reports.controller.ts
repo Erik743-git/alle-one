@@ -96,6 +96,7 @@ export class ReportsController {
   @Get('hours-usage.csv')
   @RequirePermission(PermissionModule.REPORTS, 'canView')
   async hoursUsageCsv(
+    @CurrentUser() user: AuthenticatedRequestUser,
     @Query('companyId') companyId: string,
     @Res({ passthrough: true }) res: Response,
     @Query('month') month?: string, // legado (YYYY-MM)
@@ -110,6 +111,7 @@ export class ReportsController {
     const end = new Date(y, m, 0, 23, 59, 59, 999);
 
     const csv = await this.reports.generateHoursUsageCsv({
+      user,
       companyId,
       start,
       end,

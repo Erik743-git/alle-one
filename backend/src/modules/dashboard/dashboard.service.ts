@@ -1994,6 +1994,12 @@ export class DashboardService {
     params: DashboardFilters,
   ): Promise<DashboardResponse> {
     const scoped = await this.scopeDashboardFilters(user, params);
+    const { startDate, endDate } = getRange(scoped.start, scoped.end);
+    const integrations = await this.integrations.resolveIntegrations(scoped);
+    await this.zabbixService.invalidateDashboardCache(
+      integrations.zabbixGroupName,
+      { startDate, endDate },
+    );
     this.invalidateCache(scoped);
     return this.getCompleteDashboard(user, params, { includeHours: true });
   }

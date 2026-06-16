@@ -1033,10 +1033,6 @@ export class RendimentoService {
       )) ?? [];
 
     const current = existing[0];
-    const status = input.status ?? current?.status ?? 'ACTIVE';
-    const debitProtected =
-      input.debitProtected ?? current?.debit_protected ?? false;
-
     if (current) {
       const lockedOvertime =
         (current.event_type === 'OVERTIME' ||
@@ -1047,30 +1043,54 @@ export class RendimentoService {
       if (lockedOvertime) {
         return current.id;
       }
+    }
 
-      await this.prisma.$executeRawUnsafe(
+    const status = input.status ?? current?.status ?? 'ACTIVE';
+    const debitProtected =
+      input.debitProtected ?? current?.debit_protected ?? false;
+    const id = current?.id ?? newDayEventId();
+    const minutes = Math.max(0, Math.trunc(input.minutes));
+    const dateRef = input.dateRef.slice(0, 10);
+
+    const upserted =
+      (await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
         `
-        UPDATE rendimento_day_events
-        SET
-          from_time = $3::time,
-          to_time = $4::time,
-          minutes = $5,
-          appointment_external_id = $6,
-          justification_id = $7,
-          label = $8,
-          description = $9,
-          reason = $10,
-          status = $11,
-          debit_protected = $12,
+        INSERT INTO rendimento_day_events (
+          id, user_id, date_ref, event_type, from_time, to_time, minutes,
+          appointment_external_id, justification_id, label, description, reason,
+          status, debit_protected, source_key
+        ) VALUES (
+          $1, $2, $3::date, $4, $5::time, $6::time, $7,
+          $8, $9, $10, $11, $12,
+          $13, $14, $15
+        )
+        ON CONFLICT (user_id, source_key) DO UPDATE SET
+          from_time = EXCLUDED.from_time,
+          to_time = EXCLUDED.to_time,
+          minutes = EXCLUDED.minutes,
+          appointment_external_id = EXCLUDED.appointment_external_id,
+          justification_id = EXCLUDED.justification_id,
+          label = EXCLUDED.label,
+          description = EXCLUDED.description,
+          reason = EXCLUDED.reason,
+          status = EXCLUDED.status,
+          debit_protected = EXCLUDED.debit_protected,
           deleted_at = NULL,
           updated_at = NOW()
-        WHERE id = $1 AND user_id = $2
+        WHERE NOT (
+          rendimento_day_events.event_type IN ('OVERTIME', 'PLANTAO')
+          AND rendimento_day_events.status = 'APPROVED'
+          AND rendimento_day_events.debit_protected = true
+        )
+        RETURNING id
       `,
-        current.id,
+        id,
         input.userId,
+        dateRef,
+        input.eventType,
         fromTime,
         toTime,
-        Math.max(0, Math.trunc(input.minutes)),
+        minutes,
         input.appointmentExternalId ?? null,
         input.justificationId ?? null,
         input.label ?? null,
@@ -1078,40 +1098,14 @@ export class RendimentoService {
         input.reason ?? null,
         status,
         debitProtected,
-      );
-      return current.id;
+        sourceKey,
+      )) ?? [];
+
+    if (upserted[0]?.id) {
+      return upserted[0].id;
     }
 
-    const id = newDayEventId();
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO rendimento_day_events (
-        id, user_id, date_ref, event_type, from_time, to_time, minutes,
-        appointment_external_id, justification_id, label, description, reason,
-        status, debit_protected, source_key
-      ) VALUES (
-        $1, $2, $3::date, $4, $5::time, $6::time, $7,
-        $8, $9, $10, $11, $12,
-        $13, $14, $15
-      )
-    `,
-      id,
-      input.userId,
-      input.dateRef.slice(0, 10),
-      input.eventType,
-      fromTime,
-      toTime,
-      Math.max(0, Math.trunc(input.minutes)),
-      input.appointmentExternalId ?? null,
-      input.justificationId ?? null,
-      input.label ?? null,
-      input.description ?? null,
-      input.reason ?? null,
-      status,
-      debitProtected,
-      sourceKey,
-    );
-    return id;
+    return current?.id ?? id;
   }
 
   private async purgeAutoGapEventsForDay(

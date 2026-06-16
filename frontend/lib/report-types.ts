@@ -1,5 +1,8 @@
 export type ReportFormatOption = "CSV" | "XLSX";
 
+/** Valor enviado ao backend para relatório de apontamentos de todas as empresas. */
+export const ALL_COMPANIES_REPORT_VALUE = "__all__";
+
 export const REPORT_TYPES = [
   {
     value: "1",

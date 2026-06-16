@@ -1,9 +1,14 @@
+import { randomUUID } from 'crypto';
 import {
   BadGatewayException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ZabbixDbService } from './zabbix-db.service';
+import type { ZabbixDashboardDetails } from './zabbix.types';
 
 type ZabbixGroup = {
   groupid: string;
@@ -137,10 +142,122 @@ type ZabbixOverview = {
   problemasMedia: number;
 };
 
+export type { ZabbixDashboardDetails } from './zabbix.types';
+
 @Injectable()
 export class ZabbixService {
+  private readonly logger = new Logger(ZabbixService.name);
   private readonly url: string = process.env.ZABBIX_URL ?? '';
   private readonly token: string = process.env.ZABBIX_TOKEN ?? '';
+  private readonly dashboardCacheEnabled =
+    process.env.ZABBIX_DASHBOARD_CACHE_ENABLED !== 'false';
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly zabbixDb: ZabbixDbService,
+  ) {}
+
+  /** Cache em Postgres (external_api_cache). Env: ZABBIX_DASHBOARD_CACHE_MS */
+  private getDashboardCacheTtlMs(): number {
+    const raw = process.env.ZABBIX_DASHBOARD_CACHE_MS;
+    const n = raw !== undefined ? Number(raw) : 3_600_000;
+    if (!Number.isFinite(n)) {
+      return 3_600_000;
+    }
+    return Math.min(Math.max(Math.trunc(n), 60_000), 86_400_000);
+  }
+
+  private buildDashboardCacheKey(
+    groupid: string,
+    range: { time_from: number; time_till: number },
+  ): string {
+    return `zabbix:dashboard:v2:${groupid}:${range.time_from}:${range.time_till}`;
+  }
+
+  private async getDashboardCache(
+    cacheKey: string,
+  ): Promise<ZabbixDashboardDetails | null> {
+    if (!this.dashboardCacheEnabled) {
+      return null;
+    }
+
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ payload: unknown; expires_at: Date }>
+      >`
+        select payload, expires_at
+        from external_api_cache
+        where cache_key = ${cacheKey}
+        limit 1
+      `;
+      const row = rows[0];
+      if (!row || row.expires_at.getTime() <= Date.now()) {
+        return null;
+      }
+      return row.payload as ZabbixDashboardDetails;
+    } catch {
+      return null;
+    }
+  }
+
+  private async setDashboardCache(
+    cacheKey: string,
+    payload: ZabbixDashboardDetails,
+  ): Promise<void> {
+    if (!this.dashboardCacheEnabled) {
+      return;
+    }
+
+    const ttlMs = this.getDashboardCacheTtlMs();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + ttlMs);
+
+    try {
+      const id = randomUUID();
+      const payloadJson = JSON.stringify(payload);
+      await this.prisma.$executeRaw`
+        insert into external_api_cache (id, provider, cache_key, payload, fetched_at, expires_at)
+        values (${id}, 'ZABBIX', ${cacheKey}, ${payloadJson}::jsonb, ${now}, ${expiresAt})
+        on conflict (cache_key)
+        do update set
+          provider = excluded.provider,
+          payload = excluded.payload,
+          fetched_at = excluded.fetched_at,
+          expires_at = excluded.expires_at
+      `;
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao gravar cache Zabbix (key=${cacheKey}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  async invalidateDashboardCache(
+    groupName: string,
+    period: number | { startDate: Date; endDate: Date },
+  ): Promise<void> {
+    const groupid = await this.getHostGroupIdByExactName(groupName);
+    if (!groupid) {
+      return;
+    }
+
+    const { range } = this.resolveDashboardPeriod(period);
+    const cacheKey = this.buildDashboardCacheKey(groupid, range);
+
+    try {
+      await this.prisma.$executeRaw`
+        delete from external_api_cache where cache_key = ${cacheKey}
+      `;
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao invalidar cache Zabbix (key=${cacheKey}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   /** Tamanho de página na paginação de event.get do dashboard. Env: ZABBIX_DASHBOARD_EVENTS_LIMIT */
   private getDashboardEventsPageSize(): number {
@@ -189,6 +306,9 @@ export class ZabbixService {
         groupids: [groupid],
         source: 0,
         object: 0,
+        // Dashboard só agrega High (4) e Disaster (5), apenas eventos de problema (value=1).
+        severities: [4, 5],
+        value: 1,
         selectHosts: ['hostid', 'host', 'name'],
         sortfield: ['eventid'],
         sortorder: 'ASC',
@@ -687,12 +807,96 @@ export class ZabbixService {
   async getDashboardDetailsByGroup(
     groupName: string,
     period: number | { startDate: Date; endDate: Date } = 7,
-  ) {
+    options?: { skipCache?: boolean },
+  ): Promise<ZabbixDashboardDetails> {
     const { range, days } = this.resolveDashboardPeriod(period);
+    const startDate = new Date(range.time_from * 1000);
+    const endDate = new Date(range.time_till * 1000);
+
+    const useDbCache = process.env.ZABBIX_USE_DB_CACHE !== 'false';
+    if (useDbCache && !options?.skipCache) {
+      const dbResult = await this.zabbixDb.getDashboardDetailsByGroup(
+        groupName,
+        startDate,
+        endDate,
+      );
+      if (dbResult.usable && dbResult.data) {
+        await this.attachLiveOpenProblems(dbResult.data, groupName);
+        return dbResult.data;
+      }
+      if (dbResult.reason) {
+        this.logger.debug(
+          `Zabbix DB indisponível (${dbResult.reason}); fallback API (${groupName}).`,
+        );
+      }
+    }
+
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return this.emptyDashboardDetails(groupName, days);
     }
+
+    const cacheKey = this.buildDashboardCacheKey(groupid, range);
+    if (!options?.skipCache) {
+      const cached = await this.getDashboardCache(cacheKey);
+      if (cached) {
+        this.logger.debug(
+          `Cache Zabbix dashboard hit (${groupName}, ${range.time_from}-${range.time_till})`,
+        );
+        return cached;
+      }
+    }
+
+    const pack = await this.fetchDashboardDetailsByGroup({
+      groupName,
+      groupid,
+      range,
+      days,
+    });
+
+    void this.setDashboardCache(cacheKey, pack);
+    return pack;
+  }
+
+  /** Problemas abertos continuam ao vivo (consulta leve). */
+  private async attachLiveOpenProblems(
+    pack: ZabbixDashboardDetails,
+    groupName: string,
+  ): Promise<void> {
+    try {
+      const groupid = await this.getHostGroupIdByExactName(groupName);
+      if (!groupid) return;
+
+      const problems = await this.request<ZabbixProblem[]>('problem.get', {
+        output: ['eventid', 'objectid', 'severity', 'name', 'clock'],
+        groupids: [groupid],
+        sortfield: ['eventid'],
+        sortorder: 'DESC',
+      });
+
+      pack.overview.problemasAbertos = problems.length;
+      pack.overview.problemasAlta = problems.filter(
+        (p) => Number(p.severity) >= 4,
+      ).length;
+      pack.overview.problemasMedia = problems.filter(
+        (p) => Number(p.severity) === 3,
+      ).length;
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao buscar problemas abertos (${groupName}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  private async fetchDashboardDetailsByGroup(params: {
+    groupName: string;
+    groupid: string;
+    range: { time_from: number; time_till: number };
+    days: number;
+  }): Promise<ZabbixDashboardDetails> {
+    const { groupName, groupid, range, days } = params;
 
     const [detailedHosts, problems, rawEvents] = await Promise.all([
       this.request<ZabbixDetailedHost[]>('host.get', {

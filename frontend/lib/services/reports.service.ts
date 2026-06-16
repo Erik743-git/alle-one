@@ -16,6 +16,10 @@ export type ReportRow = {
   periodEnd: string;
   generatedBy: string;
   createdAt: string;
+  filters?: {
+    allCompanies?: boolean;
+    companyLabel?: string;
+  } | null;
   file: {
     id: string;
     originalName: string;
@@ -62,7 +66,7 @@ export const reportsService = {
   },
 
   async generate(payload: {
-    companyId: string;
+    companyId?: string;
     type: string;
     format: ReportFormat;
     start: string;

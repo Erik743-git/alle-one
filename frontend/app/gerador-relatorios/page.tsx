@@ -15,6 +15,7 @@ import {
 } from "@/lib/selected-company";
 import { getStoredUser } from "@/lib/session";
 import {
+  ALL_COMPANIES_REPORT_VALUE,
   getFormatsForReportType,
   getReportTypeLabel,
   REPORT_TYPES,
@@ -22,6 +23,13 @@ import {
 } from "@/lib/report-types";
 import { reportsService } from "@/lib/services/reports.service";
 import type { ReportRow } from "@/lib/services/reports.service";
+
+function getReportCompanyLabel(report: ReportRow): string {
+  if (report.filters?.allCompanies) {
+    return report.filters.companyLabel ?? "Todas as empresas";
+  }
+  return report.company?.name ?? "-";
+}
 
 export default function GeradorRelatoriosPage() {
   const user = useMemo(() => getStoredUser(), []);
@@ -62,10 +70,18 @@ export default function GeradorRelatoriosPage() {
     [companies],
   );
   const effectiveCompanyId = companyId;
-  const companyOptions = useMemo(
-    () => companies.map((c) => ({ value: c.id, label: c.name })),
-    [companies],
-  );
+  const canSelectAllCompanies =
+    isRendimento && user?.role !== "CLIENT" && companies.length > 1;
+  const companyOptions = useMemo(() => {
+    const items = companies.map((c) => ({ value: c.id, label: c.name }));
+    if (canSelectAllCompanies) {
+      return [
+        { value: ALL_COMPANIES_REPORT_VALUE, label: "Todas as empresas" },
+        ...items,
+      ];
+    }
+    return items;
+  }, [companies, canSelectAllCompanies]);
   const typeOptions = useMemo(
     () => REPORT_TYPES.map((t) => ({ value: t.value, label: t.label })),
     [],
@@ -205,8 +221,14 @@ export default function GeradorRelatoriosPage() {
   async function handleGenerate() {
     setErro("");
 
-    if (!effectiveCompanyId) {
+    const isAllCompanies =
+      isRendimento && effectiveCompanyId === ALL_COMPANIES_REPORT_VALUE;
+    if (!effectiveCompanyId && !isAllCompanies) {
       setErro("Selecione a empresa.");
+      return;
+    }
+    if (!isRendimento && effectiveCompanyId === ALL_COMPANIES_REPORT_VALUE) {
+      setErro("Selecione uma empresa para este tipo de relatório.");
       return;
     }
     if (!start || !end) {
@@ -229,7 +251,7 @@ export default function GeradorRelatoriosPage() {
     try {
       setGerando(true);
       await reportsService.generate({
-        companyId: effectiveCompanyId,
+        companyId: isAllCompanies ? ALL_COMPANIES_REPORT_VALUE : effectiveCompanyId,
         type,
         format,
         start: startDate.toISOString(),
@@ -445,7 +467,7 @@ export default function GeradorRelatoriosPage() {
                       Relatório {getReportTypeLabel(lastReport.type)}
                     </p>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Empresa: {lastReport.company?.name ?? "-"}
+                      Empresa: {getReportCompanyLabel(lastReport)}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       Período:{" "}
@@ -507,7 +529,7 @@ export default function GeradorRelatoriosPage() {
                               {getReportTypeLabel(r.type)}
                             </td>
                             <td className="px-2 py-3">
-                              {r.company?.name ?? "-"}
+                              {getReportCompanyLabel(r)}
                             </td>
                             <td className="px-2 py-3">
                               {String(r.periodStart).slice(0, 10)} →{" "}

@@ -29,6 +29,7 @@ import { buildTipo4ReportCsv } from './reports-tipo4-csv';
 import { toReportFormat, toReportType } from './reports-type.helper';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4']);
+const ALL_COMPANIES_REPORT_ID = '__all__';
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   '1': 'Rendimento',
@@ -1605,8 +1606,66 @@ export class ReportsService {
     return raw;
   }
 
+  private async resolveRendimentoCompanyScope(
+    user: AuthenticatedRequestUser,
+    companyId: string,
+  ): Promise<{
+    allCompanies: boolean;
+    displayName: string;
+    representativeCompanyId: string;
+    companies: Array<{ id: string; name: string; tifluxClientId: number }>;
+  }> {
+    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
+
+    if (companyId === ALL_COMPANIES_REPORT_ID) {
+      if (user.role === 'CLIENT') {
+        throw new ForbiddenException(
+          'Usuários CLIENT não podem gerar apontamentos de todas as empresas.',
+        );
+      }
+
+      const companies = await this.prisma.company.findMany({
+        where: {
+          id: { in: scopeCompanyIds },
+          deletedAt: null,
+          tifluxClientId: { not: null },
+        },
+        select: { id: true, name: true, tifluxClientId: true },
+        orderBy: { name: 'asc' },
+      });
+
+      const withClient = companies.filter(
+        (c): c is { id: string; name: string; tifluxClientId: number } =>
+          c.tifluxClientId != null,
+      );
+
+      if (!withClient.length) {
+        throw new BadRequestException(
+          'Nenhuma empresa com cliente TiFlux configurado para gerar apontamentos.',
+        );
+      }
+
+      return {
+        allCompanies: true,
+        displayName: 'Todas as empresas',
+        representativeCompanyId: withClient[0].id,
+        companies: withClient,
+      };
+    }
+
+    this.ensureCompanyInScope(companyId, scopeCompanyIds);
+    const company = await this.requireCompanyTifluxClientId(companyId);
+
+    return {
+      allCompanies: false,
+      displayName: company.name,
+      representativeCompanyId: company.id,
+      companies: [company],
+    };
+  }
+
   private async getRendimentoDetailedRows(params: {
-    companyId: string;
+    companies: Array<{ id: string; name: string; tifluxClientId: number }>;
     start: Date;
     end: Date;
     userId?: string | null;
@@ -1625,12 +1684,12 @@ export class ReportsService {
       monthLabel: string;
     }>
   > {
-    const company = await this.requireCompanyTifluxClientId(params.companyId);
     const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
     const startDateOnly = toDateOnlyISO(params.start);
     const endDateOnly = toDateOnlyISO(params.end);
+    const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
 
     const rows =
       (await this.prisma.$queryRaw<
@@ -1661,7 +1720,7 @@ export class ReportsService {
         from tiflux.ticket_appointments a
         inner join tiflux.tickets t
           on t.ticket_number = a.ticket_number
-        where t.client_external_id = ${company.tifluxClientId}
+        where t.client_external_id = any(${tifluxClientIds}::int[])
           and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
           and a.user_name is not null
           and trim(a.user_name) <> ''
@@ -1733,27 +1792,36 @@ export class ReportsService {
   }
 
   private async getHoursUsageRows(params: {
-    companyId: string;
+    companies: Array<{ id: string; name: string; tifluxClientId: number }>;
     start: Date;
     end: Date;
     userId?: string | null;
-  }): Promise<Array<{ day: string; user: string; minutes: number }>> {
-    const company = await this.requireCompanyTifluxClientId(params.companyId);
+  }): Promise<Array<{ day: string; user: string; minutes: number; company: string }>> {
     const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
 
     const startDateOnly = toDateOnlyISO(params.start);
     const endDateOnly = toDateOnlyISO(params.end);
+    const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
+    const companyNameByTifluxId = new Map(
+      params.companies.map((c) => [c.tifluxClientId, c.name]),
+    );
 
     // 1) Tentativa 100% banco (rápida)
     const dbRows =
       (await this.prisma.$queryRaw<
-        Array<{ day: string; user_name: string | null; minutes: number }>
+        Array<{
+          day: string;
+          user_name: string | null;
+          minutes: number;
+          client_external_id: number;
+        }>
       >`
         select
           a.appointment_date::date::text as day,
           a.user_name,
+          t.client_external_id,
           sum(
             case
               when a.init_time is null or a.end_time is null then 0
@@ -1764,7 +1832,7 @@ export class ReportsService {
         from tiflux.ticket_appointments a
         inner join tiflux.tickets t
           on t.ticket_number = a.ticket_number
-        where t.client_external_id = ${company.tifluxClientId}
+        where t.client_external_id = any(${tifluxClientIds}::int[])
           and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
           and (
             (${collaboratorFilter.tifluxUserExternalId}::int is null and ${collaboratorFilter.attendantName}::text is null)
@@ -1778,7 +1846,7 @@ export class ReportsService {
               and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
             )
           )
-        group by a.appointment_date::date, a.user_name
+        group by a.appointment_date::date, a.user_name, t.client_external_id
         order by a.appointment_date::date asc, a.user_name asc
       `) ?? [];
 
@@ -1787,61 +1855,67 @@ export class ReportsService {
         day: r.day,
         user: r.user_name ?? 'SEM_USUARIO',
         minutes: Number(r.minutes) || 0,
+        company:
+          companyNameByTifluxId.get(Number(r.client_external_id)) ?? 'Empresa',
       }));
     }
 
     // 2) Fallback: chama API TiFlux e agrega em memória (e as chamadas ficam cacheadas em `external_api_cache`).
     // Observação: TiFlux não tem um endpoint único por "apontamentos no período" por cliente,
     // então buscamos tickets atualizados no intervalo e carregamos appointments por ticket.
-    const tickets = await this.tiflux.getTickets({
-      filter_by: 'all',
-      client_ids: [company.tifluxClientId],
-      update_start_datetime: params.start.toISOString(),
-      update_end_datetime: params.end.toISOString(),
-      limit: 200,
-      offset: 1,
-    });
-
     const byKey = new Map<
       string,
-      { day: string; user: string; minutes: number }
+      { day: string; user: string; minutes: number; company: string }
     >();
 
-    const appointmentLists = await mapWithConcurrency(
-      tickets,
-      6,
-      (t) =>
-        this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
-          start_date: startDateOnly,
-          end_date: endDateOnly,
-          limit: 200,
-        }),
-    );
+    for (const company of params.companies) {
+      const tickets = await this.tiflux.getTickets({
+        filter_by: 'all',
+        client_ids: [company.tifluxClientId],
+        update_start_datetime: params.start.toISOString(),
+        update_end_datetime: params.end.toISOString(),
+        limit: 200,
+        offset: 1,
+      });
 
-    for (const appts of appointmentLists) {
-      for (const a of appts) {
-        const day = String(a.date ?? '').slice(0, 10);
-        if (!day) continue;
-        const user = a.user?.name?.trim() || 'SEM_USUARIO';
-        const minutes = this.getAppointmentMinutes({
-          init_time: a.init_time,
-          end_time: a.end_time,
-        });
-        if (!minutes) continue;
+      const appointmentLists = await mapWithConcurrency(
+        tickets,
+        6,
+        (t) =>
+          this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
+            start_date: startDateOnly,
+            end_date: endDateOnly,
+            limit: 200,
+          }),
+      );
 
-        const key = `${day}::${user}`;
-        const prev = byKey.get(key);
-        if (prev) {
-          prev.minutes += minutes;
-        } else {
-          byKey.set(key, { day, user, minutes });
+      for (const appts of appointmentLists) {
+        for (const a of appts) {
+          const day = String(a.date ?? '').slice(0, 10);
+          if (!day) continue;
+          const user = a.user?.name?.trim() || 'SEM_USUARIO';
+          const minutes = this.getAppointmentMinutes({
+            init_time: a.init_time,
+            end_time: a.end_time,
+          });
+          if (!minutes) continue;
+
+          const key = `${company.id}::${day}::${user}`;
+          const prev = byKey.get(key);
+          if (prev) {
+            prev.minutes += minutes;
+          } else {
+            byKey.set(key, { day, user, minutes, company: company.name });
+          }
         }
       }
     }
 
     return Array.from(byKey.values()).sort(
       (a, b) =>
-        a.day.localeCompare(b.day) || a.user.localeCompare(b.user, 'pt-BR'),
+        a.day.localeCompare(b.day) ||
+        a.company.localeCompare(b.company, 'pt-BR') ||
+        a.user.localeCompare(b.user, 'pt-BR'),
     );
   }
 
@@ -1990,6 +2064,7 @@ export class ReportsService {
    * com base no cache TiFlux (schema `tiflux.*` no Postgres).
    */
   async generateHoursUsageCsv(params: {
+    user: AuthenticatedRequestUser;
     companyId: string;
     start: Date;
     end: Date;
@@ -1999,20 +2074,16 @@ export class ReportsService {
       throw new BadRequestException('companyId é obrigatório');
     }
 
-    const company = await this.prisma.company.findFirst({
-      where: { id: params.companyId, deletedAt: null },
-      select: { id: true, name: true, tifluxClientId: true },
-    });
-    if (!company) throw new NotFoundException('Empresa não encontrada');
-    if (!company.tifluxClientId) {
-      throw new BadRequestException('Empresa sem tifluxClientId');
-    }
+    const scope = await this.resolveRendimentoCompanyScope(
+      params.user,
+      params.companyId.trim(),
+    );
 
     const startDateOnly = toDateOnlyISO(params.start);
     const endDateOnly = toDateOnlyISO(params.end);
 
     const rows = await this.getHoursUsageRows({
-      companyId: params.companyId,
+      companies: scope.companies,
       start: params.start,
       end: params.end,
       userId: params.userId,
@@ -2030,7 +2101,7 @@ export class ReportsService {
     const lines = rows.map((r) => {
       const hours = (Number(r.minutes) / 60).toFixed(2);
       return [
-        escapeCsv(company.name),
+        escapeCsv(r.company),
         escapeCsv(startDateOnly),
         escapeCsv(endDateOnly),
         escapeCsv(r.day),
@@ -2044,14 +2115,20 @@ export class ReportsService {
   }
 
   async generateHoursUsageXlsx(params: {
+    user: AuthenticatedRequestUser;
     companyId: string;
     start: Date;
     end: Date;
     type: string;
     userId?: string | null;
   }) {
+    const scope = await this.resolveRendimentoCompanyScope(
+      params.user,
+      params.companyId.trim(),
+    );
+
     const company = await this.prisma.company.findFirst({
-      where: { id: params.companyId, deletedAt: null },
+      where: { id: scope.representativeCompanyId, deletedAt: null },
       select: {
         id: true,
         name: true,
@@ -2073,7 +2150,7 @@ export class ReportsService {
     const endDateOnly = toDateOnlyISO(params.end);
 
     const rows = await this.getRendimentoDetailedRows({
-      companyId: params.companyId,
+      companies: scope.companies,
       start: params.start,
       end: params.end,
       userId: params.userId,
@@ -2116,7 +2193,7 @@ export class ReportsService {
     sheet.getRow(1).height = 28;
 
     sheet.getCell('A2').value = 'Empresa:';
-    sheet.getCell('B2').value = company.name;
+    sheet.getCell('B2').value = scope.displayName;
     sheet.getCell('A3').value = 'Colaborador:';
     sheet.getCell('B3').value = collaboratorLabel;
     sheet.getCell('A4').value = 'Período:';
@@ -2360,7 +2437,7 @@ export class ReportsService {
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
     const companyId = query.companyId?.trim() || null;
-    if (companyId) {
+    if (companyId && companyId !== ALL_COMPANIES_REPORT_ID) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
@@ -2372,7 +2449,16 @@ export class ReportsService {
 
     return this.prisma.report.findMany({
       where: {
-        companyId: companyId ? companyId : { in: scopeCompanyIds },
+        ...(companyId === ALL_COMPANIES_REPORT_ID
+          ? {
+              filters: {
+                path: ['allCompanies'],
+                equals: true,
+              },
+            }
+          : companyId
+            ? { companyId }
+            : { companyId: { in: scopeCompanyIds } }),
         ...(query.type?.trim()
           ? { type: toReportType(query.type.trim()) }
           : {}),
@@ -2406,13 +2492,22 @@ export class ReportsService {
   ) {
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     const companyId = query.companyId?.trim() || null;
-    if (companyId) {
+    if (companyId && companyId !== ALL_COMPANIES_REPORT_ID) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
     return this.prisma.report.findFirst({
       where: {
-        companyId: companyId ? companyId : { in: scopeCompanyIds },
+        ...(companyId === ALL_COMPANIES_REPORT_ID
+          ? {
+              filters: {
+                path: ['allCompanies'],
+                equals: true,
+              },
+            }
+          : companyId
+            ? { companyId }
+            : { companyId: { in: scopeCompanyIds } }),
         ...(query.type?.trim()
           ? { type: toReportType(query.type.trim()) }
           : {}),
@@ -2444,16 +2539,8 @@ export class ReportsService {
       userId?: string | null;
     },
   ) {
-    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     const companyId = payload.companyId?.trim();
     if (!companyId) throw new BadRequestException('companyId é obrigatório');
-    this.ensureCompanyInScope(companyId, scopeCompanyIds);
-
-    const company = await this.prisma.company.findFirst({
-      where: { id: companyId, deletedAt: null },
-      select: { id: true, name: true },
-    });
-    if (!company) throw new NotFoundException('Empresa não encontrada');
 
     const type = payload.type?.trim();
     if (!type) throw new BadRequestException('type é obrigatório');
@@ -2462,6 +2549,30 @@ export class ReportsService {
         'Tipo de relatório inválido. Use Rendimento (1) ou Estatística Geral (4).',
       );
     }
+
+    if (type === '4' && companyId === ALL_COMPANIES_REPORT_ID) {
+      throw new BadRequestException(
+        'Estatística Geral exige uma empresa específica.',
+      );
+    }
+
+    const rendimentoScope =
+      type === '1'
+        ? await this.resolveRendimentoCompanyScope(user, companyId)
+        : null;
+
+    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
+    if (type === '4') {
+      this.ensureCompanyInScope(companyId, scopeCompanyIds);
+    }
+
+    const reportCompanyId =
+      rendimentoScope?.representativeCompanyId ?? companyId;
+    const company = await this.prisma.company.findFirst({
+      where: { id: reportCompanyId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
 
     const format = toReportFormat(payload.format?.trim() || 'XLSX');
     const reportType = toReportType(type);
@@ -2481,7 +2592,12 @@ export class ReportsService {
 
     const uploadsDir = join(process.cwd(), 'uploads', 'reports', reportId);
 
-    const companyPart = safeFilenamePart(company.name) || 'empresa';
+    const companyPart =
+      rendimentoScope?.allCompanies
+        ? 'todas-empresas'
+        : safeFilenamePart(company.name) || 'empresa';
+    const companyLabel =
+      rendimentoScope?.displayName ?? company.name;
     const typePart =
       REPORT_TYPE_SLUGS[type] ??
       `tipo-${safeFilenamePart(reportType) || 'x'}`;
@@ -2504,6 +2620,7 @@ export class ReportsService {
                     end: range.end,
                   })
                 : await this.generateHoursUsageXlsx({
+                    user,
                     companyId,
                     start: range.start,
                     end: range.end,
@@ -2531,6 +2648,7 @@ export class ReportsService {
               mimeType: 'text/csv; charset=utf-8',
               buffer: Buffer.from(
                 await this.generateHoursUsageCsv({
+                  user,
                   companyId,
                   start: range.start,
                   end: range.end,
@@ -2556,7 +2674,7 @@ export class ReportsService {
     const report = await this.prisma.report.create({
       data: {
         id: reportId,
-        companyId,
+        companyId: reportCompanyId,
         type: reportType,
         format,
         status: ReportStatus.READY,
@@ -2564,6 +2682,8 @@ export class ReportsService {
         periodEnd: range.end,
         filters: {
           companyId,
+          companyLabel,
+          ...(rendimentoScope?.allCompanies ? { allCompanies: true } : {}),
           type,
           format,
           start: range.start.toISOString(),
