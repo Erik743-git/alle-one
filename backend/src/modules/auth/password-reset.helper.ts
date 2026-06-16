@@ -2,12 +2,40 @@ import { createHmac, randomInt } from 'crypto';
 
 const RESET_CODE_LENGTH = 8;
 const RESET_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function trimPublicBaseUrl(url: string): string {
+  return url.replace(/\/$/, '');
+}
+
+function isLoopbackOrigin(url: string): boolean {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(url);
+}
+
 export function getFrontendBaseUrl(): string {
-  const raw =
-    process.env.FRONTEND_URL?.trim() ||
-    process.env.PORTAL_PUBLIC_URL?.trim() ||
-    'http://localhost:3000';
-  return raw.replace(/\/$/, '');
+  const portalPublic = process.env.PORTAL_PUBLIC_URL?.trim();
+  if (portalPublic) {
+    return trimPublicBaseUrl(portalPublic);
+  }
+
+  const frontend = process.env.FRONTEND_URL?.trim();
+  const rejectLoopbackInProd =
+    process.env.NODE_ENV === 'production' && frontend && isLoopbackOrigin(frontend);
+
+  if (frontend && !rejectLoopbackInProd) {
+    return trimPublicBaseUrl(frontend);
+  }
+
+  const apiPublic = process.env.API_PUBLIC_URL?.trim();
+  if (apiPublic && !isLoopbackOrigin(apiPublic)) {
+    return trimPublicBaseUrl(apiPublic);
+  }
+
+  const oauthCallback = process.env.AUTH_OAUTH_CALLBACK_BASE_URL?.trim();
+  if (oauthCallback && !isLoopbackOrigin(oauthCallback)) {
+    return trimPublicBaseUrl(oauthCallback);
+  }
+
+  return trimPublicBaseUrl(frontend || 'http://localhost:3000');
 }
 
 export function generatePasswordResetCode(): string {
