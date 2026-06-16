@@ -102,6 +102,13 @@ function formatRangeTitle(view: RendimentoCalendarView, reference: Date) {
   return format(reference, "MMMM yyyy", { locale: ptBR });
 }
 
+function formatMinutesDiff(minutes: number): string {
+  const safe = Math.max(0, Math.trunc(minutes));
+  const h = Math.floor(safe / 60);
+  const m = safe % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function emptyDaySummary(dateKey: string): RendimentoDaySummary {
   return {
     date: dateKey,
@@ -411,22 +418,40 @@ export function RendimentoTimelineCalendar({
 
       <div className="rounded-xl border border-border bg-card px-4 py-3">
         <p className="mb-3 text-xs text-muted-foreground">
-          Totais do período sem contar horas sobrepostas no mesmo dia.
+          Horas trabalhadas = tempo real sem contar sobreposição no mesmo dia. Total
+          apontado = soma de cada ticket, incluindo horas sobrepostas.
         </p>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div>
             <p className="text-sm text-muted-foreground">Horas trabalhadas</p>
             <p className="text-2xl font-bold text-foreground">
               {loading && !timesheet ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
             </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Total apontamentos (ticket a ticket)
+            <p className="mt-1 text-xs text-muted-foreground">Sem sobreposição</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground">
+              Total apontado (ticket a ticket)
             </p>
-            <p className="text-lg font-semibold text-foreground">
+            <p className="text-2xl font-bold text-sky-600 dark:text-sky-300">
               {loading && !timesheet
                 ? "—"
                 : timesheet?.totalRawHoursFormatted ?? "00:00"}
             </p>
+            {!loading && timesheet &&
+            (timesheet.totalRawMinutes ?? 0) > (timesheet.totalMinutes ?? 0) ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Inclui{" "}
+                {formatMinutesDiff(
+                  (timesheet.totalRawMinutes ?? 0) - (timesheet.totalMinutes ?? 0),
+                )}{" "}
+                de sobreposição
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Soma bruta dos apontamentos
+              </p>
+            )}
           </div>
           <div>
             <p className="text-sm text-muted-foreground">
