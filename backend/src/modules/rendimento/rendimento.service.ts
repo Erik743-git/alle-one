@@ -1965,6 +1965,81 @@ export class RendimentoService {
     return { id: params.justificationId, status: params.decision };
   }
 
+  async deleteGapJustification(params: {
+    actor: AuthenticatedRequestUser;
+    justificationId: string;
+  }) {
+    if (params.actor.role !== 'ADMIN') {
+      throw new ForbiddenException(
+        'Somente administradores podem excluir justificativas.',
+      );
+    }
+
+    const rows =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          user_id: string;
+          status: RendimentoJustificationStatus;
+        }>
+      >(
+        `
+        SELECT id, user_id, status
+        FROM rendimento_gap_justifications
+        WHERE id = $1
+          AND deleted_at IS NULL
+      `,
+        params.justificationId,
+      )) ?? [];
+    const current = rows[0];
+    if (!current) {
+      throw new NotFoundException('Justificativa não encontrada.');
+    }
+
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_gap_justifications
+      SET deleted_at = NOW()
+      WHERE id = $1
+    `,
+      params.justificationId,
+    );
+
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_day_events
+      SET deleted_at = NOW(),
+          updated_at = NOW()
+      WHERE justification_id = $1
+        AND event_type = 'JUSTIFICATION'
+        AND deleted_at IS NULL
+    `,
+      params.justificationId,
+    );
+
+    await this.audit.log({
+      actor: params.actor,
+      action: 'DELETE_JUSTIFICATION',
+      entity: 'RendimentoGapJustification',
+      entityId: params.justificationId,
+      payload: { before: current },
+    });
+
+    const payroll = resolvePayrollPeriodRange(new Date());
+    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+      current.user_id,
+      payroll.start,
+      payroll.end,
+    );
+    await this.refreshOvertimeBalance(
+      current.user_id,
+      periodOvertimeMinutes,
+      new Date(),
+    );
+
+    return { id: params.justificationId, deleted: true as const };
+  }
+
   async listPendingJustifications(params: {
     start: string;
     end: string;

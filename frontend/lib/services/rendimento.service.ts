@@ -315,6 +315,13 @@ export const rendimentoService = {
     );
   },
 
+  deleteJustification(id: string) {
+    return apiRequest<{ id: string; deleted: true }>(
+      `/rendimento/justifications/${id}`,
+      { method: "DELETE" },
+    );
+  },
+
   decideDayEvent(params: {
     id: string;
     decision: "APPROVED" | "REJECTED";

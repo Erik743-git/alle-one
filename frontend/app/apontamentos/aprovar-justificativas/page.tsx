@@ -8,6 +8,7 @@ import {
   Loader2,
   MoreVertical,
   RefreshCw,
+  Trash2,
   X,
 } from "lucide-react";
 
@@ -178,6 +179,28 @@ export default function AprovarJustificativasPage() {
       await load(true);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Não foi possível concluir a ação.");
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function deleteOne(id: string) {
+    if (
+      !window.confirm(
+        "Excluir esta justificativa? O registro será removido da agenda e não poderá ser recuperado.",
+      )
+    ) {
+      return;
+    }
+    try {
+      setActing(true);
+      await rendimentoService.deleteJustification(id);
+      notifySuccess("Justificativa excluída.");
+      await load(true);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível excluir.",
+      );
     } finally {
       setActing(false);
     }
@@ -441,7 +464,7 @@ export default function AprovarJustificativasPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="size-8"
-                                  disabled={acting || decided}
+                                  disabled={acting}
                                   aria-label={`Ações para ${emailLocalPart(row.userEmail)}`}
                                 >
                                   <MoreVertical className="size-4" />
@@ -470,6 +493,14 @@ export default function AprovarJustificativasPage() {
                                 >
                                   <X className="mr-2 size-4" />
                                   Não aprovar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled={acting}
+                                  variant="destructive"
+                                  onClick={() => void deleteOne(row.id)}
+                                >
+                                  <Trash2 className="mr-2 size-4" />
+                                  Excluir
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>

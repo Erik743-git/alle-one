@@ -71,7 +71,7 @@ export default function GeradorRelatoriosPage() {
   );
   const effectiveCompanyId = companyId;
   const canSelectAllCompanies =
-    isRendimento && user?.role !== "CLIENT" && companies.length > 1;
+    isRendimento && user?.role !== "CLIENT";
   const companyOptions = useMemo(() => {
     const items = companies.map((c) => ({ value: c.id, label: c.name }));
     if (canSelectAllCompanies) {
@@ -410,10 +410,11 @@ export default function GeradorRelatoriosPage() {
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Apontamentos: empresa padrão Alle (alterável); horas dos
-                  tickets da empresa no período; colaborador opcional. Estatística
-                  Geral: visão da empresa (sem colaborador); CSV com as mesmas
-                  tabelas do XLSX em seções separadas (gráficos só no XLSX).
+                  Apontamentos: horas dos colaboradores nos tickets da empresa
+                  selecionada no período; use &quot;Todas as empresas&quot; para
+                  visão geral. Colaborador opcional. Estatística Geral: visão
+                  Zabbix/TiFlux de uma empresa (sem colaborador); CSV com as
+                  mesmas tabelas do XLSX (gráficos só no XLSX).
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -239,6 +240,24 @@ export class RendimentoController {
       ids: body.ids,
       decision: body.decision,
       note: body.note,
+    });
+  }
+
+  @Delete('justifications/:id')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
+  @Roles('ADMIN')
+  @AuditMeta({
+    entity: 'RendimentoGapJustification',
+    action: 'DELETE',
+    entityIdParam: 'id',
+  })
+  deleteGapJustification(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.rendimentoService.deleteGapJustification({
+      actor: req.user,
+      justificationId: id,
     });
   }
 
