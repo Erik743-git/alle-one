@@ -112,4 +112,62 @@ export const companiesService = {
       method: "DELETE",
     });
   },
+
+  async listZabbixGroups() {
+    return apiRequest<Array<{ groupid: string; name: string }>>(
+      "/companies/zabbix-groups",
+    );
+  },
+
+  async validateZabbixGroup(name: string) {
+    const qs = new URLSearchParams({ name });
+    return apiRequest<{
+      input: string;
+      exists: boolean;
+      canonicalName: string | null;
+      groupid: string | null;
+    }>(`/companies/zabbix-groups/validate?${qs.toString()}`);
+  },
+
+  async suggestZabbixGroups(params?: { minScore?: number; onlyInvalid?: boolean }) {
+    const qs = new URLSearchParams();
+    if (params?.minScore != null) {
+      qs.set("minScore", String(params.minScore));
+    }
+    if (params?.onlyInvalid != null) {
+      qs.set("onlyInvalid", String(params.onlyInvalid));
+    }
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return apiRequest<{
+      groupsAvailable: number;
+      suggestions: Array<{
+        companyId: string;
+        companyName: string;
+        currentGroup: string | null;
+        suggestedGroup: string;
+        suggestedGroupId: string;
+        score: number;
+        reason: string;
+      }>;
+    }>(`/companies/zabbix-groups/suggest${suffix}`);
+  },
+
+  async applyZabbixGroupSuggestions(
+    items: Array<{ companyId: string; zabbixGroupName: string }>,
+  ) {
+    return apiRequest<{
+      total: number;
+      applied: number;
+      results: Array<{
+        companyId: string;
+        companyName: string;
+        zabbixGroupName: string;
+        applied: boolean;
+        message?: string;
+      }>;
+    }>("/companies/zabbix-groups/apply", {
+      method: "POST",
+      body: { items },
+    });
+  },
 };

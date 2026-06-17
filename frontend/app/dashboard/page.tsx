@@ -45,11 +45,13 @@ import {
 import {
   AlertCircle,
   Building2,
+  CalendarRange,
   Clock3,
   Minus,
   RefreshCcw,
   Server,
   ShieldAlert,
+  Siren,
   Ticket,
   TrendingDown,
   TrendingUp,
@@ -910,7 +912,7 @@ export default function DashboardPage() {
                     "--"
               }
               trend={dashboard?.monthlyTrends?.horasTrabalhadas}
-              icon={<Clock3 size={18} className="text-primary" />}
+              icon={<CalendarRange size={18} className="text-violet-400" />}
             />
             <TrendMetricCard
               title="Alertas do mês"
@@ -924,7 +926,7 @@ export default function DashboardPage() {
                   : dashboard?.monthlyTrends?.alertas.currentValue ?? "--"
               }
               trend={dashboard?.monthlyTrends?.alertas}
-              icon={<AlertCircle size={18} className="text-orange-400" />}
+              icon={<Siren size={18} className="text-amber-400" />}
             />
           </div>
 

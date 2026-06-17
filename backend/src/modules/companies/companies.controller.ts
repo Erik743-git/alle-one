@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -31,6 +32,10 @@ import {
   CreateCompanyContractDto,
   UpdateCompanyContractDto,
 } from './dto/company-contract.dto';
+import {
+  ApplyZabbixGroupSuggestionsDto,
+  SuggestZabbixGroupsQueryDto,
+} from './dto/zabbix-group-suggest.dto';
 import type { Response } from 'express';
 
 @Controller('companies')
@@ -43,6 +48,40 @@ export class CompaniesController {
   @RequirePermission(PermissionModule.COMPANIES, 'canView')
   findAll() {
     return this.companiesService.findAll();
+  }
+
+  @Get('zabbix-groups')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  listZabbixGroups() {
+    return this.companiesService.listZabbixGroups();
+  }
+
+  @Get('zabbix-groups/validate')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  validateZabbixGroup(@Query('name') name?: string) {
+    return this.companiesService.validateZabbixGroupName(name ?? '');
+  }
+
+  @Get('zabbix-groups/suggest')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  suggestZabbixGroups(@Query() query: SuggestZabbixGroupsQueryDto) {
+    return this.companiesService.suggestZabbixGroupMatches({
+      minScore: query.minScore,
+      onlyInvalid: query.onlyInvalid,
+    });
+  }
+
+  @Post('zabbix-groups/apply')
+  @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
+  @AuditMeta({ entity: 'Company', action: 'UPDATE' })
+  applyZabbixGroupSuggestions(
+    @CurrentUser() actor: AuthUser,
+    @Body() body: ApplyZabbixGroupSuggestionsDto,
+  ) {
+    return this.companiesService.applyZabbixGroupSuggestions(
+      actor,
+      body.items,
+    );
   }
 
   @Get(':id')

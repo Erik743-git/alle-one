@@ -571,6 +571,34 @@ export class ZabbixService {
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   }
 
+  /** Resolve nome do grupo (exato ou case-insensitive) para validação no cadastro. */
+  async resolveGroupByName(input: string): Promise<{
+    exists: boolean;
+    groupid: string | null;
+    name: string | null;
+  }> {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return { exists: false, groupid: null, name: null };
+    }
+
+    const exactId = await this.getHostGroupIdByExactName(trimmed);
+    if (exactId) {
+      return { exists: true, groupid: exactId, name: trimmed };
+    }
+
+    const groups = await this.getGroups();
+    const match = groups.find(
+      (group) => group.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+
+    if (match) {
+      return { exists: true, groupid: match.groupid, name: match.name };
+    }
+
+    return { exists: false, groupid: null, name: null };
+  }
+
   async getHosts(): Promise<ZabbixHost[]> {
     return this.request<ZabbixHost[]>('host.get', {
       output: ['hostid', 'host', 'name', 'status'],

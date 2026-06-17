@@ -13,10 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { companiesService } from '@/lib/services/companies.service';
-import {
-  getZabbixGroups,
-  type ZabbixGroupOption,
-} from '@/lib/services/zabbix.service';
+import type { ZabbixGroupOption } from '@/lib/services/zabbix.service';
 import { ZabbixGroupSelectField } from '@/components/ui/zabbix-group-select-field';
 import { TifluxClientSelectField } from '@/components/ui/tiflux-client-select-field';
 import { getTifluxClients, type TifluxClient } from '@/lib/services/tiflux.service';
@@ -42,6 +39,7 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
   const [erro, setErro] = useState('');
   const [carregandoGrupos, setCarregandoGrupos] = useState(false);
   const [gruposZabbix, setGruposZabbix] = useState<ZabbixGroupOption[]>([]);
+  const [erroGruposZabbix, setErroGruposZabbix] = useState('');
   const [carregandoTiflux, setCarregandoTiflux] = useState(false);
   const [tifluxClients, setTifluxClients] = useState<TifluxClient[]>([]);
 
@@ -53,10 +51,15 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
 
       try {
         setCarregandoGrupos(true);
-        const data = await getZabbixGroups();
+        setErroGruposZabbix('');
+        const data = await companiesService.listZabbixGroups();
         setGruposZabbix(data);
       } catch (error) {
         console.error(error);
+        setGruposZabbix([]);
+        setErroGruposZabbix(
+          'Não foi possível carregar os grupos do Zabbix. Você ainda pode digitar o nome manualmente.',
+        );
       } finally {
         setCarregandoGrupos(false);
       }
@@ -241,6 +244,14 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
                 onChange={setZabbixGroupName}
                 groups={gruposZabbix}
                 loading={carregandoGrupos}
+                loadError={erroGruposZabbix || undefined}
+                onValidate={async (name) => {
+                  const result = await companiesService.validateZabbixGroup(name);
+                  return {
+                    exists: result.exists,
+                    canonicalName: result.canonicalName,
+                  };
+                }}
               />
             </div>
 

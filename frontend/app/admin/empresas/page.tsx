@@ -12,10 +12,7 @@ import {
   companiesService,
   type Company,
 } from "@/lib/services/companies.service";
-import {
-  getZabbixGroups,
-  type ZabbixGroupOption,
-} from "@/lib/services/zabbix.service";
+import type { ZabbixGroupOption } from "@/lib/services/zabbix.service";
 import { ZabbixGroupSelectField } from "@/components/ui/zabbix-group-select-field";
 import { TifluxClientSelectField } from "@/components/ui/tiflux-client-select-field";
 import {
@@ -33,6 +30,8 @@ import {
   ArrowRight,
   Upload,
   X,
+  Wand2,
+  Loader2,
 } from "lucide-react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
@@ -90,6 +89,7 @@ function EditarEmpresaModal({
   salvando,
   gruposZabbix,
   carregandoGrupos,
+  erroGruposZabbix,
   tifluxClients,
   carregandoTiflux,
 }: {
@@ -104,6 +104,7 @@ function EditarEmpresaModal({
   salvando: boolean;
   gruposZabbix: ZabbixGroupOption[];
   carregandoGrupos: boolean;
+  erroGruposZabbix: string;
   tifluxClients: TifluxClient[];
   carregandoTiflux: boolean;
 }) {
@@ -298,6 +299,14 @@ function EditarEmpresaModal({
                 onChange={(next) => onChange("zabbixGroupName", next)}
                 groups={gruposZabbix}
                 loading={carregandoGrupos}
+                loadError={erroGruposZabbix || undefined}
+                onValidate={async (name) => {
+                  const result = await companiesService.validateZabbixGroup(name);
+                  return {
+                    exists: result.exists,
+                    canonicalName: result.canonicalName,
+                  };
+                }}
               />
             </div>
 
@@ -483,9 +492,22 @@ export default function AdminEmpresasPage() {
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string>("");
+  const [alertVariant, setAlertVariant] = useState<"error" | "success" | "info">(
+    "error",
+  );
 
   const [gruposZabbix, setGruposZabbix] = useState<ZabbixGroupOption[]>([]);
   const [carregandoGrupos, setCarregandoGrupos] = useState(false);
+  const [erroGruposZabbix, setErroGruposZabbix] = useState("");
+  const [modalSugestaoZabbix, setModalSugestaoZabbix] = useState(false);
+  const [sugestoesZabbix, setSugestoesZabbix] = useState<
+    Awaited<ReturnType<typeof companiesService.suggestZabbixGroups>>["suggestions"]
+  >([]);
+  const [carregandoSugestoesZabbix, setCarregandoSugestoesZabbix] = useState(false);
+  const [aplicandoSugestoesZabbix, setAplicandoSugestoesZabbix] = useState(false);
+  const [sugestoesSelecionadas, setSugestoesSelecionadas] = useState<
+    Record<string, boolean>
+  >({});
   const [tifluxClients, setTifluxClients] = useState<TifluxClient[]>([]);
   const [carregandoTiflux, setCarregandoTiflux] = useState(false);
 
@@ -516,12 +538,82 @@ export default function AdminEmpresasPage() {
   async function buscarGruposZabbix() {
     try {
       setCarregandoGrupos(true);
-      const data = await getZabbixGroups();
+      setErroGruposZabbix("");
+      const data = await companiesService.listZabbixGroups();
       setGruposZabbix(data);
     } catch (error) {
       console.error(error);
+      setGruposZabbix([]);
+      setErroGruposZabbix(
+        "Não foi possível carregar os grupos do Zabbix. Você ainda pode digitar o nome manualmente.",
+      );
     } finally {
       setCarregandoGrupos(false);
+    }
+  }
+
+  async function abrirSugestoesZabbix() {
+    try {
+      setCarregandoSugestoesZabbix(true);
+      setModalSugestaoZabbix(true);
+      const data = await companiesService.suggestZabbixGroups({
+        onlyInvalid: true,
+      });
+      setSugestoesZabbix(data.suggestions);
+      const selected: Record<string, boolean> = {};
+      for (const item of data.suggestions) {
+        selected[item.companyId] = true;
+      }
+      setSugestoesSelecionadas(selected);
+    } catch (error) {
+      setModalSugestaoZabbix(false);
+      setAlertVariant("error");
+      setAlertMessage(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível gerar sugestões de grupo Zabbix.",
+      );
+      setAlertOpen(true);
+    } finally {
+      setCarregandoSugestoesZabbix(false);
+    }
+  }
+
+  async function aplicarSugestoesZabbix() {
+    const items = sugestoesZabbix
+      .filter((item) => sugestoesSelecionadas[item.companyId])
+      .map((item) => ({
+        companyId: item.companyId,
+        zabbixGroupName: item.suggestedGroup,
+      }));
+
+    if (!items.length) {
+      setAlertVariant("error");
+      setAlertMessage("Selecione ao menos uma sugestão para aplicar.");
+      setAlertOpen(true);
+      return;
+    }
+
+    try {
+      setAplicandoSugestoesZabbix(true);
+      const result = await companiesService.applyZabbixGroupSuggestions(items);
+      setModalSugestaoZabbix(false);
+      await buscarEmpresas();
+      setAlertVariant("success");
+      setAlertMessage(
+        `${result.applied} de ${result.total} vínculo(s) Zabbix atualizado(s).`,
+      );
+      setAlertOpen(true);
+    } catch (error) {
+      setAlertVariant("error");
+      setAlertMessage(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível aplicar as sugestões.",
+      );
+      setAlertOpen(true);
+    } finally {
+      setAplicandoSugestoesZabbix(false);
     }
   }
 
@@ -716,7 +808,7 @@ export default function AdminEmpresasPage() {
             onOpenChange={setAlertOpen}
             title="Atenção"
             description={alertMessage}
-            variant="error"
+            variant={alertVariant}
           />
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="space-y-2">
@@ -726,13 +818,30 @@ export default function AdminEmpresasPage() {
               </p>
             </div>
 
-            <Button
-              onClick={() => setModalNovaEmpresa(true)}
-              className="h-11 gap-2"
-            >
-              <Plus size={18} />
-              Nova empresa
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void abrirSugestoesZabbix()}
+                disabled={carregandoSugestoesZabbix}
+                className="h-11 gap-2"
+              >
+                {carregandoSugestoesZabbix ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <Wand2 size={18} />
+                )}
+                Sugerir grupos Zabbix
+              </Button>
+
+              <Button
+                onClick={() => setModalNovaEmpresa(true)}
+                className="h-11 gap-2"
+              >
+                <Plus size={18} />
+                Nova empresa
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-4">
@@ -1043,9 +1152,118 @@ export default function AdminEmpresasPage() {
           salvando={salvandoEdicao}
           gruposZabbix={gruposZabbix}
           carregandoGrupos={carregandoGrupos}
+          erroGruposZabbix={erroGruposZabbix}
           tifluxClients={tifluxClients}
           carregandoTiflux={carregandoTiflux}
         />
+
+        {modalSugestaoZabbix ? (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 px-4 font-sans antialiased">
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border px-6 py-5">
+                <div className="space-y-1">
+                  <h2 className="text-2xl font-semibold text-foreground">
+                    Sugerir vínculos Zabbix
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Empresas com grupo inválido ou ausente — revise antes de aplicar.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!aplicandoSugestoesZabbix) {
+                      setModalSugestaoZabbix(false);
+                    }
+                  }}
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-6 py-4">
+                {carregandoSugestoesZabbix ? (
+                  <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+                    <Loader2 className="size-5 animate-spin" />
+                    Gerando sugestões...
+                  </div>
+                ) : sugestoesZabbix.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Nenhuma sugestão encontrada. Todas as empresas já têm grupo válido
+                    ou não há correspondência automática confiável.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {sugestoesZabbix.map((item) => (
+                      <label
+                        key={item.companyId}
+                        className="flex cursor-pointer gap-3 rounded-xl border border-border bg-muted/20 p-4 transition hover:bg-muted/30"
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={Boolean(sugestoesSelecionadas[item.companyId])}
+                          onChange={(event) =>
+                            setSugestoesSelecionadas((prev) => ({
+                              ...prev,
+                              [item.companyId]: event.target.checked,
+                            }))
+                          }
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="font-semibold text-foreground">
+                            {item.companyName}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Atual:{" "}
+                            <span className="font-mono text-foreground">
+                              {item.currentGroup || "—"}
+                            </span>
+                            {" → "}
+                            Sugerido:{" "}
+                            <span className="font-mono text-primary">
+                              {item.suggestedGroup}
+                            </span>
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.reason} (score {item.score})
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-border px-6 py-5 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={aplicandoSugestoesZabbix}
+                  onClick={() => setModalSugestaoZabbix(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={
+                    aplicandoSugestoesZabbix ||
+                    carregandoSugestoesZabbix ||
+                    sugestoesZabbix.length === 0
+                  }
+                  onClick={() => void aplicarSugestoesZabbix()}
+                  className="gap-2"
+                >
+                  {aplicandoSugestoesZabbix ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : null}
+                  Aplicar selecionados
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <InativarEmpresaModal
           open={modalInativarEmpresa}

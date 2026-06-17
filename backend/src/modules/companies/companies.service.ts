@@ -20,6 +20,12 @@ import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { StreamableFile } from '@nestjs/common';
 import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
+import { ZabbixService } from '../zabbix/zabbix.service';
+import {
+  buildZabbixGroupSuggestions,
+  type ZabbixGroupSuggestion,
+} from './zabbix-group-match.util';
+import type { ApplyZabbixGroupSuggestionItemDto } from './dto/zabbix-group-suggest.dto';
 import { assertAllowedUploadMime } from '../../common/upload.config';
 
 const contractRelationsInclude = {
@@ -62,6 +68,7 @@ export class CompaniesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly zabbix: ZabbixService,
   ) {}
 
   private async resolveClassificationId(classificationId?: string | null) {
@@ -785,5 +792,155 @@ export class CompaniesService {
     });
 
     return { companyId: company.id, logoFileId: null };
+  }
+
+  async listZabbixGroups() {
+    const groups = await this.zabbix.getGroups();
+    return groups.map((group) => ({
+      groupid: group.groupid,
+      name: group.name,
+    }));
+  }
+
+  async validateZabbixGroupName(name: string) {
+    const resolved = await this.zabbix.resolveGroupByName(name);
+    return {
+      input: name.trim(),
+      exists: resolved.exists,
+      canonicalName: resolved.name,
+      groupid: resolved.groupid,
+    };
+  }
+
+  async suggestZabbixGroupMatches(options?: {
+    minScore?: number;
+    onlyInvalid?: boolean;
+  }): Promise<{
+    groupsAvailable: number;
+    suggestions: ZabbixGroupSuggestion[];
+  }> {
+    const [companies, groups] = await Promise.all([
+      this.prisma.company.findMany({
+        where: { deletedAt: null },
+        select: { id: true, name: true, zabbixGroupName: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.zabbix.getGroups(),
+    ]);
+
+    const groupByExact = new Map(
+      groups.map((group) => [group.name.toLowerCase(), group.name]),
+    );
+
+    const assignedGroups = new Set<string>();
+    for (const company of companies) {
+      const current = company.zabbixGroupName?.trim();
+      if (current && groupByExact.has(current.toLowerCase())) {
+        assignedGroups.add(current.toLowerCase());
+      }
+    }
+
+    const suggestions = buildZabbixGroupSuggestions({
+      companies,
+      groups,
+      minScore: options?.minScore,
+      onlyWithoutValidGroup: options?.onlyInvalid !== false,
+      assignedGroups,
+    });
+
+    return {
+      groupsAvailable: groups.length,
+      suggestions,
+    };
+  }
+
+  async applyZabbixGroupSuggestions(
+    actor: AuthUser,
+    items: ApplyZabbixGroupSuggestionItemDto[],
+  ) {
+    const results: Array<{
+      companyId: string;
+      companyName: string;
+      zabbixGroupName: string;
+      applied: boolean;
+      message?: string;
+    }> = [];
+
+    for (const item of items) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: item.companyId, deletedAt: null },
+        select: { id: true, name: true, zabbixGroupName: true },
+      });
+
+      if (!company) {
+        results.push({
+          companyId: item.companyId,
+          companyName: '—',
+          zabbixGroupName: item.zabbixGroupName,
+          applied: false,
+          message: 'Empresa não encontrada',
+        });
+        continue;
+      }
+
+      const resolved = await this.zabbix.resolveGroupByName(item.zabbixGroupName);
+      if (!resolved.exists || !resolved.name) {
+        results.push({
+          companyId: company.id,
+          companyName: company.name,
+          zabbixGroupName: item.zabbixGroupName,
+          applied: false,
+          message: 'Grupo não existe no Zabbix',
+        });
+        continue;
+      }
+
+      try {
+        await this.validateUniqueZabbixGroup(resolved.name, company.id);
+      } catch (error) {
+        results.push({
+          companyId: company.id,
+          companyName: company.name,
+          zabbixGroupName: resolved.name,
+          applied: false,
+          message:
+            error instanceof BadRequestException
+              ? String(error.message)
+              : 'Grupo já vinculado a outra empresa',
+        });
+        continue;
+      }
+
+      const updated = await this.prisma.company.update({
+        where: { id: company.id },
+        data: { zabbixGroupName: resolved.name },
+      });
+
+      await this.audit.log({
+        actor,
+        action: 'UPDATE',
+        entity: 'Company',
+        entityId: company.id,
+        payload: {
+          field: 'zabbixGroupName',
+          before: company.zabbixGroupName,
+          after: updated.zabbixGroupName,
+          source: 'zabbix_group_suggest',
+        },
+      });
+
+      results.push({
+        companyId: company.id,
+        companyName: company.name,
+        zabbixGroupName: resolved.name,
+        applied: true,
+      });
+    }
+
+    return {
+      total: results.length,
+      applied: results.filter((row) => row.applied).length,
+      results,
+    };
   }
 }
