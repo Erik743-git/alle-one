@@ -22,7 +22,10 @@ import {
   analyzeRendimentoDay,
   overtimeKindFromValorization,
 } from '../rendimento/rendimento-day-insights';
-import { computeUnionWorkedMinutes } from '../rendimento/rendimento-worked-minutes.helper';
+import {
+  computeRawAppointmentMinutes,
+  computeUnionWorkedMinutes,
+} from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
 
@@ -2025,6 +2028,117 @@ export class ReportsService {
     return { tifluxUserExternalId, attendantName };
   }
 
+  private async getRendimentoAttendantSummaries(params: {
+    companies: Array<{ id: string; name: string; tifluxClientId: number }>;
+    start: Date;
+    end: Date;
+    userId?: string | null;
+  }): Promise<
+    Array<{
+      attendant: string;
+      nonOverlapMinutes: number;
+      rawMinutes: number;
+      extraMinutes: number;
+      plantaoMinutes: number;
+      alerts: number;
+    }>
+  > {
+    const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
+      params.userId,
+    );
+    const startDateOnly = toDateOnlyISO(params.start);
+    const endDateOnly = toDateOnlyISO(params.end);
+    const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
+
+    const rawRows =
+      (await this.prisma.$queryRaw<
+        Array<{
+          appointment_id: number;
+          user_name: string | null;
+          appointment_date: string;
+          init_time: string | null;
+          end_time: string | null;
+          minutes: number;
+          valorization_raw: unknown | null;
+        }>
+      >`
+        select
+          a.external_id as appointment_id,
+          a.user_name,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time::text as init_time,
+          a.end_time::text as end_time,
+          a.valorization_raw,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from tiflux.ticket_appointments a
+        inner join tiflux.tickets t
+          on t.ticket_number = a.ticket_number
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
+          and a.user_name is not null
+          and trim(a.user_name) <> ''
+          and (
+            (${collaboratorFilter.tifluxUserExternalId}::int is null and ${collaboratorFilter.attendantName}::text is null)
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is not null
+              and a.user_external_id = ${collaboratorFilter.tifluxUserExternalId}::int
+            )
+            or (
+              ${collaboratorFilter.tifluxUserExternalId}::int is null
+              and ${collaboratorFilter.attendantName}::text is not null
+              and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
+            )
+          )
+      `) ?? [];
+
+    const byAttendant = new Map<
+      string,
+      Array<{
+        appointment_id: number;
+        appointment_date: string;
+        init_time: string | null;
+        end_time: string | null;
+        minutes: number;
+        valorization_raw: unknown | null;
+      }>
+    >();
+    for (const row of rawRows) {
+      const name = String(row.user_name || '').trim();
+      if (!name) continue;
+      if (!byAttendant.has(name)) byAttendant.set(name, []);
+      byAttendant.get(name)!.push(row);
+    }
+
+    return [...byAttendant.keys()]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .map((name) => {
+        const group = byAttendant.get(name)!;
+        const mapped = group.map((r) => ({
+          appointment_date: r.appointment_date,
+          init_time: r.init_time,
+          end_time: r.end_time,
+          minutes: Number(r.minutes) || 0,
+          valorization_raw: r.valorization_raw,
+        }));
+        return {
+          attendant: name,
+          nonOverlapMinutes: computeUnionWorkedMinutes(mapped, 'ALL'),
+          rawMinutes: computeRawAppointmentMinutes(mapped, 'ALL'),
+          extraMinutes: computeUnionWorkedMinutes(mapped, 'EXTRA'),
+          plantaoMinutes: computeUnionWorkedMinutes(mapped, 'PLANTAO'),
+          alerts: this.countRendimentoAlertsInPeriod(group),
+        };
+      });
+  }
+
   private countRendimentoAlertsInPeriod(
     group: Array<{
       appointment_id: number;
@@ -2094,6 +2208,13 @@ export class ReportsService {
       userId: params.userId,
     });
 
+    const summaries = await this.getRendimentoAttendantSummaries({
+      companies: scope.companies,
+      start: params.start,
+      end: params.end,
+      userId: params.userId,
+    });
+
     const header = [
       'empresa',
       'periodo_inicio',
@@ -2116,7 +2237,33 @@ export class ReportsService {
       ].join(',');
     });
 
-    return [header, ...lines].join('\n');
+    const summaryHeader = [
+      'atendente',
+      'horas_nao_sobrepostas',
+      'horas_apontadas_sobrepostas',
+      'hora_extra',
+      'plantao',
+      'alertas',
+    ].join(',');
+    const summaryLines = summaries.map((s) =>
+      [
+        escapeCsv(s.attendant),
+        this.formatMinutesHHMM(s.nonOverlapMinutes),
+        this.formatMinutesHHMM(s.rawMinutes),
+        this.formatMinutesHHMM(s.extraMinutes),
+        this.formatMinutesHHMM(s.plantaoMinutes),
+        String(s.alerts),
+      ].join(','),
+    );
+
+    return [
+      header,
+      ...lines,
+      '',
+      'Resumo por atendente',
+      summaryHeader,
+      ...summaryLines,
+    ].join('\n');
   }
 
   async generateHoursUsageXlsx(params: {
@@ -2287,82 +2434,16 @@ export class ReportsService {
       to: { row: headerRowIndex, column: 11 },
     };
 
-    const companyTiflux = await this.requireCompanyTifluxClientId(params.companyId);
-    const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
-      params.userId,
-    );
-
-    const rawRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          appointment_id: number;
-          user_name: string | null;
-          appointment_date: string;
-          init_time: string | null;
-          end_time: string | null;
-          minutes: number;
-          valorization_raw: unknown | null;
-        }>
-      >`
-        select
-          a.external_id as appointment_id,
-          a.user_name,
-          a.appointment_date::date::text as appointment_date,
-          a.init_time::text as init_time,
-          a.end_time::text as end_time,
-          a.valorization_raw,
-          coalesce(
-            case
-              when a.init_time is null or a.end_time is null then 0
-              when a.end_time::time >= a.init_time::time
-                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
-              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
-            end,
-            0
-          )::int as minutes
-        from tiflux.ticket_appointments a
-        inner join tiflux.tickets t
-          on t.ticket_number = a.ticket_number
-        where t.client_external_id = ${companyTiflux.tifluxClientId}
-          and a.appointment_date::date between ${startDateOnly}::date and ${endDateOnly}::date
-          and a.user_name is not null
-          and trim(a.user_name) <> ''
-          and (
-            (${collaboratorFilter.tifluxUserExternalId}::int is null and ${collaboratorFilter.attendantName}::text is null)
-            or (
-              ${collaboratorFilter.tifluxUserExternalId}::int is not null
-              and a.user_external_id = ${collaboratorFilter.tifluxUserExternalId}::int
-            )
-            or (
-              ${collaboratorFilter.tifluxUserExternalId}::int is null
-              and ${collaboratorFilter.attendantName}::text is not null
-              and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
-            )
-          )
-      `) ?? [];
-
-    const byAttendant = new Map<
-      string,
-      Array<{
-        appointment_id: number;
-        user_name: string | null;
-        appointment_date: string;
-        init_time: string | null;
-        end_time: string | null;
-        minutes: number;
-        valorization_raw: unknown | null;
-      }>
-    >();
-    for (const row of rawRows) {
-      const name = String(row.user_name || '').trim();
-      if (!name) continue;
-      if (!byAttendant.has(name)) byAttendant.set(name, []);
-      byAttendant.get(name)!.push(row);
-    }
+    const summaries = await this.getRendimentoAttendantSummaries({
+      companies: scope.companies,
+      start: params.start,
+      end: params.end,
+      userId: params.userId,
+    });
 
     rowIndex += 2;
     sheet.getRow(rowIndex).values = [
-      'Resumo (sem sobreposição)',
+      'Resumo por atendente',
       null,
       null,
       null,
@@ -2383,44 +2464,29 @@ export class ReportsService {
       null,
       null,
       null,
-      'Total',
+      'Horas não sobrepostas',
+      'Horas apontadas (sobrepostas)',
       'Hora extra',
       'Plantão',
       'Alertas',
-      null,
       null,
       null,
     ];
     summaryHeader.font = { bold: true };
     rowIndex += 1;
 
-    const attendantNames = [...byAttendant.keys()].sort((a, b) =>
-      a.localeCompare(b, 'pt-BR'),
-    );
-    for (const name of attendantNames) {
-      const group = byAttendant.get(name)!;
-      const mapped = group.map((r) => ({
-        appointment_date: r.appointment_date,
-        init_time: r.init_time,
-        end_time: r.end_time,
-        minutes: Number(r.minutes) || 0,
-        valorization_raw: r.valorization_raw,
-      }));
-      const total = computeUnionWorkedMinutes(mapped, 'ALL');
-      const extra = computeUnionWorkedMinutes(mapped, 'EXTRA');
-      const plantao = computeUnionWorkedMinutes(mapped, 'PLANTAO');
-      const alerts = this.countRendimentoAlertsInPeriod(group);
+    for (const s of summaries) {
       const row = sheet.getRow(rowIndex);
       row.values = [
-        name,
+        s.attendant,
         null,
         null,
         null,
-        this.formatMinutesHHMM(total),
-        this.formatMinutesHHMM(extra),
-        this.formatMinutesHHMM(plantao),
-        alerts,
-        null,
+        this.formatMinutesHHMM(s.nonOverlapMinutes),
+        this.formatMinutesHHMM(s.rawMinutes),
+        this.formatMinutesHHMM(s.extraMinutes),
+        this.formatMinutesHHMM(s.plantaoMinutes),
+        s.alerts,
         null,
         null,
       ];

@@ -382,7 +382,14 @@ export default function GeradorRelatoriosPage() {
                     options={companyOptions}
                     loading={carregando}
                     disabled={carregando || companies.length === 0}
-                    emptyLabel={carregando ? "Carregando..." : "Selecione"}
+                    preserveOrder={canSelectAllCompanies}
+                    emptyLabel={
+                      canSelectAllCompanies
+                        ? ""
+                        : carregando
+                          ? "Carregando..."
+                          : "Selecione"
+                    }
                   />
                 </div>
 
@@ -395,6 +402,7 @@ export default function GeradorRelatoriosPage() {
                     onChange={setCollaboratorId}
                     options={collaboratorOptions}
                     loading={loadingCollaborators}
+                    preserveOrder
                     disabled={
                       !isRendimento ||
                       isEstatisticaGeral ||

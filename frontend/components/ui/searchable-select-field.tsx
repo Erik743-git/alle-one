@@ -25,6 +25,8 @@ type SearchableSelectFieldProps = {
   searchPlaceholder?: string;
   /** Use dentro de Sheet/Dialog para evitar conflito de foco. */
   modal?: boolean;
+  /** Mantém a ordem das opções quando true (ex.: "Todas as empresas" primeiro). */
+  preserveOrder?: boolean;
 };
 
 export function SearchableSelectField({
@@ -38,6 +40,7 @@ export function SearchableSelectField({
   className,
   searchPlaceholder = "Pesquisar...",
   modal = false,
+  preserveOrder = false,
 }: SearchableSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -47,8 +50,9 @@ export function SearchableSelectField({
   }, [open]);
 
   const sortedOptions = React.useMemo(() => {
+    if (preserveOrder) return options;
     return [...options].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-  }, [options]);
+  }, [options, preserveOrder]);
 
   const filteredOptions = React.useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
