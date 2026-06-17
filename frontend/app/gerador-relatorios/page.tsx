@@ -272,8 +272,8 @@ export default function GeradorRelatoriosPage() {
         companyId: isAllCompanies ? ALL_COMPANIES_REPORT_VALUE : effectiveCompanyId,
         type,
         format,
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
+        start,
+        end,
         ...(isRendimento && collaboratorId ? { userId: collaboratorId } : {}),
       });
       await refreshList();

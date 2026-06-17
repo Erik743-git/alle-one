@@ -28,6 +28,7 @@ import {
 } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
+import { toDateOnlyISO, parseDateInput } from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 
@@ -45,11 +46,7 @@ const REPORT_TYPE_SLUGS: Record<string, string> = {
 };
 
 function parseDateOrThrow(value: string, label: string) {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) {
-    throw new BadRequestException(`${label} inválida`);
-  }
-  return d;
+  return parseDateInput(value, label);
 }
 
 function normalizeRange(start: Date, end: Date) {
@@ -63,10 +60,6 @@ function normalizeRange(start: Date, end: Date) {
     );
   }
   return { start: s, end: e };
-}
-
-function toDateOnlyISO(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function escapeCsv(value: string) {

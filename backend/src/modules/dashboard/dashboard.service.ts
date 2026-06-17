@@ -19,7 +19,7 @@ import {
   buildWeekMap,
   getMonthKey,
   getMonthLabel,
-  getCalendarMonthBounds,
+  getCalendarMonthBoundsToDate,
   getRange,
   getWeekKey,
   getWeekLabel,
@@ -2662,8 +2662,8 @@ export class DashboardService {
     params: DashboardFilters,
     zabbixGroupName: string,
   ): Promise<DashboardMonthlyTrends> {
-    const currentMonth = getCalendarMonthBounds(0);
-    const previousMonth = getCalendarMonthBounds(-1);
+    const currentMonth = getCalendarMonthBoundsToDate(0);
+    const previousMonth = getCalendarMonthBoundsToDate(-1);
 
     const [currentHours, previousHours, currentZabbix, previousZabbix] =
       await Promise.all([
@@ -2708,15 +2708,15 @@ export class DashboardService {
       horasTrabalhadas: this.buildTrendMetric(
         currentHoursValue,
         previousHoursValue,
-        currentMonth.monthLabel,
-        previousMonth.monthLabel,
+        currentMonth.periodLabel,
+        previousMonth.periodLabel,
         currentHours?.summary.totalHorasFormatadas,
       ),
       alertas: this.buildTrendMetric(
         currentAlerts,
         previousAlerts,
-        currentMonth.monthLabel,
-        previousMonth.monthLabel,
+        currentMonth.periodLabel,
+        previousMonth.periodLabel,
       ),
     };
   }

@@ -902,7 +902,7 @@ export default function DashboardPage() {
               title="Horas do mês"
               subtitle={
                 dashboard?.monthlyTrends?.horasTrabalhadas.currentMonthLabel ??
-                "Mês atual vs anterior"
+                "Até hoje vs mesmo período"
               }
               value={
                 initialLoading
@@ -919,7 +919,7 @@ export default function DashboardPage() {
               title="Alertas do mês"
               subtitle={
                 dashboard?.monthlyTrends?.alertas.currentMonthLabel ??
-                "High + Disaster"
+                "Até hoje vs mesmo período"
               }
               value={
                 initialLoading
