@@ -608,17 +608,32 @@ export class ZabbixService {
       return [];
     }
 
-    const groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
+    const needle = trimmed.toLowerCase();
+
+    let groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
       output: ['groupid', 'name'],
       sortfield: 'name',
       limit,
-      search: { name: trimmed },
+      search: { name: `*${trimmed}*` },
       searchWildcardsEnabled: true,
     });
 
+    if (!groups.length) {
+      const allGroups = await this.request<ZabbixGroup[]>('hostgroup.get', {
+        output: ['groupid', 'name'],
+        sortfield: 'name',
+        limit: 500,
+      });
+
+      groups = allGroups.filter((group) =>
+        group.name?.toLowerCase().includes(needle),
+      );
+    }
+
     return groups
       .filter((group) => group.name?.trim())
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+      .slice(0, limit);
   }
 
   /** Resolve nome do grupo (exato ou case-insensitive) para validação no cadastro. */
