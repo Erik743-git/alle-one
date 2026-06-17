@@ -22,6 +22,8 @@ type DatePickerFieldProps = {
   allowClear?: boolean;
   /** Use dentro de modais (evita conflito com o Dialog do Radix). */
   modal?: boolean;
+  /** Alinhamento do popover em relação ao campo (use "end" no campo da direita). */
+  align?: "start" | "center" | "end";
 };
 
 function parseIsoDate(value: string): Date | undefined {
@@ -44,6 +46,7 @@ export function DatePickerField({
   max,
   allowClear = false,
   modal = false,
+  align = "start",
 }: DatePickerFieldProps) {
   const [open, setOpen] = React.useState(false);
   const selected = parseIsoDate(value);
@@ -74,9 +77,9 @@ export function DatePickerField({
       <PopoverContent
         className="z-[100] w-auto overflow-visible border-border bg-card p-2 font-sans shadow-lg"
         side="bottom"
-        align="start"
+        align={align}
         sideOffset={10}
-        avoidCollisions={false}
+        collisionPadding={16}
       >
         <AlleCalendarPanel
           selected={selected}

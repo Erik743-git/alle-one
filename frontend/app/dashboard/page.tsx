@@ -815,6 +815,7 @@ export default function DashboardPage() {
                   value={endDate}
                   onChange={setEndDate}
                   min={startDate || undefined}
+                  align="end"
                 />
               </div>
             </div>
