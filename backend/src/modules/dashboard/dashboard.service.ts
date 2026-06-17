@@ -19,6 +19,7 @@ import {
   buildWeekMap,
   getMonthKey,
   getMonthLabel,
+  getCalendarMonthBounds,
   getRange,
   getWeekKey,
   getWeekLabel,
@@ -36,6 +37,8 @@ import type {
   AppointmentLike,
   DashboardFilters,
   DashboardHoursResponse,
+  DashboardMonthlyTrendMetric,
+  DashboardMonthlyTrends,
   DashboardResponse,
   MonthlyAlertsRow,
   MonthlyHoursRow,
@@ -2288,6 +2291,10 @@ export class DashboardService {
     const days = countDaysInRange(startDate, endDate);
     const integrations = await this.integrations.resolveIntegrations(params);
     const { startISO, endISO } = buildTifluxDateRange(startDate, endDate);
+    const monthlyTrendsPromise = this.buildMonthlyTrends(
+      params,
+      integrations.zabbixGroupName,
+    );
 
     this.devDebug('==================================================');
     this.devDebug('buildCompleteDashboard INÍCIO');
@@ -2597,6 +2604,120 @@ export class DashboardService {
       hostsDetalhados: zabbixData.hosts,
       templates: zabbixData.templates,
       eventosRecentes: zabbixData.events.slice(0, 20),
+      monthlyTrends: await monthlyTrendsPromise,
+    };
+  }
+
+  private buildTrendMetric(
+    currentValue: number,
+    previousValue: number,
+    currentMonthLabel: string,
+    previousMonthLabel: string,
+    currentValueFormatted?: string,
+  ): DashboardMonthlyTrendMetric {
+    const delta = Number((currentValue - previousValue).toFixed(2));
+    let direction: DashboardMonthlyTrendMetric['direction'] = 'flat';
+
+    if (delta > 0) {
+      direction = 'up';
+    } else if (delta < 0) {
+      direction = 'down';
+    }
+
+    const deltaPercent =
+      previousValue > 0
+        ? Number(((delta / previousValue) * 100).toFixed(1))
+        : currentValue > 0
+          ? 100
+          : 0;
+
+    return {
+      currentMonthLabel,
+      previousMonthLabel,
+      currentValue,
+      previousValue,
+      currentValueFormatted,
+      delta,
+      deltaPercent,
+      direction,
+    };
+  }
+
+  private countAlertsInRange(
+    events: Array<Record<string, unknown>> | undefined,
+    startDate: Date,
+    endDate: Date,
+  ): number {
+    if (!events?.length) {
+      return 0;
+    }
+
+    return this.buildAlertsRows(events, startDate, endDate).reduce(
+      (acc, row) => acc + row.Total,
+      0,
+    );
+  }
+
+  private async buildMonthlyTrends(
+    params: DashboardFilters,
+    zabbixGroupName: string,
+  ): Promise<DashboardMonthlyTrends> {
+    const currentMonth = getCalendarMonthBounds(0);
+    const previousMonth = getCalendarMonthBounds(-1);
+
+    const [currentHours, previousHours, currentZabbix, previousZabbix] =
+      await Promise.all([
+        this.loadOrReuseDashboardHours({
+          ...params,
+          start: currentMonth.start.toISOString(),
+          end: currentMonth.end.toISOString(),
+        }).catch(() => null),
+        this.loadOrReuseDashboardHours({
+          ...params,
+          start: previousMonth.start.toISOString(),
+          end: previousMonth.end.toISOString(),
+        }).catch(() => null),
+        this.zabbixService
+          .getDashboardDetailsByGroup(zabbixGroupName, {
+            startDate: currentMonth.start,
+            endDate: currentMonth.end,
+          })
+          .catch(() => null),
+        this.zabbixService
+          .getDashboardDetailsByGroup(zabbixGroupName, {
+            startDate: previousMonth.start,
+            endDate: previousMonth.end,
+          })
+          .catch(() => null),
+      ]);
+
+    const currentHoursValue = currentHours?.summary.totalHoras ?? 0;
+    const previousHoursValue = previousHours?.summary.totalHoras ?? 0;
+    const currentAlerts = this.countAlertsInRange(
+      currentZabbix?.events,
+      currentMonth.start,
+      currentMonth.end,
+    );
+    const previousAlerts = this.countAlertsInRange(
+      previousZabbix?.events,
+      previousMonth.start,
+      previousMonth.end,
+    );
+
+    return {
+      horasTrabalhadas: this.buildTrendMetric(
+        currentHoursValue,
+        previousHoursValue,
+        currentMonth.monthLabel,
+        previousMonth.monthLabel,
+        currentHours?.summary.totalHorasFormatadas,
+      ),
+      alertas: this.buildTrendMetric(
+        currentAlerts,
+        previousAlerts,
+        currentMonth.monthLabel,
+        previousMonth.monthLabel,
+      ),
     };
   }
 

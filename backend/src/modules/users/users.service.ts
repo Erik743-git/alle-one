@@ -6,6 +6,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { User, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isUserOnline } from '../../common/presence/presence.util';
 import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -18,8 +19,12 @@ type UserWithCompany = User & {
   }>;
 };
 
-type PublicUser = Omit<UserWithCompany, 'passwordHash' | 'serviceDeskLinks'> & {
+type PublicUser = Omit<
+  UserWithCompany,
+  'passwordHash' | 'serviceDeskLinks' | 'lastSeenAt'
+> & {
   serviceDesks: Array<{ id: string; name: string; externalId: number | null }>;
+  isOnline: boolean;
 };
 
 type ServiceDeskSourceRow = {
@@ -35,9 +40,15 @@ export class UsersService {
   ) {}
 
   private toPublicUser(user: UserWithCompany): PublicUser {
-    const { passwordHash: _omit, serviceDeskLinks, ...rest } = user;
+    const {
+      passwordHash: _omit,
+      serviceDeskLinks,
+      lastSeenAt,
+      ...rest
+    } = user;
     return {
       ...rest,
+      isOnline: isUserOnline(lastSeenAt),
       serviceDesks: serviceDeskLinks.map((link) => link.serviceDesk),
     };
   }

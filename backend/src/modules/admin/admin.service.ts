@@ -1,17 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PresenceService } from '../../common/presence/presence.service';
 import { UserRole } from '@prisma/client';
 import type { AdminAuditLogsQuery } from './admin-audit.query';
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly presence: PresenceService,
+  ) {}
 
   async getOverviewStats() {
     const [
       companiesActive,
       companiesTotal,
       usersActive,
+      usersOnline,
       adminUsers,
       contractFilesCount,
     ] = await Promise.all([
@@ -24,6 +29,7 @@ export class AdminService {
       this.prisma.user.count({
         where: { deletedAt: null, status: 'ACTIVE' },
       }),
+      this.presence.countOnlineUsers(),
       this.prisma.user.count({
         where: {
           deletedAt: null,
@@ -38,6 +44,7 @@ export class AdminService {
       companiesActive,
       companiesTotal,
       usersActive,
+      usersOnline,
       adminUsers,
       contractFilesCount,
     };

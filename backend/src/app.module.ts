@@ -10,6 +10,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
+import { PresenceModule } from './common/presence/presence.module';
+import { PresenceInterceptor } from './common/presence/presence.interceptor';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { CompaniesModule } from './modules/companies/companies.module';
@@ -43,6 +45,7 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
     ScheduleModule.forRoot(),
     SecurityModule,
     PrismaModule,
+    PresenceModule,
     AuditModule,
     AuthModule,
     UsersModule,
@@ -73,6 +76,10 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
     {
       provide: APP_GUARD,
       useClass: JwtGlobalAuthGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: PresenceInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

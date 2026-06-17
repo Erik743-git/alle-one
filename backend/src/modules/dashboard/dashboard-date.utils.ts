@@ -81,6 +81,31 @@ export function getMonthLabel(date: Date) {
   });
 }
 
+export function getCalendarMonthBounds(
+  monthOffset: number,
+  reference: Date = new Date(),
+) {
+  const anchor = new Date(reference.getFullYear(), reference.getMonth(), 1);
+  anchor.setMonth(anchor.getMonth() + monthOffset);
+  const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(
+    anchor.getFullYear(),
+    anchor.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+
+  return {
+    start,
+    end,
+    monthKey: getMonthKey(start),
+    monthLabel: getMonthLabel(start),
+  };
+}
+
 export function getWeekStart(date: Date) {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const daysFromMonday = (d.getDay() + 6) % 7;

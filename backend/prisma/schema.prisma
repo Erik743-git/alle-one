@@ -94,6 +94,7 @@ model User {
   googleId            String?              @unique @map("google_id")
   microsoftId         String?              @unique @map("microsoft_id")
   provider            String?
+  lastSeenAt          DateTime?            @map("last_seen_at")
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   deletedAt           DateTime?            @map("deleted_at")

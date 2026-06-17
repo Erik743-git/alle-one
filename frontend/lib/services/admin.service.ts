@@ -4,6 +4,7 @@ export type AdminOverviewStats = {
   companiesActive: number;
   companiesTotal: number;
   usersActive: number;
+  usersOnline: number;
   adminUsers: number;
   contractFilesCount: number;
 };

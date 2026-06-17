@@ -36,6 +36,7 @@ import {
   type DashboardChamadosMes,
   type DashboardCompleteResponse,
   type DashboardHorasMes,
+  type DashboardMonthlyTrendMetric,
   type DashboardTopHostsMes,
   type DashboardTopTrigger,
   type WorkHoursTifluxLine,
@@ -45,10 +46,13 @@ import {
   AlertCircle,
   Building2,
   Clock3,
+  Minus,
   RefreshCcw,
   Server,
   ShieldAlert,
   Ticket,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 const DashboardLazyChart = dynamic(
   () =>
@@ -83,6 +87,66 @@ function MetricCard({
       </CardHeader>
       <CardContent>
         <p className="text-2xl font-bold sm:text-3xl">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrendMetricCard({
+  title,
+  value,
+  subtitle,
+  trend,
+  icon,
+}: {
+  title: string;
+  value: string | number;
+  subtitle: string;
+  trend: DashboardMonthlyTrendMetric | null | undefined;
+  icon: React.ReactNode;
+}) {
+  const direction = trend?.direction ?? "flat";
+  const deltaPercent = trend?.deltaPercent ?? 0;
+  const isUp = direction === "up";
+  const isDown = direction === "down";
+  const trendColor = isUp
+    ? "text-emerald-500"
+    : isDown
+      ? "text-red-400"
+      : "text-muted-foreground";
+  const TrendIcon = isUp ? TrendingUp : isDown ? TrendingDown : Minus;
+  const trendLabel = isUp
+    ? `+${Math.abs(deltaPercent)}%`
+    : isDown
+      ? `-${Math.abs(deltaPercent)}%`
+      : "estável";
+
+  return (
+    <Card className="border border-border bg-card text-card-foreground">
+      <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
+        <div className="space-y-1">
+          <CardTitle className="text-sm text-muted-foreground">{title}</CardTitle>
+          <p className="text-[11px] leading-snug text-muted-foreground/80">
+            {subtitle}
+          </p>
+        </div>
+        {icon}
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-2xl font-bold sm:text-3xl">{value}</p>
+        {trend ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold ${trendColor} bg-muted/50`}
+            >
+              <TrendIcon size={14} aria-hidden />
+              {trendLabel}
+            </span>
+            <span className="text-muted-foreground">
+              vs {trend.previousMonthLabel}
+            </span>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -264,6 +328,7 @@ function normalizeDashboardResponse(
     resumoHorasTrabalhadas: normalizeWorkHoursSummary(
       (raw as { resumoHorasTrabalhadas?: unknown }).resumoHorasTrabalhadas,
     ),
+    monthlyTrends: raw?.monthlyTrends ?? null,
   };
 }
 
@@ -785,7 +850,7 @@ export default function DashboardPage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 2xl:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:gap-5 md:grid-cols-2 2xl:grid-cols-8">
             <MetricCard
               title="Total de tickets"
               value={
@@ -829,6 +894,37 @@ export default function DashboardPage() {
               title="Hosts totais"
               value={initialLoading ? "--" : dashboard?.summary.totalHosts ?? 0}
               icon={<Server size={18} className="text-primary" />}
+            />
+            <TrendMetricCard
+              title="Horas do mês"
+              subtitle={
+                dashboard?.monthlyTrends?.horasTrabalhadas.currentMonthLabel ??
+                "Mês atual vs anterior"
+              }
+              value={
+                initialLoading
+                  ? "--"
+                  : dashboard?.monthlyTrends?.horasTrabalhadas
+                      .currentValueFormatted ??
+                    dashboard?.monthlyTrends?.horasTrabalhadas.currentValue ??
+                    "--"
+              }
+              trend={dashboard?.monthlyTrends?.horasTrabalhadas}
+              icon={<Clock3 size={18} className="text-primary" />}
+            />
+            <TrendMetricCard
+              title="Alertas do mês"
+              subtitle={
+                dashboard?.monthlyTrends?.alertas.currentMonthLabel ??
+                "High + Disaster"
+              }
+              value={
+                initialLoading
+                  ? "--"
+                  : dashboard?.monthlyTrends?.alertas.currentValue ?? "--"
+              }
+              trend={dashboard?.monthlyTrends?.alertas}
+              icon={<AlertCircle size={18} className="text-orange-400" />}
             />
           </div>
 

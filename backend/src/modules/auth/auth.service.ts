@@ -15,6 +15,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ValidateResetTokenDto } from './dto/validate-reset-token.dto';
 import { AuthMailService } from './mail/auth-mail.service';
 import { PermissionsService } from '../permissions/permissions.service';
+import { PresenceService } from '../../common/presence/presence.service';
 import {
   delayResetGuard,
   generatePasswordResetCode,
@@ -40,6 +41,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly authMail: AuthMailService,
     private readonly permissionsService: PermissionsService,
+    private readonly presence: PresenceService,
   ) {}
 
   async login(data: LoginDto) {
@@ -150,7 +152,11 @@ export class AuthService {
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
-    const requestUser = await this.permissionsService.buildRequestUser(user.id);
+    this.presence.touch(user.id);
+    const requestUser = await this.permissionsService.buildRequestUser(
+      user.id,
+      tokenVersion,
+    );
 
     return {
       message: 'Login realizado com sucesso',

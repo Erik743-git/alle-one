@@ -45,6 +45,7 @@ type ApiUser = {
   firstAccess: boolean;
   responsible: boolean;
   companyId: string | null;
+  isOnline?: boolean;
   serviceDesks: Array<{
     id: string;
     name: string;
@@ -70,6 +71,7 @@ type UsuarioUI = {
   email: string;
   perfil: "Admin" | "Colaborador" | "Terceiro" | "Cliente";
   status: "Ativo" | "Inativo";
+  online: boolean;
 };
 
 type GrupoEmpresa = {
@@ -267,6 +269,7 @@ export default function AdminUsuariosPage() {
         email: usuario.email,
         perfil: mapRole(usuario.role),
         status: mapStatus(usuario.status),
+        online: Boolean(usuario.isOnline),
       });
     });
 
@@ -394,8 +397,12 @@ export default function AdminUsuariosPage() {
       await usersService.update(formEdicao.id, payload);
       setModalEditarUsuario(false);
       await buscarUsuarios();
-    } catch {
-      setErroEdicao("Erro ao conectar com o backend.");
+    } catch (err) {
+      setErroEdicao(
+        err instanceof Error
+          ? err.message
+          : "Erro ao conectar com o backend.",
+      );
     } finally {
       setSalvandoEdicao(false);
     }
@@ -588,7 +595,20 @@ export default function AdminUsuariosPage() {
                               }`}
                             >
                               <div className="space-y-1">
-                                <p className="font-semibold text-foreground">
+                                <p className="flex items-center gap-2 font-semibold text-foreground">
+                                  <span
+                                    className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${
+                                      usuario.online
+                                        ? "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
+                                        : "bg-muted-foreground/35"
+                                    }`}
+                                    title={
+                                      usuario.online
+                                        ? "Online no portal (últimos 10 min)"
+                                        : "Offline"
+                                    }
+                                    aria-hidden
+                                  />
                                   {usuario.nome}
                                 </p>
                                 <p className="text-sm text-muted-foreground">

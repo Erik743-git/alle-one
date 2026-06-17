@@ -225,7 +225,7 @@ export default function AdminPage() {
                     </p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div className="rounded-xl border border-border bg-muted/40 p-4">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         Empresas (total)
@@ -241,6 +241,15 @@ export default function AdminPage() {
                       </p>
                       <p className="mt-2 text-xl font-bold text-foreground">
                         {stats?.usersActive ?? "—"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-muted/40 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Usuários online
+                      </p>
+                      <p className="mt-2 text-xl font-bold text-foreground">
+                        {stats?.usersOnline ?? "—"}
                       </p>
                     </div>
                   </div>

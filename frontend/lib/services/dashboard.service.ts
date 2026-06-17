@@ -104,6 +104,22 @@ export type DashboardTopTrigger = {
   count: number;
 };
 
+export type DashboardMonthlyTrendMetric = {
+  currentMonthLabel: string;
+  previousMonthLabel: string;
+  currentValue: number;
+  previousValue: number;
+  currentValueFormatted?: string;
+  delta: number;
+  deltaPercent: number;
+  direction: "up" | "down" | "flat";
+};
+
+export type DashboardMonthlyTrends = {
+  horasTrabalhadas: DashboardMonthlyTrendMetric;
+  alertas: DashboardMonthlyTrendMetric;
+};
+
 export type DashboardCompleteResponse = {
   filters: {
     group: string;
@@ -124,6 +140,7 @@ export type DashboardCompleteResponse = {
   eventosRecentes: unknown[];
   /** Resumo estilo TiFlux (apontamentos no período). */
   resumoHorasTrabalhadas?: WorkHoursTifluxSummary | null;
+  monthlyTrends?: DashboardMonthlyTrends | null;
 };
 
 export type DashboardHoursResponse = {
