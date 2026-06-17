@@ -56,6 +56,12 @@ export class CompaniesController {
     return this.companiesService.listZabbixGroups();
   }
 
+  @Get('zabbix-groups/search')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  searchZabbixGroups(@Query('q') q?: string) {
+    return this.companiesService.searchZabbixGroups(q ?? '');
+  }
+
   @Get('zabbix-groups/validate')
   @RequirePermission(PermissionModule.COMPANIES, 'canView')
   validateZabbixGroup(@Query('name') name?: string) {

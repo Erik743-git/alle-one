@@ -595,6 +595,32 @@ export class ZabbixService {
     );
   }
 
+  /** Busca grupos na API do Zabbix (cadastro de empresas). Exige ZABBIX_URL + ZABBIX_TOKEN. */
+  async searchGroups(query: string, limit = 80): Promise<ZabbixGroup[]> {
+    if (!this.hasApiConfig()) {
+      throw new InternalServerErrorException(
+        'Configure ZABBIX_URL e ZABBIX_TOKEN no .env do backend para buscar grupos no Zabbix.',
+      );
+    }
+
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      return [];
+    }
+
+    const groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
+      output: ['groupid', 'name'],
+      sortfield: 'name',
+      limit,
+      search: { name: trimmed },
+      searchWildcardsEnabled: true,
+    });
+
+    return groups
+      .filter((group) => group.name?.trim())
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
+
   /** Resolve nome do grupo (exato ou case-insensitive) para validação no cadastro. */
   async resolveGroupByName(input: string): Promise<{
     exists: boolean;
@@ -611,13 +637,23 @@ export class ZabbixService {
       return { exists: true, groupid: exactId, name: trimmed };
     }
 
-    const groups = await this.getGroups();
-    const match = groups.find(
-      (group) => group.name.toLowerCase() === trimmed.toLowerCase(),
-    );
+    if (this.hasApiConfig()) {
+      const candidates = await this.searchGroups(trimmed, 30);
+      const match = candidates.find(
+        (group) => group.name.toLowerCase() === trimmed.toLowerCase(),
+      );
+      if (match) {
+        return { exists: true, groupid: match.groupid, name: match.name };
+      }
+    } else {
+      const groups = await this.getGroups();
+      const match = groups.find(
+        (group) => group.name.toLowerCase() === trimmed.toLowerCase(),
+      );
 
-    if (match) {
-      return { exists: true, groupid: match.groupid, name: match.name };
+      if (match) {
+        return { exists: true, groupid: match.groupid, name: match.name };
+      }
     }
 
     return { exists: false, groupid: null, name: null };

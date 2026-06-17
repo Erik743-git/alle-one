@@ -802,6 +802,14 @@ export class CompaniesService {
     }));
   }
 
+  async searchZabbixGroups(query: string) {
+    const groups = await this.zabbix.searchGroups(query);
+    return groups.map((group) => ({
+      groupid: group.groupid,
+      name: group.name,
+    }));
+  }
+
   async validateZabbixGroupName(name: string) {
     const resolved = await this.zabbix.resolveGroupByName(name);
     return {

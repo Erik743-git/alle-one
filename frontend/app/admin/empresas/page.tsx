@@ -12,7 +12,6 @@ import {
   companiesService,
   type Company,
 } from "@/lib/services/companies.service";
-import type { ZabbixGroupOption } from "@/lib/services/zabbix.service";
 import { ZabbixGroupSelectField } from "@/components/ui/zabbix-group-select-field";
 import { TifluxClientSelectField } from "@/components/ui/tiflux-client-select-field";
 import {
@@ -85,9 +84,6 @@ function EditarEmpresaModal({
   onChange,
   onSubmit,
   salvando,
-  gruposZabbix,
-  carregandoGrupos,
-  erroGruposZabbix,
   tifluxClients,
   carregandoTiflux,
 }: {
@@ -100,9 +96,6 @@ function EditarEmpresaModal({
   ) => void;
   onSubmit: () => void;
   salvando: boolean;
-  gruposZabbix: ZabbixGroupOption[];
-  carregandoGrupos: boolean;
-  erroGruposZabbix: string;
   tifluxClients: TifluxClient[];
   carregandoTiflux: boolean;
 }) {
@@ -295,16 +288,6 @@ function EditarEmpresaModal({
               <ZabbixGroupSelectField
                 value={form.zabbixGroupName}
                 onChange={(next) => onChange("zabbixGroupName", next)}
-                groups={gruposZabbix}
-                loading={carregandoGrupos}
-                loadError={erroGruposZabbix || undefined}
-                onValidate={async (name) => {
-                  const result = await companiesService.validateZabbixGroup(name);
-                  return {
-                    exists: result.exists,
-                    canonicalName: result.canonicalName,
-                  };
-                }}
               />
             </div>
 
@@ -491,9 +474,6 @@ export default function AdminEmpresasPage() {
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string>("");
 
-  const [gruposZabbix, setGruposZabbix] = useState<ZabbixGroupOption[]>([]);
-  const [carregandoGrupos, setCarregandoGrupos] = useState(false);
-  const [erroGruposZabbix, setErroGruposZabbix] = useState("");
   const [tifluxClients, setTifluxClients] = useState<TifluxClient[]>([]);
   const [carregandoTiflux, setCarregandoTiflux] = useState(false);
 
@@ -521,23 +501,6 @@ export default function AdminEmpresasPage() {
     }
   }
 
-  async function buscarGruposZabbix() {
-    try {
-      setCarregandoGrupos(true);
-      setErroGruposZabbix("");
-      const data = await companiesService.listZabbixGroups();
-      setGruposZabbix(data);
-    } catch (error) {
-      console.error(error);
-      setGruposZabbix([]);
-      setErroGruposZabbix(
-        "Não foi possível carregar os grupos. Você ainda pode digitar o nome manualmente.",
-      );
-    } finally {
-      setCarregandoGrupos(false);
-    }
-  }
-
   async function buscarTifluxClients() {
     try {
       setCarregandoTiflux(true);
@@ -559,7 +522,6 @@ export default function AdminEmpresasPage() {
 
   useEffect(() => {
     void buscarEmpresas();
-    void buscarGruposZabbix();
     void buscarTifluxClients();
   }, []);
 
@@ -1054,9 +1016,6 @@ export default function AdminEmpresasPage() {
           onChange={handleAlterarCampoEdicao}
           onSubmit={() => void handleSalvarEdicao()}
           salvando={salvandoEdicao}
-          gruposZabbix={gruposZabbix}
-          carregandoGrupos={carregandoGrupos}
-          erroGruposZabbix={erroGruposZabbix}
           tifluxClients={tifluxClients}
           carregandoTiflux={carregandoTiflux}
         />

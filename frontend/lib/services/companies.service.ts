@@ -119,6 +119,13 @@ export const companiesService = {
     );
   },
 
+  async searchZabbixGroups(query: string) {
+    const qs = new URLSearchParams({ q: query });
+    return apiRequest<Array<{ groupid: string; name: string }>>(
+      `/companies/zabbix-groups/search?${qs.toString()}`,
+    );
+  },
+
   async validateZabbixGroup(name: string) {
     const qs = new URLSearchParams({ name });
     return apiRequest<{

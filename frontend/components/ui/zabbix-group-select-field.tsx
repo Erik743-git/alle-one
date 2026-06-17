@@ -1,13 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Check, ChevronDown } from "lucide-react";
+import { AlertTriangle, Check, Loader2, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { ZabbixGroupOption } from "@/lib/services/zabbix.service";
+import { companiesService } from "@/lib/services/companies.service";
+
+type ZabbixGroupOption = {
+  groupid: string;
+  name: string;
+};
 
 type ZabbixGroupValidation = {
   exists: boolean;
@@ -17,79 +21,39 @@ type ZabbixGroupValidation = {
 type ZabbixGroupSelectFieldProps = {
   value: string;
   onChange: (value: string) => void;
-  groups: ZabbixGroupOption[];
-  loading?: boolean;
   disabled?: boolean;
   placeholder?: string;
   className?: string;
-  loadError?: string;
-  onValidate?: (name: string) => Promise<ZabbixGroupValidation>;
 };
+
+const MIN_SEARCH_LEN = 2;
+const SEARCH_DEBOUNCE_MS = 280;
 
 export function ZabbixGroupSelectField({
   value,
   onChange,
-  groups,
-  loading = false,
   disabled = false,
-  placeholder = "Selecione ou digite um grupo",
+  placeholder = "Digite para buscar no Zabbix (ex.: GRP_TUPER)",
   className,
-  loadError,
-  onValidate,
 }: ZabbixGroupSelectFieldProps) {
-  const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState("");
+  const [draft, setDraft] = React.useState(value);
+  const [focused, setFocused] = React.useState(false);
+  const [results, setResults] = React.useState<ZabbixGroupOption[]>([]);
+  const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState("");
   const [validation, setValidation] = React.useState<ZabbixGroupValidation | null>(
     null,
   );
   const [validating, setValidating] = React.useState(false);
-
-  const handleListWheel = React.useCallback(
-    (event: React.WheelEvent<HTMLUListElement>) => {
-      const element = event.currentTarget;
-      if (element.scrollHeight <= element.clientHeight) return;
-      event.preventDefault();
-      element.scrollTop += event.deltaY;
-    },
-    [],
-  );
+  const rootRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    if (!open) {
-      setQuery("");
-    }
-  }, [open]);
-
-  const options = React.useMemo(() => {
-    const merged = [...groups];
-    const trimmed = value.trim();
-
-    if (trimmed && !merged.some((group) => group.name === trimmed)) {
-      merged.push({ groupid: `selected:${trimmed}`, name: trimmed });
-    }
-
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return merged
-      .filter((group) => {
-        const name = group.name?.trim() ?? "";
-        if (!name) return false;
-        if (!normalizedQuery) return true;
-        return name.toLowerCase().includes(normalizedQuery);
-      })
-      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
-  }, [groups, query, value]);
-
-  const trimmedQuery = query.trim();
-  const canApplyCustom =
-    trimmedQuery.length > 0 &&
-    !groups.some(
-      (group) => group.name.toLowerCase() === trimmedQuery.toLowerCase(),
-    );
+    setDraft(value);
+  }, [value]);
 
   React.useEffect(() => {
     const trimmed = value.trim();
-    if (!trimmed || !onValidate) {
+    if (!trimmed) {
       setValidation(null);
       return;
     }
@@ -99,9 +63,12 @@ export function ZabbixGroupSelectField({
 
     void (async () => {
       try {
-        const result = await onValidate(trimmed);
+        const result = await companiesService.validateZabbixGroup(trimmed);
         if (!cancelled) {
-          setValidation(result);
+          setValidation({
+            exists: result.exists,
+            canonicalName: result.canonicalName,
+          });
         }
       } catch {
         if (!cancelled) {
@@ -117,105 +84,183 @@ export function ZabbixGroupSelectField({
     return () => {
       cancelled = true;
     };
-  }, [onValidate, value]);
+  }, [value]);
 
-  const label = value.trim() || (loading ? "Carregando grupos..." : placeholder);
-  const inCatalog = groups.some(
-    (group) => group.name.toLowerCase() === value.trim().toLowerCase(),
-  );
+  React.useEffect(() => {
+    if (!focused) {
+      return;
+    }
+
+    const query = draft.trim();
+    if (query.length < MIN_SEARCH_LEN) {
+      setResults([]);
+      setSearchError("");
+      setSearching(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSearching(true);
+
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const data = await companiesService.searchZabbixGroups(query);
+          if (!cancelled) {
+            setResults(data);
+            setSearchError("");
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setResults([]);
+            setSearchError(
+              error instanceof Error
+                ? error.message
+                : "Não foi possível buscar no Zabbix. Verifique ZABBIX_URL e ZABBIX_TOKEN no servidor.",
+            );
+          }
+        } finally {
+          if (!cancelled) {
+            setSearching(false);
+          }
+        }
+      })();
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [draft, focused]);
+
+  React.useEffect(() => {
+    function onPointerDown(event: MouseEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setFocused(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, []);
+
+  const showDropdown = focused && draft.trim().length >= MIN_SEARCH_LEN;
   const showUnknownWarning =
     Boolean(value.trim()) &&
-    !loading &&
     !validating &&
-    validation?.exists === false &&
-    !inCatalog;
+    validation?.exists === false;
+
+  function commitDraft(next?: string) {
+    const trimmed = (next ?? draft).trim();
+    onChange(trimmed);
+    setDraft(trimmed);
+    setFocused(false);
+  }
+
+  function pickGroup(name: string) {
+    onChange(name);
+    setDraft(name);
+    setFocused(false);
+  }
 
   return (
-    <div className="space-y-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={disabled || loading}
-            className={cn(
-              "h-11 w-full justify-between px-3 font-normal font-sans",
-              !value && "text-muted-foreground",
-              showUnknownWarning && "border-amber-500/50",
-              className,
-            )}
-          >
-            <span className="truncate">{label}</span>
-            <ChevronDown className="ml-2 size-4 shrink-0 opacity-60" />
-          </Button>
-        </PopoverTrigger>
+    <div ref={rootRef} className={cn("relative space-y-2", className)}>
+      <div className="relative">
+        <Input
+          value={draft}
+          disabled={disabled}
+          placeholder={placeholder}
+          className={cn(
+            "h-11 pr-20 font-sans",
+            showUnknownWarning && "border-amber-500/50",
+          )}
+          onFocus={() => setFocused(true)}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              commitDraft();
+            }
+            if (event.key === "Escape") {
+              setDraft(value);
+              setFocused(false);
+            }
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              if (!rootRef.current?.contains(document.activeElement)) {
+                if (draft.trim() !== value.trim()) {
+                  commitDraft();
+                }
+                setFocused(false);
+              }
+            }, 120);
+          }}
+        />
 
-        <PopoverContent
-          align="start"
-          className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] p-2"
-        >
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Pesquisar ou digitar grupo..."
-            className="mb-2 h-9 font-sans"
-            autoFocus
-          />
+        <div className="absolute inset-y-0 right-1 flex items-center gap-1">
+          {searching || validating ? (
+            <Loader2 className="size-4 animate-spin text-muted-foreground" />
+          ) : null}
+          {value ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-8 text-muted-foreground"
+              disabled={disabled}
+              onClick={() => {
+                onChange("");
+                setDraft("");
+                setResults([]);
+              }}
+              title="Limpar grupo"
+            >
+              <X className="size-4" />
+            </Button>
+          ) : null}
+        </div>
+      </div>
 
-          {loadError ? (
-            <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
-              {loadError}
+      {showDropdown ? (
+        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+          {searchError ? (
+            <p className="border-b border-border px-3 py-2 text-xs text-amber-400">
+              {searchError}
             </p>
           ) : null}
 
-          <ul
-            className="max-h-56 overflow-y-auto overscroll-contain rounded-md border border-border"
-            role="listbox"
-            onWheelCapture={handleListWheel}
-          >
-            <li>
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
-                  !value && "bg-muted/60 font-medium",
-                )}
-                onClick={() => {
-                  onChange("");
-                  setOpen(false);
-                }}
-              >
-                {!value ? <Check className="size-4 shrink-0" /> : <span className="size-4" />}
-                <span className="text-muted-foreground">Nenhum</span>
-              </button>
-            </li>
-
-            {options.length === 0 ? (
+          <ul className="max-h-56 overflow-y-auto overscroll-contain" role="listbox">
+            {searching ? (
+              <li className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Buscando no Zabbix...
+              </li>
+            ) : results.length === 0 ? (
               <li className="px-3 py-3 text-sm text-muted-foreground">
-                Nenhum grupo na lista.
+                Nenhum grupo encontrado. Confira o nome exato no Zabbix.
               </li>
             ) : (
-              options.map((group) => {
-                const selected = group.name === value;
+              results.map((group) => {
+                const selected =
+                  group.name.toLowerCase() === value.trim().toLowerCase();
                 return (
                   <li key={group.groupid}>
                     <button
                       type="button"
                       className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
-                        selected && "bg-primary/10 font-medium text-foreground",
+                        "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-muted",
+                        selected && "bg-primary/10 font-medium",
                       )}
-                      onClick={() => {
-                        onChange(group.name);
-                        setOpen(false);
-                      }}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => pickGroup(group.name)}
                     >
                       {selected ? (
                         <Check className="size-4 shrink-0 text-primary" />
                       ) : (
                         <span className="size-4 shrink-0" />
                       )}
-                      <span className="truncate">{group.name}</span>
+                      <span className="truncate font-mono">{group.name}</span>
                     </button>
                   </li>
                 );
@@ -223,50 +268,55 @@ export function ZabbixGroupSelectField({
             )}
           </ul>
 
-          {canApplyCustom ? (
-            <div className="mt-2 space-y-2 border-t border-border pt-2">
-              <p className="text-xs text-muted-foreground">
-                Nome digitado não está na lista — use o nome exato do Zabbix:
-              </p>
+          {draft.trim() &&
+          !results.some(
+            (group) => group.name.toLowerCase() === draft.trim().toLowerCase(),
+          ) ? (
+            <div className="border-t border-border p-2">
               <Button
                 type="button"
                 variant="secondary"
                 className="h-9 w-full justify-start font-sans text-sm"
-                onClick={() => {
-                  onChange(trimmedQuery);
-                  setOpen(false);
-                }}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => commitDraft()}
               >
-                Usar &quot;{trimmedQuery}&quot;
+                Usar &quot;{draft.trim()}&quot;
               </Button>
             </div>
           ) : null}
-        </PopoverContent>
-      </Popover>
+        </div>
+      ) : null}
+
+      {!focused && draft.trim().length > 0 && draft.trim().length < MIN_SEARCH_LEN ? (
+        <p className="text-xs text-muted-foreground">
+          Digite pelo menos {MIN_SEARCH_LEN} caracteres para buscar no Zabbix.
+        </p>
+      ) : null}
 
       {showUnknownWarning ? (
         <p className="flex items-start gap-2 text-xs text-amber-400">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
-          Este grupo não foi encontrado no Zabbix. Confira o nome exato (ex. GRP_TUPER).
+          Este grupo não existe no Zabbix. Busque pelo nome correto (ex. GRP_TUPER).
         </p>
       ) : null}
 
       {validation?.exists && validation.canonicalName && validation.canonicalName !== value ? (
         <p className="text-xs text-muted-foreground">
-          Nome canônico no Zabbix:{" "}
+          Nome no Zabbix:{" "}
           <button
             type="button"
             className="font-medium text-primary underline-offset-2 hover:underline"
-            onClick={() => onChange(validation.canonicalName!)}
+            onClick={() => pickGroup(validation.canonicalName!)}
           >
             {validation.canonicalName}
           </button>
         </p>
       ) : null}
 
-      {!loadError && !loading && groups.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {groups.length} grupo(s) disponíveis no Zabbix
+      {validation?.exists ? (
+        <p className="flex items-center gap-1.5 text-xs text-emerald-500/90">
+          <Check className="size-3.5" />
+          Grupo confirmado no Zabbix
         </p>
       ) : null}
     </div>
