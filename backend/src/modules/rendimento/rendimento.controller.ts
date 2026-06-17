@@ -244,8 +244,8 @@ export class RendimentoController {
   }
 
   @Delete('justifications/:id')
-  @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
-  @Roles('ADMIN')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN', 'COLLABORATOR')
   @AuditMeta({
     entity: 'RendimentoGapJustification',
     action: 'DELETE',

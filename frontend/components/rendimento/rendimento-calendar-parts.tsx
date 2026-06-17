@@ -291,11 +291,15 @@ export function RendimentoVoluntaryJustificationBlock({
   canApprove,
   onApprove,
   onReject,
+  canDelete,
+  onDelete,
 }: {
   item: RendimentoVoluntaryJustification;
   canApprove?: boolean;
   onApprove?: () => void;
   onReject?: () => void;
+  canDelete?: boolean;
+  onDelete?: () => void;
 }) {
   const pending = item.status === "PENDING";
   const approved = item.status === "APPROVED";
@@ -352,6 +356,17 @@ export function RendimentoVoluntaryJustificationBlock({
             onClick={onReject}
           >
             Não aprovar
+          </button>
+        </div>
+      ) : null}
+      {canDelete && onDelete ? (
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            className="rounded bg-rose-600/90 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-600"
+            onClick={onDelete}
+          >
+            Excluir
           </button>
         </div>
       ) : null}

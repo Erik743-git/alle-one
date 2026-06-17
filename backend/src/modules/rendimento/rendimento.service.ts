@@ -1977,22 +1977,17 @@ export class RendimentoService {
     actor: AuthenticatedRequestUser;
     justificationId: string;
   }) {
-    if (params.actor.role !== 'ADMIN') {
-      throw new ForbiddenException(
-        'Somente administradores podem excluir justificativas.',
-      );
-    }
-
     const rows =
       (await this.prisma.$queryRawUnsafe<
         Array<{
           id: string;
           user_id: string;
           status: RendimentoJustificationStatus;
+          kind: RendimentoJustificationKind;
         }>
       >(
         `
-        SELECT id, user_id, status
+        SELECT id, user_id, status, kind
         FROM rendimento_gap_justifications
         WHERE id = $1
           AND deleted_at IS NULL
@@ -2002,6 +1997,19 @@ export class RendimentoService {
     const current = rows[0];
     if (!current) {
       throw new NotFoundException('Justificativa não encontrada.');
+    }
+
+    const isAdmin = params.actor.role === 'ADMIN';
+    const isOwner = current.user_id === params.actor.userId;
+    if (!isAdmin && !isOwner) {
+      throw new ForbiddenException(
+        'Sem permissão para excluir esta justificativa.',
+      );
+    }
+    if (!isAdmin && current.kind !== 'VOLUNTARY') {
+      throw new ForbiddenException(
+        'Somente justificativas voluntárias podem ser excluídas pelo colaborador.',
+      );
     }
 
     await this.prisma.$executeRawUnsafe(

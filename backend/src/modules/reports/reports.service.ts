@@ -1578,9 +1578,7 @@ export class ReportsService {
 
   private formatReportDescription(value?: string | null): string {
     const text = String(value || '').trim();
-    if (text.length >= 40) return text;
-    if (!text) return '-'.repeat(40);
-    return text.padEnd(40, '·');
+    return text || '-';
   }
 
   private formatMonthShort(dateOnly: string): string {

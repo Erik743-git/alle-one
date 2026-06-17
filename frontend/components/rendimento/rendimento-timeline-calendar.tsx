@@ -75,6 +75,8 @@ export type RendimentoTimelineCalendarProps = {
   onOpenVoluntaryJustification?: (params: { date: string }) => void;
   onApproveJustification?: (id: string) => void;
   onRejectJustification?: (id: string) => void;
+  onDeleteJustification?: (id: string) => void;
+  canDeleteOwnJustification?: boolean;
   onApproveDayEvent?: (id: string) => void;
   onRejectDayEvent?: (id: string) => void;
   onViewChange: (view: RendimentoCalendarView) => void;
@@ -142,15 +144,19 @@ function DayDetailList({
   onOpenAlertJustification,
   onApproveJustification,
   onRejectJustification,
+  onDeleteJustification,
+  canDeleteOwnJustification,
   onApproveDayEvent,
   onRejectDayEvent,
 }: {
   displayDay: RendimentoDaySummary;
   pjSimplifiedView: boolean;
   canApproveJustification: boolean;
+  canDeleteOwnJustification?: boolean;
   onOpenAlertJustification?: RendimentoTimelineCalendarProps["onOpenAlertJustification"];
   onApproveJustification?: (id: string) => void;
   onRejectJustification?: (id: string) => void;
+  onDeleteJustification?: (id: string) => void;
   onApproveDayEvent?: (id: string) => void;
   onRejectDayEvent?: (id: string) => void;
 }) {
@@ -207,6 +213,12 @@ function DayDetailList({
               onReject={
                 onRejectJustification
                   ? () => onRejectJustification(item.voluntary.id)
+                  : undefined
+              }
+              canDelete={canDeleteOwnJustification}
+              onDelete={
+                onDeleteJustification
+                  ? () => onDeleteJustification(item.voluntary.id)
                   : undefined
               }
             />
@@ -315,6 +327,8 @@ export function RendimentoTimelineCalendar({
   onOpenVoluntaryJustification,
   onApproveJustification,
   onRejectJustification,
+  onDeleteJustification,
+  canDeleteOwnJustification = false,
   onApproveDayEvent,
   onRejectDayEvent,
   onViewChange,
@@ -749,9 +763,11 @@ export function RendimentoTimelineCalendar({
             displayDay={displayDay}
             pjSimplifiedView={pjSimplifiedView}
             canApproveJustification={canApproveJustification}
+            canDeleteOwnJustification={canDeleteOwnJustification}
             onOpenAlertJustification={onOpenAlertJustification}
             onApproveJustification={onApproveJustification}
             onRejectJustification={onRejectJustification}
+            onDeleteJustification={onDeleteJustification}
             onApproveDayEvent={onApproveDayEvent}
             onRejectDayEvent={onRejectDayEvent}
           />

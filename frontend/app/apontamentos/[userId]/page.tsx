@@ -99,6 +99,8 @@ export default function RendimentoAgendaPage() {
   const canApprove = authUser?.role === "ADMIN";
   const canVoluntaryJustification =
     !isPjUser && canCreateVoluntaryRendimentoJustification();
+  const canDeleteOwnJustification =
+    authUser?.id === userId && canVoluntaryJustification;
   const canAlertJustification =
     !isPjUser && canCreateAlertRendimentoJustification();
 
@@ -259,6 +261,25 @@ export default function RendimentoAgendaPage() {
     }
   }
 
+  async function deleteJustification(id: string) {
+    if (
+      !window.confirm(
+        "Excluir esta justificativa? O registro será removido da agenda e não poderá ser recuperado.",
+      )
+    ) {
+      return;
+    }
+    try {
+      await rendimentoService.deleteJustification(id);
+      notifySuccess("Justificativa excluída.");
+      await loadTimesheet();
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível excluir.",
+      );
+    }
+  }
+
   return (
     <ProtectedPage>
       <PermissionGate module="RENDIMENTO">
@@ -282,6 +303,7 @@ export default function RendimentoAgendaPage() {
               refreshing={refreshing}
               pjSimplifiedView={isPjUser}
               canApproveJustification={canApprove}
+              canDeleteOwnJustification={canDeleteOwnJustification}
               onOpenAlertJustification={
                 canAlertJustification ? openAlertJustification : undefined
               }
@@ -290,6 +312,7 @@ export default function RendimentoAgendaPage() {
               }
               onApproveJustification={(id) => void decideJustification(id, "APPROVED")}
               onRejectJustification={(id) => void decideJustification(id, "REJECTED")}
+              onDeleteJustification={(id) => void deleteJustification(id)}
               onApproveDayEvent={(id) => void decideDayEvent(id, "APPROVED")}
               onRejectDayEvent={(id) => void decideDayEvent(id, "REJECTED")}
               onViewChange={setView}
