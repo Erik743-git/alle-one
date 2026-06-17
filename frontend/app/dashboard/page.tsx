@@ -18,6 +18,7 @@ import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   getPersistedCompanyId,
+  isValidCompanyUuid,
   pickCompanyIdFromList,
   setPersistedCompanyId,
 } from "@/lib/selected-company";
@@ -359,7 +360,8 @@ export default function DashboardPage() {
   }, [canSelectCompany, selectedCompanyId, user?.companyId, user?.id, user?.role]);
 
   const getEffectiveCompanyId = useCallback(() => {
-    return canSelectCompany ? selectedCompanyId : user?.companyId ?? null;
+    const id = canSelectCompany ? selectedCompanyId : user?.companyId ?? null;
+    return isValidCompanyUuid(id) ? id : null;
   }, [canSelectCompany, selectedCompanyId, user?.companyId]);
 
   const loadDashboard = useCallback(

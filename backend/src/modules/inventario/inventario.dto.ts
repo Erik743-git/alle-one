@@ -8,7 +8,8 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
+import { optionalUuidQuery } from '../../common/validators/optional-uuid-query.transform';
 
 export const INVENTORY_REMINDER_DAYS = [90, 30, 15, 7] as const;
 export type InventoryReminderDays = (typeof INVENTORY_REMINDER_DAYS)[number];
@@ -82,6 +83,7 @@ export class UpdateInventoryAssetDto {
 
 export class InventarioAttachmentQueryDto {
   @IsOptional()
+  @Transform(({ value }) => optionalUuidQuery(value))
   @IsUUID()
   companyId?: string;
 

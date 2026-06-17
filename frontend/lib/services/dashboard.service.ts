@@ -1,6 +1,7 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 
 export type DashboardSummary = {
   totalChamados: number;
@@ -161,7 +162,11 @@ function buildDashboardSearch(params: DashboardRequestParams) {
     search.set("end", params.end);
   }
 
-  if (params.companyId !== undefined && params.companyId !== null) {
+  if (
+    params.companyId !== undefined &&
+    params.companyId !== null &&
+    isValidCompanyUuid(String(params.companyId))
+  ) {
     search.set("companyId", String(params.companyId));
   }
 

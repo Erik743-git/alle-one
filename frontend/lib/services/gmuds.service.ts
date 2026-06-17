@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 import { authFetch } from "@/lib/auth-fetch";
 import { readBlobDownload } from "@/lib/download-blob";
 import { API_URL } from "@/lib/env";
@@ -104,7 +105,9 @@ export type UpdateGmudPayload = Partial<CreateGmudPayload>;
 export const gmudsService = {
   async list(params?: { companyId?: string; status?: GmudStatus }) {
     const search = new URLSearchParams();
-    if (params?.companyId) search.set("companyId", params.companyId);
+    if (isValidCompanyUuid(params?.companyId)) {
+      search.set("companyId", params!.companyId!);
+    }
     if (params?.status) search.set("status", params.status);
     const qs = search.toString();
     return apiRequest<Gmud[]>(`/gmuds${qs ? `?${qs}` : ""}`);
@@ -186,7 +189,9 @@ export const gmudsService = {
 
   async searchUsers(params: { companyId?: string; q?: string }) {
     const search = new URLSearchParams();
-    if (params.companyId) search.set("companyId", params.companyId);
+    if (isValidCompanyUuid(params.companyId)) {
+      search.set("companyId", params.companyId);
+    }
     if (params.q) search.set("q", params.q);
     const qs = search.toString();
     return apiRequest<SearchUserResult[]>(`/gmuds/users/search${qs ? `?${qs}` : ""}`);

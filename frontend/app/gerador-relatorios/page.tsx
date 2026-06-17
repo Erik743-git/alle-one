@@ -9,11 +9,11 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { useAuth } from "@/lib/use-auth";
 import {
   pickCompanyIdFromList,
   setPersistedCompanyId,
 } from "@/lib/selected-company";
-import { getStoredUser } from "@/lib/session";
 import {
   ALL_COMPANIES_REPORT_VALUE,
   getFormatsForReportType,
@@ -32,7 +32,7 @@ function getReportCompanyLabel(report: ReportRow): string {
 }
 
 export default function GeradorRelatoriosPage() {
-  const user = useMemo(() => getStoredUser(), []);
+  const { user } = useAuth();
   const [carregando, setCarregando] = useState(true);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState("");

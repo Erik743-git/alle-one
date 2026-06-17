@@ -307,23 +307,19 @@ const SidebarBrand = memo(function SidebarBrand({
   }
 
   return (
-    <div className="sidebar-brand shrink-0 border-b border-sidebar-border px-4 py-3 max-h-[min(24vh,10rem)] overflow-hidden">
-      <div className="relative">
-        <div className="absolute right-0 top-0">
-          <ThemeToggle />
-        </div>
-
-        <div className="flex flex-col items-center gap-2 pr-10">
-          <div className="flex w-full justify-center">
-            <AlleBrandLogo
-              priority
-              className="w-full max-w-[168px]"
-            />
+    <div className="sidebar-brand shrink-0 border-b border-sidebar-border px-4 py-3 overflow-hidden">
+      <div className="flex w-full flex-col gap-1.5">
+        <div className="flex w-full items-end gap-2">
+          <div className="flex min-w-0 flex-1 justify-center">
+            <AlleBrandLogo priority className="w-full max-w-[168px]" />
           </div>
-          <p className="text-center text-[11px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">
-            ALLE ONE
-          </p>
+          <div className="shrink-0 translate-y-5">
+            <ThemeToggle />
+          </div>
         </div>
+        <p className="text-center text-[11px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">
+          ALLE ONE
+        </p>
       </div>
     </div>
   );

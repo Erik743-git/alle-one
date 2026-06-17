@@ -1,5 +1,6 @@
 import { API_URL, getBrowserApiBase } from "@/lib/env";
 import type { ModulePermission } from "./permission-modules";
+import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 
 export type AuthUser = {
   id: string;
@@ -99,6 +100,7 @@ export function clearSessionSync() {
   window.sessionStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(TOKEN_KEY);
+  purgeInvalidPersistedCompanyIds();
 }
 
 /** Encerra sessão na API e limpa dados locais. */

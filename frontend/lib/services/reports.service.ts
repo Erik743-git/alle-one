@@ -2,6 +2,10 @@ import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
 import { parseContentDispositionFilename } from "@/lib/download-blob";
 import { API_URL } from "@/lib/env";
+import {
+  ALL_COMPANIES_REPORT_VALUE,
+} from "@/lib/report-types";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 
 export type ReportFormat = "CSV" | "XLSX";
 
@@ -49,7 +53,13 @@ export const reportsService = {
     end?: string;
   }) {
     const search = new URLSearchParams();
-    if (params?.companyId) search.set("companyId", params.companyId);
+    if (params?.companyId) {
+      if (params.companyId === ALL_COMPANIES_REPORT_VALUE) {
+        search.set("companyId", params.companyId);
+      } else if (isValidCompanyUuid(params.companyId)) {
+        search.set("companyId", params.companyId);
+      }
+    }
     if (params?.type) search.set("type", params.type);
     if (params?.start) search.set("start", params.start);
     if (params?.end) search.set("end", params.end);
@@ -59,7 +69,13 @@ export const reportsService = {
 
   async last(params?: { companyId?: string; type?: string }) {
     const search = new URLSearchParams();
-    if (params?.companyId) search.set("companyId", params.companyId);
+    if (params?.companyId) {
+      if (params.companyId === ALL_COMPANIES_REPORT_VALUE) {
+        search.set("companyId", params.companyId);
+      } else if (isValidCompanyUuid(params.companyId)) {
+        search.set("companyId", params.companyId);
+      }
+    }
     if (params?.type) search.set("type", params.type);
     const qs = search.toString();
     return apiRequest<ReportRow | null>(`/reports/last${qs ? `?${qs}` : ""}`);

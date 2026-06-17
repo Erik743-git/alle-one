@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { isValidCompanyUuid, isValidUuid } from "@/lib/selected-company";
 
 export type RendimentoCalendarView = "month" | "week" | "day";
 
@@ -198,6 +199,9 @@ export const rendimentoService = {
     companyId: string;
     status?: "PENDING" | "ANSWERED";
   }) {
+    if (!isValidCompanyUuid(params.companyId)) {
+      return Promise.reject(new Error("Empresa inválida."));
+    }
     const search = new URLSearchParams();
     if (params.status) search.set("status", params.status);
     const qs = search.toString();
@@ -211,6 +215,9 @@ export const rendimentoService = {
     view: "month" | "week" | "day";
     date?: string;
   }) {
+    if (!isValidCompanyUuid(params.companyId)) {
+      return Promise.reject(new Error("Empresa inválida."));
+    }
     const search = new URLSearchParams();
     search.set("view", params.view);
     if (params.date) {
@@ -233,6 +240,9 @@ export const rendimentoService = {
     description?: string;
     message: string;
   }) {
+    if (!isValidCompanyUuid(params.companyId)) {
+      return Promise.reject(new Error("Empresa inválida."));
+    }
     const { companyId, ...body } = params;
     return apiRequest<{ ok: boolean; question: RendimentoAppointmentQuestion }>(
       `/rendimento/companies/${companyId}/questions`,
@@ -268,6 +278,9 @@ export const rendimentoService = {
     view: RendimentoCalendarView;
     date?: string;
   }) {
+    if (!isValidUuid(params.userId)) {
+      return Promise.reject(new Error("Colaborador inválido."));
+    }
     const search = new URLSearchParams();
     search.set("view", params.view);
     if (params.date) {
@@ -290,6 +303,9 @@ export const rendimentoService = {
     debitOvertime?: boolean;
     overtimeMinutes?: number;
   }) {
+    if (!isValidUuid(params.userId)) {
+      return Promise.reject(new Error("Colaborador inválido."));
+    }
     return apiRequest<{ id: string; status: "PENDING" }>(
       `/rendimento/users/${params.userId}/justifications`,
       {

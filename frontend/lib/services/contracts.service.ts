@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 
 export type TifluxContractStatus = "actives" | "readjust" | "expired";
 
@@ -33,7 +34,9 @@ export const contractsService = {
     status?: TifluxContractStatus[]; // default do TiFlux: actives
   }) {
     const search = new URLSearchParams();
-    if (params.companyId) search.set("companyId", params.companyId);
+    if (isValidCompanyUuid(params.companyId)) {
+      search.set("companyId", params.companyId);
+    }
     if (params.offset) search.set("offset", String(params.offset));
     if (params.limit) search.set("limit", String(params.limit));
     if (params.status?.length) search.set("status", params.status.join(","));

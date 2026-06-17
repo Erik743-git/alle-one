@@ -40,6 +40,8 @@ import {
   RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC,
 } from "@/lib/module-copy";
 import { getStoredUser } from "@/lib/session";
+import { isValidUuid } from "@/lib/selected-company";
+import { useAuth } from "@/lib/use-auth";
 import {
   RendimentoCalendar,
   toDateInputValue,
@@ -67,16 +69,19 @@ function minutesBetweenTimes(from: string, to: string): number {
 export default function RendimentoAgendaPage() {
   const params = useParams<{ userId: string }>();
   const router = useRouter();
-  const userId = params.userId;
+  const { user: authUser } = useAuth();
+  const userId = isValidUuid(params.userId) ? params.userId : null;
 
   useEffect(() => {
-    if (!userId) return;
-    const stored = getStoredUser();
-    if (!stored) return;
-    if (stored.role !== "ADMIN" && stored.id !== userId) {
-      router.replace(`/apontamentos/${stored.id}`);
+    if (!authUser) return;
+    if (!userId) {
+      router.replace(`/apontamentos/${authUser.id}`);
+      return;
     }
-  }, [userId, router]);
+    if (authUser.role !== "ADMIN" && authUser.id !== userId) {
+      router.replace(`/apontamentos/${authUser.id}`);
+    }
+  }, [authUser, userId, router]);
 
   const [view, setView] = useState<RendimentoCalendarView>("month");
   const [referenceDate, setReferenceDate] = useState(() => new Date());
@@ -94,13 +99,13 @@ export default function RendimentoAgendaPage() {
   const [defineLunch, setDefineLunch] = useState(false);
   const [justReason, setJustReason] = useState("");
   const [debitOvertime, setDebitOvertime] = useState(false);
-  const authUser = getStoredUser();
-  const isPjUser = isPjRole(authUser?.role);
-  const canApprove = authUser?.role === "ADMIN";
+  const authUserResolved = authUser ?? getStoredUser();
+  const isPjUser = isPjRole(authUserResolved?.role);
+  const canApprove = authUserResolved?.role === "ADMIN";
   const canVoluntaryJustification =
     !isPjUser && canCreateVoluntaryRendimentoJustification();
   const canDeleteOwnJustification =
-    authUser?.id === userId && canVoluntaryJustification;
+    authUserResolved?.id === userId && canVoluntaryJustification;
   const canAlertJustification =
     !isPjUser && canCreateAlertRendimentoJustification();
 

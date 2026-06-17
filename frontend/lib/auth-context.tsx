@@ -10,6 +10,7 @@ import {
   setStoredUser,
   type AuthUser,
 } from "./session";
+import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
 
 function authMeUrl(): string {
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const establishSession = React.useCallback((nextUser: AuthUser) => {
     setStoredUser(nextUser);
+    purgeInvalidPersistedCompanyIds();
     setUser(nextUser);
   }, []);
 

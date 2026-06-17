@@ -13,6 +13,8 @@ import {
   IsIn,
   ValidateIf,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { optionalUuidQuery } from '../../../common/validators/optional-uuid-query.transform';
 
 export enum GmudStatusDto {
   DRAFT = 'DRAFT',
@@ -192,6 +194,7 @@ export class ApproveOnBehalfGmudDto {
 
 export class ListGmudsQueryDto {
   @IsOptional()
+  @Transform(({ value }) => optionalUuidQuery(value))
   @IsUUID()
   companyId?: string;
 
@@ -202,6 +205,7 @@ export class ListGmudsQueryDto {
 
 export class SearchUsersQueryDto {
   @IsOptional()
+  @Transform(({ value }) => optionalUuidQuery(value))
   @IsUUID()
   companyId?: string;
 

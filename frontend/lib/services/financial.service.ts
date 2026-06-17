@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 import { parseContentDispositionFilename } from "@/lib/download-blob";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
@@ -41,7 +42,9 @@ export type FinancialOverviewResponse = {
 export const financialService = {
   async listContracts(params: { companyId?: string }) {
     const search = new URLSearchParams();
-    if (params.companyId) search.set("companyId", params.companyId);
+    if (isValidCompanyUuid(params.companyId)) {
+      search.set("companyId", params.companyId);
+    }
     const qs = search.toString();
     return apiRequest<ListCompanyContractsResponse>(
       `/financial/contracts${qs ? `?${qs}` : ""}`,
@@ -50,14 +53,18 @@ export const financialService = {
 
   async overview(params: { companyId?: string }) {
     const search = new URLSearchParams();
-    if (params.companyId) search.set("companyId", params.companyId);
+    if (isValidCompanyUuid(params.companyId)) {
+      search.set("companyId", params.companyId);
+    }
     const qs = search.toString();
     return apiRequest<FinancialOverviewResponse>(`/financial/overview${qs ? `?${qs}` : ""}`);
   },
 
   async downloadContractFile(params: { contractId: string; companyId?: string; inline?: boolean }) {
     const search = new URLSearchParams();
-    if (params.companyId) search.set("companyId", params.companyId);
+    if (isValidCompanyUuid(params.companyId)) {
+      search.set("companyId", params.companyId);
+    }
     if (params.inline) search.set("inline", "true");
     const qs = search.toString();
     const url = `${API_URL}/financial/contracts/${params.contractId}/file${qs ? `?${qs}` : ""}`;

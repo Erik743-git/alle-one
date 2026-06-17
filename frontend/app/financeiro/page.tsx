@@ -51,6 +51,7 @@ import {
 } from "@/lib/services/rendimento.service";
 import {
   getPersistedCompanyId,
+  isValidCompanyUuid,
   pickCompanyIdFromList,
   setPersistedCompanyId,
 } from "@/lib/selected-company";
@@ -81,7 +82,11 @@ export default function FinanceiroPage() {
     useState<RendimentoCompany | null>(null);
   const [questionsOpen, setQuestionsOpen] = useState(false);
   const companyRequestIdRef = useRef(0);
-  const activeCompanyId = isClient ? user?.companyId ?? "" : companyId;
+  const activeCompanyId = isClient
+    ? user?.companyId ?? ""
+    : isValidCompanyUuid(companyId)
+      ? companyId
+      : "";
   const companyOptions = useMemo(
     () => companies.map((c) => ({ value: c.id, label: c.name })),
     [companies],
@@ -107,7 +112,7 @@ export default function FinanceiroPage() {
 
   async function loadContracts(opts?: { silent?: boolean }) {
     const silent = opts?.silent === true;
-    if (!isClient && !companyId) return;
+    if (!isClient && !isValidCompanyUuid(companyId)) return;
 
     if (!silent) setLoading(true);
     setError(null);
@@ -128,7 +133,7 @@ export default function FinanceiroPage() {
 
   async function loadOverview(opts?: { silent?: boolean }) {
     const silent = opts?.silent === true;
-    if (!isClient && !companyId) return;
+    if (!isClient && !isValidCompanyUuid(companyId)) return;
 
     try {
       const res = await financialService.overview({

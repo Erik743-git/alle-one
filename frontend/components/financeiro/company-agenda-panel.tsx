@@ -21,6 +21,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 import {
   rendimentoService,
   type RendimentoCompanyAgenda,
@@ -68,7 +69,7 @@ export function CompanyAgendaPanel({
   const [answerSaving, setAnswerSaving] = useState(false);
 
   const loadAgenda = useCallback(async () => {
-    if (!companyId) return;
+    if (!isValidCompanyUuid(companyId)) return;
     try {
       if (!hasAgendaRef.current) setLoading(true);
       else setRefreshing(true);

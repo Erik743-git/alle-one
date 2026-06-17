@@ -13,6 +13,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { optionalUuidQuery } from '../../common/validators/optional-uuid-query.transform';
 
 export type RendimentoCalendarView = 'month' | 'week' | 'day';
 
@@ -88,6 +89,7 @@ export class ListPendingOvertimeQueryDto {
   end!: string;
 
   @IsOptional()
+  @Transform(({ value }) => optionalUuidQuery(value))
   @IsUUID()
   userId?: string;
 

@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/api";
+import { isValidCompanyUuid } from "@/lib/selected-company";
 
 export type ContractStatus = "ACTIVE" | "INACTIVE" | "EXPIRED";
 
@@ -62,6 +63,9 @@ export type UpdateCompanyContractPayload = Partial<CreateCompanyContractPayload>
 
 export const companyContractsService = {
   async list(companyId: string) {
+    if (!isValidCompanyUuid(companyId)) {
+      throw new Error("Selecione uma empresa válida.");
+    }
     return apiRequest<ListCompanyContractsResponse>(`/companies/${companyId}/contracts`);
   },
 
