@@ -277,4 +277,27 @@ export class ZabbixDbService {
 
     return { data: pack, usable: true };
   }
+
+  /** Grupos sincronizados (schema zabbix) — usado quando ZABBIX_URL não está no .env. */
+  async listHostGroups(): Promise<Array<{ groupid: string; name: string }>> {
+    if (!(await this.ensureSchema())) {
+      return [];
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ groupid: string; name: string }>
+    >`
+      SELECT groupid, name
+      FROM zabbix.host_groups
+      WHERE name IS NOT NULL AND TRIM(name) <> ''
+      ORDER BY name ASC
+    `;
+
+    return rows
+      .map((row) => ({
+        groupid: String(row.groupid),
+        name: row.name.trim(),
+      }))
+      .filter((row) => row.name.length > 0);
+  }
 }

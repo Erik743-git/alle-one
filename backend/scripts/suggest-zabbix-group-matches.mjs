@@ -182,15 +182,48 @@ async function zabbixRequest(method, params = {}) {
   return data.result;
 }
 
-async function getZabbixGroups() {
-  const groups = await zabbixRequest('hostgroup.get', {
-    output: ['groupid', 'name'],
-    sortfield: 'name',
-  });
+async function getZabbixGroupsFromDb() {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT groupid, name
+      FROM zabbix.host_groups
+      WHERE name IS NOT NULL AND TRIM(name) <> ''
+      ORDER BY name ASC
+    `;
+    return rows
+      .map((row) => ({
+        groupid: String(row.groupid),
+        name: String(row.name).trim(),
+      }))
+      .filter((row) => row.name.length > 0);
+  } catch {
+    return [];
+  }
+}
 
-  return groups
-    .filter((group) => group.name?.trim())
-    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+async function getZabbixGroups() {
+  const url = process.env.ZABBIX_URL?.trim();
+  const token = process.env.ZABBIX_TOKEN?.trim();
+
+  if (url && token) {
+    const groups = await zabbixRequest('hostgroup.get', {
+      output: ['groupid', 'name'],
+      sortfield: 'name',
+    });
+
+    return groups
+      .filter((group) => group.name?.trim())
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
+
+  const dbGroups = await getZabbixGroupsFromDb();
+  if (dbGroups.length) {
+    return dbGroups;
+  }
+
+  throw new Error(
+    'Zabbix indisponível: configure ZABBIX_URL/ZABBIX_TOKEN ou mantenha o sync zabbix ativo.',
+  );
 }
 
 function resolveGroupByName(groups, input) {

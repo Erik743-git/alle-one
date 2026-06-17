@@ -157,6 +157,10 @@ export class ZabbixService {
     private readonly zabbixDb: ZabbixDbService,
   ) {}
 
+  private hasApiConfig(): boolean {
+    return Boolean(this.url?.trim() && this.token?.trim());
+  }
+
   /** Cache em Postgres (external_api_cache). Env: ZABBIX_DASHBOARD_CACHE_MS */
   private getDashboardCacheTtlMs(): number {
     const raw = process.env.ZABBIX_DASHBOARD_CACHE_MS;
@@ -472,12 +476,18 @@ export class ZabbixService {
       return null;
     }
 
-    const groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
-      output: ['groupid', 'name'],
-      filter: { name: trimmed },
-    });
+    if (this.hasApiConfig()) {
+      const groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
+        output: ['groupid', 'name'],
+        filter: { name: trimmed },
+      });
 
-    return groups[0]?.groupid ?? null;
+      return groups[0]?.groupid ?? null;
+    }
+
+    const dbGroups = await this.zabbixDb.listHostGroups();
+    const match = dbGroups.find((group) => group.name === trimmed);
+    return match?.groupid ?? null;
   }
 
   private buildTemplatesFromDetailedHosts(
@@ -561,14 +571,28 @@ export class ZabbixService {
   }
 
   async getGroups(): Promise<ZabbixGroup[]> {
-    const groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
-      output: ['groupid', 'name'],
-      sortfield: 'name',
-    });
+    if (this.hasApiConfig()) {
+      const groups = await this.request<ZabbixGroup[]>('hostgroup.get', {
+        output: ['groupid', 'name'],
+        sortfield: 'name',
+      });
 
-    return groups
-      .filter((group) => group.name?.trim())
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+      return groups
+        .filter((group) => group.name?.trim())
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }
+
+    const dbGroups = await this.zabbixDb.listHostGroups();
+    if (dbGroups.length) {
+      this.logger.debug(
+        `Grupos Zabbix via DB (zabbix.host_groups): ${dbGroups.length}`,
+      );
+      return dbGroups.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+    }
+
+    throw new InternalServerErrorException(
+      'Zabbix indisponível: configure ZABBIX_URL/ZABBIX_TOKEN no .env ou mantenha o sync zabbix ativo.',
+    );
   }
 
   /** Resolve nome do grupo (exato ou case-insensitive) para validação no cadastro. */
