@@ -16,6 +16,15 @@ export type RendimentoCollaborator = {
   monthTotalHoursFormatted: string;
 };
 
+export type RendimentoCollaboratorListPreference = {
+  collaboratorId: string;
+  name: string;
+  email: string;
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  companyName: string | null;
+  listed: boolean;
+};
+
 export type RendimentoGap = {
   type: "idle" | "lunch";
   fromTime: string;
@@ -273,6 +282,25 @@ export const rendimentoService = {
     return apiRequest<RendimentoCollaborator[]>("/rendimento/collaborators");
   },
 
+  listCollaboratorListPreferences() {
+    return apiRequest<RendimentoCollaboratorListPreference[]>(
+      "/rendimento/collaborators/list-preferences",
+    );
+  },
+
+  setCollaboratorListPreference(params: {
+    collaboratorUserId: string;
+    listed: boolean;
+  }) {
+    return apiRequest<{ collaboratorId: string; listed: boolean }>(
+      `/rendimento/collaborators/list-preferences/${params.collaboratorUserId}`,
+      {
+        method: "PATCH",
+        body: { listed: params.listed },
+      },
+    );
+  },
+
   getTimesheet(params: {
     userId: string;
     view: RendimentoCalendarView;
@@ -433,6 +461,8 @@ export type PendingJustificationItem = {
   kindLabel: string;
   reason: string;
   debitOvertime: boolean;
+  adjustsOvertimeBalance: boolean;
+  adjustsOvertimeBalanceLabel: "Sim" | "Não";
   overtimeMinutes: number;
   overtimeFormatted: string;
   companyName: string | null;

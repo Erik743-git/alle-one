@@ -202,3 +202,8 @@ export class ListCompanyQuestionsQueryDto {
   @IsIn(['PENDING', 'ANSWERED'])
   status?: 'PENDING' | 'ANSWERED';
 }
+
+export class UpdateCollaboratorListPreferenceDto {
+  @IsBoolean()
+  listed!: boolean;
+}

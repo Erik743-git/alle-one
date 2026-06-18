@@ -122,6 +122,8 @@ model User {
   rendimentoDayEvents          RendimentoDayEvent[]           @relation("RendimentoDayEvents")
   rendimentoGapJustifications  RendimentoGapJustification[]   @relation("RendimentoGapJustifications")
   rendimentoOvertimeBalance    RendimentoOvertimeBalance?     @relation("RendimentoOvertimeBalances")
+  rendimentoListPrefsAsAdmin        RendimentoAdminCollaboratorListPref[] @relation("RendimentoListPrefAdmin")
+  rendimentoListPrefsAsCollaborator RendimentoAdminCollaboratorListPref[] @relation("RendimentoListPrefCollaborator")
 
   @@index([companyId])
   @@map("users")
@@ -808,4 +810,20 @@ model RendimentoOvertimeBalance {
   user User @relation("RendimentoOvertimeBalances", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("rendimento_overtime_balances")
+}
+
+/// Visibilidade de colaboradores na lista de Apontamentos (por administrador).
+model RendimentoAdminCollaboratorListPref {
+  adminUserId        String   @map("admin_user_id")
+  collaboratorUserId String   @map("collaborator_user_id")
+  listed             Boolean  @default(true)
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  admin        User @relation("RendimentoListPrefAdmin", fields: [adminUserId], references: [id], onDelete: Cascade)
+  collaborator User @relation("RendimentoListPrefCollaborator", fields: [collaboratorUserId], references: [id], onDelete: Cascade)
+
+  @@id([adminUserId, collaboratorUserId])
+  @@index([adminUserId])
+  @@map("rendimento_admin_collaborator_list_prefs")
 }

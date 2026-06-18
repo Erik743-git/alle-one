@@ -100,6 +100,15 @@ export type RendimentoCollaboratorDto = {
   monthTotalHoursFormatted: string;
 };
 
+export type RendimentoCollaboratorListPreferenceDto = {
+  collaboratorId: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  companyName: string | null;
+  listed: boolean;
+};
+
 export type RendimentoTimesheetDto = {
   userId: string;
   userName: string;
@@ -1476,6 +1485,68 @@ export class RendimentoService {
     return collaborators;
   }
 
+  async listCollaboratorListPreferences(
+    adminUserId: string,
+  ): Promise<RendimentoCollaboratorListPreferenceDto[]> {
+    const collaborators = await this.listCollaboratorsForSelect();
+    const prefs = await this.prisma.rendimentoAdminCollaboratorListPref.findMany({
+      where: { adminUserId },
+      select: { collaboratorUserId: true, listed: true },
+    });
+    const listedByCollaboratorId = new Map(
+      prefs.map((pref) => [pref.collaboratorUserId, pref.listed]),
+    );
+
+    return collaborators.map((collaborator) => ({
+      collaboratorId: collaborator.id,
+      name: collaborator.name,
+      email: collaborator.email,
+      role: collaborator.role,
+      companyName: collaborator.companyName,
+      listed: listedByCollaboratorId.get(collaborator.id) ?? true,
+    }));
+  }
+
+  async setCollaboratorListPreference(params: {
+    adminUserId: string;
+    collaboratorUserId: string;
+    listed: boolean;
+  }): Promise<{ collaboratorId: string; listed: boolean }> {
+    const collaborator = await this.prisma.user.findFirst({
+      where: {
+        id: params.collaboratorUserId,
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] },
+      },
+      select: { id: true },
+    });
+
+    if (!collaborator) {
+      throw new NotFoundException('Colaborador não encontrado.');
+    }
+
+    await this.prisma.rendimentoAdminCollaboratorListPref.upsert({
+      where: {
+        adminUserId_collaboratorUserId: {
+          adminUserId: params.adminUserId,
+          collaboratorUserId: params.collaboratorUserId,
+        },
+      },
+      create: {
+        adminUserId: params.adminUserId,
+        collaboratorUserId: params.collaboratorUserId,
+        listed: params.listed,
+      },
+      update: { listed: params.listed },
+    });
+
+    return {
+      collaboratorId: params.collaboratorUserId,
+      listed: params.listed,
+    };
+  }
+
   async getTimesheet(params: {
     actor: AuthenticatedRequestUser;
     userId: string;
@@ -2137,6 +2208,9 @@ export class RendimentoService {
       const gapType = row.gap_type === 'lunch' ? 'lunch' : 'idle';
       const kind = row.kind === 'VOLUNTARY' ? 'VOLUNTARY' : 'ALERT';
 
+      const debitOvertime = Boolean(row.debit_overtime);
+      const overtimeMinutes = Number(row.overtime_minutes) || 0;
+
       return {
         id: row.id,
         userId: row.user_id,
@@ -2154,11 +2228,12 @@ export class RendimentoService {
         kind,
         kindLabel: kind === 'VOLUNTARY' ? 'Voluntária' : 'Alerta',
         reason: row.reason?.trim() || '',
-        debitOvertime: Boolean(row.debit_overtime),
-        overtimeMinutes: Number(row.overtime_minutes) || 0,
-        overtimeFormatted: this.formatMinutes(
-          Number(row.overtime_minutes) || 0,
-        ),
+        debitOvertime,
+        /** Abate saldo de horas extras ao aprovar (mesmo valor de debitOvertime). */
+        adjustsOvertimeBalance: debitOvertime,
+        adjustsOvertimeBalanceLabel: debitOvertime ? 'Sim' : 'Não',
+        overtimeMinutes,
+        overtimeFormatted: this.formatMinutes(overtimeMinutes),
         companyName: row.company_name?.trim() || null,
         status: row.status,
         approvedByName: row.approved_by_name?.trim() || null,

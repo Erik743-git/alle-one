@@ -19,6 +19,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { CompactExpandableText } from "@/components/ui/compact-expandable-text";
 import { JustificationKindBadge } from "@/components/rendimento/justification-kind-badge";
 import { ApprovalAuditCell } from "@/components/apontamentos/approval-audit-cell";
+import { RENDIMENTO_DEBIT_OVERTIME_LABEL } from "@/lib/module-copy";
 import { BulkApprovalStatusFilterField } from "@/components/apontamentos/bulk-approval-status-filter";
 import { monthRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
@@ -353,7 +354,7 @@ export default function AprovarJustificativasPage() {
                     {bulkApprovalEmptyMessage(statusFilters, "justification")}
                   </p>
                 ) : (
-                  <table className="w-full min-w-[1180px] text-left text-sm">
+                  <table className="w-full min-w-[1280px] text-left text-sm">
                     <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
                       <tr>
                         <th className="w-12 px-4 py-3">
@@ -378,6 +379,7 @@ export default function AprovarJustificativasPage() {
                         <th className="px-4 py-3">Data</th>
                         <th className="px-4 py-3">Horário</th>
                         <th className="px-4 py-3">Tipo</th>
+                        <th className="px-4 py-3">Abate saldo HE</th>
                         <th className="px-4 py-3">Lacuna</th>
                         <th className="px-4 py-3">Motivo</th>
                         <th className="px-4 py-3">Aprovação</th>
@@ -387,6 +389,11 @@ export default function AprovarJustificativasPage() {
                     <tbody>
                       {items.map((row) => {
                         const decided = isBulkRowDecided(row.status);
+                        const abateSaldoHe =
+                          row.adjustsOvertimeBalance ?? row.debitOvertime;
+                        const abateSaldoHeLabel =
+                          row.adjustsOvertimeBalanceLabel ??
+                          (abateSaldoHe ? "Sim" : "Não");
                         return (
                         <tr
                           key={row.id}
@@ -435,16 +442,31 @@ export default function AprovarJustificativasPage() {
                               label={row.kindLabel}
                             />
                           </td>
+                          <td className="px-4 py-3">
+                            <div className="space-y-1">
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                                  abateSaldoHe
+                                    ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                    : "bg-muted text-muted-foreground",
+                                )}
+                                title={RENDIMENTO_DEBIT_OVERTIME_LABEL}
+                              >
+                                {abateSaldoHeLabel}
+                              </span>
+                              {abateSaldoHe ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {row.overtimeFormatted}
+                                </p>
+                              ) : null}
+                            </div>
+                          </td>
                           <td className="px-4 py-3 text-muted-foreground">
                             <p className="font-medium text-foreground/90">
                               {row.gapTypeLabel}
                             </p>
                             <p className="text-xs">{row.gapLabel}</p>
-                            {row.debitOvertime ? (
-                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                                Débito HE: {row.overtimeFormatted}
-                              </p>
-                            ) : null}
                           </td>
                           <td className="max-w-xs px-4 py-3">
                             <CompactExpandableText text={row.reason} maxLines={3} />

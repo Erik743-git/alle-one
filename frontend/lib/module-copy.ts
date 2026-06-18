@@ -27,6 +27,15 @@ export const APONTAMENTOS_PJ_SUBTITLE =
 export const APONTAMENTOS_MONTH_HOURS_NOTE =
   "Total do mês calculado sem contar horas sobrepostas no mesmo dia.";
 
+export const APONTAMENTOS_LIST_SETTINGS_TITLE =
+  "Lista de colaboradores";
+
+export const APONTAMENTOS_LIST_SETTINGS_DESCRIPTION =
+  "Escolha quais colaboradores aparecem na sua lista. A configuração é individual por administrador.";
+
+export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
+  "Listar na tela";
+
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
   "Descreva o motivo do intervalo. Após análise da equipe administrativa, o registro será confirmado.";
 

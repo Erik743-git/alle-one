@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Search, Users } from "lucide-react";
+import { CalendarDays, Search, Settings2, Users } from "lucide-react";
 
 import { ApontamentosAdminHub } from "@/components/apontamentos/apontamentos-admin-hub";
+import { ApontamentosCollaboratorListSettingsSheet } from "@/components/apontamentos/apontamentos-collaborator-list-settings-sheet";
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -31,6 +32,7 @@ import { ensureArray } from "@/lib/utils";
 import {
   rendimentoService,
   type RendimentoCollaborator,
+  type RendimentoCollaboratorListPreference,
 } from "@/lib/services/rendimento.service";
 
 export default function ApontamentosPage() {
@@ -53,6 +55,10 @@ export default function ApontamentosPage() {
   const [collaborators, setCollaborators] = useState<RendimentoCollaborator[]>(
     [],
   );
+  const [listPreferences, setListPreferences] = useState<
+    RendimentoCollaboratorListPreference[] | null
+  >(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -78,8 +84,12 @@ export default function ApontamentosPage() {
           return;
         }
         setLoading(true);
-        const data = await rendimentoService.listCollaborators();
+        const [data, preferences] = await Promise.all([
+          rendimentoService.listCollaborators(),
+          rendimentoService.listCollaboratorListPreferences().catch(() => []),
+        ]);
         setCollaborators(ensureArray(data));
+        setListPreferences(ensureArray(preferences));
       } catch (err) {
         notifyError(
           err instanceof Error
@@ -126,8 +136,23 @@ export default function ApontamentosPage() {
     })();
   }, [isAdmin]);
 
+  const hiddenCollaboratorIds = useMemo(() => {
+    if (!listPreferences) return new Set<string>();
+    return new Set(
+      listPreferences
+        .filter((item) => !item.listed)
+        .map((item) => item.collaboratorId),
+    );
+  }, [listPreferences]);
+
+  const visibleCollaborators = useMemo(() => {
+    return ensureArray(collaborators).filter(
+      (item) => !hiddenCollaboratorIds.has(item.id),
+    );
+  }, [collaborators, hiddenCollaboratorIds]);
+
   const filteredCollaborators = useMemo(() => {
-    const list = ensureArray(collaborators);
+    const list = visibleCollaborators;
     const term = search.trim().toLowerCase();
     if (!term) return list;
     return list.filter((item) => {
@@ -141,7 +166,7 @@ export default function ApontamentosPage() {
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [collaborators, search]);
+  }, [visibleCollaborators, search]);
 
   return (
     <ProtectedPage>
@@ -152,10 +177,28 @@ export default function ApontamentosPage() {
               icon={<Users size={24} />}
               title="Apontamentos"
               description={APONTAMENTOS_ADMIN_SUBTITLE}
+              actions={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-11 shrink-0"
+                  aria-label="Configurar lista de colaboradores"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  <Settings2 className="size-5" />
+                </Button>
+              }
+            />
+
+            <ApontamentosCollaboratorListSettingsSheet
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
+              onPreferencesChange={setListPreferences}
             />
 
             <ApontamentosAdminHub
-              collaboratorCount={collaborators.length}
+              collaboratorCount={visibleCollaborators.length}
               pendingOvertimeCount={pendingOvertimeCount}
               pendingJustificationVoluntary={pendingJustificationVoluntary}
               pendingJustificationAlert={pendingJustificationAlert}

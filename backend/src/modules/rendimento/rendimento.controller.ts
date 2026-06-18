@@ -32,6 +32,7 @@ import {
   ListCompanyQuestionsQueryDto,
   RendimentoCompanyAgendaQueryDto,
   RendimentoTimesheetQueryDto,
+  UpdateCollaboratorListPreferenceDto,
 } from './rendimento.dto';
 import { AuditMeta } from '../audit/audit.decorator';
 import { RendimentoCompanyService } from './rendimento-company.service';
@@ -143,6 +144,28 @@ export class RendimentoController {
   @Roles('ADMIN')
   listCollaborators() {
     return this.rendimentoService.listCollaborators();
+  }
+
+  @Get('collaborators/list-preferences')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN')
+  listCollaboratorListPreferences(@Req() req: AuthenticatedRequest) {
+    return this.rendimentoService.listCollaboratorListPreferences(req.user.userId);
+  }
+
+  @Patch('collaborators/list-preferences/:collaboratorUserId')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN')
+  setCollaboratorListPreference(
+    @Req() req: AuthenticatedRequest,
+    @Param('collaboratorUserId', ParseUUIDPipe) collaboratorUserId: string,
+    @Body() body: UpdateCollaboratorListPreferenceDto,
+  ) {
+    return this.rendimentoService.setCollaboratorListPreference({
+      adminUserId: req.user.userId,
+      collaboratorUserId,
+      listed: body.listed,
+    });
   }
 
   @Get('users/:userId/timesheet')
