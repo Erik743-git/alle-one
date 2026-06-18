@@ -86,7 +86,9 @@ export default function ApontamentosPage() {
         setLoading(true);
         const [data, preferences] = await Promise.all([
           rendimentoService.listCollaborators(),
-          rendimentoService.listCollaboratorListPreferences().catch(() => []),
+          rendimentoService
+            .listCollaboratorListPreferences()
+            .catch((): RendimentoCollaboratorListPreference[] => []),
         ]);
         setCollaborators(ensureArray(data));
         setListPreferences(ensureArray(preferences));
