@@ -114,7 +114,7 @@ export function ApontamentosCollaboratorListSettingsSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 p-0 sm:max-w-2xl"
+        className="flex h-full flex-col gap-0 p-0"
       >
         <SheetHeader className="border-b border-border px-6 py-5 text-left">
           <div className="flex items-start gap-3 pr-8">
@@ -161,14 +161,16 @@ export function ApontamentosCollaboratorListSettingsSheet({
               Nenhum colaborador encontrado.
             </p>
           ) : (
-            <div className="overflow-x-scroll rounded-xl border border-border [scrollbar-gutter:stable]">
-              <table className="w-full min-w-[640px] text-left text-sm">
+            <div className="overflow-x-auto rounded-xl border border-border">
+              <table className="w-full text-left text-sm">
                 <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Nome</th>
                     <th className="px-4 py-3 font-semibold">E-mail</th>
-                    <th className="px-4 py-3 font-semibold">Perfil</th>
-                    <th className="px-4 py-3 text-right font-semibold">
+                    <th className="whitespace-nowrap px-4 py-3 font-semibold">
+                      Perfil
+                    </th>
+                    <th className="whitespace-nowrap px-4 py-3 text-right font-semibold">
                       {APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL}
                     </th>
                   </tr>
@@ -184,7 +186,7 @@ export function ApontamentosCollaboratorListSettingsSheet({
                         <td className="px-4 py-3 font-medium text-foreground">
                           {item.name}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                        <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">
                           {item.email}
                         </td>
                         <td className="px-4 py-3">
