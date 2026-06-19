@@ -1,6 +1,6 @@
 -- Preferência global de visibilidade na lista de Apontamentos (todos os admins).
 CREATE TABLE "rendimento_collaborator_list_prefs" (
-    "collaborator_user_id" UUID NOT NULL,
+    "collaborator_user_id" TEXT NOT NULL,
     "listed" BOOLEAN NOT NULL DEFAULT true,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
