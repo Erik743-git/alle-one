@@ -16,8 +16,9 @@ function normalizeServiceName(value: string | null | undefined): string | null {
 function kindFromServiceName(serviceName: string | null): RendimentoOvertimeKind | null {
   if (!serviceName) return null;
   const upper = serviceName.toUpperCase();
-  if (upper.includes("PLANT")) return "PLANTAO";
+  if (upper.includes("PLANTAO") || upper.includes("PLANTÃO")) return "PLANTAO";
   if (upper.includes("HORA EXTRA") || upper.includes("HORAS EXTRA")) return "EXTRA";
+  if (upper.includes("HORA NORMAL")) return null;
   return null;
 }
 
@@ -48,11 +49,6 @@ export function resolveRendimentoOvertimeDisplay(
   }
   if (entry.overtimeKind === "EXTRA") {
     return { kind: "EXTRA", label: "HORA EXTRA", serviceName };
-  }
-
-  const hay = `${entry.clientName ?? ""} ${entry.description ?? ""}`.toLowerCase();
-  if (hay.includes("plantao") || hay.includes("plantão")) {
-    return { kind: "PLANTAO", label: "PLANTÃO", serviceName };
   }
 
   if (entry.isOvertime) {

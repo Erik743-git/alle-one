@@ -118,15 +118,6 @@ export function getValorizationServiceName(raw: unknown): string | null {
   return null;
 }
 
-function normalizeHaystack(raw: unknown): string {
-  if (raw == null) return '';
-  try {
-    return JSON.stringify(raw).toLowerCase();
-  } catch {
-    return '';
-  }
-}
-
 export function overtimeKindFromValorization(
   raw: unknown,
 ): 'EXTRA' | 'PLANTAO' | null {
@@ -145,9 +136,6 @@ export function overtimeKindFromValorization(
     return null;
   }
 
-  const hay = normalizeHaystack(raw);
-  if (hay.includes('plantao') || hay.includes('plantão')) return 'PLANTAO';
-  if (hay.includes('hora extra') || hay.includes('horas extra')) return 'EXTRA';
   return null;
 }
 
