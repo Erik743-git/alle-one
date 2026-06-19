@@ -221,7 +221,7 @@ export function RendimentoGapBlock({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1">
-        {onJustify && !isLunch ? (
+        {onJustify && !isLunch && !justification ? (
           <button
             type="button"
             className="rounded bg-background/70 px-2 py-0.5 text-[10px] font-bold text-foreground hover:bg-background"

@@ -460,8 +460,8 @@ export class RendimentoService {
       kind: row.kind,
       status: row.status,
       gapType: row.gap_type,
-      fromTime: row.from_time,
-      toTime: row.to_time,
+      fromTime: this.normalizeTimeHHMM(row.from_time),
+      toTime: this.normalizeTimeHHMM(row.to_time),
       gapMinutes: Number(row.gap_minutes) || 0,
       reason: row.reason,
       debitOvertime: Boolean(row.debit_overtime),
@@ -748,6 +748,31 @@ export class RendimentoService {
     );
   }
 
+  private justificationStatusSuffix(
+    status: RendimentoJustificationStatus,
+  ): string {
+    if (status === 'APPROVED') return ' · justificado';
+    if (status === 'PENDING') return ' · justificativa pendente';
+    return ' · justificativa rejeitada';
+  }
+
+  private matchAlertJustificationToGap(
+    gap: RendimentoGapDto,
+    justifications: GapJustificationRow[],
+    usedIds: Set<string>,
+  ): GapJustificationRow | undefined {
+    const gapFrom = this.normalizeTimeHHMM(gap.fromTime);
+    const gapTo = this.normalizeTimeHHMM(gap.toTime);
+
+    return justifications.find((row) => {
+      if (usedIds.has(row.id)) return false;
+      const justFrom = this.normalizeTimeHHMM(row.from_time);
+      const justTo = this.normalizeTimeHHMM(row.to_time);
+      if (justFrom === gapFrom && justTo === gapTo) return true;
+      return this.overlaps(gapFrom, gapTo, justFrom, justTo);
+    });
+  }
+
   private applyJustificationsToDay(
     date: string,
     insights: RendimentoDayInsightsDto,
@@ -757,22 +782,19 @@ export class RendimentoService {
     const alertJustifications = dayJustifications.filter(
       (j) => j.kind !== 'VOLUNTARY',
     );
+    const usedJustificationIds = new Set<string>();
 
     const gaps = insights.gaps.map((gap) => {
-      const matched = alertJustifications.find((j) => {
-        if (j.from_time === gap.fromTime && j.to_time === gap.toTime) return true;
-        return this.overlaps(gap.fromTime, gap.toTime, j.from_time, j.to_time);
-      });
+      const matched = this.matchAlertJustificationToGap(
+        gap,
+        alertJustifications,
+        usedJustificationIds,
+      );
       if (!matched) return gap;
 
+      usedJustificationIds.add(matched.id);
       const justification = this.mapJustificationDto(matched);
-      const suffix =
-        matched.status === 'APPROVED'
-          ? ' · justificado'
-          : matched.status === 'PENDING'
-            ? ' · justificativa pendente'
-            : ' · justificativa rejeitada';
-
+      const suffix = this.justificationStatusSuffix(matched.status);
       const userGapType = matched.gap_type as 'idle' | 'lunch';
       const effectiveType =
         matched.status === 'APPROVED' ? userGapType : gap.type;
@@ -785,7 +807,36 @@ export class RendimentoService {
       };
     });
 
-    const normalizedGaps = this.normalizeLunchGaps(gaps, lunchMinutes);
+    const orphanJustificationGaps: RendimentoGapDto[] = alertJustifications
+      .filter((row) => !usedJustificationIds.has(row.id))
+      .map((row) => {
+        const fromTime = this.normalizeTimeHHMM(row.from_time);
+        const toTime = this.normalizeTimeHHMM(row.to_time);
+        const fromMinutes = this.parseHHMMToMinutes(fromTime);
+        const toMinutes = this.parseHHMMToMinutes(toTime);
+        const gapMinutes =
+          Number(row.gap_minutes) > 0
+            ? Number(row.gap_minutes)
+            : Math.max(0, toMinutes - fromMinutes);
+        const gapType = row.gap_type as 'idle' | 'lunch';
+        const justification = this.mapJustificationDto(row);
+        const suffix = this.justificationStatusSuffix(row.status);
+
+        return {
+          type: gapType,
+          fromTime,
+          toTime,
+          gapMinutes,
+          label: `${this.gapLabelForType(gapType, gapMinutes)}${suffix}`,
+          justification,
+        };
+      });
+
+    const mergedGaps = [...gaps, ...orphanJustificationGaps].sort((a, b) =>
+      a.fromTime.localeCompare(b.fromTime),
+    );
+
+    const normalizedGaps = this.normalizeLunchGaps(mergedGaps, lunchMinutes);
 
     const gapsWithoutVoluntaryOverlap =
       this.trimIdleGapsAroundApprovedVoluntary(

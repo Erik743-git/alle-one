@@ -36,6 +36,7 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { getStoredUser } from "@/lib/session";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/confirm";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_BULK_STATUS_FILTERS,
@@ -57,6 +58,7 @@ import {
 
 export default function AprovarJustificativasPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
 
@@ -186,13 +188,14 @@ export default function AprovarJustificativasPage() {
   }
 
   async function deleteOne(id: string) {
-    if (
-      !window.confirm(
-        "Excluir esta justificativa? O registro será removido da agenda e não poderá ser recuperado.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Excluir justificativa",
+      description:
+        "O registro será removido da agenda e não poderá ser recuperado.",
+      confirmText: "Excluir",
+      variant: "error",
+    });
+    if (!ok) return;
     try {
       setActing(true);
       await rendimentoService.deleteJustification(id);

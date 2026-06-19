@@ -27,6 +27,7 @@ import {
   canCreateVoluntaryRendimentoJustification,
 } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { useConfirm } from "@/lib/confirm";
 import {
   RENDIMENTO_LUNCH_MAX_MINUTES,
   rendimentoLunchMaxLabel,
@@ -70,6 +71,7 @@ export default function RendimentoAgendaPage() {
   const params = useParams<{ userId: string }>();
   const router = useRouter();
   const { user: authUser } = useAuth();
+  const confirm = useConfirm();
   const userId = isValidUuid(params.userId) ? params.userId : null;
 
   useEffect(() => {
@@ -267,13 +269,14 @@ export default function RendimentoAgendaPage() {
   }
 
   async function deleteJustification(id: string) {
-    if (
-      !window.confirm(
-        "Excluir esta justificativa? O registro será removido da agenda e não poderá ser recuperado.",
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: "Excluir justificativa",
+      description:
+        "O registro será removido da agenda e não poderá ser recuperado.",
+      confirmText: "Excluir",
+      variant: "error",
+    });
+    if (!ok) return;
     try {
       await rendimentoService.deleteJustification(id);
       notifySuccess("Justificativa excluída.");
@@ -357,7 +360,7 @@ export default function RendimentoAgendaPage() {
                         <TimePickerField
                           value={justFrom}
                           onChange={setJustFrom}
-                          disabled={!justDate}
+                          disabled={!justDate || justMode === "ALERT"}
                         />
                       </div>
                       <div className="space-y-2">
@@ -367,7 +370,7 @@ export default function RendimentoAgendaPage() {
                         <TimePickerField
                           value={justTo}
                           onChange={setJustTo}
-                          disabled={!justDate}
+                          disabled={!justDate || justMode === "ALERT"}
                         />
                       </div>
                     </div>
