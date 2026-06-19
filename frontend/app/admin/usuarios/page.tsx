@@ -35,6 +35,13 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
 import { usersService } from "@/lib/services/users.service";
+import { UserRendimentoScheduleFields } from "@/components/admin/user-rendimento-schedule-fields";
+import {
+  formatUserRendimentoScheduleSummary,
+  normalizeUserRendimentoSchedule,
+  usesRendimentoScheduleRole,
+  type UserRendimentoScheduleValue,
+} from "@/lib/user-rendimento-schedule";
 
 type ApiUser = {
   id: string;
@@ -55,6 +62,9 @@ type ApiUser = {
     id: string;
     name: string;
   } | null;
+  rendimentoCustomSchedule?: boolean;
+  rendimentoDailyWorkMinutes?: number | null;
+  rendimentoLunchMinutes?: number | null;
 };
 
 type EmpresaApi = {
@@ -89,6 +99,7 @@ type FormEdicao = {
   firstAccess: boolean;
   responsible: boolean;
   serviceDeskIds: string[];
+  rendimentoSchedule: UserRendimentoScheduleValue;
 };
 
 type ServiceDeskOption = {
@@ -157,6 +168,7 @@ export default function AdminUsuariosPage() {
     firstAccess: false,
     responsible: false,
     serviceDeskIds: [],
+    rendimentoSchedule: normalizeUserRendimentoSchedule({}),
   });
   const [senhaProvisoriaEdicao, setSenhaProvisoriaEdicao] = useState("");
   const [firstAccessInicialEdicao, setFirstAccessInicialEdicao] = useState(false);
@@ -322,6 +334,7 @@ export default function AdminUsuariosPage() {
       firstAccess: usuario.firstAccess,
       responsible: usuario.responsible,
       serviceDeskIds: usuario.serviceDesks.map((desk) => desk.id),
+      rendimentoSchedule: normalizeUserRendimentoSchedule(usuario),
     });
     setSenhaProvisoriaEdicao("");
     setFirstAccessInicialEdicao(usuario.firstAccess);
@@ -389,6 +402,19 @@ export default function AdminUsuariosPage() {
         responsible: formEdicao.responsible,
         serviceDeskIds: formEdicao.serviceDeskIds,
       };
+
+      if (usesRendimentoScheduleRole(formEdicao.role)) {
+        payload.rendimentoCustomSchedule =
+          formEdicao.rendimentoSchedule.rendimentoCustomSchedule;
+        payload.rendimentoDailyWorkMinutes = formEdicao.rendimentoSchedule
+          .rendimentoCustomSchedule
+          ? formEdicao.rendimentoSchedule.rendimentoDailyWorkMinutes
+          : null;
+        payload.rendimentoLunchMinutes = formEdicao.rendimentoSchedule
+          .rendimentoCustomSchedule
+          ? formEdicao.rendimentoSchedule.rendimentoLunchMinutes
+          : null;
+      }
 
       if (senhaProvisoriaEdicao.trim()) {
         payload.password = senhaProvisoriaEdicao.trim();
@@ -619,10 +645,20 @@ export default function AdminUsuariosPage() {
                                   if (!full) return null;
                                   const desks = full.serviceDesks.map((d) => d.name).join(", ");
                                   return (
-                                    <p className="text-xs text-muted-foreground">
-                                      {desks ? `Mesas: ${desks}` : "Sem mesa vinculada"}
-                                      {full.responsible ? " • Responsável" : ""}
-                                    </p>
+                                    <>
+                                      <p className="text-xs text-muted-foreground">
+                                        {desks ? `Mesas: ${desks}` : "Sem mesa vinculada"}
+                                        {full.responsible ? " • Responsável" : ""}
+                                      </p>
+                                      {usesRendimentoScheduleRole(full.role) ? (
+                                        <p className="text-xs text-muted-foreground">
+                                          Jornada:{" "}
+                                          {formatUserRendimentoScheduleSummary(
+                                            normalizeUserRendimentoSchedule(full),
+                                          )}
+                                        </p>
+                                      ) : null}
+                                    </>
                                   );
                                 })()}
                               </div>
@@ -991,6 +1027,17 @@ export default function AdminUsuariosPage() {
                     Marcar usuário como responsável
                   </label>
                 </div>
+
+                <UserRendimentoScheduleFields
+                  role={formEdicao.role}
+                  value={formEdicao.rendimentoSchedule}
+                  onChange={(rendimentoSchedule) =>
+                    setFormEdicao((prev) => ({
+                      ...prev,
+                      rendimentoSchedule,
+                    }))
+                  }
+                />
               </div>
 
               {erroEdicao ? (

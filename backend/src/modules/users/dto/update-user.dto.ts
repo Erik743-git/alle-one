@@ -3,10 +3,13 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   IsArray,
+  Max,
+  Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { UserRole, UserStatus } from '@prisma/client';
@@ -56,4 +59,20 @@ export class UpdateUserDto {
   @ArrayUnique()
   @IsUUID('4', { each: true })
   serviceDeskIds?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  rendimentoCustomSchedule?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(60)
+  @Max(12 * 60)
+  rendimentoDailyWorkMinutes?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(15)
+  @Max(3 * 60)
+  rendimentoLunchMinutes?: number | null;
 }

@@ -17,6 +17,22 @@ export const LUNCH_MINUTES = 90;
 /** Alerta só se ficar *mais* de 1 hora sem apontar (estritamente > 60 min). */
 export const GAP_ALERT_MINUTES = 60;
 
+export type RendimentoDaySchedule = {
+  dailyWorkMinutes: number;
+  lunchMinutes: number;
+};
+
+export const DEFAULT_RENDIMENTO_DAY_SCHEDULE: RendimentoDaySchedule = {
+  dailyWorkMinutes: REGULAR_DAY_MINUTES,
+  lunchMinutes: LUNCH_MINUTES,
+};
+
+function resolveDaySchedule(
+  schedule?: RendimentoDaySchedule,
+): RendimentoDaySchedule {
+  return schedule ?? DEFAULT_RENDIMENTO_DAY_SCHEDULE;
+}
+
 export type RendimentoGapDto = {
   type: 'idle' | 'lunch';
   fromTime: string;
@@ -201,14 +217,16 @@ function workMinutesBeforeTime(
   return sum;
 }
 
-function pickLunchGap(gaps: RendimentoGapDto[], entries: RendimentoEntryInput[]) {
-  // Regra de negócio: por dia, "perdoa" 1 alerta transformando o gap mais próximo de 1h30 em almoço.
-  // Não depende de já ter 4h trabalhadas antes (na prática, gaps variam muito).
+function pickLunchGap(
+  gaps: RendimentoGapDto[],
+  lunchMinutes: number,
+) {
+  // Regra de negócio: por dia, "perdoa" 1 alerta transformando o gap mais próximo do almoço esperado.
   const candidates = gaps.filter((gap) => gap.type === 'idle' && gap.gapMinutes > GAP_ALERT_MINUTES);
 
   return candidates.sort((a, b) => {
-    const diffA = Math.abs(a.gapMinutes - LUNCH_MINUTES);
-    const diffB = Math.abs(b.gapMinutes - LUNCH_MINUTES);
+    const diffA = Math.abs(a.gapMinutes - lunchMinutes);
+    const diffB = Math.abs(b.gapMinutes - lunchMinutes);
     if (diffA !== diffB) return diffA - diffB;
     // Empate: prefere o maior gap (mais provável de ser almoço de verdade).
     if (a.gapMinutes !== b.gapMinutes) return b.gapMinutes - a.gapMinutes;
@@ -216,24 +234,26 @@ function pickLunchGap(gaps: RendimentoGapDto[], entries: RendimentoEntryInput[])
   })[0];
 }
 
-/** Divide um gap longo em almoço (máx. 1h30) + alerta com o restante. */
+/** Divide um gap longo em almoço + alerta com o restante. */
 function splitGapAtIndexIntoLunchAndIdle(
   gaps: RendimentoGapDto[],
   idx: number,
+  lunchMinutes: number,
+  scheduleEndMinutes: number | null,
 ): boolean {
   const gap = gaps[idx];
   const from = parseTimeToMinutes(gap.fromTime);
   const to = parseTimeToMinutes(gap.toTime);
   if (from == null || to == null) return false;
-  if (to - from < LUNCH_MINUTES) return false;
+  if (to - from < lunchMinutes) return false;
 
-  const lunchEnd = from + LUNCH_MINUTES;
+  const lunchEnd = from + lunchMinutes;
   const lunch: RendimentoGapDto = {
     type: 'lunch',
     fromTime: formatMinutesAsTime(from),
     toTime: formatMinutesAsTime(lunchEnd),
-    gapMinutes: LUNCH_MINUTES,
-    label: `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`,
+    gapMinutes: lunchMinutes,
+    label: `Almoço (${formatMinutesAsTime(lunchMinutes)})`,
   };
 
   const remainingMinutes = to - lunchEnd;
@@ -245,13 +265,7 @@ function splitGapAtIndexIntoLunchAndIdle(
     }
     next.push(lunch);
     if (remainingMinutes > GAP_ALERT_MINUTES) {
-      next.push({
-        type: 'idle',
-        fromTime: formatMinutesAsTime(lunchEnd),
-        toTime: formatMinutesAsTime(to),
-        gapMinutes: remainingMinutes,
-        label: `${remainingMinutes} min sem registro de horas`,
-      });
+      addIdleGap(next, lunchEnd, to, scheduleEndMinutes);
     }
   }
 
@@ -259,17 +273,26 @@ function splitGapAtIndexIntoLunchAndIdle(
   return true;
 }
 
-function splitFirstLongIdleGapIntoLunch(gaps: RendimentoGapDto[]): boolean {
-  const idx = gaps.findIndex((g) => g.type === 'idle' && g.gapMinutes >= LUNCH_MINUTES);
+function splitFirstLongIdleGapIntoLunch(
+  gaps: RendimentoGapDto[],
+  lunchMinutes: number,
+  scheduleEndMinutes: number | null,
+): boolean {
+  const idx = gaps.findIndex((g) => g.type === 'idle' && g.gapMinutes >= lunchMinutes);
   if (idx < 0) return false;
-  return splitGapAtIndexIntoLunchAndIdle(gaps, idx);
+  return splitGapAtIndexIntoLunchAndIdle(gaps, idx, lunchMinutes, scheduleEndMinutes);
 }
 
 function addIdleGap(
   gaps: RendimentoGapDto[],
   fromMinutes: number,
   toMinutes: number,
+  scheduleEndMinutes: number | null,
 ) {
+  if (scheduleEndMinutes != null) {
+    if (fromMinutes >= scheduleEndMinutes) return;
+    toMinutes = Math.min(toMinutes, scheduleEndMinutes);
+  }
   const gapMinutes = toMinutes - fromMinutes;
   if (gapMinutes > GAP_ALERT_MINUTES) {
     gaps.push({
@@ -311,10 +334,14 @@ function isToday(dateIsoLike: string): boolean {
 export function analyzeRendimentoDay(
   entries: RendimentoEntryInput[],
   valorizationById?: Map<number, unknown>,
+  schedule?: RendimentoDaySchedule,
 ): {
   entries: RendimentoEntryEnriched[];
   insights: RendimentoDayInsightsDto;
 } {
+  const daySchedule = resolveDaySchedule(schedule);
+  const dailyWorkMinutes = daySchedule.dailyWorkMinutes;
+  const lunchMinutes = daySchedule.lunchMinutes;
   const sorted = sortEntriesByStart(entries);
   const gaps: RendimentoGapDto[] = [];
   let lunchFound = false;
@@ -343,6 +370,14 @@ export function analyzeRendimentoDay(
     .filter((interval): interval is TimeInterval => interval != null);
   const mergedRegularIntervals = mergeOverlappingIntervals(regularIntervals);
   const regularWorkedMinutes = mergedRegularWorkedMinutes(regularIntervals);
+  const firstRegularStartMinutes =
+    regularEntries.length > 0
+      ? parseTimeToMinutes(regularEntries[0].initTime)
+      : null;
+  const scheduleEndMinutes =
+    firstRegularStartMinutes != null
+      ? firstRegularStartMinutes + dailyWorkMinutes + lunchMinutes
+      : null;
   const overtimeMinutes = enriched
     .filter((e) => e.isOvertime)
     .reduce((sum, e) => sum + e.minutes, 0);
@@ -363,37 +398,41 @@ export function analyzeRendimentoDay(
   }
 
   // Lacunas entre blocos cobertos (apontamentos sobrepostos viram um único intervalo).
-  let coveredRegularMinutes = 0;
   for (let index = 0; index < mergedRegularIntervals.length; index += 1) {
     const interval = mergedRegularIntervals[index];
-    if (index > 0 && coveredRegularMinutes < REGULAR_DAY_MINUTES) {
+    if (index > 0) {
       addIdleGap(
         gaps,
         mergedRegularIntervals[index - 1].to,
         interval.from,
+        scheduleEndMinutes,
       );
     }
-    coveredRegularMinutes += interval.to - interval.from;
   }
 
   // Se existir um gap compatível, ele vira almoço.
-  // Caso não exista e o dia só tenha 1 apontamento, criamos um almoço fixo de 1h30
+  // Caso não exista e o dia só tenha 1 apontamento, criamos um almoço fixo
   // a partir do fim do apontamento (quando couber dentro do expediente).
-  const lunchCandidate = pickLunchGap(gaps, regularEntries);
+  const lunchCandidate = pickLunchGap(gaps, lunchMinutes);
   if (lunchCandidate) {
     lunchFound = true;
     const lunchIdx = gaps.indexOf(lunchCandidate);
-    if (lunchIdx >= 0 && lunchCandidate.gapMinutes > LUNCH_MINUTES) {
-      splitGapAtIndexIntoLunchAndIdle(gaps, lunchIdx);
+    if (lunchIdx >= 0 && lunchCandidate.gapMinutes > lunchMinutes) {
+      splitGapAtIndexIntoLunchAndIdle(
+        gaps,
+        lunchIdx,
+        lunchMinutes,
+        scheduleEndMinutes,
+      );
     } else {
       lunchCandidate.type = 'lunch';
-      lunchCandidate.label = `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`;
+      lunchCandidate.label = `Almoço (${formatMinutesAsTime(lunchMinutes)})`;
     }
-  } else if (splitFirstLongIdleGapIntoLunch(gaps)) {
+  } else if (splitFirstLongIdleGapIntoLunch(gaps, lunchMinutes, scheduleEndMinutes)) {
     lunchFound = true;
   } else if (mergedRegularIntervals.length === 1) {
     const lastEnd = mergedRegularIntervals[0].to;
-    const lunchEnd = lastEnd + LUNCH_MINUTES;
+    const lunchEnd = lastEnd + lunchMinutes;
     if (lunchEnd > lastEnd) {
       lunchFound = true;
       gaps.push({
@@ -401,21 +440,18 @@ export function analyzeRendimentoDay(
         fromTime: formatMinutesAsTime(lastEnd),
         toTime: formatMinutesAsTime(lunchEnd),
         gapMinutes: lunchEnd - lastEnd,
-        label: `Almoço (${formatMinutesAsTime(LUNCH_MINUTES)})`,
+        label: `Almoço (${formatMinutesAsTime(lunchMinutes)})`,
       });
     }
   }
 
-  // Gap final: se ainda não completou 8h (HORA NORMAL) no dia, cria um aviso de "faltou apontar".
-  // - Se for hoje: mede até agora.
-  // - Se for dia passado: mede até o ponto "virtual" onde completaria 8h se continuasse sem pausas.
+  // Gap final: se ainda não completou a jornada normal no dia, cria aviso de "faltou apontar".
   if (mergedRegularIntervals.length > 0) {
     const lastEnd = Math.max(...mergedRegularIntervals.map((interval) => interval.to));
 
-    if (regularWorkedMinutes < REGULAR_DAY_MINUTES) {
-      const minutesStillNeeded = REGULAR_DAY_MINUTES - regularWorkedMinutes;
+    if (regularWorkedMinutes < dailyWorkMinutes) {
+      const minutesStillNeeded = dailyWorkMinutes - regularWorkedMinutes;
 
-      // Se criamos almoço fixo, o gap final deve começar depois dele.
       const lastLunch = [...gaps]
         .filter((g) => g.type === 'lunch')
         .map((g) => parseTimeToMinutes(g.toTime))
@@ -424,19 +460,20 @@ export function analyzeRendimentoDay(
       const tailFrom = Math.max(lastEnd, lastLunch ?? lastEnd);
       const virtualCompleteEnd = tailFrom + minutesStillNeeded;
 
-      // Dia passado: até o horário virtual em que as 8h normais fechariam.
-      // Hoje: até o menor entre "agora" e esse horário virtual — evita alertar
-      // 18:00→20:36 quando só faltam 30 min de jornada (deveria ser 18:00→18:30).
       const nowMinutes = dayIsToday
         ? new Date().getHours() * 60 + new Date().getMinutes()
         : null;
-      const limit =
+      let limit =
         dayIsToday && nowMinutes != null
           ? Math.min(nowMinutes, virtualCompleteEnd)
           : virtualCompleteEnd;
 
+      if (scheduleEndMinutes != null) {
+        limit = Math.min(limit, scheduleEndMinutes);
+      }
+
       if (limit > tailFrom) {
-        addIdleGap(gaps, tailFrom, limit);
+        addIdleGap(gaps, tailFrom, limit, scheduleEndMinutes);
       }
     }
   }

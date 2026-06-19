@@ -15,10 +15,11 @@ import {
   analyzeRendimentoDay,
   GAP_ALERT_MINUTES,
   isRendimentoDateToday,
-  LUNCH_MINUTES,
   type RendimentoDayInsightsDto,
+  type RendimentoDaySchedule,
   type RendimentoGapDto,
 } from './rendimento-day-insights';
+import { getEffectiveRendimentoSchedule } from '../users/user-rendimento-schedule.helper';
 import {
   buildDayEventSourceKey,
   collectDayEventUpserts,
@@ -551,9 +552,12 @@ export class RendimentoService {
 
   /**
    * Por dia: no máximo um almoço (justificado pelo colaborador tem prioridade)
-   * e duração máxima de 1h30 — o excedente vira alerta de lacuna.
+   * e duração máxima configurada — o excedente vira alerta de lacuna.
    */
-  private normalizeLunchGaps(gaps: RendimentoGapDto[]): RendimentoGapDto[] {
+  private normalizeLunchGaps(
+    gaps: RendimentoGapDto[],
+    lunchMinutes: number,
+  ): RendimentoGapDto[] {
     const claimedLunchIndices = gaps
       .map((gap, index) => (this.isUserClaimedLunchGap(gap) ? index : -1))
       .filter((index) => index >= 0);
@@ -599,7 +603,7 @@ export class RendimentoService {
 
     const expanded: RendimentoGapDto[] = [];
     for (const gap of normalized) {
-      if (gap.type !== 'lunch' || gap.gapMinutes <= LUNCH_MINUTES) {
+      if (gap.type !== 'lunch' || gap.gapMinutes <= lunchMinutes) {
         expanded.push(gap);
         continue;
       }
@@ -611,7 +615,7 @@ export class RendimentoService {
         continue;
       }
 
-      const lunchEnd = from + LUNCH_MINUTES;
+      const lunchEnd = from + lunchMinutes;
       const remainingMinutes = to - lunchEnd;
       const suffix = this.justificationSuffix(gap.justification);
 
@@ -620,8 +624,8 @@ export class RendimentoService {
         type: 'lunch',
         fromTime: this.formatMinutesAsTime(from),
         toTime: this.formatMinutesAsTime(lunchEnd),
-        gapMinutes: LUNCH_MINUTES,
-        label: `${this.gapLabelForType('lunch', LUNCH_MINUTES)}${suffix}`,
+        gapMinutes: lunchMinutes,
+        label: `${this.gapLabelForType('lunch', lunchMinutes)}${suffix}`,
       });
 
       if (remainingMinutes > GAP_ALERT_MINUTES) {
@@ -748,6 +752,7 @@ export class RendimentoService {
     date: string,
     insights: RendimentoDayInsightsDto,
     dayJustifications: GapJustificationRow[],
+    lunchMinutes: number,
   ): RendimentoDayInsightsDto {
     const alertJustifications = dayJustifications.filter(
       (j) => j.kind !== 'VOLUNTARY',
@@ -780,7 +785,7 @@ export class RendimentoService {
       };
     });
 
-    const normalizedGaps = this.normalizeLunchGaps(gaps);
+    const normalizedGaps = this.normalizeLunchGaps(gaps, lunchMinutes);
 
     const gapsWithoutVoluntaryOverlap =
       this.trimIdleGapsAroundApprovedVoluntary(
@@ -821,10 +826,23 @@ export class RendimentoService {
     }));
   }
 
+  private toRendimentoDaySchedule(user: {
+    rendimentoCustomSchedule?: boolean;
+    rendimentoDailyWorkMinutes?: number | null;
+    rendimentoLunchMinutes?: number | null;
+  }): RendimentoDaySchedule {
+    const effective = getEffectiveRendimentoSchedule(user);
+    return {
+      dailyWorkMinutes: effective.dailyWorkMinutes,
+      lunchMinutes: effective.lunchMinutes,
+    };
+  }
+
   private buildDaySummary(
     date: string,
     dayRows: AppointmentRow[],
     justificationsByDate: Map<string, GapJustificationRow[]>,
+    schedule: RendimentoDaySchedule,
   ): RendimentoDaySummaryDto {
     const baseEntries = this.mapEntries(dayRows);
     const valorizationById = new Map(
@@ -833,6 +851,7 @@ export class RendimentoService {
     const { entries, insights } = analyzeRendimentoDay(
       baseEntries,
       valorizationById,
+      schedule,
     );
     const totalMinutes = entries.reduce((sum, item) => sum + item.minutes, 0);
     const dateOnly = date.slice(0, 10);
@@ -844,6 +863,7 @@ export class RendimentoService {
       dateOnly,
       insights,
       dayJustifications,
+      schedule.lunchMinutes,
     );
     if (isRendimentoDateToday(dateOnly)) {
       patchedInsights = this.emptyGapInsights(patchedInsights);
@@ -892,6 +912,7 @@ export class RendimentoService {
   private groupByDay(
     rows: AppointmentRow[],
     justificationsByDate: Map<string, GapJustificationRow[]>,
+    schedule: RendimentoDaySchedule,
   ): RendimentoDaySummaryDto[] {
     const map = new Map<string, AppointmentRow[]>();
 
@@ -912,7 +933,7 @@ export class RendimentoService {
     return Array.from(map.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, dayRows]) =>
-        this.buildDaySummary(date, dayRows, justificationsByDate),
+        this.buildDaySummary(date, dayRows, justificationsByDate, schedule),
       );
   }
 
@@ -1292,7 +1313,17 @@ export class RendimentoService {
           justificationsByDate.get(key)!.push(item);
         }
 
-        const days = this.groupByDay(rows, justificationsByDate);
+        const userSchedule = await this.prisma.user.findFirst({
+          where: { id: collaborator.id },
+          select: {
+            rendimentoCustomSchedule: true,
+            rendimentoDailyWorkMinutes: true,
+            rendimentoLunchMinutes: true,
+          },
+        });
+        const schedule = this.toRendimentoDaySchedule(userSchedule ?? {});
+
+        const days = this.groupByDay(rows, justificationsByDate, schedule);
         daysProcessed += days.length;
         for (const day of days) {
           if (!day.insights) continue;
@@ -1615,12 +1646,21 @@ export class RendimentoService {
       }
       justificationsByDate.get(key)!.push(item);
     }
-    let days = this.groupByDay(rows, justificationsByDate);
+    let days = this.groupByDay(
+      rows,
+      justificationsByDate,
+      this.toRendimentoDaySchedule(user),
+    );
     if (params.view === 'day') {
       const refKey = this.toDateOnlyString(reference);
       if (!days.some((d) => d.date.slice(0, 10) === refKey)) {
         days = [
-          this.buildDaySummary(refKey, [], justificationsByDate),
+          this.buildDaySummary(
+            refKey,
+            [],
+            justificationsByDate,
+            this.toRendimentoDaySchedule(user),
+          ),
           ...days,
         ];
       }
@@ -1727,11 +1767,18 @@ export class RendimentoService {
 
     const user = await this.prisma.user.findFirst({
       where: { id: params.userId, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        rendimentoCustomSchedule: true,
+        rendimentoDailyWorkMinutes: true,
+        rendimentoLunchMinutes: true,
+      },
     });
     if (!user) {
       throw new NotFoundException('Colaborador não encontrado.');
     }
+
+    const lunchLimitMinutes = getEffectiveRendimentoSchedule(user).lunchMinutes;
 
     const date = this.toDateOnlyString(this.parseDateOnly(params.date));
     const fromTime = this.normalizeTimeHHMM(params.fromTime);
@@ -1756,10 +1803,16 @@ export class RendimentoService {
     if (
       params.kind !== 'VOLUNTARY' &&
       params.gapType === 'lunch' &&
-      gapMinutesPreview > LUNCH_MINUTES
+      gapMinutesPreview > lunchLimitMinutes
     ) {
+      const lunchHours = Math.floor(lunchLimitMinutes / 60);
+      const lunchMins = lunchLimitMinutes % 60;
+      const lunchLabel =
+        lunchMins === 0
+          ? `${lunchHours}h`
+          : `${lunchHours}h${String(lunchMins).padStart(2, '0')}`;
       throw new BadRequestException(
-        'Período de almoço não pode exceder 1h30.',
+        `Período de almoço não pode exceder ${lunchLabel}.`,
       );
     }
 

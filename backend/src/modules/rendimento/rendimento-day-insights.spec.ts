@@ -423,10 +423,12 @@ describe('rendimento-day-insights', () => {
 
     expect(insights.overtimeMinutes).toBe(301);
     expect(insights.regularMinutes).toBe(80);
-    // Dia passado com 1h20 de jornada regular: existe gap final "virtual" até completar 8h.
+    // Jornada regular começa 09:30 → término de alertas às 19:00 (8h + 1h30).
+    // Lacuna 18:00–19:00 tem só 60 min (não gera alerta); o longo intervalo do meio sim.
     expect(
       insights.gaps.some((g) => g.type === 'idle' && g.fromTime === '18:00'),
-    ).toBe(true);
+    ).toBe(false);
+    expect(insights.hasIdleGapAlert).toBe(true);
   });
 
   it('remove alerta de gap quando novo apontamento preenche o intervalo', () => {
@@ -639,5 +641,55 @@ describe('rendimento-day-insights', () => {
     expect(insights.hasExpectedLunch).toBe(false);
 
     jest.useRealTimers();
+  });
+
+  it('interrompe alertas após primeiro apontamento + jornada + almoço', () => {
+    const entries = [
+      {
+        id: 1,
+        date: '2026-06-10',
+        initTime: '08:00:00',
+        endTime: '10:00:00',
+        minutes: 120,
+        hoursFormatted: '02:00',
+        ticketNumber: 1,
+        clientName: null,
+        description: null,
+      },
+      {
+        id: 2,
+        date: '2026-06-10',
+        initTime: '12:00:00',
+        endTime: '14:00:00',
+        minutes: 120,
+        hoursFormatted: '02:00',
+        ticketNumber: 2,
+        clientName: null,
+        description: null,
+      },
+      {
+        id: 3,
+        date: '2026-06-10',
+        initTime: '18:00:00',
+        endTime: '19:00:00',
+        minutes: 60,
+        hoursFormatted: '01:00',
+        ticketNumber: 3,
+        clientName: null,
+        description: null,
+      },
+    ];
+
+    const { insights } = analyzeRendimentoDay(entries, undefined, {
+      dailyWorkMinutes: 8 * 60,
+      lunchMinutes: 90,
+    });
+
+    const idles = insights.gaps.filter((g) => g.type === 'idle');
+    expect(insights.gaps.some((g) => g.type === 'lunch')).toBe(true);
+    expect(idles.some((g) => g.fromTime === '14:00' && g.toTime === '17:30')).toBe(
+      true,
+    );
+    expect(idles.filter((g) => g.fromTime >= '17:30')).toHaveLength(0);
   });
 });

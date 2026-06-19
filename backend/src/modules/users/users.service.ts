@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { resolveRendimentoSchedule } from './user-rendimento-schedule.helper';
 
 type UserWithCompany = User & {
   company: { id: string; name: string } | null;
@@ -184,6 +185,8 @@ export class UsersService {
       data.serviceDeskIds ?? [],
     );
 
+    const schedule = resolveRendimentoSchedule(data);
+
     const created = await this.prisma.user.create({
       data: {
         name: data.name.trim(),
@@ -194,6 +197,7 @@ export class UsersService {
         companyId: data.companyId ?? null,
         firstAccess,
         responsible: data.responsible ?? false,
+        ...schedule,
         serviceDeskLinks:
           serviceDeskIds.length > 0
             ? {
@@ -275,6 +279,25 @@ export class UsersService {
         ? await this.validateServiceDeskIds(data.serviceDeskIds)
         : undefined;
 
+    const schedule =
+      data.rendimentoCustomSchedule !== undefined ||
+      data.rendimentoDailyWorkMinutes !== undefined ||
+      data.rendimentoLunchMinutes !== undefined
+        ? resolveRendimentoSchedule({
+            rendimentoCustomSchedule:
+              data.rendimentoCustomSchedule ??
+              existingUser.rendimentoCustomSchedule,
+            rendimentoDailyWorkMinutes:
+              data.rendimentoDailyWorkMinutes !== undefined
+                ? data.rendimentoDailyWorkMinutes
+                : existingUser.rendimentoDailyWorkMinutes,
+            rendimentoLunchMinutes:
+              data.rendimentoLunchMinutes !== undefined
+                ? data.rendimentoLunchMinutes
+                : existingUser.rendimentoLunchMinutes,
+          })
+        : undefined;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -287,6 +310,7 @@ export class UsersService {
         companyId: data.companyId,
         firstAccess: data.firstAccess,
         responsible: data.responsible,
+        ...(schedule ?? {}),
         ...(serviceDeskIds !== undefined && {
           serviceDeskLinks: {
             deleteMany: {},

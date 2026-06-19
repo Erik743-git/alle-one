@@ -32,6 +32,9 @@ export type User = {
   deletedAt: string | null;
   company?: UserCompany | null;
   serviceDesks: ServiceDesk[];
+  rendimentoCustomSchedule?: boolean;
+  rendimentoDailyWorkMinutes?: number | null;
+  rendimentoLunchMinutes?: number | null;
 };
 
 export type CreateUserPayload = {
@@ -44,6 +47,9 @@ export type CreateUserPayload = {
   firstAccess?: boolean;
   responsible?: boolean;
   serviceDeskIds?: string[];
+  rendimentoCustomSchedule?: boolean;
+  rendimentoDailyWorkMinutes?: number | null;
+  rendimentoLunchMinutes?: number | null;
 };
 
 export type UpdateUserPayload = {
@@ -56,6 +62,9 @@ export type UpdateUserPayload = {
   firstAccess?: boolean;
   responsible?: boolean;
   serviceDeskIds?: string[];
+  rendimentoCustomSchedule?: boolean;
+  rendimentoDailyWorkMinutes?: number | null;
+  rendimentoLunchMinutes?: number | null;
 };
 
 export const usersService = {

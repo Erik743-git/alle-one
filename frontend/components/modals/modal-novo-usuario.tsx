@@ -17,6 +17,11 @@ import { Eye, UserPlus, EyeOff } from "lucide-react";
 import { sortByName } from "@/lib/collections";
 import { companiesService } from "@/lib/services/companies.service";
 import { usersService } from "@/lib/services/users.service";
+import { UserRendimentoScheduleFields } from "@/components/admin/user-rendimento-schedule-fields";
+import {
+  defaultUserRendimentoSchedule,
+  type UserRendimentoScheduleValue,
+} from "@/lib/user-rendimento-schedule";
 
 interface Props {
   open: boolean;
@@ -43,6 +48,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   const [responsible, setResponsible] = useState(false);
   const [serviceDeskIds, setServiceDeskIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
+  const [rendimentoSchedule, setRendimentoSchedule] =
+    useState<UserRendimentoScheduleValue>(defaultUserRendimentoSchedule());
 
   const [companies, setCompanies] = useState<Company[]>([]);
   const [serviceDesks, setServiceDesks] = useState<ServiceDeskOption[]>([]);
@@ -106,6 +113,13 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
         firstAccess: true,
         responsible,
         serviceDeskIds,
+        rendimentoCustomSchedule: rendimentoSchedule.rendimentoCustomSchedule,
+        rendimentoDailyWorkMinutes: rendimentoSchedule.rendimentoCustomSchedule
+          ? rendimentoSchedule.rendimentoDailyWorkMinutes
+          : null,
+        rendimentoLunchMinutes: rendimentoSchedule.rendimentoCustomSchedule
+          ? rendimentoSchedule.rendimentoLunchMinutes
+          : null,
       });
 
       setNome("");
@@ -115,6 +129,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setRole("CLIENT");
       setResponsible(false);
       setServiceDeskIds([]);
+      setRendimentoSchedule(defaultUserRendimentoSchedule());
 
       onOpenChange(false);
       window.location.reload();
@@ -257,6 +272,12 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                 Marcar usuário como responsável
               </label>
             </div>
+
+            <UserRendimentoScheduleFields
+              role={role as "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT"}
+              value={rendimentoSchedule}
+              onChange={setRendimentoSchedule}
+            />
 
             <div className="space-y-2 sm:col-span-2">
               <Label className="font-sans text-sm font-semibold text-foreground">
