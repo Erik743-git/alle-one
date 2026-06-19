@@ -319,7 +319,7 @@ export class AuthService {
       },
     });
 
-    const resetPageUrl = `${getFrontendBaseUrl()}/redefinir-senha`;
+    const resetPageUrl = `${getFrontendBaseUrl()}/redefinir-senha?token=${encodeURIComponent(plainCode)}`;
 
     const sent = await this.authMail.sendResetPassword({
       to: user.email,

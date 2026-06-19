@@ -56,14 +56,17 @@ function RedefinirSenhaForm() {
 
   useEffect(() => {
     const stored = getResetEmail();
-    if (!stored) {
+    const urlToken = tokenFromUrl.trim();
+
+    if (!stored && !urlToken) {
       router.replace("/esqueci-senha");
       return;
     }
-    setResetEmail(stored);
+
+    setResetEmail(stored ?? "");
     setDevCode(getDevResetCode());
     setCooldownMs(getResendCooldownRemainingMs());
-  }, [router]);
+  }, [router, tokenFromUrl]);
 
   useEffect(() => {
     if (cooldownMs <= 0) return;
@@ -116,7 +119,7 @@ function RedefinirSenhaForm() {
   }, []);
 
   useEffect(() => {
-    if (!tokenFromUrl || step !== "code" || !resetEmail) return;
+    if (!tokenFromUrl || step !== "code") return;
 
     const apiToken = tokenForApi(tokenFromUrl);
     if (apiToken.length >= 8) {
@@ -124,10 +127,14 @@ function RedefinirSenhaForm() {
       setValidatingUrlToken(true);
       void validateCode(apiToken).finally(() => setValidatingUrlToken(false));
     }
-  }, [tokenFromUrl, step, resetEmail, validateCode]);
+  }, [tokenFromUrl, step, validateCode]);
 
   async function handleResendCode() {
-    if (!resetEmail || cooldownMs > 0 || resending) return;
+    if (!resetEmail?.trim()) {
+      router.push("/esqueci-senha");
+      return;
+    }
+    if (cooldownMs > 0 || resending) return;
 
     setErro("");
     setInfo("");
@@ -223,7 +230,7 @@ function RedefinirSenhaForm() {
         ? "Reenviando..."
         : "Reenviar código";
 
-  if (!resetEmail) {
+  if (resetEmail === null) {
     return (
       <main className="font-sans flex min-h-screen items-center justify-center bg-[#020b1b] text-slate-300">
         <Loader2 className="h-8 w-8 animate-spin text-[#12b5d9]" />
@@ -256,12 +263,21 @@ function RedefinirSenhaForm() {
               <p className="text-sm text-slate-400">
                 {step === "code" && (
                   <>
-                    Informe o código de 8 caracteres enviado para{" "}
-                    <span className="font-semibold text-slate-200">
-                      {resetEmail}
-                    </span>
-                    . O e-mail precisa ser uma caixa real para receber o
-                    código.
+                    {resetEmail ? (
+                      <>
+                        Informe o código de 8 caracteres enviado para{" "}
+                        <span className="font-semibold text-slate-200">
+                          {resetEmail}
+                        </span>
+                        .
+                      </>
+                    ) : (
+                      <>
+                        Informe o código de 8 caracteres que você recebeu por
+                        e-mail.
+                      </>
+                    )}{" "}
+                    O e-mail precisa ser uma caixa real para receber o código.
                   </>
                 )}
                 {step === "password" &&
