@@ -58,6 +58,9 @@ export const RENDIMENTO_LUNCH_LEGEND =
 export const RENDIMENTO_OVERTIME_APPROVED_NOTE =
   "Aprovado · registrado no saldo";
 
+export const RENDIMENTO_OVERTIME_REJECTED_NOTE =
+  "Não aprovado · não entra no saldo";
+
 export const SYNC_STATUS_PORTAL_ONLY = "Registrado no portal";
 
 export const SYNC_STATUS_PENDING = "Em sincronização";

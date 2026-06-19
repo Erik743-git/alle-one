@@ -1085,6 +1085,7 @@ export class RendimentoService {
   private async upsertDayEvent(input: UpsertDayEventInput): Promise<string> {
     const fromTime = normalizeClockTimeForDb(input.fromTime);
     const toTime = normalizeClockTimeForDb(input.toTime);
+    const dateRef = input.dateRef.slice(0, 10);
     const sourceKey = buildDayEventSourceKey({
       eventType: input.eventType,
       dateRef: input.dateRef,
@@ -1093,47 +1094,153 @@ export class RendimentoService {
       appointmentExternalId: input.appointmentExternalId,
       justificationId: input.justificationId,
     });
+    const isOvertimeEvent =
+      input.eventType === 'OVERTIME' || input.eventType === 'PLANTAO';
+    const minutes = Math.max(0, Math.trunc(input.minutes));
 
-    const existing =
-      (await this.prisma.$queryRawUnsafe<
-        Array<{
-          id: string;
-          status: RendimentoDayEventStatus;
-          debit_protected: boolean;
-          event_type: string;
-        }>
-      >(
-        `
-        SELECT id, status, debit_protected, event_type
-        FROM rendimento_day_events
-        WHERE user_id = $1
-          AND source_key = $2
-        ORDER BY deleted_at NULLS FIRST
-        LIMIT 1
-      `,
-        input.userId,
+    type ExistingDayEventRow = {
+      id: string;
+      status: RendimentoDayEventStatus;
+      debit_protected: boolean;
+      event_type: string;
+    };
+
+    let current: ExistingDayEventRow | undefined;
+
+    if (isOvertimeEvent && input.appointmentExternalId != null) {
+      const byAppointment =
+        (await this.prisma.$queryRawUnsafe<ExistingDayEventRow[]>(
+          `
+          SELECT id, status, debit_protected, event_type
+          FROM rendimento_day_events
+          WHERE user_id = $1
+            AND date_ref = $2::date
+            AND event_type = $3
+            AND appointment_external_id = $4
+            AND deleted_at IS NULL
+          ORDER BY
+            CASE status
+              WHEN 'APPROVED' THEN 0
+              WHEN 'REJECTED' THEN 1
+              WHEN 'PENDING' THEN 2
+              ELSE 3
+            END,
+            updated_at DESC
+          LIMIT 1
+        `,
+          input.userId,
+          dateRef,
+          input.eventType,
+          input.appointmentExternalId,
+        )) ?? [];
+      current = byAppointment[0];
+    }
+
+    if (!current) {
+      const existing =
+        (await this.prisma.$queryRawUnsafe<ExistingDayEventRow[]>(
+          `
+          SELECT id, status, debit_protected, event_type
+          FROM rendimento_day_events
+          WHERE user_id = $1
+            AND source_key = $2
+          ORDER BY deleted_at NULLS FIRST
+          LIMIT 1
+        `,
+          input.userId,
+          sourceKey,
+        )) ?? [];
+      current = existing[0];
+    }
+
+    if (current && isOvertimeEvent) {
+      await this.reconcileOvertimeDayEventSync({
+        keepEventId: current.id,
+        userId: input.userId,
+        dateRef,
+        eventType: input.eventType as 'OVERTIME' | 'PLANTAO',
+        appointmentExternalId: input.appointmentExternalId ?? null,
         sourceKey,
-      )) ?? [];
+        fromTime,
+        toTime,
+        minutes,
+        label: input.label ?? null,
+        description: input.description ?? null,
+        reason: input.reason ?? null,
+      });
 
-    const current = existing[0];
-    if (current) {
-      const lockedOvertime =
-        (current.event_type === 'OVERTIME' ||
-          current.event_type === 'PLANTAO') &&
-        current.status === 'APPROVED' &&
-        current.debit_protected;
-
-      if (lockedOvertime) {
+      if (current.status === 'APPROVED' || current.status === 'REJECTED') {
+        await this.prisma.$executeRawUnsafe(
+          `
+          UPDATE rendimento_day_events
+          SET
+            from_time = $2::time,
+            to_time = $3::time,
+            minutes = $4,
+            appointment_external_id = $5,
+            label = COALESCE($6, label),
+            description = COALESCE($7, description),
+            reason = COALESCE($8, reason),
+            source_key = $9,
+            deleted_at = NULL,
+            updated_at = NOW()
+          WHERE id = $1
+        `,
+          current.id,
+          fromTime,
+          toTime,
+          minutes,
+          input.appointmentExternalId ?? null,
+          input.label ?? null,
+          input.description ?? null,
+          input.reason ?? null,
+          sourceKey,
+        );
         return current.id;
       }
+
+      const status = input.status ?? current.status ?? 'PENDING';
+      const debitProtected =
+        input.debitProtected ?? current.debit_protected ?? false;
+
+      await this.prisma.$executeRawUnsafe(
+        `
+        UPDATE rendimento_day_events
+        SET
+          from_time = $2::time,
+          to_time = $3::time,
+          minutes = $4,
+          appointment_external_id = $5,
+          label = COALESCE($6, label),
+          description = COALESCE($7, description),
+          reason = COALESCE($8, reason),
+          status = $9,
+          debit_protected = $10,
+          source_key = $11,
+          deleted_at = NULL,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+        current.id,
+        fromTime,
+        toTime,
+        minutes,
+        input.appointmentExternalId ?? null,
+        input.label ?? null,
+        input.description ?? null,
+        input.reason ?? null,
+        status,
+        debitProtected,
+        sourceKey,
+      );
+
+      return current.id;
     }
 
     const status = input.status ?? current?.status ?? 'ACTIVE';
     const debitProtected =
       input.debitProtected ?? current?.debit_protected ?? false;
     const id = current?.id ?? newDayEventId();
-    const minutes = Math.max(0, Math.trunc(input.minutes));
-    const dateRef = input.dateRef.slice(0, 10);
 
     const upserted =
       (await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1162,8 +1269,7 @@ export class RendimentoService {
           updated_at = NOW()
         WHERE NOT (
           rendimento_day_events.event_type IN ('OVERTIME', 'PLANTAO')
-          AND rendimento_day_events.status = 'APPROVED'
-          AND rendimento_day_events.debit_protected = true
+          AND rendimento_day_events.status IN ('APPROVED', 'REJECTED')
         )
         RETURNING id
       `,
@@ -1189,6 +1295,55 @@ export class RendimentoService {
     }
 
     return current?.id ?? id;
+  }
+
+  private async reconcileOvertimeDayEventSync(params: {
+    keepEventId: string;
+    userId: string;
+    dateRef: string;
+    eventType: 'OVERTIME' | 'PLANTAO';
+    appointmentExternalId: number | null;
+    sourceKey: string;
+    fromTime: string | null;
+    toTime: string | null;
+    minutes: number;
+    label: string | null;
+    description: string | null;
+    reason: string | null;
+  }): Promise<void> {
+    if (params.appointmentExternalId != null) {
+      await this.prisma.$executeRawUnsafe(
+        `
+        UPDATE rendimento_day_events
+        SET deleted_at = NOW(), updated_at = NOW()
+        WHERE user_id = $1
+          AND date_ref = $2::date
+          AND event_type = $3
+          AND appointment_external_id = $4
+          AND id <> $5
+          AND deleted_at IS NULL
+      `,
+        params.userId,
+        params.dateRef,
+        params.eventType,
+        params.appointmentExternalId,
+        params.keepEventId,
+      );
+    }
+
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_day_events
+      SET deleted_at = NOW(), updated_at = NOW()
+      WHERE user_id = $1
+        AND source_key = $2
+        AND id <> $3
+        AND deleted_at IS NULL
+    `,
+      params.userId,
+      params.sourceKey,
+      params.keepEventId,
+    );
   }
 
   private async purgeAutoGapEventsForDay(
@@ -1426,21 +1581,69 @@ export class RendimentoService {
     return this.rendimentoStore.listDayEvents(params);
   }
 
+  private dayEventAttachmentKey(
+    dateRef: string,
+    appointmentId: number,
+    eventType: 'OVERTIME' | 'PLANTAO',
+  ): string {
+    return `${dateRef.slice(0, 10)}|${appointmentId}|${eventType}`;
+  }
+
+  private dayEventStatusPriority(status: RendimentoDayEventStatus): number {
+    switch (status) {
+      case 'APPROVED':
+        return 0;
+      case 'REJECTED':
+        return 1;
+      case 'PENDING':
+        return 2;
+      default:
+        return 3;
+    }
+  }
+
   private attachDayEventsToDays(
     days: RendimentoDaySummaryDto[],
     events: RendimentoDayEventRow[],
   ): void {
-    const byAppointment = new Map<number, RendimentoDayEventRow>();
+    const byKey = new Map<string, RendimentoDayEventRow>();
     for (const event of events) {
-      if (event.appointment_external_id != null) {
-        byAppointment.set(Number(event.appointment_external_id), event);
+      if (event.appointment_external_id == null) continue;
+      if (event.event_type !== 'OVERTIME' && event.event_type !== 'PLANTAO') {
+        continue;
+      }
+      const eventType = event.event_type as 'OVERTIME' | 'PLANTAO';
+      const key = this.dayEventAttachmentKey(
+        event.date_ref,
+        Number(event.appointment_external_id),
+        eventType,
+      );
+      const current = byKey.get(key);
+      if (
+        !current ||
+        this.dayEventStatusPriority(event.status) <
+          this.dayEventStatusPriority(current.status)
+      ) {
+        byKey.set(key, event);
       }
     }
 
     for (const day of days) {
+      const dayRef = day.date.slice(0, 10);
       day.entries = day.entries.map((entry) => {
-        const event = byAppointment.get(entry.id);
+        const eventType =
+          entry.overtimeKind === 'PLANTAO'
+            ? 'PLANTAO'
+            : entry.overtimeKind === 'EXTRA' || entry.isOvertime
+              ? 'OVERTIME'
+              : null;
+        if (!eventType) return entry;
+
+        const event = byKey.get(
+          this.dayEventAttachmentKey(dayRef, entry.id, eventType),
+        );
         if (!event) return entry;
+
         return {
           ...entry,
           dayEventId: event.id,
@@ -1928,10 +2131,20 @@ export class RendimentoService {
           user_id: string;
           event_type: string;
           status: RendimentoDayEventStatus;
+          date_ref: string;
+          appointment_external_id: number | null;
+          source_key: string;
         }>
       >(
         `
-        SELECT id, user_id, event_type, status
+        SELECT
+          id,
+          user_id,
+          event_type,
+          status,
+          date_ref::text AS date_ref,
+          appointment_external_id,
+          source_key
         FROM rendimento_day_events
         WHERE id = $1 AND deleted_at IS NULL
       `,
@@ -1966,6 +2179,23 @@ export class RendimentoService {
       debitProtected,
       params.actor.userId,
     );
+
+    if (current.appointment_external_id != null) {
+      await this.reconcileOvertimeDayEventSync({
+        keepEventId: params.eventId,
+        userId: current.user_id,
+        dateRef: current.date_ref.slice(0, 10),
+        eventType: current.event_type as 'OVERTIME' | 'PLANTAO',
+        appointmentExternalId: Number(current.appointment_external_id),
+        sourceKey: current.source_key,
+        fromTime: null,
+        toTime: null,
+        minutes: 0,
+        label: null,
+        description: null,
+        reason: null,
+      });
+    }
 
     await this.audit.log({
       actor: params.actor,
@@ -2443,6 +2673,21 @@ export class RendimentoService {
           AND e.date_ref <= $2::date
           AND ($3::text IS NULL OR e.user_id = $3::text)
           AND e.status = ANY($4::text[])
+          AND NOT (
+            e.status = 'PENDING'
+            AND e.appointment_external_id IS NOT NULL
+            AND EXISTS (
+              SELECT 1
+              FROM rendimento_day_events decided
+              WHERE decided.user_id = e.user_id
+                AND decided.date_ref = e.date_ref
+                AND decided.event_type = e.event_type
+                AND decided.appointment_external_id = e.appointment_external_id
+                AND decided.status IN ('APPROVED', 'REJECTED')
+                AND decided.deleted_at IS NULL
+                AND decided.id <> e.id
+            )
+          )
         ORDER BY
           CASE e.status
             WHEN 'PENDING' THEN 0

@@ -48,6 +48,7 @@ import {
 import {
   RENDIMENTO_OVERTIME_APPROVED_NOTE,
   RENDIMENTO_OVERTIME_BALANCE_LABEL,
+  RENDIMENTO_OVERTIME_REJECTED_NOTE,
 } from "@/lib/module-copy";
 import { cn } from "@/lib/utils";
 import type {
@@ -258,6 +259,10 @@ function DayDetailList({
                   <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                     {RENDIMENTO_OVERTIME_APPROVED_NOTE}
                   </p>
+                ) : item.entry.dayEventStatus === "REJECTED" ? (
+                  <p className="mt-1 text-xs font-medium text-rose-700 dark:text-rose-300">
+                    {RENDIMENTO_OVERTIME_REJECTED_NOTE}
+                  </p>
                 ) : null}
                 {canApproveJustification &&
                 item.entry.dayEventId &&
@@ -268,7 +273,10 @@ function DayDetailList({
                       <button
                         type="button"
                         className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-emerald-500"
-                        onClick={() => onApproveDayEvent(item.entry.dayEventId!)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onApproveDayEvent(item.entry.dayEventId!);
+                        }}
                       >
                         Aprovar{" "}
                         {resolveRendimentoOvertimeDisplay(item.entry).kind ===
@@ -281,7 +289,10 @@ function DayDetailList({
                       <button
                         type="button"
                         className="rounded bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-rose-500"
-                        onClick={() => onRejectDayEvent(item.entry.dayEventId!)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRejectDayEvent(item.entry.dayEventId!);
+                        }}
                       >
                         Não aprovar
                       </button>
