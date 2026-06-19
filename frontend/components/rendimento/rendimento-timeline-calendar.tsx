@@ -255,7 +255,8 @@ function DayDetailList({
                     {item.entry.description}
                   </p>
                 ) : null}
-                {item.entry.debitProtected ? (
+                {(item.entry.debitProtected ||
+                  item.entry.dayEventStatus === "APPROVED") ? (
                   <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                     {RENDIMENTO_OVERTIME_APPROVED_NOTE}
                   </p>

@@ -15,6 +15,7 @@ import {
   analyzeRendimentoDay,
   GAP_ALERT_MINUTES,
   isRendimentoDateToday,
+  overtimeKindFromValorization,
   type RendimentoDayInsightsDto,
   type RendimentoDaySchedule,
   type RendimentoGapDto,
@@ -1400,10 +1401,13 @@ export class RendimentoService {
   ): Promise<void> {
     for (const day of days) {
       if (!day.insights) continue;
-      await this.purgeAutoGapEventsForDay(userId, day.date);
-      if (isRendimentoDateToday(day.date.slice(0, 10))) {
-        continue;
+      const dayRef = day.date.slice(0, 10);
+      const isToday = isRendimentoDateToday(dayRef);
+
+      if (!isToday) {
+        await this.purgeAutoGapEventsForDay(userId, day.date);
       }
+
       const upserts = collectDayEventUpserts({
         userId,
         dateRef: day.date,
@@ -1411,6 +1415,12 @@ export class RendimentoService {
         entries: day.entries,
       });
       for (const item of upserts) {
+        if (
+          isToday &&
+          (item.eventType === 'IDLE_ALERT' || item.eventType === 'LUNCH')
+        ) {
+          continue;
+        }
         await this.upsertDayEvent(item);
       }
       for (const voluntary of day.voluntaryJustifications ?? []) {
@@ -1602,6 +1612,38 @@ export class RendimentoService {
     }
   }
 
+  private resolveEntryOvertimeEventType(
+    entry: RendimentoEntryDto,
+  ): 'OVERTIME' | 'PLANTAO' | null {
+    if (entry.overtimeKind === 'PLANTAO') return 'PLANTAO';
+    if (entry.overtimeKind === 'EXTRA') return 'OVERTIME';
+    if (entry.isOvertime) return 'OVERTIME';
+
+    const fromService = overtimeKindFromValorization(
+      entry.valorizationServiceName,
+    );
+    if (fromService === 'PLANTAO') return 'PLANTAO';
+    if (fromService === 'EXTRA') return 'OVERTIME';
+    return null;
+  }
+
+  private findOvertimeDayEventForEntry(
+    byKey: Map<string, RendimentoDayEventRow>,
+    dayRef: string,
+    appointmentId: number,
+    preferredType: 'OVERTIME' | 'PLANTAO',
+  ): RendimentoDayEventRow | undefined {
+    const primary = byKey.get(
+      this.dayEventAttachmentKey(dayRef, appointmentId, preferredType),
+    );
+    if (primary) return primary;
+
+    const alternate = preferredType === 'OVERTIME' ? 'PLANTAO' : 'OVERTIME';
+    return byKey.get(
+      this.dayEventAttachmentKey(dayRef, appointmentId, alternate),
+    );
+  }
+
   private attachDayEventsToDays(
     days: RendimentoDaySummaryDto[],
     events: RendimentoDayEventRow[],
@@ -1631,16 +1673,14 @@ export class RendimentoService {
     for (const day of days) {
       const dayRef = day.date.slice(0, 10);
       day.entries = day.entries.map((entry) => {
-        const eventType =
-          entry.overtimeKind === 'PLANTAO'
-            ? 'PLANTAO'
-            : entry.overtimeKind === 'EXTRA' || entry.isOvertime
-              ? 'OVERTIME'
-              : null;
+        const eventType = this.resolveEntryOvertimeEventType(entry);
         if (!eventType) return entry;
 
-        const event = byKey.get(
-          this.dayEventAttachmentKey(dayRef, entry.id, eventType),
+        const event = this.findOvertimeDayEventForEntry(
+          byKey,
+          dayRef,
+          entry.id,
+          eventType,
         );
         if (!event) return entry;
 
