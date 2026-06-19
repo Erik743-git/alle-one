@@ -28,6 +28,7 @@ import {
   RendimentoGapBlock,
   RendimentoVoluntaryJustificationBlock,
 } from "@/components/rendimento/rendimento-calendar-parts";
+import { RendimentoDayHoursBreakdown } from "@/components/rendimento/rendimento-day-hours-breakdown";
 import {
   buildTimelineBlocks,
   RendimentoTimelineLegend,
@@ -548,7 +549,7 @@ export function RendimentoTimelineCalendar({
                     onViewChange("day");
                   }}
                   className={cn(
-                    "min-h-[104px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
+                    "min-h-[128px] border-b border-r border-border p-2 text-left transition hover:bg-muted/30",
                     !inMonth && "bg-muted/20 text-muted-foreground",
                     isToday && "ring-2 ring-inset ring-primary/50",
                     hasGapAlert && "ring-1 ring-inset ring-orange-500/50",
@@ -582,16 +583,11 @@ export function RendimentoTimelineCalendar({
                           style={{ width: `${fillPct}%` }}
                         />
                       </div>
-                      <p
-                        className={cn(
-                          "text-[11px] font-bold",
-                          daySummaryHasOvertime(summary)
-                            ? "alle-stat-overtime"
-                            : "text-foreground",
-                        )}
-                      >
-                        {summary.totalHoursFormatted}
-                      </p>
+                      <RendimentoDayHoursBreakdown
+                        summary={summary}
+                        compact
+                        showTotal
+                      />
                     </div>
                   ) : inMonth ? (
                     <p className="mt-3 text-[10px] text-muted-foreground">—</p>
@@ -708,34 +704,9 @@ export function RendimentoTimelineCalendar({
               >
                 {displayDay.totalHoursFormatted ?? "00:00"}
               </p>
-              {displayDay.insights ? (
-                <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                  <span className="rounded-md border border-border bg-muted px-2 py-1 text-foreground">
-                    Regular:{" "}
-                    {String(
-                      Math.floor(displayDay.insights.regularMinutes / 60),
-                    ).padStart(2, "0")}
-                    :
-                    {String(displayDay.insights.regularMinutes % 60).padStart(
-                      2,
-                      "0",
-                    )}
-                  </span>
-                  {displayDay.insights.hasOvertime ? (
-                    <span className="alle-badge-overtime rounded-md border border-amber-500/45 px-2 py-1 font-semibold">
-                      Hora extra:{" "}
-                      {String(
-                        Math.floor(displayDay.insights.overtimeMinutes / 60),
-                      ).padStart(2, "0")}
-                      :
-                      {String(displayDay.insights.overtimeMinutes % 60).padStart(
-                        2,
-                        "0",
-                      )}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
+              <div className="mt-2 max-w-xs">
+                <RendimentoDayHoursBreakdown summary={displayDay} />
+              </div>
               <RendimentoDayIndicators
                 summary={displayDay}
                 hideGapAlerts={pjSimplifiedView}

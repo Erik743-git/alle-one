@@ -149,20 +149,18 @@ export class RendimentoController {
   @Get('collaborators/list-preferences')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   @Roles('ADMIN')
-  listCollaboratorListPreferences(@Req() req: AuthenticatedRequest) {
-    return this.rendimentoService.listCollaboratorListPreferences(req.user.userId);
+  listCollaboratorListPreferences() {
+    return this.rendimentoService.listCollaboratorListPreferences();
   }
 
   @Patch('collaborators/list-preferences/:collaboratorUserId')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   @Roles('ADMIN')
   setCollaboratorListPreference(
-    @Req() req: AuthenticatedRequest,
     @Param('collaboratorUserId', ParseUUIDPipe) collaboratorUserId: string,
     @Body() body: UpdateCollaboratorListPreferenceDto,
   ) {
     return this.rendimentoService.setCollaboratorListPreference({
-      adminUserId: req.user.userId,
       collaboratorUserId,
       listed: body.listed,
     });

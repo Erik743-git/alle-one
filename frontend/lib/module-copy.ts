@@ -31,7 +31,7 @@ export const APONTAMENTOS_LIST_SETTINGS_TITLE =
   "Lista de colaboradores";
 
 export const APONTAMENTOS_LIST_SETTINGS_DESCRIPTION =
-  "Escolha quais colaboradores aparecem na sua lista. A configuração é individual por administrador.";
+  "Escolha quais colaboradores aparecem na lista de Apontamentos. A configuração vale para todos os administradores.";
 
 export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
   "Listar na tela";

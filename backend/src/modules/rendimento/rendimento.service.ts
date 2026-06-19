@@ -1516,12 +1516,9 @@ export class RendimentoService {
     return collaborators;
   }
 
-  async listCollaboratorListPreferences(
-    adminUserId: string,
-  ): Promise<RendimentoCollaboratorListPreferenceDto[]> {
+  async listCollaboratorListPreferences(): Promise<RendimentoCollaboratorListPreferenceDto[]> {
     const collaborators = await this.listCollaboratorsForSelect();
-    const prefs = await this.prisma.rendimentoAdminCollaboratorListPref.findMany({
-      where: { adminUserId },
+    const prefs = await this.prisma.rendimentoCollaboratorListPref.findMany({
       select: { collaboratorUserId: true, listed: true },
     });
     const listedByCollaboratorId = new Map(
@@ -1539,7 +1536,6 @@ export class RendimentoService {
   }
 
   async setCollaboratorListPreference(params: {
-    adminUserId: string;
     collaboratorUserId: string;
     listed: boolean;
   }): Promise<{ collaboratorId: string; listed: boolean }> {
@@ -1557,15 +1553,9 @@ export class RendimentoService {
       throw new NotFoundException('Colaborador não encontrado.');
     }
 
-    await this.prisma.rendimentoAdminCollaboratorListPref.upsert({
-      where: {
-        adminUserId_collaboratorUserId: {
-          adminUserId: params.adminUserId,
-          collaboratorUserId: params.collaboratorUserId,
-        },
-      },
+    await this.prisma.rendimentoCollaboratorListPref.upsert({
+      where: { collaboratorUserId: params.collaboratorUserId },
       create: {
-        adminUserId: params.adminUserId,
         collaboratorUserId: params.collaboratorUserId,
         listed: params.listed,
       },
