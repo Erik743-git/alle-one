@@ -28,6 +28,7 @@ import {
   CreateRendimentoJustificationDto,
   DecideRendimentoDayEventDto,
   DecideRendimentoJustificationDto,
+  UpdateRendimentoJustificationDto,
   ListPendingOvertimeQueryDto,
   ListCompanyQuestionsQueryDto,
   RendimentoCompanyAgendaQueryDto,
@@ -207,6 +208,8 @@ export class RendimentoController {
       reason: body.reason,
       debitOvertime: body.debitOvertime,
       overtimeMinutes: body.overtimeMinutes,
+      alertFromTime: body.alertFromTime,
+      alertToTime: body.alertToTime,
     });
   }
 
@@ -228,6 +231,31 @@ export class RendimentoController {
       justificationId: id,
       decision: body.decision,
       note: body.note,
+    });
+  }
+
+  @Patch('justifications/:id')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canEdit')
+  @Roles('ADMIN', 'COLLABORATOR')
+  @AuditMeta({
+    entity: 'RendimentoGapJustification',
+    action: 'UPDATE',
+    entityIdParam: 'id',
+  })
+  updateGapJustification(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: UpdateRendimentoJustificationDto,
+  ) {
+    return this.rendimentoService.updateGapJustification({
+      actor: req.user,
+      justificationId: id,
+      date: body.date,
+      fromTime: body.fromTime,
+      toTime: body.toTime,
+      reason: body.reason,
+      alertFromTime: body.alertFromTime,
+      alertToTime: body.alertToTime,
     });
   }
 

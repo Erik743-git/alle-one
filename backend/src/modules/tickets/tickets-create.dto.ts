@@ -50,6 +50,11 @@ export class CreateTicketDto {
   responsibleId?: number;
 
   @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  requestorId?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(255)
   requestorName?: string;
@@ -99,3 +104,5 @@ export class CreateTicketAppointmentDto {
   @IsIn(['Remote', 'External', 'Internal'])
   attendance!: 'Remote' | 'External' | 'Internal';
 }
+
+export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {}

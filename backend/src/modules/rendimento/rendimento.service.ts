@@ -658,6 +658,215 @@ export class RendimentoService {
     return Math.max(a1, b1) < Math.min(a2, b2);
   }
 
+  private appointmentOverlapsPeriod(
+    initTime: string | null,
+    endTime: string | null,
+    fromTime: string,
+    toTime: string,
+  ): boolean {
+    if (!initTime?.trim() || !endTime?.trim()) return false;
+    const apptFrom = this.normalizeTimeHHMM(initTime);
+    const apptTo = this.normalizeTimeHHMM(endTime);
+    return this.overlaps(fromTime, toTime, apptFrom, apptTo);
+  }
+
+  private isPeriodContainedInRawGaps(
+    rawGaps: RendimentoGapDto[],
+    fromTime: string,
+    toTime: string,
+  ): boolean {
+    const from = this.parseHHMMToMinutes(fromTime);
+    const to = this.parseHHMMToMinutes(toTime);
+    return rawGaps.some((gap) => {
+      const gapFrom = this.parseHHMMToMinutes(gap.fromTime);
+      const gapTo = this.parseHHMMToMinutes(gap.toTime);
+      return from >= gapFrom && to <= gapTo;
+    });
+  }
+
+  private assertPeriodWithinAlertBounds(
+    fromTime: string,
+    toTime: string,
+    alertFrom?: string,
+    alertTo?: string,
+  ) {
+    if (!alertFrom?.trim() || !alertTo?.trim()) return;
+    const from = this.parseHHMMToMinutes(fromTime);
+    const to = this.parseHHMMToMinutes(toTime);
+    const alertFromMinutes = this.parseHHMMToMinutes(
+      this.normalizeTimeHHMM(alertFrom),
+    );
+    const alertToMinutes = this.parseHHMMToMinutes(
+      this.normalizeTimeHHMM(alertTo),
+    );
+    if (from < alertFromMinutes || to > alertToMinutes) {
+      throw new BadRequestException(
+        'O período deve estar dentro do alerta selecionado.',
+      );
+    }
+  }
+
+  private async assertAlertJustificationPeriodValid(params: {
+    userId: string;
+    date: string;
+    fromTime: string;
+    toTime: string;
+    alertFromTime?: string;
+    alertToTime?: string;
+    excludeJustificationId?: string;
+    user: {
+      email: string;
+      rendimentoCustomSchedule?: boolean;
+      rendimentoDailyWorkMinutes?: number | null;
+      rendimentoLunchMinutes?: number | null;
+    };
+  }) {
+    this.assertPeriodWithinAlertBounds(
+      params.fromTime,
+      params.toTime,
+      params.alertFromTime,
+      params.alertToTime,
+    );
+
+    const dateOnly = this.toDateOnlyString(this.parseDateOnly(params.date));
+    const dayDate = this.parseDateOnly(dateOnly);
+    const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
+    const tifluxUser = this.lookupTifluxUser(params.user.email, tifluxUserByEmail);
+
+    if (tifluxUser != null) {
+      const rows = await this.fetchAppointments({
+        tifluxUserId: tifluxUser.id,
+        start: dayDate,
+        end: dayDate,
+      });
+      for (const row of rows) {
+        if (
+          this.appointmentOverlapsPeriod(
+            row.init_time,
+            row.end_time,
+            params.fromTime,
+            params.toTime,
+          )
+        ) {
+          throw new BadRequestException(
+            'O período não pode coincidir com horário já registrado em ticket.',
+          );
+        }
+      }
+
+      const schedule = this.toRendimentoDaySchedule(params.user);
+      const baseEntries = this.mapEntries(rows);
+      const valorizationById = new Map(
+        rows.map((row) => [Number(row.appointment_id), row.valorization_raw]),
+      );
+      const { insights } = analyzeRendimentoDay(
+        baseEntries,
+        valorizationById,
+        schedule,
+      );
+      if (
+        !this.isPeriodContainedInRawGaps(
+          insights.gaps,
+          params.fromTime,
+          params.toTime,
+        )
+      ) {
+        throw new BadRequestException(
+          'O período deve estar em um intervalo livre do dia.',
+        );
+      }
+    }
+
+    const justifications = await this.listJustifications({
+      userId: params.userId,
+      start: dayDate,
+      end: dayDate,
+    });
+    for (const row of justifications) {
+      if (
+        params.excludeJustificationId &&
+        row.id === params.excludeJustificationId
+      ) {
+        continue;
+      }
+      if (
+        this.overlaps(
+          params.fromTime,
+          params.toTime,
+          this.normalizeTimeHHMM(row.from_time),
+          this.normalizeTimeHHMM(row.to_time),
+        )
+      ) {
+        throw new BadRequestException(
+          'O período coincide com outra justificativa já registrada.',
+        );
+      }
+    }
+  }
+
+  private splitGapWithAlertJustification(
+    gap: RendimentoGapDto,
+    matched: GapJustificationRow,
+  ): RendimentoGapDto[] {
+    const gapFrom = this.parseHHMMToMinutes(gap.fromTime);
+    const gapTo = this.parseHHMMToMinutes(gap.toTime);
+    const justFrom = this.parseHHMMToMinutes(
+      this.normalizeTimeHHMM(matched.from_time),
+    );
+    const justTo = this.parseHHMMToMinutes(
+      this.normalizeTimeHHMM(matched.to_time),
+    );
+
+    const overlapFrom = Math.max(gapFrom, justFrom);
+    const overlapTo = Math.min(gapTo, justTo);
+    if (overlapTo <= overlapFrom) return [gap];
+
+    const justification = this.mapJustificationDto(matched);
+    const suffix = this.justificationStatusSuffix(matched.status);
+    const userGapType = matched.gap_type as 'idle' | 'lunch';
+    const effectiveType =
+      matched.status === 'APPROVED' ? userGapType : gap.type;
+
+    const result: RendimentoGapDto[] = [];
+
+    if (overlapFrom > gapFrom) {
+      const minutes = overlapFrom - gapFrom;
+      result.push({
+        ...gap,
+        fromTime: this.formatMinutesAsTime(gapFrom),
+        toTime: this.formatMinutesAsTime(overlapFrom),
+        gapMinutes: minutes,
+        label: this.gapLabelForType(gap.type, minutes),
+        justification: undefined,
+      });
+    }
+
+    const overlapMinutes = overlapTo - overlapFrom;
+    result.push({
+      ...gap,
+      type: effectiveType,
+      fromTime: this.formatMinutesAsTime(overlapFrom),
+      toTime: this.formatMinutesAsTime(overlapTo),
+      gapMinutes: overlapMinutes,
+      label: `${this.gapLabelForType(effectiveType, overlapMinutes)}${suffix}`,
+      justification,
+    });
+
+    if (overlapTo < gapTo) {
+      const minutes = gapTo - overlapTo;
+      result.push({
+        ...gap,
+        fromTime: this.formatMinutesAsTime(overlapTo),
+        toTime: this.formatMinutesAsTime(gapTo),
+        gapMinutes: minutes,
+        label: this.gapLabelForType(gap.type, minutes),
+        justification: undefined,
+      });
+    }
+
+    return result;
+  }
+
   private subtractIntervalFromSegment(
     segFrom: number,
     segTo: number,
@@ -785,27 +994,16 @@ export class RendimentoService {
     );
     const usedJustificationIds = new Set<string>();
 
-    const gaps = insights.gaps.map((gap) => {
+    const gaps = insights.gaps.flatMap((gap) => {
       const matched = this.matchAlertJustificationToGap(
         gap,
         alertJustifications,
         usedJustificationIds,
       );
-      if (!matched) return gap;
+      if (!matched) return [gap];
 
       usedJustificationIds.add(matched.id);
-      const justification = this.mapJustificationDto(matched);
-      const suffix = this.justificationStatusSuffix(matched.status);
-      const userGapType = matched.gap_type as 'idle' | 'lunch';
-      const effectiveType =
-        matched.status === 'APPROVED' ? userGapType : gap.type;
-
-      return {
-        ...gap,
-        type: effectiveType,
-        label: `${this.gapLabelForType(effectiveType, gap.gapMinutes)}${suffix}`,
-        justification,
-      };
+      return this.splitGapWithAlertJustification(gap, matched);
     });
 
     const orphanJustificationGaps: RendimentoGapDto[] = alertJustifications
@@ -2046,6 +2244,8 @@ export class RendimentoService {
     reason: string;
     debitOvertime?: boolean;
     overtimeMinutes?: number;
+    alertFromTime?: string;
+    alertToTime?: string;
   }) {
     this.assertCanManageTargetUser(params.actor, params.userId);
 
@@ -2053,6 +2253,7 @@ export class RendimentoService {
       where: { id: params.userId, deletedAt: null },
       select: {
         id: true,
+        email: true,
         rendimentoCustomSchedule: true,
         rendimentoDailyWorkMinutes: true,
         rendimentoLunchMinutes: true,
@@ -2098,6 +2299,18 @@ export class RendimentoService {
       throw new BadRequestException(
         `Período de almoço não pode exceder ${lunchLabel}.`,
       );
+    }
+
+    if (params.kind === 'ALERT') {
+      await this.assertAlertJustificationPeriodValid({
+        userId: params.userId,
+        date,
+        fromTime,
+        toTime,
+        alertFromTime: params.alertFromTime,
+        alertToTime: params.alertToTime,
+        user,
+      });
     }
 
     const gapMinutes =
@@ -2151,6 +2364,155 @@ export class RendimentoService {
     });
 
     return { id, status: 'PENDING' as const };
+  }
+
+  async updateGapJustification(params: {
+    actor: AuthenticatedRequestUser;
+    justificationId: string;
+    date?: string;
+    fromTime?: string;
+    toTime?: string;
+    reason: string;
+    alertFromTime?: string;
+    alertToTime?: string;
+  }) {
+    const rows =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{
+          id: string;
+          user_id: string;
+          date_ref: string;
+          from_time: string;
+          to_time: string;
+          gap_type: 'idle' | 'lunch';
+          gap_minutes: number;
+          kind: RendimentoJustificationKind;
+          status: RendimentoJustificationStatus;
+        }>
+      >(
+        `
+        SELECT
+          id,
+          user_id,
+          date_ref::text AS date_ref,
+          to_char(from_time, 'HH24:MI') AS from_time,
+          to_char(to_time, 'HH24:MI') AS to_time,
+          gap_type,
+          gap_minutes,
+          kind,
+          status
+        FROM rendimento_gap_justifications
+        WHERE id = $1
+          AND deleted_at IS NULL
+      `,
+        params.justificationId,
+      )) ?? [];
+    const current = rows[0];
+    if (!current) {
+      throw new NotFoundException('Justificativa não encontrada.');
+    }
+
+    this.assertCanManageTargetUser(params.actor, current.user_id);
+
+    if (current.status !== 'PENDING') {
+      throw new BadRequestException(
+        'Somente justificativas pendentes podem ser editadas.',
+      );
+    }
+
+    const reason = String(params.reason || '').trim();
+    if (!reason) {
+      throw new BadRequestException('Justificativa é obrigatória.');
+    }
+
+    const isVoluntary = current.kind === 'VOLUNTARY';
+    const date = isVoluntary
+      ? this.toDateOnlyString(this.parseDateOnly(params.date ?? current.date_ref))
+      : current.date_ref.slice(0, 10);
+    const fromTime = isVoluntary
+      ? this.normalizeTimeHHMM(params.fromTime ?? current.from_time)
+      : this.normalizeTimeHHMM(params.fromTime ?? current.from_time);
+    const toTime = isVoluntary
+      ? this.normalizeTimeHHMM(params.toTime ?? current.to_time)
+      : this.normalizeTimeHHMM(params.toTime ?? current.to_time);
+
+    const fromMinutes = this.parseHHMMToMinutes(fromTime);
+    const toMinutes = this.parseHHMMToMinutes(toTime);
+    if (toMinutes <= fromMinutes) {
+      throw new BadRequestException(
+        'Horário final deve ser maior que o horário inicial.',
+      );
+    }
+
+    if (!isVoluntary) {
+      const user = await this.prisma.user.findFirst({
+        where: { id: current.user_id, deletedAt: null },
+        select: {
+          email: true,
+          rendimentoCustomSchedule: true,
+          rendimentoDailyWorkMinutes: true,
+          rendimentoLunchMinutes: true,
+        },
+      });
+      if (!user) {
+        throw new NotFoundException('Colaborador não encontrado.');
+      }
+      await this.assertAlertJustificationPeriodValid({
+        userId: current.user_id,
+        date,
+        fromTime,
+        toTime,
+        alertFromTime: params.alertFromTime,
+        alertToTime: params.alertToTime,
+        excludeJustificationId: params.justificationId,
+        user,
+      });
+    }
+
+    const gapMinutes = toMinutes - fromMinutes;
+
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_gap_justifications
+      SET
+        date_ref = $2::date,
+        from_time = $3::time,
+        to_time = $4::time,
+        gap_minutes = $5,
+        reason = $6
+      WHERE id = $1
+    `,
+      params.justificationId,
+      date,
+      fromTime,
+      toTime,
+      gapMinutes,
+      reason,
+    );
+
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE rendimento_day_events
+      SET
+        date_ref = $2::date,
+        from_time = $3::time,
+        to_time = $4::time,
+        minutes = $5,
+        reason = $6,
+        updated_at = NOW()
+      WHERE justification_id = $1
+        AND event_type = 'JUSTIFICATION'
+        AND deleted_at IS NULL
+    `,
+      params.justificationId,
+      date,
+      fromTime,
+      toTime,
+      gapMinutes,
+      reason,
+    );
+
+    return { id: params.justificationId, status: 'PENDING' as const };
   }
 
   async decideDayEvent(params: {

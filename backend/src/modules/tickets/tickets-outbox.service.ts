@@ -32,9 +32,10 @@ export class TicketsOutboxService {
     processed: number;
     synced: number;
     failed: number;
+    skipped: number;
   }> {
     if (!isTifluxAppointmentSyncEnabled()) {
-      return { processed: 0, synced: 0, failed: 0 };
+      return { processed: 0, synced: 0, failed: 0, skipped: 0 };
     }
 
     const rows = await this.prisma.portalTifluxOutbox.findMany({
@@ -48,20 +49,22 @@ export class TicketsOutboxService {
 
     let synced = 0;
     let failed = 0;
+    let skipped = 0;
 
     for (const row of rows) {
-      const ok = await this.processOne(row.id);
-      if (ok) synced += 1;
+      const result = await this.processOne(row.id);
+      if (result === 'synced') synced += 1;
+      else if (result === 'skipped') skipped += 1;
       else failed += 1;
     }
 
     if (rows.length > 0) {
       this.logger.log(
-        `Outbox: ${rows.length} processado(s) — ${synced} sync, ${failed} falha(s)`,
+        `Outbox: ${rows.length} processado(s) — ${synced} sync, ${failed} falha(s), ${skipped} pausado(s)`,
       );
     }
 
-    return { processed: rows.length, synced, failed };
+    return { processed: rows.length, synced, failed, skipped };
   }
 
   /** Reenfileira entradas FAILED para nova tentativa (admin). */
@@ -93,7 +96,9 @@ export class TicketsOutboxService {
     return rows.length;
   }
 
-  private async processOne(outboxId: string): Promise<boolean> {
+  private async processOne(
+    outboxId: string,
+  ): Promise<'synced' | 'failed' | 'skipped'> {
     const row = await this.prisma.portalTifluxOutbox.findUnique({
       where: { id: outboxId },
     });
@@ -104,7 +109,7 @@ export class TicketsOutboxService {
       row.kind !== PortalTifluxOutboxKind.CREATE_APPOINTMENT ||
       !row.ticketNumber
     ) {
-      return false;
+      return 'failed';
     }
 
     const payload = row.payload as AppointmentOutboxPayload;
@@ -115,10 +120,21 @@ export class TicketsOutboxService {
       !payload?.description
     ) {
       await this.markFailed(outboxId, 'Payload de apontamento inválido.');
-      return false;
+      return 'failed';
+    }
+
+    if (payload.portalAppointmentId) {
+      const appointment = await this.prisma.portalTicketAppointment.findUnique({
+        where: { id: payload.portalAppointmentId },
+        select: { syncPausedAt: true },
+      });
+      if (appointment?.syncPausedAt) {
+        return 'skipped';
+      }
     }
 
     try {
+      // Mesa AlleOne no TiFlux não possui valorização: enviamos só data/hora/descrição.
       const created = await this.tiflux.createTicketAppointment(row.ticketNumber, {
         date: payload.date,
         init_time: payload.init_time,
@@ -153,13 +169,13 @@ export class TicketsOutboxService {
         }
       });
 
-      return true;
+      return 'synced';
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Falha ao sincronizar com TiFlux.';
       await this.markFailed(outboxId, message.slice(0, 2000));
       this.logger.warn(`Outbox ${outboxId} falhou: ${message}`);
-      return false;
+      return 'failed';
     }
   }
 

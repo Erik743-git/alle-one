@@ -658,6 +658,7 @@ model PortalTicketAppointment {
   attendance                  String                            @db.VarChar(20)
   tifluxAppointmentExternalId Int?                              @map("tiflux_appointment_external_id")
   syncStatus                  PortalTicketAppointmentSyncStatus @default(PENDING_TIFLUX) @map("sync_status")
+  syncPausedAt                DateTime?                         @map("sync_paused_at")
   outboxId                    String?                           @map("outbox_id")
   createdBy                   String                            @map("created_by")
   createdAt                   DateTime                          @default(now()) @map("created_at")

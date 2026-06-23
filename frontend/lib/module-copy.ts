@@ -37,7 +37,7 @@ export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
   "Listar na tela";
 
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
-  "Descreva o motivo do intervalo. Após análise da equipe administrativa, o registro será confirmado.";
+  "Descreva o motivo do intervalo. Você pode escolher um período parcial dentro do alerta — não é necessário justificar todo o tempo. O horário não pode coincidir com apontamentos em ticket. Após análise da equipe administrativa, o registro será confirmado.";
 
 export const RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC =
   "Registre um intervalo pontual (ex.: consulta médica) para análise da equipe administrativa.";
@@ -64,6 +64,11 @@ export const RENDIMENTO_OVERTIME_REJECTED_NOTE =
 export const SYNC_STATUS_PORTAL_ONLY = "Registrado no portal";
 
 export const SYNC_STATUS_PENDING = "Em sincronização";
+
+export const SYNC_STATUS_PAUSED = "Sincronização pausada";
+
+export const TICKET_APPOINTMENT_TIFLUX_PORTAL_ONLY_WARNING =
+  "Este apontamento já existe no TiFlux. O portal não possui permissão na API para alterar ou excluir apontamentos no TiFlux — faça isso diretamente no TiFlux, se necessário. Você pode continuar para alterar somente o registro no portal AlleOne.";
 
 /** Correio / notificações */
 export const MAILBOX_RENDIMENTO_ALERT_BODY_ONE = (dateLabel: string, monthLabel: string) =>

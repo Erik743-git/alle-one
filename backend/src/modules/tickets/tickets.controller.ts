@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -30,8 +32,9 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import {
   CreateTicketAppointmentDto,
   CreateTicketDto,
+  UpdateTicketAppointmentDto,
 } from './tickets-create.dto';
-import { TicketsListQueryDto } from './tickets.dto';
+import { TicketsListQueryDto, UpdateTicketStageDto } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
 import { TicketsReconcileService } from './tickets-reconcile.service';
 import { TicketsService } from './tickets.service';
@@ -66,13 +69,18 @@ export class TicketsController {
   @Get('catalogs/create')
   @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  createCatalogs(@Query('deskId') deskIdRaw?: string) {
+  createCatalogs(@Query('deskId') deskIdRaw?: string, @Query('clientId') clientIdRaw?: string) {
     const deskId =
       deskIdRaw != null && deskIdRaw.trim() !== ''
         ? Number(deskIdRaw)
         : undefined;
+    const clientId =
+      clientIdRaw != null && clientIdRaw.trim() !== ''
+        ? Number(clientIdRaw)
+        : undefined;
     return this.ticketsService.getCreateCatalogs(
       deskId != null && Number.isFinite(deskId) ? deskId : undefined,
+      clientId != null && Number.isFinite(clientId) ? clientId : undefined,
     );
   }
 
@@ -120,6 +128,23 @@ export class TicketsController {
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   appointmentCatalogs(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
     return this.ticketsService.getAppointmentCatalogs(ticketNumber);
+  }
+
+  @Get(':ticketNumber/stages')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  listStages(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
+    return this.ticketsService.listTicketStages(ticketNumber);
+  }
+
+  @Patch(':ticketNumber/stage')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  updateStage(
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Body() body: UpdateTicketStageDto,
+  ) {
+    return this.ticketsService.updateTicketStage(ticketNumber, body.stageId);
   }
 
   @Get(':ticketNumber')
@@ -179,6 +204,98 @@ export class TicketsController {
       ticketNumber,
       dto,
       files ?? [],
+    );
+  }
+
+  @Get(':ticketNumber/appointments/:portalAppointmentId/edit-context')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  portalAppointmentEditContext(
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+  ) {
+    return this.ticketsService.getPortalAppointmentEditContext(
+      ticketNumber,
+      portalAppointmentId,
+    );
+  }
+
+  @Post(':ticketNumber/appointments/:portalAppointmentId/pause-sync')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  pausePortalAppointmentSync(
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+  ) {
+    return this.ticketsService.pausePortalAppointmentSync(
+      ticketNumber,
+      portalAppointmentId,
+    );
+  }
+
+  @Post(':ticketNumber/appointments/:portalAppointmentId/resume-sync')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  resumePortalAppointmentSync(
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+  ) {
+    return this.ticketsService.resumePortalAppointmentSync(
+      ticketNumber,
+      portalAppointmentId,
+    );
+  }
+
+  @Patch(':ticketNumber/appointments/:portalAppointmentId')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  async updatePortalAppointment(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+    @Body('payload') payloadRaw: string,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    if (!payloadRaw?.trim()) {
+      throw new BadRequestException('Campo payload é obrigatório.');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payloadRaw);
+    } catch {
+      throw new BadRequestException('Payload JSON inválido.');
+    }
+
+    const dto = plainToInstance(UpdateTicketAppointmentDto, parsed);
+    const errors = await validate(dto);
+    if (errors.length > 0) {
+      const first = errors[0];
+      const msg =
+        Object.values(first.constraints ?? {})[0] ??
+        'Dados do apontamento inválidos.';
+      throw new BadRequestException(msg);
+    }
+
+    return this.ticketsService.updatePortalAppointment(
+      actor,
+      ticketNumber,
+      portalAppointmentId,
+      dto,
+    );
+  }
+
+  @Delete(':ticketNumber/appointments/:portalAppointmentId')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  deletePortalAppointment(
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+  ) {
+    return this.ticketsService.deletePortalAppointment(
+      ticketNumber,
+      portalAppointmentId,
     );
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, FileText, Loader2, Plus, UserRound } from "lucide-react";
 
@@ -62,6 +62,7 @@ export default function NewTicketPage() {
     null,
   );
   const [responsibleId, setResponsibleId] = useState("");
+  const [requestorId, setRequestorId] = useState("");
   const [requestorName, setRequestorName] = useState("");
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorTelephone, setRequestorTelephone] = useState("");
@@ -75,10 +76,9 @@ export default function NewTicketPage() {
   const hasPortalClassification =
     (catalogs?.classification?.tree?.length ?? 0) > 0;
 
-  const requiresCatalog =
-    (catalogs?.desk?.requireServiceCatalog ??
-      selectedDesk?.requireServiceCatalog) &&
-    !hasPortalClassification;
+  const requiresCatalog = Boolean(
+    catalogs?.desk?.requireServiceCatalog ?? selectedDesk?.requireServiceCatalog,
+  );
 
   const classificationLevelLabels = useMemo(() => {
     const labels: Record<number, string> = {};
@@ -128,38 +128,106 @@ export default function NewTicketPage() {
     () =>
       (catalogs?.responsibles ?? []).map((r) => ({
         value: String(r.id),
-        label: r.name,
+        label: r.email ? `${r.name} (${r.email})` : r.name,
       })),
     [catalogs],
   );
 
-  const loadCatalogs = useCallback(async (nextDeskId?: number) => {
-    try {
-      setLoading(true);
-      const data = await ticketsService.createCatalogs(nextDeskId);
-      setCatalogs(data);
-    } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar os dados.",
-      );
-    } finally {
-      setLoading(false);
+  const requestorOptions = useMemo(
+    () =>
+      (catalogs?.requestors ?? []).map((r) => ({
+        value: String(r.id),
+        label: r.email ? `${r.name} (${r.email})` : r.name,
+      })),
+    [catalogs],
+  );
+
+  const requiresRequestor = Boolean(
+    catalogs?.desk?.requiredFields?.requestor_name ||
+      catalogs?.desk?.requiredFields?.requestor_email,
+  );
+
+  const catalogBlocked =
+    requiresCatalog && deskId !== "" && catalogItemOptions.length === 0;
+
+  const canSubmit =
+    !loading &&
+    !saving &&
+    !catalogBlocked &&
+    !(requiresRequestor && clientId && !requestorId);
+
+  const selectedRequestor = useMemo(
+    () =>
+      (catalogs?.requestors ?? []).find((r) => String(r.id) === requestorId) ??
+      null,
+    [catalogs, requestorId],
+  );
+
+  const prevDeskIdRef = useRef("");
+
+  const loadCatalogs = useCallback(
+    async (params?: { deskId?: number; clientId?: number }) => {
+      try {
+        setLoading(true);
+        const data = await ticketsService.createCatalogs(params);
+        setCatalogs(data);
+      } catch (err) {
+        notifyError(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar os dados.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (deskId !== prevDeskIdRef.current) {
+      if (deskId) {
+        setPriorityId("");
+        setCatalogItemId("");
+        setClassificationId(null);
+      }
+      prevDeskIdRef.current = deskId;
     }
-  }, []);
 
-  useEffect(() => {
-    void loadCatalogs();
-  }, [loadCatalogs]);
+    const parsedDesk = deskId ? Number(deskId) : undefined;
+    const parsedClient = clientId ? Number(clientId) : undefined;
+    if (deskId && !Number.isFinite(parsedDesk)) return;
+    if (clientId && !Number.isFinite(parsedClient)) return;
 
-  useEffect(() => {
-    if (!deskId) return;
-    const id = Number(deskId);
-    if (!Number.isFinite(id)) return;
-    setPriorityId("");
-    setCatalogItemId("");
-    setClassificationId(null);
-    void loadCatalogs(id);
-  }, [deskId, loadCatalogs]);
+    void loadCatalogs({
+      deskId:
+        parsedDesk != null && Number.isFinite(parsedDesk)
+          ? parsedDesk
+          : undefined,
+      clientId:
+        parsedClient != null && Number.isFinite(parsedClient)
+          ? parsedClient
+          : undefined,
+    });
+  }, [deskId, clientId, loadCatalogs]);
+
+  function handleClientChange(nextClientId: string) {
+    setClientId(nextClientId);
+    setRequestorId("");
+    setRequestorName("");
+    setRequestorEmail("");
+    setRequestorTelephone("");
+  }
+
+  function handleRequestorChange(nextRequestorId: string) {
+    setRequestorId(nextRequestorId);
+    const selected = (catalogs?.requestors ?? []).find(
+      (row) => String(row.id) === nextRequestorId,
+    );
+    setRequestorName(selected?.name ?? "");
+    setRequestorEmail(selected?.email ?? "");
+    setRequestorTelephone(selected?.telephone ?? "");
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -181,12 +249,21 @@ export default function NewTicketPage() {
     }
 
     if (requiresCatalog && !catalogItemId) {
-      notifyError("Selecione o serviço do catálogo.");
+      notifyError("Selecione o serviço do catálogo TiFlux.");
       return;
     }
 
     if (!requiresCatalog && !hasPortalClassification && !priorityId) {
       notifyError("Selecione a prioridade.");
+      return;
+    }
+
+    const requiredFields = catalogs?.desk?.requiredFields ?? {};
+    if (
+      (requiredFields.requestor_name || requiredFields.requestor_email) &&
+      !requestorId
+    ) {
+      notifyError("Selecione o solicitante vinculado ao cliente.");
       return;
     }
 
@@ -203,6 +280,7 @@ export default function NewTicketPage() {
           : undefined,
         classificationId: classificationId ?? undefined,
         responsibleId: responsibleId ? Number(responsibleId) : undefined,
+        requestorId: requestorId ? Number(requestorId) : undefined,
         requestorName: requestorName.trim() || undefined,
         requestorEmail: requestorEmail.trim() || undefined,
         requestorTelephone: requestorTelephone.trim() || undefined,
@@ -290,7 +368,7 @@ export default function NewTicketPage() {
                       </Label>
                       <SearchableSelectField
                         value={clientId}
-                        onChange={setClientId}
+                        onChange={handleClientChange}
                         options={clientOptions}
                         loading={loading}
                         emptyLabel="Selecione o cliente"
@@ -312,6 +390,7 @@ export default function NewTicketPage() {
                     {deskId && hasPortalClassification ? (
                       <ClassificationCascadeFields
                         serviceDeskId={catalogs?.portalServiceDesk?.id ?? null}
+                        tree={catalogs?.classification?.tree ?? null}
                         value={classificationId}
                         onChange={setClassificationId}
                         disabled={loading || saving}
@@ -322,15 +401,27 @@ export default function NewTicketPage() {
                     {deskId && requiresCatalog ? (
                       <div className="space-y-2 sm:col-span-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
-                          Serviço do catálogo
+                          Serviço do catálogo (TiFlux)
                         </Label>
                         <SearchableSelectField
                           value={catalogItemId}
                           onChange={setCatalogItemId}
                           options={catalogItemOptions}
                           loading={loading}
-                          emptyLabel="Selecione o serviço"
+                          emptyLabel={
+                            catalogItemOptions.length === 0
+                              ? "Nenhum serviço cadastrado no catálogo TiFlux desta mesa"
+                              : "Selecione o serviço"
+                          }
                         />
+                        {catalogBlocked ? (
+                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                            Esta mesa exige catálogo no TiFlux, mas não há serviços
+                            cadastrados. Cadastre itens no catálogo da mesa{" "}
+                            <strong>{catalogs?.desk?.name ?? "selecionada"}</strong>{" "}
+                            no TiFlux antes de abrir chamados.
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
 
@@ -361,7 +452,7 @@ export default function NewTicketPage() {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-muted-foreground">
-                        Responsável
+                        Responsável (TiFlux)
                       </Label>
                       <SearchableSelectField
                         value={responsibleId}
@@ -370,47 +461,44 @@ export default function NewTicketPage() {
                         loading={loading}
                         emptyLabel={
                           responsibleOptions.length === 0
-                            ? "Nenhum responsável cadastrado"
+                            ? "Nenhum atendente encontrado no TiFlux"
                             : "Selecione o responsável"
                         }
                         placeholder="Selecione o responsável"
                       />
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Solicitante
-                        </Label>
-                        <Input
-                          value={requestorName}
-                          onChange={(e) => setRequestorName(e.target.value)}
-                          placeholder="Nome"
-                          className="h-11"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          E-mail
-                        </Label>
-                        <Input
-                          type="email"
-                          value={requestorEmail}
-                          onChange={(e) => setRequestorEmail(e.target.value)}
-                          className="h-11"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Telefone
-                        </Label>
-                        <Input
-                          value={requestorTelephone}
-                          onChange={(e) =>
-                            setRequestorTelephone(e.target.value)
-                          }
-                          className="h-11"
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-muted-foreground">
+                        Solicitante
+                      </Label>
+                      <SearchableSelectField
+                        value={requestorId}
+                        onChange={handleRequestorChange}
+                        options={requestorOptions}
+                        loading={loading}
+                        disabled={!clientId}
+                        emptyLabel={
+                          !clientId
+                            ? "Selecione o cliente primeiro"
+                            : requestorOptions.length === 0
+                              ? "Nenhum solicitante cadastrado para este cliente"
+                              : "Selecione o solicitante"
+                        }
+                        placeholder="Selecione o solicitante"
+                      />
+                      {selectedRequestor ? (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedRequestor.email ?? "Sem e-mail"}
+                          {selectedRequestor.telephone
+                            ? ` · ${selectedRequestor.telephone}`
+                            : ""}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Solicitantes vêm do cadastro do cliente no TiFlux — não
+                          são as empresas em si.
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-muted-foreground">
@@ -429,7 +517,7 @@ export default function NewTicketPage() {
                   </CardContent>
                 </Card>
 
-                <Button type="submit" size="lg" disabled={saving || loading}>
+                <Button type="submit" size="lg" disabled={!canSubmit}>
                   {saving ? (
                     <Loader2 className="mr-2 size-4 animate-spin" />
                   ) : null}

@@ -19,6 +19,13 @@ function parseOptionalBoolean(value: unknown): boolean | undefined {
   return undefined;
 }
 
+export class UpdateTicketStageDto {
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  stageId!: number;
+}
+
 export class TicketsListQueryDto {
   @IsOptional()
   @IsBoolean()

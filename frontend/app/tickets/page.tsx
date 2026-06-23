@@ -414,7 +414,7 @@ export default function TicketsPage() {
                         <tbody>
                           {group.tickets.map((ticket) => (
                             <tr
-                              key={ticket.ticketNumber}
+                              key={`${group.key}-${ticket.ticketNumber}`}
                               className="border-b border-border/60 hover:bg-muted/20"
                             >
                               <td className="px-4 py-2">

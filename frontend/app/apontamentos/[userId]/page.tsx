@@ -98,9 +98,12 @@ export default function RendimentoAgendaPage() {
   const [justDate, setJustDate] = useState("");
   const [justFrom, setJustFrom] = useState("");
   const [justTo, setJustTo] = useState("");
+  const [justAlertFrom, setJustAlertFrom] = useState("");
+  const [justAlertTo, setJustAlertTo] = useState("");
   const [defineLunch, setDefineLunch] = useState(false);
   const [justReason, setJustReason] = useState("");
   const [debitOvertime, setDebitOvertime] = useState(false);
+  const [justEditingId, setJustEditingId] = useState<string | null>(null);
   const authUserResolved = authUser ?? getStoredUser();
   const isPjUser = isPjRole(authUserResolved?.role);
   const canApprove = authUserResolved?.role === "ADMIN";
@@ -124,6 +127,22 @@ export default function RendimentoAgendaPage() {
     justMode === "ALERT" &&
     defineLunch &&
     justGapMinutes > RENDIMENTO_LUNCH_MAX_MINUTES;
+  const alertPeriodOutOfBounds = useMemo(() => {
+    if (justMode !== "ALERT" || !justAlertFrom || !justAlertTo) return false;
+    const start = parseTimeToMinutes(justFrom);
+    const end = parseTimeToMinutes(justTo);
+    const alertStart = parseTimeToMinutes(justAlertFrom);
+    const alertEnd = parseTimeToMinutes(justAlertTo);
+    if (
+      start === null ||
+      end === null ||
+      alertStart === null ||
+      alertEnd === null
+    ) {
+      return false;
+    }
+    return start < alertStart || end > alertEnd;
+  }, [justAlertFrom, justAlertTo, justFrom, justMode, justTo]);
 
   const loadTimesheet = useCallback(async () => {
     if (!userId) return;
@@ -172,10 +191,13 @@ export default function RendimentoAgendaPage() {
     gapMinutes: number;
     gapType: "idle" | "lunch";
   }) {
+    setJustEditingId(null);
     setJustMode("ALERT");
     setJustDate(params.date);
     setJustFrom(params.fromTime);
     setJustTo(params.toTime);
+    setJustAlertFrom(params.fromTime);
+    setJustAlertTo(params.toTime);
     setDefineLunch(params.gapType === "lunch");
     setJustReason("");
     setDebitOvertime(false);
@@ -183,12 +205,39 @@ export default function RendimentoAgendaPage() {
   }
 
   function openVoluntaryJustification(params: { date: string }) {
+    setJustEditingId(null);
     setJustMode("VOLUNTARY");
     setJustDate(params.date);
     setJustFrom("08:00");
     setJustTo("09:00");
+    setJustAlertFrom("");
+    setJustAlertTo("");
     setDefineLunch(false);
     setJustReason("");
+    setDebitOvertime(false);
+    setJustModalOpen(true);
+  }
+
+  function openEditJustification(params: {
+    id: string;
+    kind: "ALERT" | "VOLUNTARY";
+    date: string;
+    fromTime: string;
+    toTime: string;
+    gapType?: "idle" | "lunch";
+    reason: string;
+    alertFromTime?: string;
+    alertToTime?: string;
+  }) {
+    setJustEditingId(params.id);
+    setJustMode(params.kind);
+    setJustDate(params.date.slice(0, 10));
+    setJustFrom(params.fromTime.slice(0, 5));
+    setJustTo(params.toTime.slice(0, 5));
+    setJustAlertFrom(params.alertFromTime?.slice(0, 5) ?? "");
+    setJustAlertTo(params.alertToTime?.slice(0, 5) ?? "");
+    setDefineLunch(params.gapType === "lunch");
+    setJustReason(params.reason);
     setDebitOvertime(false);
     setJustModalOpen(true);
   }
@@ -209,8 +258,31 @@ export default function RendimentoAgendaPage() {
       );
       return;
     }
+    if (alertPeriodOutOfBounds) {
+      notifyError("O período deve estar dentro do alerta selecionado.");
+      return;
+    }
     try {
       setSaving(true);
+      if (justEditingId) {
+        await rendimentoService.updateJustification({
+          id: justEditingId,
+          date: justMode === "VOLUNTARY" ? justDate : undefined,
+          fromTime: justFrom,
+          toTime: justTo,
+          reason: justReason.trim(),
+          alertFromTime:
+            justMode === "ALERT" && justAlertFrom ? justAlertFrom : undefined,
+          alertToTime:
+            justMode === "ALERT" && justAlertTo ? justAlertTo : undefined,
+        });
+        setJustModalOpen(false);
+        setJustEditingId(null);
+        notifySuccess("Justificativa atualizada.");
+        await loadTimesheet();
+        return;
+      }
+
       const gapMinutes = minutesBetweenTimes(justFrom, justTo);
       await rendimentoService.createJustification({
         userId,
@@ -223,6 +295,10 @@ export default function RendimentoAgendaPage() {
         kind: justMode,
         reason: justReason.trim(),
         debitOvertime,
+        alertFromTime:
+          justMode === "ALERT" && justAlertFrom ? justAlertFrom : undefined,
+        alertToTime:
+          justMode === "ALERT" && justAlertTo ? justAlertTo : undefined,
       });
       setJustModalOpen(false);
       notifySuccess("Justificativa enviada para aprovação.");
@@ -321,6 +397,10 @@ export default function RendimentoAgendaPage() {
               onApproveJustification={(id) => void decideJustification(id, "APPROVED")}
               onRejectJustification={(id) => void decideJustification(id, "REJECTED")}
               onDeleteJustification={(id) => void deleteJustification(id)}
+              onEditJustification={(params) => openEditJustification(params)}
+              canEditJustification={
+                canAlertJustification || canDeleteOwnJustification || canApprove
+              }
               onApproveDayEvent={(id) => void decideDayEvent(id, "APPROVED")}
               onRejectDayEvent={(id) => void decideDayEvent(id, "REJECTED")}
               onViewChange={setView}
@@ -330,9 +410,13 @@ export default function RendimentoAgendaPage() {
               <DialogContent className="font-sans max-w-xl border-border bg-card text-card-foreground">
                 <DialogHeader>
                   <DialogTitle>
-                    {justMode === "ALERT"
-                      ? "Justificar alerta de lacuna"
-                      : "Justificativa voluntária"}
+                    {justEditingId
+                      ? justMode === "ALERT"
+                        ? "Editar justificativa de alerta"
+                        : "Editar justificativa voluntária"
+                      : justMode === "ALERT"
+                        ? "Justificar alerta de lacuna"
+                        : "Justificativa voluntária"}
                   </DialogTitle>
                   <DialogDescription>
                     {justMode === "VOLUNTARY"
@@ -350,6 +434,7 @@ export default function RendimentoAgendaPage() {
                         value={justDate}
                         onChange={setJustDate}
                         modal
+                        disabled={justMode === "ALERT"}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -360,7 +445,7 @@ export default function RendimentoAgendaPage() {
                         <TimePickerField
                           value={justFrom}
                           onChange={setJustFrom}
-                          disabled={!justDate || justMode === "ALERT"}
+                          disabled={!justDate}
                         />
                       </div>
                       <div className="space-y-2">
@@ -370,11 +455,23 @@ export default function RendimentoAgendaPage() {
                         <TimePickerField
                           value={justTo}
                           onChange={setJustTo}
-                          disabled={!justDate || justMode === "ALERT"}
+                          disabled={!justDate}
                         />
                       </div>
                     </div>
+                    {justMode === "ALERT" && justAlertFrom && justAlertTo ? (
+                      <p className="text-xs text-muted-foreground">
+                        Alerta: {justAlertFrom} – {justAlertTo}. Ajuste início e
+                        fim para o trecho que deseja justificar (parcial é
+                        permitido).
+                      </p>
+                    ) : null}
                   </div>
+                  {alertPeriodOutOfBounds ? (
+                    <p className="text-xs font-medium text-rose-500">
+                      O período deve estar entre {justAlertFrom} e {justAlertTo}.
+                    </p>
+                  ) : null}
                   {invalidTimeRange ? (
                     <p className="text-xs font-medium text-rose-500">
                       O horário final deve ser maior que o horário inicial.
@@ -392,7 +489,7 @@ export default function RendimentoAgendaPage() {
                     placeholder="Descreva a justificativa (ex.: consulta médica)."
                     className="min-h-[120px]"
                   />
-                  {justMode === "ALERT" ? (
+                  {justMode === "ALERT" && !justEditingId ? (
                     <label className="flex items-start gap-2 text-sm text-foreground">
                       <FlipCheckbox
                         checked={defineLunch}
@@ -406,27 +503,36 @@ export default function RendimentoAgendaPage() {
                       </span>
                     </label>
                   ) : null}
-                  <label className="flex items-center gap-2 text-sm text-foreground">
-                    <FlipCheckbox
-                      checked={debitOvertime}
-                      onChange={(e) => setDebitOvertime(e.target.checked)}
-                    />
-                    {RENDIMENTO_DEBIT_OVERTIME_LABEL}
-                  </label>
+                  {!justEditingId ? (
+                    <label className="flex items-center gap-2 text-sm text-foreground">
+                      <FlipCheckbox
+                        checked={debitOvertime}
+                        onChange={(e) => setDebitOvertime(e.target.checked)}
+                      />
+                      {RENDIMENTO_DEBIT_OVERTIME_LABEL}
+                    </label>
+                  ) : null}
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setJustModalOpen(false)}
+                      onClick={() => {
+                        setJustModalOpen(false);
+                        setJustEditingId(null);
+                      }}
                     >
                       Cancelar
                     </Button>
                     <Button
                       type="button"
-                      disabled={saving || invalidTimeRange || lunchTooLong}
+                      disabled={saving || invalidTimeRange || lunchTooLong || alertPeriodOutOfBounds}
                       onClick={() => void submitJustification()}
                     >
-                      {saving ? "Salvando..." : "Salvar justificativa"}
+                      {saving
+                        ? "Salvando..."
+                        : justEditingId
+                          ? "Salvar alterações"
+                          : "Salvar justificativa"}
                     </Button>
                   </div>
                 </div>

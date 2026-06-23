@@ -164,12 +164,16 @@ export function RendimentoGapBlock({
   canApprove,
   onApprove,
   onReject,
+  canEdit,
+  onEdit,
 }: {
   gap: RendimentoGap;
   onJustify?: () => void;
   canApprove?: boolean;
   onApprove?: () => void;
   onReject?: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
 }) {
   const isLunch = gap.type === "lunch";
   const justification = gap.justification;
@@ -248,6 +252,15 @@ export function RendimentoGapBlock({
             Não aprovar
           </button>
         ) : null}
+        {canEdit && onEdit ? (
+          <button
+            type="button"
+            className="rounded bg-background/70 px-2 py-0.5 text-[10px] font-bold text-foreground hover:bg-background"
+            onClick={onEdit}
+          >
+            Editar
+          </button>
+        ) : null}
       </div>
     </li>
   );
@@ -293,6 +306,8 @@ export function RendimentoVoluntaryJustificationBlock({
   onReject,
   canDelete,
   onDelete,
+  canEdit,
+  onEdit,
 }: {
   item: RendimentoVoluntaryJustification;
   canApprove?: boolean;
@@ -300,6 +315,8 @@ export function RendimentoVoluntaryJustificationBlock({
   onReject?: () => void;
   canDelete?: boolean;
   onDelete?: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
 }) {
   const pending = item.status === "PENDING";
   const approved = item.status === "APPROVED";
@@ -341,33 +358,46 @@ export function RendimentoVoluntaryJustificationBlock({
           </p>
         ) : null}
       </div>
-      {canApprove && pending && onApprove && onReject ? (
-        <div className="flex flex-wrap gap-1">
-          <button
-            type="button"
-            className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-500"
-            onClick={onApprove}
-          >
-            Aprovar
-          </button>
-          <button
-            type="button"
-            className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-500"
-            onClick={onReject}
-          >
-            Não aprovar
-          </button>
-        </div>
-      ) : null}
-      {canDelete && onDelete ? (
-        <div className="flex flex-wrap gap-1">
-          <button
-            type="button"
-            className="rounded bg-rose-600/90 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-600"
-            onClick={onDelete}
-          >
-            Excluir
-          </button>
+      {(canApprove && pending && onApprove && onReject) ||
+      (canDelete && onDelete) ||
+      (canEdit && onEdit) ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {canApprove && pending && onApprove ? (
+            <button
+              type="button"
+              className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-emerald-500"
+              onClick={onApprove}
+            >
+              Aprovar
+            </button>
+          ) : null}
+          {canApprove && pending && onReject ? (
+            <button
+              type="button"
+              className="rounded bg-rose-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-500"
+              onClick={onReject}
+            >
+              Não aprovar
+            </button>
+          ) : null}
+          {canDelete && onDelete ? (
+            <button
+              type="button"
+              className="rounded bg-rose-600/90 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-rose-600"
+              onClick={onDelete}
+            >
+              Excluir
+            </button>
+          ) : null}
+          {canEdit && onEdit ? (
+            <button
+              type="button"
+              className="rounded bg-background/70 px-2 py-0.5 text-[10px] font-bold text-foreground hover:bg-background"
+              onClick={onEdit}
+            >
+              Editar
+            </button>
+          ) : null}
         </div>
       ) : null}
     </li>

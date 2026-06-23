@@ -37,6 +37,7 @@ import {
   type SavedAppointmentImage,
 } from './appointment-doc.util';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
+import { isAlleOneTifluxDesk, normalizeDeskName } from './tiflux-portal-desk.config';
 
 type TicketRow = {
   ticket_number: number;
@@ -97,6 +98,7 @@ export type TicketAppointmentDto = {
   attendance: string | null;
   attendanceLabel: string | null;
   syncStatus: 'SYNCED' | 'PENDING_TIFLUX' | 'PORTAL_ONLY';
+  syncPaused?: boolean;
   attachmentCount: number;
   attachments: Array<{
     id: string;
@@ -146,29 +148,40 @@ export class TicketsService {
     return email.trim().toLowerCase();
   }
 
-  private async listResponsibleUsersForTicketCreate(): Promise<
+  private async listTifluxResponsiblesForTicketCreate(): Promise<
     Array<{ id: number; name: string; email: string | null }>
   > {
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{ external_id: number; name: string; email: string | null }>
-      >`
-        SELECT DISTINCT tu.external_id, tu.name, tu.email
-        FROM users u
-        INNER JOIN tiflux.users tu
-          ON lower(trim(tu.email)) = lower(trim(u.email))
-        WHERE u.responsible = true
-          AND u.deleted_at IS NULL
-          AND u.status = 'ACTIVE'
-          AND COALESCE(tu.active, true) = true
-        ORDER BY tu.name ASC
-      `) ?? [];
+    const [attendants, admins] = await Promise.all([
+      this.tiflux.getUsersAll({
+        active: true,
+        type: 'attendant',
+        limitPerPage: 100,
+        maxPages: 20,
+      }),
+      this.tiflux.getUsersAll({
+        active: true,
+        type: 'admin',
+        limitPerPage: 100,
+        maxPages: 10,
+      }),
+    ]);
 
-    return rows.map((row) => ({
-      id: Number(row.external_id),
-      name: row.name,
-      email: row.email,
-    }));
+    const byId = new Map<number, { id: number; name: string; email: string | null }>();
+    for (const user of [...attendants, ...admins]) {
+      const id = Number(user.id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const name = String(user.name ?? '').trim();
+      if (!name) continue;
+      byId.set(id, {
+        id,
+        name,
+        email: user.email != null ? String(user.email).trim() : null,
+      });
+    }
+
+    return [...byId.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'pt-BR'),
+    );
   }
 
   private buildClassificationTree(
@@ -215,11 +228,59 @@ export class TicketsService {
     return sortRows(byParent.get(null) ?? []).map(toNode);
   }
 
-  private async loadClassificationBundle(tifluxDeskId: number) {
-    const portalDesk = await this.prisma.serviceDesk.findFirst({
+  private async findPortalDeskForTifluxDesk(
+    tifluxDeskId: number,
+    tifluxDeskName?: string | null,
+  ) {
+    const candidates: Array<{ id: string; name: string }> = [];
+
+    const byExternalId = await this.prisma.serviceDesk.findFirst({
       where: { externalId: tifluxDeskId, deletedAt: null, active: true },
       select: { id: true, name: true },
     });
+    if (byExternalId) candidates.push(byExternalId);
+
+    const normalizedTarget = normalizeDeskName(tifluxDeskName);
+    if (normalizedTarget) {
+      const portalDesks = await this.prisma.serviceDesk.findMany({
+        where: { deletedAt: null, active: true },
+        select: { id: true, name: true },
+      });
+      const byName = portalDesks.find(
+        (desk) => normalizeDeskName(desk.name) === normalizedTarget,
+      );
+      if (byName && !candidates.some((desk) => desk.id === byName.id)) {
+        candidates.push(byName);
+      }
+    }
+
+    if (candidates.length === 0) return null;
+
+    const withCounts = await Promise.all(
+      candidates.map(async (desk) => ({
+        desk,
+        count: await this.prisma.serviceDeskClassification.count({
+          where: { serviceDeskId: desk.id, active: true },
+        }),
+      })),
+    );
+
+    const withClassifications = withCounts.filter((row) => row.count > 0);
+    if (withClassifications.length > 0) {
+      return withClassifications[0].desk;
+    }
+
+    return candidates[0];
+  }
+
+  private async loadClassificationBundle(
+    tifluxDeskId: number,
+    tifluxDeskName?: string | null,
+  ) {
+    const portalDesk = await this.findPortalDeskForTifluxDesk(
+      tifluxDeskId,
+      tifluxDeskName,
+    );
     if (!portalDesk) {
       return { portalServiceDesk: null, classification: null };
     }
@@ -288,8 +349,12 @@ export class TicketsService {
   private async assertValidClassificationForDesk(
     tifluxDeskId: number,
     classificationId?: string | null,
+    tifluxDeskName?: string | null,
   ) {
-    const bundle = await this.loadClassificationBundle(tifluxDeskId);
+    const bundle = await this.loadClassificationBundle(
+      tifluxDeskId,
+      tifluxDeskName,
+    );
     const tree = bundle.classification?.tree ?? [];
     if (tree.length === 0) {
       return;
@@ -407,6 +472,66 @@ export class TicketsService {
       updatedAt: this.toIso(row.updated_at_source),
       stageGroup: resolveTicketStageGroup(row.stage_name),
       externalGmudRef: row.external_gmud_ref?.trim() || null,
+    };
+  }
+
+  private buildDetailSummary(appointments: TicketAppointmentDto[]) {
+    const totalMinutes = appointments.reduce((sum, a) => sum + a.minutes, 0);
+    const attendants = new Set(
+      appointments.map((a) => a.userName).filter(Boolean),
+    );
+
+    return {
+      attendantsCount: attendants.size,
+      totalMinutes,
+      totalHoursFormatted: `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`,
+      appointmentsCount: appointments.length,
+    };
+  }
+
+  private async getDetailFromTifluxApi(ticketNumber: number) {
+    const apiTicket = await this.tiflux.getTicket(ticketNumber);
+    if (!apiTicket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    const [appointments, externalGmudRef] = await Promise.all([
+      this.listMergedAppointments(ticketNumber),
+      this.loadExternalGmudRef(ticketNumber),
+    ]);
+
+    const stageName = apiTicket.stage?.name ?? null;
+    const createdByWayOf =
+      typeof apiTicket.created_by_way_of === 'string'
+        ? apiTicket.created_by_way_of
+        : null;
+
+    return {
+      ticket: {
+        ticketNumber: apiTicket.ticket_number,
+        title: apiTicket.title ?? null,
+        clientName: apiTicket.client?.name ?? null,
+        clientExternalId: apiTicket.client?.id ?? null,
+        origin: createdByWayOf,
+        priorityName: apiTicket.priority?.name ?? null,
+        statusName: apiTicket.status?.name ?? null,
+        stageName,
+        responsibleName: apiTicket.responsible?.name ?? null,
+        deskName: apiTicket.desk?.name ?? null,
+        deskExternalId: apiTicket.desk?.id ?? null,
+        createdAt: apiTicket.created_at ?? null,
+        updatedAt: apiTicket.updated_at ?? null,
+        isClosed: Boolean(apiTicket.is_closed),
+        requestorName: apiTicket.requestor?.name ?? null,
+        requestorEmail: apiTicket.requestor?.email ?? null,
+        requestorTelephone: apiTicket.requestor?.telephone ?? null,
+        stageGroup: resolveTicketStageGroup(stageName),
+        externalGmudRef: externalGmudRef?.trim() || null,
+      },
+      summary: this.buildDetailSummary(appointments),
+      appointments,
+      externalGmudRef,
+      syncPending: true,
     };
   }
 
@@ -569,12 +694,22 @@ export class TicketsService {
             LIMIT ${limit}
           `) ?? []);
 
+    const seenTicketNumbers = new Set<number>();
+    const uniqueRows = rows.filter((row) => {
+      const ticketNumber = Number(row.ticket_number);
+      if (!Number.isFinite(ticketNumber) || seenTicketNumbers.has(ticketNumber)) {
+        return false;
+      }
+      seenTicketNumbers.add(ticketNumber);
+      return true;
+    });
+
     const groupedMap = new Map<TicketStageGroupKey, TicketListItemDto[]>();
     for (const def of TICKET_STAGE_GROUPS) {
       groupedMap.set(def.key, []);
     }
 
-    for (const row of rows) {
+    for (const row of uniqueRows) {
       const item = this.mapListItem(row);
       groupedMap.get(item.stageGroup)?.push(item);
     }
@@ -586,7 +721,7 @@ export class TicketsService {
     })).filter((g) => g.tickets.length > 0);
 
     return {
-      total: rows.length,
+      total: uniqueRows.length,
       mineOnly,
       responsibleExternalId: responsibleFilter,
       responsibleName,
@@ -630,18 +765,13 @@ export class TicketsService {
     }) | undefined;
 
     if (!row) {
-      throw new NotFoundException('Ticket não encontrado.');
+      return this.getDetailFromTifluxApi(ticketNumber);
     }
 
     const [appointments, externalGmudRef] = await Promise.all([
       this.listMergedAppointments(ticketNumber),
       this.loadExternalGmudRef(ticketNumber),
     ]);
-
-    const totalMinutes = appointments.reduce((sum, a) => sum + a.minutes, 0);
-    const attendants = new Set(
-      appointments.map((a) => a.userName).filter(Boolean),
-    );
 
     return {
       ticket: {
@@ -654,12 +784,7 @@ export class TicketsService {
         requestorEmail: row.requestor_email ?? null,
         requestorTelephone: row.requestor_telephone ?? null,
       },
-      summary: {
-        attendantsCount: attendants.size,
-        totalMinutes,
-        totalHoursFormatted: `${String(Math.floor(totalMinutes / 60)).padStart(2, '0')}:${String(totalMinutes % 60).padStart(2, '0')}`,
-        appointmentsCount: appointments.length,
-      },
+      summary: this.buildDetailSummary(appointments),
       appointments,
       externalGmudRef,
     };
@@ -906,6 +1031,7 @@ export class TicketsService {
         attendance: portal?.attendance ?? null,
         attendanceLabel: this.attendanceLabel(portal?.attendance),
         syncStatus: portal ? 'SYNCED' : 'SYNCED',
+        syncPaused: false,
         attachmentCount: portal?.attachments.length ?? 0,
         attachments: portal
           ? this.mapPortalAttachments(portal.attachments, previewMap)
@@ -938,7 +1064,10 @@ export class TicketsService {
         syncStatus:
           portal.syncStatus === PortalTicketAppointmentSyncStatus.PORTAL_ONLY
             ? 'PORTAL_ONLY'
-            : 'PENDING_TIFLUX',
+            : portal.syncStatus === PortalTicketAppointmentSyncStatus.SYNCED
+              ? 'SYNCED'
+              : 'PENDING_TIFLUX',
+        syncPaused: Boolean(portal.syncPausedAt),
         attachmentCount: mappedAttachments.length,
         attachments: mappedAttachments,
       });
@@ -1020,15 +1149,30 @@ export class TicketsService {
   private mapCatalogItem(row: Record<string, unknown>) {
     const id = Number(row.id);
     const name = String(row.name ?? row.display_name ?? '').trim();
-    return { id, name: name || `Item ${id}` };
+    const catalog = row.catalog as { name?: string } | null | undefined;
+    const area = row.area as { name?: string } | null | undefined;
+    const parts = [catalog?.name, area?.name, name]
+      .map((part) => String(part ?? '').trim())
+      .filter(Boolean);
+    return { id, name: parts.join(' → ') || name || `Item ${id}` };
   }
 
-  async getCreateCatalogs(deskId?: number) {
+  async getCreateCatalogs(deskId?: number, clientId?: number) {
     const [clientsRaw, desksRaw, responsibles] = await Promise.all([
       this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
       this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
-      this.listResponsibleUsersForTicketCreate(),
+      this.listTifluxResponsiblesForTicketCreate(),
     ]);
+
+    let requestors: Array<{
+      id: number;
+      name: string;
+      email: string | null;
+      telephone: string | null;
+    }> = [];
+    if (clientId != null && Number.isFinite(clientId)) {
+      requestors = await this.tiflux.getClientRequestors(clientId);
+    }
 
     let desk: Record<string, unknown> | null = null;
     let priorities: Array<{ id: number; name: string }> = [];
@@ -1049,18 +1193,17 @@ export class TicketsService {
 
     if (deskId != null && Number.isFinite(deskId)) {
       desk = await this.tiflux.getDesk(deskId);
-      const bundle = await this.loadClassificationBundle(deskId);
+      const tifluxDeskName = String(desk.display_name ?? desk.name ?? '');
+      const bundle = await this.loadClassificationBundle(deskId, tifluxDeskName);
       portalServiceDesk = bundle.portalServiceDesk;
       classification = bundle.classification;
 
       const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
-      const hasPortalClassification =
-        (classification?.tree?.length ?? 0) > 0;
 
-      if (requiresCatalog && !hasPortalClassification) {
+      if (requiresCatalog) {
         const items = await this.tiflux.getDeskServicesCatalogItems(deskId);
         catalogItems = items.map((row) => this.mapCatalogItem(row));
-      } else if (!requiresCatalog) {
+      } else {
         const rows = await this.tiflux.getDeskPriorities(deskId);
         priorities = rows.map((row) => this.mapCatalogItem(row));
       }
@@ -1082,6 +1225,7 @@ export class TicketsService {
         }))
         .filter((d) => Number.isFinite(d.id)),
       responsibles,
+      requestors,
       portalServiceDesk,
       classification,
       desk: desk
@@ -1134,6 +1278,8 @@ export class TicketsService {
           client_name: string | null;
           desk_external_id: number | null;
           desk_name: string | null;
+          stage_name: string | null;
+          is_closed: boolean | null;
         }>
       >`
         SELECT
@@ -1141,12 +1287,32 @@ export class TicketsService {
           t.client_external_id,
           t.client_name,
           t.desk_external_id,
-          t.desk_name
+          t.desk_name,
+          t.stage_name,
+          t.is_closed
         FROM tiflux.tickets t
         WHERE t.ticket_number = ${ticketNumber}
         LIMIT 1
       `) ?? [];
-    return rows[0] ?? null;
+    const row = rows[0] ?? null;
+    if (row) {
+      return row;
+    }
+
+    const apiTicket = await this.tiflux.getTicket(ticketNumber);
+    if (!apiTicket) {
+      return null;
+    }
+
+    return {
+      ticket_number: apiTicket.ticket_number,
+      client_external_id: apiTicket.client?.id ?? null,
+      client_name: apiTicket.client?.name ?? null,
+      desk_external_id: apiTicket.desk?.id ?? null,
+      desk_name: apiTicket.desk?.name ?? null,
+      stage_name: apiTicket.stage?.name ?? null,
+      is_closed: Boolean(apiTicket.is_closed),
+    };
   }
 
   async getAppointmentCatalogs(ticketNumber: number) {
@@ -1157,7 +1323,13 @@ export class TicketsService {
 
     const clientId = ticket.client_external_id;
 
+    const tifluxAppointmentSyncEnabled = isTifluxAppointmentSyncEnabled();
+    const tifluxSyncAvailable =
+      tifluxAppointmentSyncEnabled &&
+      isAlleOneTifluxDesk(ticket.desk_external_id, ticket.desk_name);
+
     return {
+      tifluxAppointmentSyncEnabled,
       ticket: {
         ticketNumber: ticket.ticket_number,
         clientName: ticket.client_name,
@@ -1165,6 +1337,7 @@ export class TicketsService {
         deskName: ticket.desk_name,
         deskExternalId: ticket.desk_external_id,
         appointmentType: '',
+        tifluxSyncAvailable,
       },
       serviceTypes: ['HORA NORMAL', 'HORA EXTRA', 'PLANTÃO'],
       attendances: [
@@ -1172,6 +1345,151 @@ export class TicketsService {
         { value: 'External', label: 'Externo' },
         { value: 'Internal', label: 'Interno' },
       ],
+    };
+  }
+
+  private mapDeskStageOptions(
+    raw: Array<Record<string, unknown>>,
+  ): Array<{
+    id: number;
+    name: string;
+    firstStage: boolean;
+    lastStage: boolean;
+  }> {
+    return raw
+      .map((row) => ({
+        id: Number(row.id),
+        name: String(row.name ?? '').trim(),
+        firstStage: Boolean(row.first_stage),
+        lastStage: Boolean(row.last_stage),
+      }))
+      .filter((row) => Number.isFinite(row.id) && row.id > 0 && row.name.length > 0)
+      .sort((a, b) => a.id - b.id);
+  }
+
+  private async resolveCurrentStageId(params: {
+    ticketNumber: number;
+    deskExternalId: number;
+    stageName: string | null;
+    stages: Array<{ id: number; name: string }>;
+  }): Promise<number | null> {
+    const apiTicket = await this.tiflux.getTicket(params.ticketNumber);
+    const fromApi = Number(apiTicket?.stage?.id);
+    if (Number.isFinite(fromApi) && fromApi > 0) {
+      return fromApi;
+    }
+
+    const normalized = normalizeDeskName(params.stageName);
+    if (!normalized) return null;
+
+    const matched = params.stages.find(
+      (stage) => normalizeDeskName(stage.name) === normalized,
+    );
+    return matched?.id ?? null;
+  }
+
+  private async patchLocalTicketStage(ticketNumber: number, stageName: string) {
+    await this.prisma.$executeRawUnsafe(
+      `
+      UPDATE tiflux.tickets
+      SET stage_name = $2::text
+      WHERE ticket_number = $1
+    `,
+      ticketNumber,
+      stageName,
+    );
+  }
+
+  async listTicketStages(ticketNumber: number) {
+    const ticket = await this.getTicketContext(ticketNumber);
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    const deskExternalId = Number(ticket.desk_external_id);
+    if (!Number.isFinite(deskExternalId) || deskExternalId <= 0) {
+      throw new BadRequestException(
+        'Ticket sem mesa de serviço vinculada no TiFlux.',
+      );
+    }
+
+    const stages = this.mapDeskStageOptions(
+      await this.tiflux.getDeskStages(deskExternalId),
+    );
+    const currentStageId = await this.resolveCurrentStageId({
+      ticketNumber,
+      deskExternalId,
+      stageName: ticket.stage_name,
+      stages,
+    });
+
+    return {
+      deskExternalId,
+      deskName: ticket.desk_name,
+      currentStageId,
+      currentStageName: ticket.stage_name,
+      isClosed: Boolean(ticket.is_closed),
+      stages,
+    };
+  }
+
+  async updateTicketStage(ticketNumber: number, stageId: number) {
+    const ticket = await this.getTicketContext(ticketNumber);
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    if (ticket.is_closed) {
+      throw new BadRequestException(
+        'Não é possível alterar o estágio de um ticket fechado.',
+      );
+    }
+
+    const deskExternalId = Number(ticket.desk_external_id);
+    if (!Number.isFinite(deskExternalId) || deskExternalId <= 0) {
+      throw new BadRequestException(
+        'Ticket sem mesa de serviço vinculada no TiFlux.',
+      );
+    }
+
+    const stages = this.mapDeskStageOptions(
+      await this.tiflux.getDeskStages(deskExternalId),
+    );
+    const targetStage = stages.find((stage) => stage.id === stageId);
+    if (!targetStage) {
+      throw new BadRequestException(
+        'Estágio inválido para a mesa de serviço deste ticket.',
+      );
+    }
+
+    const currentStageId = await this.resolveCurrentStageId({
+      ticketNumber,
+      deskExternalId,
+      stageName: ticket.stage_name,
+      stages,
+    });
+    if (currentStageId === stageId) {
+      return {
+        ok: true,
+        stageId: targetStage.id,
+        stageName: targetStage.name,
+        stageGroup: resolveTicketStageGroup(targetStage.name),
+        message: 'O ticket já está neste estágio.',
+      };
+    }
+
+    const updated = await this.tiflux.updateTicket(ticketNumber, {
+      stage_id: stageId,
+    });
+    const stageName = updated.stage?.name ?? targetStage.name;
+    await this.patchLocalTicketStage(ticketNumber, stageName);
+
+    return {
+      ok: true,
+      stageId: updated.stage?.id ?? stageId,
+      stageName,
+      stageGroup: resolveTicketStageGroup(stageName),
+      message: `Estágio atualizado para "${stageName}".`,
     };
   }
 
@@ -1309,19 +1627,18 @@ export class TicketsService {
 
   async createTicket(actor: AuthenticatedRequestUser, dto: CreateTicketDto) {
     const desk = await this.tiflux.getDesk(dto.deskId);
+    const tifluxDeskName = String(desk.display_name ?? desk.name ?? '');
     const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
-    const classificationBundle = await this.loadClassificationBundle(dto.deskId);
-    const hasPortalClassification =
-      (classificationBundle.classification?.tree?.length ?? 0) > 0;
 
     await this.assertValidClassificationForDesk(
       dto.deskId,
       dto.classificationId,
+      tifluxDeskName,
     );
 
-    if (requiresCatalog && !hasPortalClassification && !dto.servicesCatalogsItemId) {
+    if (requiresCatalog && !dto.servicesCatalogsItemId) {
       throw new BadRequestException(
-        'Esta mesa exige um item do catálogo de serviços.',
+        'Selecione o serviço do catálogo TiFlux.',
       );
     }
     if (!requiresCatalog && !dto.priorityId) {
@@ -1330,7 +1647,13 @@ export class TicketsService {
       );
     }
 
-    const allowedResponsibles = await this.listResponsibleUsersForTicketCreate();
+    const servicesCatalogsItemId =
+      dto.servicesCatalogsItemId != null &&
+      Number.isFinite(Number(dto.servicesCatalogsItemId))
+        ? Number(dto.servicesCatalogsItemId)
+        : null;
+
+    const allowedResponsibles = await this.listTifluxResponsiblesForTicketCreate();
     let responsibleId = dto.responsibleId ?? null;
     if (responsibleId == null) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
@@ -1340,7 +1663,7 @@ export class TicketsService {
       responsibleId = mineAllowed ? mine?.externalId ?? null : null;
     } else if (!allowedResponsibles.some((row) => row.id === responsibleId)) {
       throw new BadRequestException(
-        'O responsável deve ser um usuário marcado como responsável no cadastro.',
+        'O responsável selecionado não é válido no TiFlux.',
       );
     }
 
@@ -1360,8 +1683,9 @@ export class TicketsService {
       client_id: dto.clientId,
       desk_id: dto.deskId,
       priority_id: dto.priorityId ?? undefined,
-      services_catalogs_item_id: dto.servicesCatalogsItemId ?? undefined,
+      services_catalogs_item_id: servicesCatalogsItemId ?? undefined,
       responsible_id: responsibleId ?? undefined,
+      requestor_id: dto.requestorId ?? undefined,
       requestor_name: dto.requestorName?.trim() || undefined,
       requestor_email: dto.requestorEmail?.trim() || undefined,
       requestor_telephone: dto.requestorTelephone?.trim() || undefined,
@@ -1397,8 +1721,7 @@ export class TicketsService {
       return {
         ok: true,
         ticketNumber,
-        message:
-          'Ticket criado no TiFlux. Pode levar alguns minutos para aparecer na lista (sync).',
+        message: 'Ticket criado com sucesso.',
         tiflux: raw,
       };
     } catch (error) {
@@ -1415,7 +1738,9 @@ export class TicketsService {
         createdBy: actor.userId,
       });
 
-      if (error instanceof BadGatewayException) throw error;
+      if (error instanceof BadGatewayException) {
+        throw new BadRequestException(error.message);
+      }
       throw new BadGatewayException(message);
     }
   }
@@ -1424,6 +1749,288 @@ export class TicketsService {
     if (!dto.serviceName?.trim()) {
       throw new BadRequestException('Selecione o tipo de atendimento.');
     }
+    const from = this.parseAppointmentTimeToMinutes(dto.initTime);
+    const to = this.parseAppointmentTimeToMinutes(dto.endTime);
+    if (to <= from) {
+      throw new BadRequestException(
+        'Horário final deve ser maior que o horário inicial.',
+      );
+    }
+  }
+
+  private parseAppointmentTimeToMinutes(value: string): number {
+    const [h, m] = String(value ?? '')
+      .trim()
+      .split(':')
+      .map((part) => Number(part));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+    return h * 60 + m;
+  }
+
+  private async getPortalAppointmentOrThrow(
+    ticketNumber: number,
+    portalAppointmentId: string,
+  ) {
+    const row = await this.prisma.portalTicketAppointment.findFirst({
+      where: { id: portalAppointmentId, ticketNumber },
+      include: {
+        outbox: true,
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Apontamento do portal não encontrado.');
+    }
+    return row;
+  }
+
+  private async appointmentExistsInTiflux(
+    ticketNumber: number,
+    externalId: number | null,
+  ): Promise<boolean> {
+    if (externalId == null || !Number.isFinite(externalId) || externalId <= 0) {
+      return false;
+    }
+
+    const rows =
+      (await this.prisma.$queryRaw<Array<{ ok: number }>>`
+        SELECT 1 AS ok
+        FROM tiflux.ticket_appointments
+        WHERE ticket_number = ${ticketNumber}
+          AND external_id = ${externalId}
+        LIMIT 1
+      `) ?? [];
+    if (rows.length > 0) return true;
+
+    try {
+      const appointments = await this.tiflux.getTicketAppointments(ticketNumber, {
+        limit: 200,
+      });
+      return appointments.some((item) => Number(item.id) === externalId);
+    } catch {
+      return false;
+    }
+  }
+
+  async getPortalAppointmentEditContext(
+    ticketNumber: number,
+    portalAppointmentId: string,
+  ) {
+    const row = await this.getPortalAppointmentOrThrow(
+      ticketNumber,
+      portalAppointmentId,
+    );
+    const existsInTiflux = await this.appointmentExistsInTiflux(
+      ticketNumber,
+      row.tifluxAppointmentExternalId,
+    );
+
+    return {
+      portalAppointmentId: row.id,
+      ticketNumber: row.ticketNumber,
+      date: this.formatDateOnly(row.appointmentDate),
+      initTime: row.initTime,
+      endTime: row.endTime,
+      serviceName: row.serviceName,
+      attendance: row.attendance,
+      description: row.description,
+      descriptionPlain: appointmentDescriptionToPlainText(row.description),
+      syncStatus: row.syncStatus,
+      syncPaused: Boolean(row.syncPausedAt),
+      existsInTiflux,
+      canPauseSync:
+        row.syncStatus === PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
+    };
+  }
+
+  async pausePortalAppointmentSync(
+    ticketNumber: number,
+    portalAppointmentId: string,
+  ) {
+    const row = await this.getPortalAppointmentOrThrow(
+      ticketNumber,
+      portalAppointmentId,
+    );
+    if (row.syncStatus !== PortalTicketAppointmentSyncStatus.PENDING_TIFLUX) {
+      return { ok: true, syncPaused: false };
+    }
+
+    await this.prisma.portalTicketAppointment.update({
+      where: { id: row.id },
+      data: { syncPausedAt: new Date() },
+    });
+
+    return { ok: true, syncPaused: true };
+  }
+
+  async resumePortalAppointmentSync(
+    ticketNumber: number,
+    portalAppointmentId: string,
+  ) {
+    const row = await this.getPortalAppointmentOrThrow(
+      ticketNumber,
+      portalAppointmentId,
+    );
+    if (!row.syncPausedAt) {
+      return { ok: true, syncPaused: false };
+    }
+
+    await this.prisma.portalTicketAppointment.update({
+      where: { id: row.id },
+      data: { syncPausedAt: null },
+    });
+
+    return { ok: true, syncPaused: false };
+  }
+
+  private async resetPortalAppointmentOutbox(params: {
+    portalAppointmentId: string;
+    ticketNumber: number;
+    outboxId: string | null;
+    payload: {
+      date: string;
+      init_time: string;
+      end_time: string;
+      description: string;
+      serviceName: string;
+      attendance: string;
+    };
+    createdBy: string;
+  }): Promise<string> {
+    const outboxPayload = {
+      portalAppointmentId: params.portalAppointmentId,
+      date: params.payload.date,
+      init_time: params.payload.init_time,
+      end_time: params.payload.end_time,
+      description: params.payload.description,
+      serviceName: params.payload.serviceName,
+      attendance: params.payload.attendance,
+    };
+
+    if (params.outboxId) {
+      await this.prisma.portalTifluxOutbox.update({
+        where: { id: params.outboxId },
+        data: {
+          status: PortalTifluxOutboxStatus.PENDING,
+          payload: outboxPayload,
+          errorMessage: null,
+          syncedAt: null,
+        },
+      });
+      return params.outboxId;
+    }
+
+    return this.recordOutbox({
+      kind: PortalTifluxOutboxKind.CREATE_APPOINTMENT,
+      status: PortalTifluxOutboxStatus.PENDING,
+      ticketNumber: params.ticketNumber,
+      tifluxExternalId: null,
+      payload: outboxPayload,
+      errorMessage: null,
+      createdBy: params.createdBy,
+    });
+  }
+
+  async updatePortalAppointment(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    portalAppointmentId: string,
+    dto: CreateTicketAppointmentDto,
+  ) {
+    this.validateAppointmentDto(dto);
+
+    const row = await this.getPortalAppointmentOrThrow(
+      ticketNumber,
+      portalAppointmentId,
+    );
+    const ticket = await this.getTicketContext(ticketNumber);
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    const descriptionRaw = dto.description.trim();
+    const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
+    const syncToTiflux =
+      row.syncStatus === PortalTicketAppointmentSyncStatus.PENDING_TIFLUX &&
+      isTifluxAppointmentSyncEnabled() &&
+      isAlleOneTifluxDesk(ticket.desk_external_id, ticket.desk_name);
+
+    let outboxId = row.outboxId;
+    if (syncToTiflux) {
+      outboxId = await this.resetPortalAppointmentOutbox({
+        portalAppointmentId: row.id,
+        ticketNumber,
+        outboxId: row.outboxId,
+        payload: {
+          date: dto.date,
+          init_time: dto.initTime,
+          end_time: dto.endTime,
+          description: descriptionPlain,
+          serviceName: dto.serviceName.trim(),
+          attendance: dto.attendance,
+        },
+        createdBy: actor.userId,
+      });
+    }
+
+    await this.prisma.portalTicketAppointment.update({
+      where: { id: row.id },
+      data: {
+        appointmentDate: new Date(`${dto.date}T12:00:00.000Z`),
+        initTime: dto.initTime,
+        endTime: dto.endTime,
+        description: descriptionRaw,
+        serviceName: dto.serviceName.trim(),
+        attendance: dto.attendance,
+        syncPausedAt: null,
+        outboxId,
+      },
+    });
+
+    return {
+      ok: true,
+      message: syncToTiflux
+        ? 'Apontamento atualizado no portal. Sincronização com TiFlux reiniciada.'
+        : row.syncStatus === PortalTicketAppointmentSyncStatus.SYNCED
+          ? 'Apontamento atualizado somente no portal. O registro no TiFlux não foi alterado.'
+          : 'Apontamento atualizado no portal.',
+    };
+  }
+
+  async deletePortalAppointment(
+    ticketNumber: number,
+    portalAppointmentId: string,
+  ) {
+    const row = await this.getPortalAppointmentOrThrow(
+      ticketNumber,
+      portalAppointmentId,
+    );
+
+    if (row.outboxId) {
+      const outbox = await this.prisma.portalTifluxOutbox.findUnique({
+        where: { id: row.outboxId },
+        select: { status: true },
+      });
+      if (outbox?.status !== PortalTifluxOutboxStatus.SYNCED) {
+        await this.prisma.portalTifluxOutbox.deleteMany({
+          where: { id: row.outboxId },
+        });
+      }
+    }
+
+    await this.prisma.portalTicketAppointmentAttachment.deleteMany({
+      where: { portalAppointmentId: row.id },
+    });
+    await this.prisma.portalTicketAppointment.delete({
+      where: { id: row.id },
+    });
+
+    return {
+      ok: true,
+      message:
+        row.syncStatus === PortalTicketAppointmentSyncStatus.SYNCED
+          ? 'Apontamento removido do portal. O registro no TiFlux permanece inalterado.'
+          : 'Apontamento excluído do portal.',
+    };
   }
 
   async createAppointment(
@@ -1441,7 +2048,9 @@ export class TicketsService {
 
     const descriptionRaw = dto.description.trim();
     const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
-    const syncToTiflux = isTifluxAppointmentSyncEnabled();
+    const syncToTiflux =
+      isTifluxAppointmentSyncEnabled() &&
+      isAlleOneTifluxDesk(ticket.desk_external_id, ticket.desk_name);
 
     const portalAppointment = await this.prisma.portalTicketAppointment.create({
       data: {
@@ -1532,8 +2141,10 @@ export class TicketsService {
       tifluxSynced: false,
       portalOnly: !syncToTiflux,
       message: syncToTiflux
-        ? `Apontamento salvo. Sincronização com TiFlux em andamento.${attachmentNote}`
-        : `Apontamento salvo no portal (sem envio ao TiFlux).${attachmentNote}`,
+        ? `Apontamento salvo no portal (com tipo de atendimento). Sincronização com TiFlux em andamento — sem valorização.${attachmentNote}`
+        : isTifluxAppointmentSyncEnabled()
+          ? `Apontamento salvo no portal. Sincronização com TiFlux disponível apenas para tickets da mesa AlleOne.${attachmentNote}`
+          : `Apontamento salvo no portal (sem envio ao TiFlux).${attachmentNote}`,
     };
   }
 }

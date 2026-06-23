@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { mapTicket, type TifluxTicket as MappedTifluxTicket } from './mapper/tiflux.mapper';
 
 type TifluxApiError = {
   message?: string;
@@ -308,6 +309,16 @@ export class TifluxService {
           .filter(Boolean);
         if (errors.length) {
           return `${base} (${errors.join(', ')})`;
+        }
+      }
+
+      if (data.detail && typeof data.detail === 'object') {
+        const fieldMessages = Object.values(data.detail as Record<string, unknown>)
+          .flatMap((value) => (Array.isArray(value) ? value : [value]))
+          .map((item) => String(item))
+          .filter(Boolean);
+        if (fieldMessages.length) {
+          return `${base}: ${fieldMessages.join('; ')}`;
         }
       }
 
@@ -1055,6 +1066,30 @@ export class TifluxService {
     return results;
   }
 
+  async getClientRequestors(clientId: number): Promise<
+    Array<{
+      id: number;
+      name: string;
+      email: string | null;
+      telephone: string | null;
+    }>
+  > {
+    const data = await this.request<Array<Record<string, unknown>>>(
+      `/clients/${clientId}/requestors`,
+      'GET',
+    );
+    if (!Array.isArray(data)) return [];
+
+    return data
+      .map((row) => ({
+        id: Number(row.id),
+        name: String(row.name ?? '').trim(),
+        email: row.email != null ? String(row.email).trim() : null,
+        telephone: row.telephone != null ? String(row.telephone).trim() : null,
+      }))
+      .filter((row) => Number.isFinite(row.id) && row.id > 0 && row.name);
+  }
+
   async getDesks(filters?: {
     active?: boolean;
     limit?: number;
@@ -1125,6 +1160,35 @@ export class TifluxService {
     return Array.isArray(data) ? data : [];
   }
 
+  /** Ticket individual — usado quando o sync local ainda não refletiu a criação. */
+  async getTicket(ticketNumber: number): Promise<MappedTifluxTicket | null> {
+    if (!Number.isFinite(ticketNumber) || ticketNumber <= 0) {
+      return null;
+    }
+
+    try {
+      const data = await this.request<Record<string, unknown>>(
+        `/tickets/${ticketNumber}`,
+        'GET',
+      );
+      const raw = (data.ticket ?? data) as Record<string, unknown>;
+      const mapped = mapTicket(raw);
+      if (mapped.ticket_number === ticketNumber) {
+        return mapped;
+      }
+    } catch {
+      // endpoint individual indisponível ou ticket ainda não indexado
+    }
+
+    const tickets = await this.getTickets({
+      search: String(ticketNumber),
+      limit: 20,
+      filter_by: 'all',
+      include_filled_entity: true,
+    });
+    return tickets.find((row) => row.ticket_number === ticketNumber) ?? null;
+  }
+
   async createTicket(fields: Record<string, string | number | undefined | null>) {
     return this.postMultipart('/tickets', fields);
   }
@@ -1143,6 +1207,19 @@ export class TifluxService {
       'POST',
       body,
     );
+  }
+
+  async updateTicket(
+    ticketNumber: number,
+    body: Record<string, unknown>,
+  ): Promise<MappedTifluxTicket> {
+    const data = await this.request<Record<string, unknown>>(
+      `/tickets/${ticketNumber}`,
+      'PUT',
+      body,
+    );
+    const raw = (data.ticket ?? data) as Record<string, unknown>;
+    return mapTicket(raw);
   }
 
   async getContracts(filters?: {

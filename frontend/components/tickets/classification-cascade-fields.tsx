@@ -30,6 +30,7 @@ function findNodeById(
 
 type Props = {
   serviceDeskId: string | null;
+  tree?: ClassificationNode[] | null;
   value: string | null;
   onChange: (classificationId: string | null) => void;
   disabled?: boolean;
@@ -38,6 +39,7 @@ type Props = {
 
 export function ClassificationCascadeFields({
   serviceDeskId,
+  tree: treeProp,
   value,
   onChange,
   disabled = false,
@@ -50,6 +52,12 @@ export function ClassificationCascadeFields({
   const [level3Id, setLevel3Id] = useState("");
 
   useEffect(() => {
+    if (treeProp != null) {
+      setTree(treeProp);
+      setLoading(false);
+      return;
+    }
+
     if (!serviceDeskId) {
       setTree([]);
       setLevel1Id("");
@@ -74,7 +82,7 @@ export function ClassificationCascadeFields({
     return () => {
       cancelled = true;
     };
-  }, [serviceDeskId]);
+  }, [serviceDeskId, treeProp]);
 
   useEffect(() => {
     if (!value || tree.length === 0) {

@@ -21,10 +21,12 @@ import {
   type AppointmentBlockComposerHandle,
 } from "@/components/tickets/appointment-description-composer";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { Textarea } from "@/components/ui/textarea";
 import {
   ticketsService,
   type AppointmentCatalogs,
   type CreateAppointmentPayload,
+  type PortalAppointmentEditContext,
 } from "@/lib/services/tickets.service";
 import { useAuth } from "@/lib/use-auth";
 
@@ -44,6 +46,7 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
+  editingAppointment?: PortalAppointmentEditContext | null;
 };
 
 function nowTime() {
@@ -56,17 +59,21 @@ export function TicketAppointmentModal({
   open,
   onOpenChange,
   onCreated,
+  editingAppointment = null,
 }: Props) {
+  const isEdit = Boolean(editingAppointment?.portalAppointmentId);
   const { user } = useAuth();
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
+  const [tifluxAppointmentSyncEnabled, setTifluxAppointmentSyncEnabled] = useState(false);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [initTime, setInitTime] = useState(nowTime);
   const [endTime, setEndTime] = useState(nowTime);
   const [serviceName, setServiceName] = useState("");
   const [attendance, setAttendance] = useState("Remote");
+  const [descriptionPlain, setDescriptionPlain] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
 
@@ -85,6 +92,7 @@ export function TicketAppointmentModal({
       setLoadingMeta(true);
       const data = await ticketsService.appointmentCatalogs(ticketNumber);
       setTicketMeta(data.ticket);
+      setTifluxAppointmentSyncEnabled(data.tifluxAppointmentSyncEnabled ?? false);
     } catch {
       setTicketMeta(null);
     } finally {
@@ -94,12 +102,23 @@ export function TicketAppointmentModal({
 
   useEffect(() => {
     if (open) {
-      setInitTime(nowTime());
-      setEndTime(nowTime());
-      setComposerKey((k) => k + 1);
+      if (editingAppointment) {
+        setDate(editingAppointment.date);
+        setInitTime(editingAppointment.initTime);
+        setEndTime(editingAppointment.endTime);
+        setServiceName(editingAppointment.serviceName);
+        setAttendance(editingAppointment.attendance);
+        setDescriptionPlain(editingAppointment.descriptionPlain);
+        setComposerKey((k) => k + 1);
+      } else {
+        setInitTime(nowTime());
+        setEndTime(nowTime());
+        setDescriptionPlain("");
+        setComposerKey((k) => k + 1);
+      }
       void loadTicketMeta();
     }
-  }, [open, loadTicketMeta]);
+  }, [open, loadTicketMeta, editingAppointment]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -108,7 +127,13 @@ export function TicketAppointmentModal({
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
-    const exported = composerRef.current?.exportContent();
+    const exported = isEdit
+      ? {
+          isValid: descriptionPlain.trim().length >= 2,
+          description: descriptionPlain.trim(),
+          files: [] as File[],
+        }
+      : composerRef.current?.exportContent();
     if (!exported?.isValid) {
       notifyError("Informe a descrição do apontamento (texto e/ou imagens).");
       return;
@@ -125,13 +150,21 @@ export function TicketAppointmentModal({
 
     try {
       setSaving(true);
-      const res = await ticketsService.createAppointment(
-        ticketNumber,
-        payload,
-        exported.files,
-      );
+      const res = isEdit
+        ? await ticketsService.updateAppointment(
+            ticketNumber,
+            editingAppointment!.portalAppointmentId,
+            payload,
+          )
+        : await ticketsService.createAppointment(
+            ticketNumber,
+            payload,
+            exported.files,
+          );
       notifySuccess(res.message);
-      setServiceName("");
+      if (!isEdit) {
+        setServiceName("");
+      }
       onOpenChange(false);
       onCreated?.();
     } catch (err) {
@@ -152,7 +185,9 @@ export function TicketAppointmentModal({
       >
         <SheetHeader className="shrink-0 space-y-3 border-b border-border px-6 py-5 pr-14">
           <SheetTitle className="text-lg font-bold">
-            Apontar no ticket #{ticketNumber}
+            {isEdit
+              ? `Editar apontamento · ticket #${ticketNumber}`
+              : `Apontar no ticket #${ticketNumber}`}
           </SheetTitle>
           {loadingMeta ? (
             <SheetDescription>Carregando dados do ticket…</SheetDescription>
@@ -160,6 +195,33 @@ export function TicketAppointmentModal({
             <SheetDescription>
               {ticketMeta.clientName ?? "—"} · {ticketMeta.deskName ?? "—"}
             </SheetDescription>
+          ) : null}
+
+          {isEdit ? (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+              {editingAppointment?.existsInTiflux
+                ? "As alterações valem somente no portal. O apontamento no TiFlux não será modificado."
+                : editingAppointment?.canPauseSync
+                  ? "A sincronização com o TiFlux está pausada até você salvar, cancelar ou excluir."
+                  : "As alterações valem somente no portal."}
+            </p>
+          ) : null}
+
+          {tifluxAppointmentSyncEnabled &&
+          ticketMeta &&
+          !ticketMeta.tifluxSyncAvailable ? (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+              Este ticket não é da mesa AlleOne. O apontamento ficará salvo apenas
+              no portal, sem envio ao TiFlux.
+            </p>
+          ) : null}
+
+          {ticketMeta?.tifluxSyncAvailable ? (
+            <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90">
+              Mesa AlleOne: o tipo de atendimento (Hora normal, Extra, Plantão) fica
+              salvo só no portal. No TiFlux vão data, horário e descrição — sem
+              valorização.
+            </p>
           ) : null}
 
           {user ? (
@@ -237,12 +299,25 @@ export function TicketAppointmentModal({
               </div>
             </div>
 
-            <AppointmentDescriptionComposer
-              key={composerKey}
-              ref={composerRef}
-              disabled={saving}
-              labelClassName={FIELD_LABEL}
-            />
+            {!isEdit ? (
+              <AppointmentDescriptionComposer
+                key={composerKey}
+                ref={composerRef}
+                disabled={saving}
+                labelClassName={FIELD_LABEL}
+              />
+            ) : (
+              <div className="space-y-2">
+                <Label className={FIELD_LABEL}>Descrição *</Label>
+                <Textarea
+                  value={descriptionPlain}
+                  onChange={(e) => setDescriptionPlain(e.target.value)}
+                  disabled={saving}
+                  className="min-h-[160px]"
+                  placeholder="Descreva o apontamento"
+                />
+              </div>
+            )}
           </div>
 
           <SheetFooter className="shrink-0 flex-row justify-end gap-2 border-t border-border px-6 py-4">
@@ -251,7 +326,11 @@ export function TicketAppointmentModal({
             </Button>
             <Button type="submit" className="h-11 min-w-[120px]" disabled={saving}>
               {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-              Salvar
+              {saving
+                ? "Salvando..."
+                : isEdit
+                  ? "Salvar alterações"
+                  : "Salvar"}
             </Button>
           </SheetFooter>
         </form>

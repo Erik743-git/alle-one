@@ -79,6 +79,16 @@ export type RendimentoTimelineCalendarProps = {
   onRejectJustification?: (id: string) => void;
   onDeleteJustification?: (id: string) => void;
   canDeleteOwnJustification?: boolean;
+  canEditJustification?: boolean;
+  onEditJustification?: (params: {
+    id: string;
+    kind: "ALERT" | "VOLUNTARY";
+    date: string;
+    fromTime: string;
+    toTime: string;
+    gapType?: "idle" | "lunch";
+    reason: string;
+  }) => void;
   onApproveDayEvent?: (id: string) => void;
   onRejectDayEvent?: (id: string) => void;
   onViewChange: (view: RendimentoCalendarView) => void;
@@ -148,6 +158,8 @@ function DayDetailList({
   onRejectJustification,
   onDeleteJustification,
   canDeleteOwnJustification,
+  canEditJustification,
+  onEditJustification,
   onApproveDayEvent,
   onRejectDayEvent,
 }: {
@@ -159,6 +171,16 @@ function DayDetailList({
   onApproveJustification?: (id: string) => void;
   onRejectJustification?: (id: string) => void;
   onDeleteJustification?: (id: string) => void;
+  canEditJustification?: boolean;
+  onEditJustification?: (params: {
+    id: string;
+    kind: "ALERT" | "VOLUNTARY";
+    date: string;
+    fromTime: string;
+    toTime: string;
+    gapType?: "idle" | "lunch";
+    reason: string;
+  }) => void;
   onApproveDayEvent?: (id: string) => void;
   onRejectDayEvent?: (id: string) => void;
 }) {
@@ -201,6 +223,24 @@ function DayDetailList({
                   ? () => onRejectJustification(item.gap.justification!.id)
                   : undefined
               }
+              canEdit={
+                canEditJustification &&
+                item.gap.justification?.status === "PENDING"
+              }
+              onEdit={
+                item.gap.justification?.id && onEditJustification
+                  ? () =>
+                      onEditJustification({
+                        id: item.gap.justification!.id,
+                        kind: "ALERT",
+                        date: displayDay.date,
+                        fromTime: item.gap.fromTime,
+                        toTime: item.gap.toTime,
+                        gapType: item.gap.type,
+                        reason: item.gap.justification!.reason,
+                      })
+                  : undefined
+              }
             />
           ) : item.kind === "voluntary" ? (
             <RendimentoVoluntaryJustificationBlock
@@ -221,6 +261,23 @@ function DayDetailList({
               onDelete={
                 onDeleteJustification
                   ? () => onDeleteJustification(item.voluntary.id)
+                  : undefined
+              }
+              canEdit={
+                canEditJustification && item.voluntary.status === "PENDING"
+              }
+              onEdit={
+                onEditJustification
+                  ? () =>
+                      onEditJustification({
+                        id: item.voluntary.id,
+                        kind: "VOLUNTARY",
+                        date: displayDay.date,
+                        fromTime: item.voluntary.fromTime,
+                        toTime: item.voluntary.toTime,
+                        gapType: item.voluntary.gapType,
+                        reason: item.voluntary.reason,
+                      })
                   : undefined
               }
             />
@@ -342,6 +399,8 @@ export function RendimentoTimelineCalendar({
   onRejectJustification,
   onDeleteJustification,
   canDeleteOwnJustification = false,
+  canEditJustification = false,
+  onEditJustification,
   onApproveDayEvent,
   onRejectDayEvent,
   onViewChange,
@@ -747,10 +806,12 @@ export function RendimentoTimelineCalendar({
             pjSimplifiedView={pjSimplifiedView}
             canApproveJustification={canApproveJustification}
             canDeleteOwnJustification={canDeleteOwnJustification}
+            canEditJustification={canEditJustification}
             onOpenAlertJustification={onOpenAlertJustification}
             onApproveJustification={onApproveJustification}
             onRejectJustification={onRejectJustification}
             onDeleteJustification={onDeleteJustification}
+            onEditJustification={onEditJustification}
             onApproveDayEvent={onApproveDayEvent}
             onRejectDayEvent={onRejectDayEvent}
           />

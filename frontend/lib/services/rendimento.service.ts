@@ -330,6 +330,8 @@ export const rendimentoService = {
     reason: string;
     debitOvertime?: boolean;
     overtimeMinutes?: number;
+    alertFromTime?: string;
+    alertToTime?: string;
   }) {
     if (!isValidUuid(params.userId)) {
       return Promise.reject(new Error("Colaborador inválido."));
@@ -340,6 +342,31 @@ export const rendimentoService = {
         method: "POST",
         // `userId` vai na URL. Se vier no body o backend rejeita (whitelist + forbidNonWhitelisted).
         body: (({ userId: _userId, ...body }) => body)(params),
+      },
+    );
+  },
+
+  updateJustification(params: {
+    id: string;
+    date?: string;
+    fromTime?: string;
+    toTime?: string;
+    reason: string;
+    alertFromTime?: string;
+    alertToTime?: string;
+  }) {
+    return apiRequest<{ id: string; status: "PENDING" }>(
+      `/rendimento/justifications/${params.id}`,
+      {
+        method: "PATCH",
+        body: {
+          date: params.date,
+          fromTime: params.fromTime,
+          toTime: params.toTime,
+          reason: params.reason,
+          alertFromTime: params.alertFromTime,
+          alertToTime: params.alertToTime,
+        },
       },
     );
   },

@@ -65,6 +65,40 @@ export class CreateRendimentoJustificationDto {
   @Min(0)
   @Max(24 * 60)
   overtimeMinutes?: number;
+
+  /** Limites do alerta clicado (opcional; reforça período parcial dentro do gap). */
+  @IsOptional()
+  @IsString()
+  alertFromTime?: string;
+
+  @IsOptional()
+  @IsString()
+  alertToTime?: string;
+}
+
+export class UpdateRendimentoJustificationDto {
+  @IsOptional()
+  @IsDateString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  fromTime?: string;
+
+  @IsOptional()
+  @IsString()
+  toTime?: string;
+
+  @IsOptional()
+  @IsString()
+  alertFromTime?: string;
+
+  @IsOptional()
+  @IsString()
+  alertToTime?: string;
+
+  @IsString()
+  reason!: string;
 }
 
 export class DecideRendimentoJustificationDto {

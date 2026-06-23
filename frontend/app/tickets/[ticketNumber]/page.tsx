@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -20,25 +20,32 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
+import { PortalAppointmentTifluxWarningDialog } from "@/components/tickets/portal-appointment-tiflux-warning-dialog";
 import {
+  canChangeTicketStage,
   canCreateTicket,
   canCreateTicketAppointment,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import {
+  SYNC_STATUS_PAUSED,
   SYNC_STATUS_PENDING,
   SYNC_STATUS_PORTAL_ONLY,
 } from "@/lib/module-copy";
-import { notifyError } from "@/lib/notify";
+import { useConfirm } from "@/lib/confirm";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
 import {
   ticketsService,
+  type PortalAppointmentEditContext,
   type TicketAppointment,
   type TicketDetailResponse,
+  type TicketStagesResponse,
 } from "@/lib/services/tickets.service";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { notifySuccess } from "@/lib/notify";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 
 function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -59,9 +66,12 @@ function appointmentRowKey(row: {
   );
 }
 
-function syncStatusLabel(status: string) {
-  if (status === "PORTAL_ONLY") return SYNC_STATUS_PORTAL_ONLY;
-  if (status === "PENDING_TIFLUX") return SYNC_STATUS_PENDING;
+function syncStatusLabel(row: TicketAppointment) {
+  if (row.syncPaused && row.syncStatus === "PENDING_TIFLUX") {
+    return SYNC_STATUS_PAUSED;
+  }
+  if (row.syncStatus === "PORTAL_ONLY") return SYNC_STATUS_PORTAL_ONLY;
+  if (row.syncStatus === "PENDING_TIFLUX") return SYNC_STATUS_PENDING;
   return null;
 }
 
@@ -98,8 +108,21 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TicketDetailResponse | null>(null);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [editingAppointment, setEditingAppointment] =
+    useState<PortalAppointmentEditContext | null>(null);
+  const [tifluxWarningOpen, setTifluxWarningOpen] = useState(false);
+  const [pendingPortalAction, setPendingPortalAction] = useState<
+    (() => void) | null
+  >(null);
+  const [pendingResumeId, setPendingResumeId] = useState<string | null>(null);
+  const tifluxWarningConfirmedRef = useRef(false);
+  const confirm = useConfirm();
   const [externalGmudRefInput, setExternalGmudRefInput] = useState("");
   const [gmudLinking, setGmudLinking] = useState(false);
+  const [stagesData, setStagesData] = useState<TicketStagesResponse | null>(null);
+  const [stageIdInput, setStageIdInput] = useState("");
+  const [stageSaving, setStageSaving] = useState(false);
+  const [stagesLoading, setStagesLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
@@ -116,9 +139,33 @@ export default function TicketDetailPage() {
     }
   }, [ticketNumber]);
 
+  const loadStages = useCallback(async () => {
+    if (!Number.isFinite(ticketNumber) || !canChangeTicketStage()) return;
+    try {
+      setStagesLoading(true);
+      const res = await ticketsService.listStages(ticketNumber);
+      setStagesData(res);
+      setStageIdInput(
+        res.currentStageId != null ? String(res.currentStageId) : "",
+      );
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os estágios do ticket.",
+      );
+    } finally {
+      setStagesLoading(false);
+    }
+  }, [ticketNumber]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadStages();
+  }, [loadStages]);
 
   useEffect(() => {
     setExternalGmudRefInput(data?.externalGmudRef ?? "");
@@ -126,6 +173,148 @@ export default function TicketDetailPage() {
 
   const ticket = data?.ticket;
   const externalGmudRef = data?.externalGmudRef;
+  const stageOptions = (stagesData?.stages ?? []).map((stage) => ({
+    value: String(stage.id),
+    label: stage.firstStage ? `${stage.name} (inicial)` : stage.name,
+  }));
+  const stageChanged =
+    stageIdInput !== "" &&
+    stagesData?.currentStageId != null &&
+    Number(stageIdInput) !== stagesData.currentStageId;
+
+  async function handleSaveStage() {
+    if (!Number.isFinite(ticketNumber) || !stageIdInput) return;
+    const stageId = Number(stageIdInput);
+    if (!Number.isFinite(stageId) || stageId <= 0) {
+      notifyError("Selecione um estágio válido.");
+      return;
+    }
+    try {
+      setStageSaving(true);
+      const res = await ticketsService.updateStage(ticketNumber, stageId);
+      setData((prev) =>
+        prev?.ticket
+          ? {
+              ...prev,
+              ticket: {
+                ...prev.ticket,
+                stageName: res.stageName,
+                stageGroup: res.stageGroup,
+              },
+            }
+          : prev,
+      );
+      setStagesData((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentStageId: res.stageId,
+              currentStageName: res.stageName,
+            }
+          : prev,
+      );
+      notifySuccess(res.message);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível atualizar o estágio.",
+      );
+    } finally {
+      setStageSaving(false);
+    }
+  }
+
+  async function resumePausedSync(portalAppointmentId: string | null) {
+    if (!portalAppointmentId || !Number.isFinite(ticketNumber)) return;
+    try {
+      await ticketsService.resumeAppointmentSync(ticketNumber, portalAppointmentId);
+      await load();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function handleAppointmentModalOpenChange(open: boolean) {
+    if (!open) {
+      const pausedId = editingAppointment?.portalAppointmentId ?? pendingResumeId;
+      setAppointmentOpen(false);
+      setEditingAppointment(null);
+      if (pausedId) {
+        void resumePausedSync(pausedId);
+      }
+      setPendingResumeId(null);
+      return;
+    }
+    setAppointmentOpen(true);
+  }
+
+  async function preparePortalAppointmentAction(
+    portalAppointmentId: string,
+    onProceed: (ctx: PortalAppointmentEditContext) => void,
+  ) {
+    if (!Number.isFinite(ticketNumber)) return;
+    try {
+      const ctx = await ticketsService.appointmentEditContext(
+        ticketNumber,
+        portalAppointmentId,
+      );
+      if (ctx.canPauseSync) {
+        await ticketsService.pauseAppointmentSync(ticketNumber, portalAppointmentId);
+        setPendingResumeId(portalAppointmentId);
+        await load();
+      }
+
+      const proceed = () => onProceed(ctx);
+      if (ctx.existsInTiflux && shouldShowTifluxPortalOnlyWarning()) {
+        setPendingPortalAction(() => proceed);
+        setTifluxWarningOpen(true);
+        return;
+      }
+      proceed();
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível preparar a ação.",
+      );
+    }
+  }
+
+  async function handleEditAppointment(portalAppointmentId: string) {
+    await preparePortalAppointmentAction(portalAppointmentId, (ctx) => {
+      setEditingAppointment(ctx);
+      setAppointmentOpen(true);
+    });
+  }
+
+  async function handleDeleteAppointment(portalAppointmentId: string) {
+    await preparePortalAppointmentAction(portalAppointmentId, async () => {
+      const ok = await confirm({
+        title: "Excluir apontamento",
+        description:
+          "O apontamento será removido do portal. Se já existir no TiFlux, o registro lá permanece inalterado.",
+        confirmText: "Excluir",
+        variant: "error",
+      });
+      if (!ok) {
+        await resumePausedSync(portalAppointmentId);
+        setPendingResumeId(null);
+        return;
+      }
+      try {
+        const res = await ticketsService.deleteAppointment(
+          ticketNumber,
+          portalAppointmentId,
+        );
+        setPendingResumeId(null);
+        notifySuccess(res.message);
+        await load();
+      } catch (err) {
+        notifyError(
+          err instanceof Error ? err.message : "Não foi possível excluir.",
+        );
+        await resumePausedSync(portalAppointmentId);
+        setPendingResumeId(null);
+      }
+    });
+  }
 
   async function handleSaveGmudLink() {
     if (!Number.isFinite(ticketNumber)) return;
@@ -164,7 +353,11 @@ export default function TicketDetailPage() {
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => setAppointmentOpen(true)}
+                  onClick={() => {
+                    setEditingAppointment(null);
+                    setPendingResumeId(null);
+                    setAppointmentOpen(true);
+                  }}
                 >
                   <Clock className="mr-2 size-4" />
                   Apontar
@@ -180,6 +373,12 @@ export default function TicketDetailPage() {
               <p className="text-muted-foreground">Ticket não encontrado.</p>
             ) : (
               <>
+                {data?.syncPending ? (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+                    Ticket recém-criado: ainda não aparece na listagem local, mas
+                    já está disponível no TiFlux.
+                  </p>
+                ) : null}
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -250,7 +449,7 @@ export default function TicketDetailPage() {
                     <CardHeader>
                       <CardTitle className="text-base">Informações</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-1 text-sm">
+                    <CardContent className="space-y-3 text-sm">
                       <p>
                         <span className="text-muted-foreground">Origem: </span>
                         {ticket.origin ?? "—"}
@@ -263,6 +462,52 @@ export default function TicketDetailPage() {
                         <span className="text-muted-foreground">Responsável: </span>
                         {ticket.responsibleName ?? "—"}
                       </p>
+                      {canChangeTicketStage() ? (
+                        <div className="space-y-2 border-t border-border pt-3">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Estágio no TiFlux
+                          </Label>
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                            <div className="flex-1">
+                              <SearchableSelectField
+                                value={stageIdInput}
+                                onChange={setStageIdInput}
+                                options={stageOptions}
+                                loading={stagesLoading}
+                                disabled={
+                                  stageSaving ||
+                                  stagesLoading ||
+                                  stagesData?.isClosed === true
+                                }
+                                placeholder="Selecione o estágio"
+                                preserveOrder
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-11 shrink-0"
+                              disabled={
+                                stageSaving ||
+                                stagesLoading ||
+                                !stageChanged ||
+                                stagesData?.isClosed === true
+                              }
+                              onClick={() => void handleSaveStage()}
+                            >
+                              {stageSaving ? (
+                                <Loader2 className="mr-2 size-4 animate-spin" />
+                              ) : null}
+                              Salvar estágio
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {stagesData?.isClosed
+                              ? "Ticket fechado — o estágio não pode ser alterado."
+                              : "Avance o estágio para permitir apontamentos no TiFlux (a etapa inicial geralmente não aceita horas)."}
+                          </p>
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 </div>
@@ -339,18 +584,24 @@ export default function TicketDetailPage() {
                           <th className="px-4 py-2">Tipo</th>
                           <th className="px-4 py-2">Atendimento</th>
                           <th className="px-4 py-2">Descrição</th>
+                          {canCreateTicketAppointment() ? (
+                            <th className="px-4 py-2">Ações</th>
+                          ) : null}
                         </tr>
                       </thead>
                       <tbody>
                         {(data?.appointments ?? []).length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                            <td
+                              colSpan={canCreateTicketAppointment() ? 8 : 7}
+                              className="px-4 py-8 text-center text-muted-foreground"
+                            >
                               Nenhum apontamento neste ticket.
                             </td>
                           </tr>
                         ) : (
                           data?.appointments.map((row) => {
-                            const status = syncStatusLabel(row.syncStatus);
+                            const status = syncStatusLabel(row);
                             return (
                             <tr
                               key={appointmentRowKey(row)}
@@ -420,6 +671,42 @@ export default function TicketDetailPage() {
                                   </ul>
                                 ) : null}
                               </td>
+                              {canCreateTicketAppointment() ? (
+                                <td className="px-4 py-2">
+                                  {row.portalAppointmentId ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 text-xs"
+                                        onClick={() =>
+                                          void handleEditAppointment(
+                                            row.portalAppointmentId!,
+                                          )
+                                        }
+                                      >
+                                        Editar
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 px-2 text-xs text-rose-600 hover:text-rose-600"
+                                        onClick={() =>
+                                          void handleDeleteAppointment(
+                                            row.portalAppointmentId!,
+                                          )
+                                        }
+                                      >
+                                        Excluir
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </td>
+                              ) : null}
                             </tr>
                           );
                           })
@@ -430,12 +717,41 @@ export default function TicketDetailPage() {
                 </Card>
 
                 {canCreateTicketAppointment() ? (
-                  <TicketAppointmentModal
-                    ticketNumber={ticket.ticketNumber}
-                    open={appointmentOpen}
-                    onOpenChange={setAppointmentOpen}
-                    onCreated={() => void load()}
-                  />
+                  <>
+                    <TicketAppointmentModal
+                      ticketNumber={ticket.ticketNumber}
+                      open={appointmentOpen}
+                      onOpenChange={handleAppointmentModalOpenChange}
+                      editingAppointment={editingAppointment}
+                      onCreated={() => {
+                        setEditingAppointment(null);
+                        setPendingResumeId(null);
+                        void load();
+                      }}
+                    />
+                    <PortalAppointmentTifluxWarningDialog
+                      open={tifluxWarningOpen}
+                      onOpenChange={(open) => {
+                        setTifluxWarningOpen(open);
+                        if (!open) {
+                          if (
+                            !tifluxWarningConfirmedRef.current &&
+                            pendingResumeId
+                          ) {
+                            void resumePausedSync(pendingResumeId);
+                            setPendingResumeId(null);
+                          }
+                          tifluxWarningConfirmedRef.current = false;
+                          setPendingPortalAction(null);
+                        }
+                      }}
+                      onConfirm={() => {
+                        tifluxWarningConfirmedRef.current = true;
+                        pendingPortalAction?.();
+                        setPendingPortalAction(null);
+                      }}
+                    />
+                  </>
                 ) : null}
               </>
             )}
