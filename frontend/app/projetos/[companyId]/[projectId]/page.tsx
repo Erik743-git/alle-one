@@ -137,8 +137,8 @@ export default function ProjectDetailPage() {
     const ok = await confirm({
       title: "Excluir atividade?",
       description: `A tarefa "${activity.name}" e sub-atividades serão removidas.`,
-      confirmLabel: "Excluir",
-      destructive: true,
+      confirmText: "Excluir",
+      variant: "error",
     });
     if (!ok) return;
     try {

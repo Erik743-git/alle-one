@@ -300,9 +300,8 @@ export const projetosService = {
     if (!response.ok) {
       throw new Error(await parseError(response, "Falha ao baixar documento."));
     }
-    const blob = await response.blob();
-    const meta = readBlobDownload(response);
-    triggerBrowserDownload(blob, meta.filename || "documento");
+    const meta = await readBlobDownload(response, "documento");
+    triggerBrowserDownload(meta.blob, meta.filename);
   },
 
   async exportProject(projectId: string, template = false) {
@@ -313,12 +312,11 @@ export const projetosService = {
     if (!response.ok) {
       throw new Error(await parseError(response, "Falha ao exportar planilha."));
     }
-    const blob = await response.blob();
-    const meta = readBlobDownload(response);
-    triggerBrowserDownload(
-      blob,
-      meta.filename || (template ? "modelo-projeto.xlsx" : "projeto.xlsx"),
+    const meta = await readBlobDownload(
+      response,
+      template ? "modelo-projeto.xlsx" : "projeto.xlsx",
     );
+    triggerBrowserDownload(meta.blob, meta.filename);
   },
 
   async importProject(projectId: string, file: File) {
