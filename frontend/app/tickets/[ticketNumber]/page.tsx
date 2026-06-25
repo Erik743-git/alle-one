@@ -81,6 +81,13 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isServerConfigMissingError(err: unknown) {
+  return (
+    err instanceof Error &&
+    err.message.includes("Serviço não encontrado")
+  );
+}
+
 async function openPortalAttachment(
   attachment: TicketAppointment["attachments"][number],
   inline: boolean,
@@ -149,6 +156,11 @@ export default function TicketDetailPage() {
         res.currentStageId != null ? String(res.currentStageId) : "",
       );
     } catch (err) {
+      if (isServerConfigMissingError(err)) {
+        setStagesData(null);
+        setStageIdInput("");
+        return;
+      }
       notifyError(
         err instanceof Error
           ? err.message
@@ -476,7 +488,7 @@ export default function TicketDetailPage() {
                         <span className="text-muted-foreground">Responsável: </span>
                         {ticket.responsibleName ?? "—"}
                       </p>
-                      {canChangeTicketStage() ? (
+                      {canChangeTicketStage() && (stagesLoading || stagesData) ? (
                         <div className="space-y-2 border-t border-border pt-3">
                           <Label className="text-xs font-semibold text-muted-foreground">
                             Estágio no TiFlux

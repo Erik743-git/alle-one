@@ -136,15 +136,20 @@ async function parseError(response: Response, fallback: string) {
 }
 
 export const projetosService = {
-  listCompanies() {
-    return apiRequest<ProjectCompany[]>("/projetos/companies");
+  async listCompanies() {
+    const data = await apiRequest<ProjectCompany[] | null>("/projetos/companies");
+    return Array.isArray(data) ? data : [];
   },
 
-  listProjects(companyId: string) {
-    return apiRequest<{
-      company: { id: string; name: string };
-      projects: ProjectSummary[];
-    }>(`/projetos/companies/${companyId}/projects`);
+  async listProjects(companyId: string) {
+    const data = await apiRequest<{
+      company: { id: string; name: string } | null;
+      projects: ProjectSummary[] | null;
+    } | null>(`/projetos/companies/${companyId}/projects`);
+    return {
+      company: data?.company ?? { id: companyId, name: "" },
+      projects: Array.isArray(data?.projects) ? data.projects : [],
+    };
   },
 
   getProject(projectId: string) {
@@ -263,12 +268,15 @@ export const projetosService = {
     });
   },
 
-  searchUsers(params: { q?: string; companyId?: string }) {
+  async searchUsers(params: { q?: string; companyId?: string }) {
     const qs = new URLSearchParams();
     if (params.q?.trim()) qs.set("q", params.q.trim());
     if (params.companyId) qs.set("companyId", params.companyId);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return apiRequest<ProjectUserOption[]>(`/projetos/users/search${suffix}`);
+    const data = await apiRequest<ProjectUserOption[] | null>(
+      `/projetos/users/search${suffix}`,
+    );
+    return Array.isArray(data) ? data : [];
   },
 
   async approveProjectCompletion(projectId: string, note?: string) {
@@ -345,9 +353,9 @@ export function flattenProjectActivities(
   const walk = (items: ProjectActivity[]) => {
     for (const item of items) {
       result.push(item);
-      if (item.children.length) walk(item.children);
+      if (item.children?.length) walk(item.children);
     }
   };
-  walk(nodes);
+  walk(Array.isArray(nodes) ? nodes : []);
   return result;
 }

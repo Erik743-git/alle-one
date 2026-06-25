@@ -41,7 +41,8 @@ export function ProjectBudgetDocumentsPanel({
   const [completing, setCompleting] = useState(false);
   const [approving, setApproving] = useState(false);
 
-  const { budget, completionApproval, documents, status } = project;
+  const { budget, completionApproval, status } = project;
+  const documents = Array.isArray(project.documents) ? project.documents : [];
 
   async function handleUpload(list: FileList | null) {
     if (!list?.length) return;

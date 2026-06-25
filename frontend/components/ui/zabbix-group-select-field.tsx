@@ -32,7 +32,6 @@ type ZabbixGroupSelectFieldProps = {
 
 const MIN_SEARCH_LEN = 2;
 const SEARCH_DEBOUNCE_MS = 280;
-const MAX_VISIBLE_RESULTS = 4;
 
 export function ZabbixGroupSelectField({
   value,
@@ -235,7 +234,7 @@ export function ZabbixGroupSelectField({
             </p>
           ) : null}
 
-          <ul className="max-h-56 overflow-y-auto overscroll-contain" role="listbox">
+          <ul className="max-h-72 overflow-y-auto overscroll-contain" role="listbox">
             {searching ? (
               <li className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -465,7 +464,6 @@ export function ZabbixGroupMultiSelectField({
   }
 
   const showDropdown = focused && draft.trim().length >= MIN_SEARCH_LEN;
-  const visibleResults = results.slice(0, MAX_VISIBLE_RESULTS);
   const unknownGroups = groups.filter(
     (group) => validations[group]?.exists === false,
   );
@@ -555,7 +553,7 @@ export function ZabbixGroupMultiSelectField({
             </p>
           ) : null}
 
-          <ul className="max-h-56 overflow-y-auto overscroll-contain" role="listbox">
+          <ul className="max-h-72 overflow-y-auto overscroll-contain" role="listbox">
             {searching ? (
               <li className="flex items-center gap-2 px-3 py-3 text-sm text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -566,7 +564,7 @@ export function ZabbixGroupMultiSelectField({
                 Nenhum grupo encontrado. Confira o nome exato no Zabbix.
               </li>
             ) : (
-              visibleResults.map((group) => {
+              results.map((group) => {
                 const selected = groups.some(
                   (item) => item.toLowerCase() === group.name.toLowerCase(),
                 );

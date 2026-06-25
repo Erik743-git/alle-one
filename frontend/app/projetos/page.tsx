@@ -38,9 +38,10 @@ export default function ProjetosPage() {
       if (silent) setRefreshing(true);
       else setLoading(true);
       const data = await projetosService.listCompanies();
-      setCompanies(data);
-      if (clientUser && data.length === 1) {
-        router.replace(`/projetos/${data[0].id}`);
+      const list = Array.isArray(data) ? data : [];
+      setCompanies(list);
+      if (clientUser && list.length === 1) {
+        router.replace(`/projetos/${list[0].id}`);
       }
     } catch (err) {
       notifyError(
@@ -57,13 +58,15 @@ export default function ProjetosPage() {
   }, [load]);
 
   const filtered = useMemo(() => {
+    const list = Array.isArray(companies) ? companies : [];
     const q = search.trim().toLowerCase();
-    if (!q) return companies;
-    return companies.filter((c) => c.name.toLowerCase().includes(q));
+    if (!q) return list;
+    return list.filter((c) => (c.name ?? "").toLowerCase().includes(q));
   }, [companies, search]);
 
   const redirectingClient =
-    clientUser && (loading || (companies.length === 1 && !search.trim()));
+    clientUser &&
+    (loading || ((companies?.length ?? 0) === 1 && !search.trim()));
 
   return (
     <ProtectedPage>

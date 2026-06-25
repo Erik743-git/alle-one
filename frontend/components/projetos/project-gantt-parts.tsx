@@ -26,15 +26,17 @@ function flattenWithDepth(
   depth = 0,
 ): FlatActivity[] {
   const result: FlatActivity[] = [];
-  nodes.forEach((node, index) => {
+  const list = Array.isArray(nodes) ? nodes : [];
+  list.forEach((node, index) => {
+    const children = Array.isArray(node.children) ? node.children : [];
     result.push({
       ...node,
       depth,
-      hasChildren: node.children.length > 0,
-      isLastChild: index === nodes.length - 1,
+      hasChildren: children.length > 0,
+      isLastChild: index === list.length - 1,
     });
-    if (node.children.length) {
-      result.push(...flattenWithDepth(node.children, depth + 1));
+    if (children.length) {
+      result.push(...flattenWithDepth(children, depth + 1));
     }
   });
   return result;
@@ -255,7 +257,7 @@ export function ProjectGanttChart({
                         </div>
                       )
                     ) : null}
-                    {row.predecessorIds.length ? (
+                    {row.predecessorIds?.length ? (
                       <div className="absolute bottom-1 left-2 right-2 truncate text-[10px] text-muted-foreground/80">
                         ←{" "}
                         {row.predecessorIds

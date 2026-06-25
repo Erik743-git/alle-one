@@ -89,7 +89,7 @@ export function ProjectActivityModal({
       setAssigneeFreeText(!a.assigneeUserId && Boolean(a.assigneeName));
       setIsMilestone(a.isMilestone);
       setNotes(a.notes ?? "");
-      setPredecessorIds(a.predecessorIds);
+      setPredecessorIds(Array.isArray(a.predecessorIds) ? a.predecessorIds : []);
     } else {
       setName("");
       setDurationDays("1");
