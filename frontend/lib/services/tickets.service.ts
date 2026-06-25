@@ -77,6 +77,17 @@ export type TicketDetailResponse = {
   };
   appointments: TicketAppointment[];
   externalGmudRef: string | null;
+  portalDescription?: {
+    description: string;
+    attachments: Array<{
+      id: string;
+      fileId: string;
+      originalName: string;
+      mimeType: string;
+      size: number;
+      previewDataUrl: string | null;
+    }>;
+  } | null;
   syncPending?: boolean;
 };
 
@@ -299,10 +310,15 @@ export const ticketsService = {
     );
   },
 
-  createTicket(payload: CreateTicketPayload) {
+  createTicket(payload: CreateTicketPayload, files: File[] = []) {
+    const body = new FormData();
+    body.append("payload", JSON.stringify(payload));
+    for (const file of files) {
+      body.append("files", file);
+    }
     return apiRequest<CreateTicketResult>("/tickets", {
       method: "POST",
-      body: payload,
+      body,
     });
   },
 

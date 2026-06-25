@@ -495,9 +495,10 @@ export class TicketsService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
-    const [appointments, externalGmudRef] = await Promise.all([
+    const [appointments, externalGmudRef, portalDescription] = await Promise.all([
       this.listMergedAppointments(ticketNumber),
       this.loadExternalGmudRef(ticketNumber),
+      this.loadPortalTicketDescription(ticketNumber),
     ]);
 
     const stageName = apiTicket.stage?.name ?? null;
@@ -531,6 +532,7 @@ export class TicketsService {
       summary: this.buildDetailSummary(appointments),
       appointments,
       externalGmudRef,
+      portalDescription,
       syncPending: true,
     };
   }
@@ -768,9 +770,10 @@ export class TicketsService {
       return this.getDetailFromTifluxApi(ticketNumber);
     }
 
-    const [appointments, externalGmudRef] = await Promise.all([
+    const [appointments, externalGmudRef, portalDescription] = await Promise.all([
       this.listMergedAppointments(ticketNumber),
       this.loadExternalGmudRef(ticketNumber),
+      this.loadPortalTicketDescription(ticketNumber),
     ]);
 
     return {
@@ -787,6 +790,7 @@ export class TicketsService {
       summary: this.buildDetailSummary(appointments),
       appointments,
       externalGmudRef,
+      portalDescription,
     };
   }
 
@@ -944,6 +948,7 @@ export class TicketsService {
       attendance: string;
       tifluxAppointmentExternalId: number | null;
       syncStatus: PortalTicketAppointmentSyncStatus;
+      syncPausedAt: Date | null;
       creator: { name: string };
       attachments: Array<{
         id: string;
@@ -1497,7 +1502,7 @@ export class TicketsService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
     files: Express.Multer.File[],
-    portalAppointmentId: string,
+    portalAppointmentId: string | null,
     outboxId: string | null,
     tifluxAppointmentExternalId: number | null,
   ) {
@@ -1625,7 +1630,11 @@ export class TicketsService {
     };
   }
 
-  async createTicket(actor: AuthenticatedRequestUser, dto: CreateTicketDto) {
+  async createTicket(
+    actor: AuthenticatedRequestUser,
+    dto: CreateTicketDto,
+    files: Express.Multer.File[] = [],
+  ) {
     const desk = await this.tiflux.getDesk(dto.deskId);
     const tifluxDeskName = String(desk.display_name ?? desk.name ?? '');
     const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
@@ -1645,6 +1654,12 @@ export class TicketsService {
       throw new BadRequestException(
         'Esta mesa exige uma prioridade.',
       );
+    }
+
+    const descriptionRaw = dto.description.trim();
+    const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
+    if (!descriptionPlain && files.length === 0) {
+      throw new BadRequestException('Informe a descrição do chamado.');
     }
 
     const servicesCatalogsItemId =
@@ -1667,19 +1682,19 @@ export class TicketsService {
       );
     }
 
-    let description = dto.description.trim();
+    let tifluxDescription = descriptionPlain;
     if (dto.classificationId) {
       const pathLabel = await this.resolveClassificationPathLabel(
         dto.classificationId,
       );
       if (pathLabel) {
-        description = `Classificação: ${pathLabel}\n\n${description}`;
+        tifluxDescription = `Classificação: ${pathLabel}\n\n${descriptionPlain}`;
       }
     }
 
     const payload = {
       title: dto.title.trim(),
-      description,
+      description: tifluxDescription,
       client_id: dto.clientId,
       desk_id: dto.deskId,
       priority_id: dto.priorityId ?? undefined,
@@ -1718,6 +1733,13 @@ export class TicketsService {
         await this.upsertTicketGmudLink(actor, ticketNumber, externalGmudRef);
       }
 
+      await this.savePortalTicketDescription(
+        actor,
+        ticketNumber,
+        descriptionRaw,
+        files,
+      );
+
       return {
         ok: true,
         ticketNumber,
@@ -1742,6 +1764,83 @@ export class TicketsService {
         throw new BadRequestException(error.message);
       }
       throw new BadGatewayException(message);
+    }
+  }
+
+  private async savePortalTicketDescription(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    descriptionRaw: string,
+    files: Express.Multer.File[],
+  ) {
+    const attachments = await this.saveAppointmentFiles(
+      actor,
+      ticketNumber,
+      files,
+      null,
+      null,
+      null,
+    );
+
+    const savedImages: SavedAppointmentImage[] = attachments
+      .filter(
+        (item): item is typeof item & { base64: string } =>
+          Boolean(item.base64?.trim()),
+      )
+      .map((item) => ({
+        fileId: item.fileId,
+        mimeType: item.mimeType,
+        base64: item.base64,
+      }));
+
+    let description = descriptionRaw;
+    if (savedImages.length > 0) {
+      description = enrichAppointmentDescriptionWithImages(
+        descriptionRaw,
+        savedImages,
+      );
+    }
+
+    await this.prisma.portalTicketDescription.upsert({
+      where: { ticketNumber },
+      create: {
+        ticketNumber,
+        description,
+        createdBy: actor.userId,
+      },
+      update: {
+        description,
+      },
+    });
+  }
+
+  private async loadPortalTicketDescription(ticketNumber: number) {
+    try {
+      const row = await this.prisma.portalTicketDescription.findUnique({
+        where: { ticketNumber },
+      });
+      if (!row) return null;
+
+      const attachmentRows =
+        await this.prisma.portalTicketAppointmentAttachment.findMany({
+          where: {
+            ticketNumber,
+            portalAppointmentId: null,
+          },
+          include: { file: true },
+          orderBy: { createdAt: 'asc' },
+        });
+
+      const previewMap = await this.loadAttachmentPreviewMap(
+        attachmentRows.map((item) => item.id),
+      );
+
+      return {
+        description: row.description,
+        attachments: this.mapPortalAttachments(attachmentRows, previewMap),
+      };
+    } catch {
+      return null;
     }
   }
 

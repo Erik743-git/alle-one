@@ -1,3 +1,5 @@
+import { parseZabbixGroupNames } from './zabbix-groups.util';
+
 /** Normaliza texto para comparação fuzzy (empresa ↔ grupo Zabbix). */
 export function normalizeForMatch(value: string): string {
   return value
@@ -114,13 +116,15 @@ export function buildZabbixGroupSuggestions(params: {
   const suggestions: ZabbixGroupSuggestion[] = [];
 
   for (const company of params.companies) {
-    const current = company.zabbixGroupName?.trim() || null;
-    const currentValid =
-      current && groupByExact.has(current.toLowerCase());
+    const currentGroups = parseZabbixGroupNames(company.zabbixGroupName);
+    const current = currentGroups.join(';') || null;
+    const currentValid = currentGroups.some((group) =>
+      groupByExact.has(group.toLowerCase()),
+    );
 
     if (params.onlyWithoutValidGroup !== false && currentValid) {
-      if (current) {
-        taken.add(current.toLowerCase());
+      for (const group of currentGroups) {
+        taken.add(group.toLowerCase());
       }
       continue;
     }
@@ -148,10 +152,11 @@ export function buildZabbixGroupSuggestions(params: {
     }
 
     if (
-      current &&
-      current.toLowerCase() === best.group.name.toLowerCase()
+      currentGroups.some(
+        (group) => group.toLowerCase() === best.group.name.toLowerCase(),
+      )
     ) {
-      taken.add(current.toLowerCase());
+      taken.add(best.group.name.toLowerCase());
       continue;
     }
 

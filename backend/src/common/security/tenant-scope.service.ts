@@ -5,6 +5,10 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../../modules/auth/auth-request-user';
+import {
+  parseZabbixGroupNames,
+  zabbixGroupListIncludes,
+} from '../../modules/companies/zabbix-groups.util';
 
 @Injectable()
 export class TenantScopeService {
@@ -75,17 +79,17 @@ export class TenantScopeService {
     }
 
     const company = await this.loadCompanyForClient(user);
-    const allowed = company.zabbixGroupName?.trim();
+    const allowed = parseZabbixGroupNames(company.zabbixGroupName);
 
-    if (!allowed) {
+    if (!allowed.length) {
       throw new ForbiddenException('Empresa sem grupo Zabbix configurado');
     }
 
-    if (allowed.toLowerCase() !== normalized.toLowerCase()) {
+    if (!zabbixGroupListIncludes(company.zabbixGroupName, normalized)) {
       throw new ForbiddenException('Grupo Zabbix não permitido para sua empresa');
     }
 
-    return allowed;
+    return allowed.find((group) => group.toLowerCase() === normalized.toLowerCase())!;
   }
 
   /** CLIENT só enxerga o próprio grupo no monitoramento. */
@@ -97,6 +101,6 @@ export class TenantScopeService {
     }
 
     const company = await this.loadCompanyForClient(user);
-    return company.zabbixGroupName?.trim() ?? null;
+    return parseZabbixGroupNames(company.zabbixGroupName).join(';') || null;
   }
 }

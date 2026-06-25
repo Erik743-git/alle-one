@@ -10,7 +10,10 @@ export type TimelineBlockTone =
   | "plantao"
   | "lunch"
   | "gap"
-  | "voluntary";
+  | "voluntary"
+  | "justifiedApproved"
+  | "justifiedPending"
+  | "justifiedRejected";
 
 export type TimelineBlock = {
   startMin: number;

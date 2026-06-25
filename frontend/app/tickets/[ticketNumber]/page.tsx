@@ -428,6 +428,20 @@ export default function TicketDetailPage() {
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
+                  {data?.portalDescription ? (
+                    <Card className="lg:col-span-2">
+                      <CardHeader>
+                        <CardTitle className="text-base">Descrição do chamado</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <AppointmentDescriptionView
+                          description={data.portalDescription.description}
+                          attachments={data.portalDescription.attachments ?? []}
+                        />
+                      </CardContent>
+                    </Card>
+                  ) : null}
+
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">Solicitante</CardTitle>
@@ -520,7 +534,37 @@ export default function TicketDetailPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {externalGmudRef ? (
+                    {canCreateTicket() ? (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Referência GMUD do cliente
+                        </Label>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <Input
+                            value={externalGmudRefInput}
+                            onChange={(e) => setExternalGmudRefInput(e.target.value)}
+                            placeholder="Ex.: GMUD-2024-001 (vazio remove)"
+                            className="h-11 flex-1"
+                            disabled={gmudLinking}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 shrink-0 sm:min-w-[7rem]"
+                            disabled={gmudLinking}
+                            onClick={() => void handleSaveGmudLink()}
+                          >
+                            {gmudLinking ? (
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : null}
+                            Salvar
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
+                        </p>
+                      </div>
+                    ) : externalGmudRef ? (
                       <p className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm font-medium text-foreground">
                         {externalGmudRef}
                       </p>
@@ -529,38 +573,6 @@ export default function TicketDetailPage() {
                         Nenhuma referência GMUD informada para este ticket.
                       </p>
                     )}
-
-                    {canCreateTicket() ? (
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                        <div className="flex-1 space-y-2">
-                          <Label className="text-xs font-semibold text-muted-foreground">
-                            Referência GMUD do cliente
-                          </Label>
-                          <Input
-                            value={externalGmudRefInput}
-                            onChange={(e) => setExternalGmudRefInput(e.target.value)}
-                            placeholder="Ex.: GMUD-2024-001 (vazio remove)"
-                            className="h-11"
-                            disabled={gmudLinking}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
-                          </p>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-11"
-                          disabled={gmudLinking}
-                          onClick={() => void handleSaveGmudLink()}
-                        >
-                          {gmudLinking ? (
-                            <Loader2 className="mr-2 size-4 animate-spin" />
-                          ) : null}
-                          Salvar
-                        </Button>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
 

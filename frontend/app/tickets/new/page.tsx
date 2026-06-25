@@ -9,13 +9,16 @@ import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { ClassificationCascadeFields } from "@/components/tickets/classification-cascade-fields";
+import {
+  AppointmentDescriptionComposer,
+  type AppointmentBlockComposerHandle,
+} from "@/components/tickets/appointment-description-composer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import {
   canCreateTicket,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
@@ -53,7 +56,7 @@ export default function NewTicketPage() {
   const [catalogs, setCatalogs] = useState<TicketCreateCatalogs | null>(null);
 
   const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const descriptionComposerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [clientId, setClientId] = useState("");
   const [deskId, setDeskId] = useState("");
   const [priorityId, setPriorityId] = useState("");
@@ -231,11 +234,15 @@ export default function NewTicketPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const content = descriptionComposerRef.current?.exportContent();
+    const description = content?.description?.trim() ?? "";
+    const files = content?.files ?? [];
+
     const parsedClient = Number(clientId);
     const parsedDesk = Number(deskId);
     if (
       !title.trim() ||
-      !description.trim() ||
+      !content?.isValid ||
       !Number.isFinite(parsedClient) ||
       !Number.isFinite(parsedDesk)
     ) {
@@ -269,23 +276,26 @@ export default function NewTicketPage() {
 
     try {
       setSaving(true);
-      const res = await ticketsService.createTicket({
-        title: title.trim(),
-        description: description.trim(),
-        clientId: parsedClient,
-        deskId: parsedDesk,
-        priorityId: priorityId ? Number(priorityId) : undefined,
-        servicesCatalogsItemId: catalogItemId
-          ? Number(catalogItemId)
-          : undefined,
-        classificationId: classificationId ?? undefined,
-        responsibleId: responsibleId ? Number(responsibleId) : undefined,
-        requestorId: requestorId ? Number(requestorId) : undefined,
-        requestorName: requestorName.trim() || undefined,
-        requestorEmail: requestorEmail.trim() || undefined,
-        requestorTelephone: requestorTelephone.trim() || undefined,
-        externalGmudRef: externalGmudRef.trim() || undefined,
-      });
+      const res = await ticketsService.createTicket(
+        {
+          title: title.trim(),
+          description,
+          clientId: parsedClient,
+          deskId: parsedDesk,
+          priorityId: priorityId ? Number(priorityId) : undefined,
+          servicesCatalogsItemId: catalogItemId
+            ? Number(catalogItemId)
+            : undefined,
+          classificationId: classificationId ?? undefined,
+          responsibleId: responsibleId ? Number(responsibleId) : undefined,
+          requestorId: requestorId ? Number(requestorId) : undefined,
+          requestorName: requestorName.trim() || undefined,
+          requestorEmail: requestorEmail.trim() || undefined,
+          requestorTelephone: requestorTelephone.trim() || undefined,
+          externalGmudRef: externalGmudRef.trim() || undefined,
+        },
+        files,
+      );
       notifySuccess(res.message);
       router.push(`/tickets/${res.ticketNumber}`);
     } catch (err) {
@@ -338,19 +348,14 @@ export default function NewTicketPage() {
                         required
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Descrição
-                      </Label>
-                      <Textarea
-                        rows={6}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Detalhe o que precisa ser atendido"
-                        className="min-h-[140px]"
-                        required
-                      />
-                    </div>
+                    <AppointmentDescriptionComposer
+                      ref={descriptionComposerRef}
+                      disabled={saving}
+                      labelClassName="text-xs font-semibold text-muted-foreground"
+                      placeholder="Detalhe o que precisa ser atendido"
+                      hintText="Escreva, cole print (Ctrl+V) ou anexe imagens na descrição"
+                      appendButtonLabel="Anexar imagem na descrição"
+                    />
                   </CardContent>
                 </Card>
 

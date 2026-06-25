@@ -12,7 +12,7 @@ import {
   companiesService,
   type Company,
 } from "@/lib/services/companies.service";
-import { ZabbixGroupSelectField } from "@/components/ui/zabbix-group-select-field";
+import { ZabbixGroupMultiSelectField } from "@/components/ui/zabbix-group-select-field";
 import { TifluxClientSelectField } from "@/components/ui/tiflux-client-select-field";
 import {
   getTifluxClients,
@@ -33,6 +33,7 @@ import {
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { AppAlert } from "@/components/ui/app-alert";
+import { parseZabbixGroupNames } from "@/lib/zabbix-groups";
 
 type EmpresaUI = {
   id: string;
@@ -282,10 +283,10 @@ function EditarEmpresaModal({
 
             <div className="space-y-2 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
-                Grupo Zabbix
+                Grupos Zabbix
               </label>
 
-              <ZabbixGroupSelectField
+              <ZabbixGroupMultiSelectField
                 value={form.zabbixGroupName}
                 onChange={(next) => onChange("zabbixGroupName", next)}
               />
@@ -824,7 +825,7 @@ export default function AdminEmpresasPage() {
                           <th className="px-4 py-4 font-semibold">CNPJ</th>
                           <th className="px-4 py-4 font-semibold">Endereço</th>
                           <th className="px-4 py-4 font-semibold">
-                            Grupo Zabbix
+                            Grupos Zabbix
                           </th>
                           <th className="px-4 py-4 font-semibold">
                             Cliente TiFlux
@@ -844,13 +845,13 @@ export default function AdminEmpresasPage() {
                             className="border-t border-border transition hover:bg-muted/30"
                           >
                             <td className="px-4 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                              <div className="flex min-w-[260px] items-center gap-3">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                                   <Building2 size={20} />
                                 </div>
 
-                                <div className="space-y-1">
-                                  <p className="font-semibold text-foreground">
+                                <div className="min-w-0 space-y-1">
+                                  <p className="break-words font-semibold leading-snug text-foreground">
                                     {empresa.nome}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
@@ -877,7 +878,35 @@ export default function AdminEmpresasPage() {
                             </td>
 
                             <td className="px-4 py-4 text-muted-foreground">
-                              {empresa.zabbixGroupName || "--"}
+                              {(() => {
+                                const zabbixGroups = parseZabbixGroupNames(
+                                  empresa.zabbixGroupName,
+                                );
+                                if (!zabbixGroups.length) return "--";
+                                const visibleGroups = zabbixGroups.slice(0, 4);
+                                const hiddenGroups = zabbixGroups.slice(4);
+                                return (
+                                  <div className="flex max-w-[280px] flex-wrap gap-1.5">
+                                    {visibleGroups.map((group) => (
+                                      <span
+                                        key={group}
+                                        className="inline-flex max-w-full rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 font-mono text-[11px] font-medium text-primary"
+                                        title={group}
+                                      >
+                                        <span className="truncate">{group}</span>
+                                      </span>
+                                    ))}
+                                    {hiddenGroups.length ? (
+                                      <span
+                                        className="inline-flex shrink-0 rounded-full border border-border bg-muted px-2 py-0.5 font-mono text-[11px] font-medium text-muted-foreground"
+                                        title={hiddenGroups.join(", ")}
+                                      >
+                                        +{hiddenGroups.length}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })()}
                             </td>
 
                             <td className="px-4 py-4 text-muted-foreground">

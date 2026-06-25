@@ -116,11 +116,34 @@ export class TicketsController {
   @Post()
   @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  create(
+  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  async create(
     @CurrentUser() actor: AuthenticatedRequestUser,
-    @Body() body: CreateTicketDto,
+    @Body('payload') payloadRaw: string,
+    @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.ticketsService.createTicket(actor, body);
+    if (!payloadRaw?.trim()) {
+      throw new BadRequestException('Campo payload é obrigatório.');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payloadRaw);
+    } catch {
+      throw new BadRequestException('Payload JSON inválido.');
+    }
+
+    const dto = plainToInstance(CreateTicketDto, parsed);
+    const errors = await validate(dto);
+    if (errors.length > 0) {
+      const first = errors[0];
+      const msg =
+        Object.values(first.constraints ?? {})[0] ??
+        'Dados do chamado inválidos.';
+      throw new BadRequestException(msg);
+    }
+
+    return this.ticketsService.createTicket(actor, dto, files ?? []);
   }
 
   @Get(':ticketNumber/catalogs/appointment')

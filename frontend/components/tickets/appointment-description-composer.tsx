@@ -37,6 +37,9 @@ export type AppointmentBlockComposerHandle = {
 type Props = {
   disabled?: boolean;
   labelClassName?: string;
+  placeholder?: string;
+  hintText?: string;
+  appendButtonLabel?: string;
 };
 
 function newId() {
@@ -74,7 +77,16 @@ function compactBlocks(blocks: EditorBlock[]): EditorBlock[] {
 export const AppointmentDescriptionComposer = forwardRef<
   AppointmentBlockComposerHandle,
   Props
->(function AppointmentDescriptionComposer({ disabled = false, labelClassName }, ref) {
+>(function AppointmentDescriptionComposer(
+  {
+    disabled = false,
+    labelClassName,
+    placeholder = "Descreva o que foi feito neste trecho…",
+    hintText = "Escreva, cole print (Ctrl+V) no meio do texto, continue escrevendo",
+    appendButtonLabel = "Inserir imagem no final",
+  },
+  ref,
+) {
   const [blocks, setBlocks] = useState<EditorBlock[]>([
     { type: "text", id: newId(), content: "" },
   ]);
@@ -244,9 +256,7 @@ export const AppointmentDescriptionComposer = forwardRef<
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Label className={labelClassName}>Descrição *</Label>
-        <span className="text-xs text-muted-foreground">
-          Escreva, cole print (Ctrl+V) no meio do texto, continue escrevendo
-        </span>
+        <span className="text-xs text-muted-foreground">{hintText}</span>
       </div>
 
       <div
@@ -280,7 +290,7 @@ export const AppointmentDescriptionComposer = forwardRef<
                 onChange={(e) => updateTextBlock(block.id, e.target.value)}
                 onPaste={(e) => handlePasteOnText(e, block.id)}
                 disabled={disabled}
-                placeholder="Descreva o que foi feito neste trecho…"
+                placeholder={placeholder}
                 className="min-h-[72px] resize-y font-sans text-sm"
               />
             );
@@ -306,7 +316,7 @@ export const AppointmentDescriptionComposer = forwardRef<
           <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" disabled={disabled} asChild>
             <label className="cursor-pointer">
               <Paperclip className="mr-1.5 size-3.5" />
-              Inserir imagem no final
+              {appendButtonLabel}
               <input
                 type="file"
                 multiple

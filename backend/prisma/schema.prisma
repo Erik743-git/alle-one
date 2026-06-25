@@ -120,12 +120,16 @@ model User {
   portalTicketAppointments PortalTicketAppointment[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
   portalTicketGmudLinks PortalTicketGmudLink[]
+  portalTicketDescriptions PortalTicketDescription[] @relation("PortalTicketDescriptionCreator")
   appointmentQuestionsAsked RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAskedBy")
   appointmentQuestionsAnswered RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAnsweredBy")
   rendimentoDayEvents          RendimentoDayEvent[]           @relation("RendimentoDayEvents")
   rendimentoGapJustifications  RendimentoGapJustification[]   @relation("RendimentoGapJustifications")
   rendimentoOvertimeBalance    RendimentoOvertimeBalance?     @relation("RendimentoOvertimeBalances")
   rendimentoListPrefsAsCollaborator RendimentoCollaboratorListPref[] @relation("RendimentoListPrefCollaborator")
+  projectsCreated                   Project[]                        @relation("ProjectCreator")
+  projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
+  projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
 
   @@index([companyId])
   @@map("users")
@@ -180,6 +184,7 @@ model Company {
   usageAlertRules      UsageAlertRule[]
   inventoryAssets      InventoryAsset[]
   appointmentQuestions RendimentoAppointmentQuestion[]
+  projects             Project[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -348,6 +353,7 @@ model File {
   gmudAttachments    GmudAttachment[]
   inventoryAssets    InventoryAsset[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
+  projectDocuments   ProjectDocument[]
 
   @@index([uploadedBy])
   @@map("files")
@@ -696,6 +702,19 @@ model PortalTicketAppointmentAttachment {
   @@map("portal_ticket_appointment_attachments")
 }
 
+/// Descrição rica do chamado criada no portal (texto + imagens embutidas).
+model PortalTicketDescription {
+  ticketNumber Int      @id @map("ticket_number")
+  description  String
+  createdBy    String   @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  creator User @relation("PortalTicketDescriptionCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@map("portal_ticket_descriptions")
+}
+
 /// Referência GMUD externa (informada pelo cliente) vinculada ao ticket TiFlux.
 model PortalTicketGmudLink {
   ticketNumber    Int      @id @map("ticket_number")
@@ -825,4 +844,120 @@ model RendimentoCollaboratorListPref {
   collaborator User @relation("RendimentoListPrefCollaborator", fields: [collaboratorUserId], references: [id], onDelete: Cascade)
 
   @@map("rendimento_collaborator_list_prefs")
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELED
+}
+
+enum ProjectBudgetUnit {
+  HOURS
+  DAYS
+}
+
+enum ProjectCompletionApprovalStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Project {
+  id          String        @id @default(uuid())
+  code        Int           @unique @default(autoincrement())
+  companyId   String        @map("company_id")
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  startDate   DateTime?     @map("start_date") @db.Date
+  endDate     DateTime?     @map("end_date") @db.Date
+  budgetUnit  ProjectBudgetUnit? @map("budget_unit")
+  budgetAmount Int?         @map("budget_amount")
+  completionApprovalStatus ProjectCompletionApprovalStatus @default(NOT_REQUIRED) @map("completion_approval_status")
+  completionApprovedBy String? @map("completion_approved_by")
+  completionApprovedAt DateTime? @map("completion_approved_at")
+  completionApprovalNote String? @map("completion_approval_note")
+  createdBy   String        @map("created_by")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  deletedAt   DateTime?     @map("deleted_at")
+
+  company    Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator    User              @relation("ProjectCreator", fields: [createdBy], references: [id])
+  completionApprover User?     @relation("ProjectCompletionApprover", fields: [completionApprovedBy], references: [id])
+  activities ProjectActivity[]
+  documents  ProjectDocument[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([completionApprovalStatus])
+  @@map("projects")
+}
+
+model ProjectActivity {
+  id                 String    @id @default(uuid())
+  projectId          String    @map("project_id")
+  parentId           String?   @map("parent_id")
+  wbsCode            String    @map("wbs_code")
+  name               String
+  level              Int       @default(1)
+  sortOrder          Int       @default(0) @map("sort_order")
+  durationDays       Int       @default(1) @map("duration_days")
+  startDate          DateTime? @map("start_date") @db.Date
+  endDate            DateTime? @map("end_date") @db.Date
+  actualDurationDays Int?      @map("actual_duration_days")
+  progressPercent    Int       @default(0) @map("progress_percent")
+  assigneeUserId     String?   @map("assignee_user_id")
+  assigneeName       String?   @map("assignee_name")
+  isMilestone        Boolean   @default(false) @map("is_milestone")
+  notes              String?
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  project      Project                      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent       ProjectActivity?             @relation("ProjectActivityTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children     ProjectActivity[]            @relation("ProjectActivityTree")
+  assignee     User?                        @relation("ProjectActivityAssignee", fields: [assigneeUserId], references: [id])
+  predecessors ProjectActivityPredecessor[] @relation("ActivitySuccessors")
+  successors   ProjectActivityPredecessor[] @relation("ActivityPredecessors")
+
+  @@unique([projectId, wbsCode])
+  @@index([projectId])
+  @@index([parentId])
+  @@index([assigneeUserId])
+  @@map("project_activities")
+}
+
+model ProjectActivityPredecessor {
+  id            String   @id @default(uuid())
+  activityId    String   @map("activity_id")
+  predecessorId String   @map("predecessor_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  activity    ProjectActivity @relation("ActivitySuccessors", fields: [activityId], references: [id], onDelete: Cascade)
+  predecessor ProjectActivity @relation("ActivityPredecessors", fields: [predecessorId], references: [id], onDelete: Cascade)
+
+  @@unique([activityId, predecessorId])
+  @@index([activityId])
+  @@index([predecessorId])
+  @@map("project_activity_predecessors")
+}
+
+model ProjectDocument {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  fileId    String   @map("file_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([fileId])
+  @@map("project_documents")
 }

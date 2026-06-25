@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { companiesService } from '@/lib/services/companies.service';
-import { ZabbixGroupSelectField } from '@/components/ui/zabbix-group-select-field';
+import { ZabbixGroupMultiSelectField } from '@/components/ui/zabbix-group-select-field';
 import { TifluxClientSelectField } from '@/components/ui/tiflux-client-select-field';
 import { getTifluxClients, type TifluxClient } from '@/lib/services/tiflux.service';
 import { Building2, Upload } from 'lucide-react';
@@ -207,10 +207,10 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
 
             <div className="space-y-2 sm:col-span-2">
               <Label className="font-sans text-sm font-semibold text-foreground">
-                Grupo Zabbix
+                Grupos Zabbix
               </Label>
 
-              <ZabbixGroupSelectField
+              <ZabbixGroupMultiSelectField
                 value={zabbixGroupName}
                 onChange={setZabbixGroupName}
               />

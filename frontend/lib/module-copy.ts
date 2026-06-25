@@ -37,10 +37,10 @@ export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
   "Listar na tela";
 
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
-  "Descreva o motivo do intervalo. Você pode escolher um período parcial dentro do alerta — não é necessário justificar todo o tempo. O horário não pode coincidir com apontamentos em ticket. Após análise da equipe administrativa, o registro será confirmado.";
+  "Descreva o motivo do intervalo detectado pelo sistema (lacuna entre apontamentos ou fim do dia). Você pode escolher um período parcial dentro deste alerta. Para horários em outras faixas do dia (ex.: trabalhou cedo sem ticket), use Justificativa voluntária.";
 
 export const RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC =
-  "Registre um intervalo pontual (ex.: consulta médica) para análise da equipe administrativa.";
+  "Registre um período em que você trabalhou ou esteve ausente sem apontamento em ticket. Escolha livremente data e horário — inclusive se cruzar a meia-noite (ex.: início 23:00, fim 07:00 do dia seguinte).";
 
 export const RENDIMENTO_DEFINE_LUNCH_HINT =
   "Marque se este intervalo corresponde ao horário de almoço.";

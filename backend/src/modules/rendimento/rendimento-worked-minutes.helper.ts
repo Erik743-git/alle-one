@@ -10,7 +10,7 @@ export type AppointmentMinutesInput = {
   valorization_raw?: unknown | null;
 };
 
-export type WorkedMinutesFilter = 'ALL' | 'EXTRA' | 'PLANTAO';
+export type WorkedMinutesFilter = 'ALL' | 'EXTRA' | 'PLANTAO' | 'NORMAL';
 
 export function parseClockToMinutes(value: string | null | undefined): number | null {
   if (!value?.trim()) return null;
@@ -68,6 +68,7 @@ function matchesFilter(
   if (filter === 'ALL') return true;
   if (filter === 'EXTRA') return kind === 'EXTRA';
   if (filter === 'PLANTAO') return kind === 'PLANTAO';
+  if (filter === 'NORMAL') return kind == null;
   return true;
 }
 

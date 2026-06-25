@@ -514,6 +514,14 @@ export function RendimentoTimelineCalendar({
               {loading && !timesheet ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">Sem sobreposição</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Normais (sem extra):{" "}
+              <span className="font-semibold text-foreground">
+                {loading && !timesheet
+                  ? "—"
+                  : timesheet?.totalRegularHoursFormatted ?? "00:00"}
+              </span>
+            </p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground">

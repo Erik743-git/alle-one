@@ -4,6 +4,7 @@ import type {
   DashboardFilters,
   ResolvedCompanyIntegration,
 } from './dashboard.types';
+import { zabbixGroupListIncludes } from '../companies/zabbix-groups.util';
 
 @Injectable()
 export class DashboardIntegrationsService {
@@ -34,12 +35,14 @@ export class DashboardIntegrationsService {
         tifluxClientId = company.tifluxClientId;
       }
     } else if (params.group?.trim()) {
-      const companyByGroup = await this.prisma.company.findFirst({
+      const companiesByGroup = await this.prisma.company.findMany({
         where: {
           deletedAt: null,
-          zabbixGroupName: params.group.trim(),
         },
       });
+      const companyByGroup = companiesByGroup.find((company) =>
+        zabbixGroupListIncludes(company.zabbixGroupName, params.group.trim()),
+      );
 
       if (
         companyByGroup?.tifluxClientId !== null &&

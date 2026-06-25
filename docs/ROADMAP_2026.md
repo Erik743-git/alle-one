@@ -66,6 +66,7 @@ Versão do produto: **0.6.0** (estabilização + confiabilidade).
 - [ ] Sentry / OpenTelemetry
 - [ ] Secret manager
 - [ ] Coolify/K8s vs VM
+- [ ] **Projetos V2** — integração Ticket ↔ Apontamento ↔ Atividade (ver `docs/V2-PROJETOS.md`): apontamento abate tempo da atividade e define responsável automaticamente
 
 ---
 

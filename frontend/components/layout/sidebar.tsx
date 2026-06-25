@@ -18,6 +18,7 @@ import {
   CalendarRange,
   Mail,
   Package,
+  FolderKanban,
   Ticket,
 } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ import {
   canAccessAplicativos,
   canAccessCorreio,
   canAccessInventario,
+  canAccessProjetos,
   canAccessDashboard,
   canAccessFinanceiro,
   canAccessGmud,
@@ -121,6 +123,12 @@ function buildMenuItems(): MenuItem[] {
       href: "/inventario",
       icon: Package,
       visible: canAccessInventario(),
+    },
+    {
+      name: "Projetos",
+      href: "/projetos",
+      icon: FolderKanban,
+      visible: canAccessProjetos(),
     },
     {
       name: "Aplicativos",

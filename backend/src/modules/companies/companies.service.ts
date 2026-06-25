@@ -25,6 +25,10 @@ import {
   buildZabbixGroupSuggestions,
   type ZabbixGroupSuggestion,
 } from './zabbix-group-match.util';
+import {
+  parseZabbixGroupNames,
+  serializeZabbixGroupNames,
+} from './zabbix-groups.util';
 import type { ApplyZabbixGroupSuggestionItemDto } from './dto/zabbix-group-suggest.dto';
 import { assertAllowedUploadMime } from '../../common/upload.config';
 
@@ -146,13 +150,14 @@ export class CompaniesService {
     zabbixGroupName: string | null,
     ignoreId?: string,
   ) {
-    if (!zabbixGroupName) {
+    const groupNames = parseZabbixGroupNames(zabbixGroupName);
+    if (!groupNames.length) {
       return;
     }
 
-    const existing = await this.prisma.company.findFirst({
+    const requested = new Set(groupNames.map((group) => group.toLowerCase()));
+    const companies = await this.prisma.company.findMany({
       where: {
-        zabbixGroupName,
         deletedAt: null,
         ...(ignoreId
           ? {
@@ -162,12 +167,22 @@ export class CompaniesService {
             }
           : {}),
       },
+      select: {
+        id: true,
+        name: true,
+        zabbixGroupName: true,
+      },
     });
 
-    if (existing) {
-      throw new BadRequestException(
-        'Este grupo do Zabbix já está vinculado a outra empresa',
+    for (const company of companies) {
+      const duplicated = parseZabbixGroupNames(company.zabbixGroupName).find(
+        (group) => requested.has(group.toLowerCase()),
       );
+      if (duplicated) {
+        throw new BadRequestException(
+          `O grupo do Zabbix "${duplicated}" já está vinculado à empresa ${company.name}`,
+        );
+      }
     }
   }
 
@@ -265,7 +280,7 @@ export class CompaniesService {
     const email = data.email.trim().toLowerCase();
     const cnpj = this.normalizeCnpj(data.cnpj);
     const address = this.normalizeString(data.address);
-    const zabbixGroupName = this.normalizeString(data.zabbixGroupName);
+    const zabbixGroupName = serializeZabbixGroupNames(data.zabbixGroupName);
     const tifluxClientId = data.tifluxClientId ?? null;
     const tifluxClientName = this.normalizeString(data.tifluxClientName);
 
@@ -340,7 +355,7 @@ export class CompaniesService {
 
     const zabbixGroupName =
       data.zabbixGroupName !== undefined
-        ? this.normalizeString(data.zabbixGroupName)
+        ? serializeZabbixGroupNames(data.zabbixGroupName)
         : existingCompany.zabbixGroupName;
 
     const tifluxClientId =
@@ -842,9 +857,10 @@ export class CompaniesService {
 
     const assignedGroups = new Set<string>();
     for (const company of companies) {
-      const current = company.zabbixGroupName?.trim();
-      if (current && groupByExact.has(current.toLowerCase())) {
-        assignedGroups.add(current.toLowerCase());
+      for (const current of parseZabbixGroupNames(company.zabbixGroupName)) {
+        if (groupByExact.has(current.toLowerCase())) {
+          assignedGroups.add(current.toLowerCase());
+        }
       }
     }
 

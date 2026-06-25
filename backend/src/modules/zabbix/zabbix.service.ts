@@ -9,6 +9,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { ZabbixDbService } from './zabbix-db.service';
 import type { ZabbixDashboardDetails } from './zabbix.types';
+import { parseZabbixGroupNames } from '../companies/zabbix-groups.util';
 
 type ZabbixGroup = {
   groupid: string;
@@ -83,6 +84,7 @@ type ZabbixProblem = {
 type ZabbixEventHostRef = {
   hostid: string;
   name: string;
+  host?: string;
 };
 
 type ZabbixEvent = {
@@ -140,6 +142,37 @@ type ZabbixOverview = {
   problemasAbertos: number;
   problemasAlta: number;
   problemasMedia: number;
+};
+
+export type ConsoleAlertDto = {
+  eventId: string;
+  objectId: string;
+  name: string;
+  severity: number;
+  clock: number;
+  acknowledged: boolean;
+  durationSeconds: number;
+  hostId: string | null;
+  hostName: string | null;
+  tags: Array<{ tag: string; value: string }>;
+  groupName: string;
+};
+
+export type ConsoleAlertsResponse = {
+  group: string;
+  alerts: ConsoleAlertDto[];
+  priorityAlerts: ConsoleAlertDto[];
+  fetchedAt: string;
+};
+
+type ZabbixProblemConsole = ZabbixProblem & {
+  acknowledged?: string;
+  tags?: ZabbixTagRef[];
+};
+
+type ZabbixTriggerWithHosts = {
+  triggerid: string;
+  hosts?: ZabbixEventHostRef[];
 };
 
 export type { ZabbixDashboardDetails } from './zabbix.types';
@@ -242,6 +275,14 @@ export class ZabbixService {
     groupName: string,
     period: number | { startDate: Date; endDate: Date },
   ): Promise<void> {
+    const groupNames = parseZabbixGroupNames(groupName);
+    if (groupNames.length > 1) {
+      await Promise.all(
+        groupNames.map((group) => this.invalidateDashboardCache(group, period)),
+      );
+      return;
+    }
+
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return;
@@ -709,6 +750,14 @@ export class ZabbixService {
   }
 
   async getHostsByGroup(groupName: string): Promise<ZabbixHost[]> {
+    const groupNames = parseZabbixGroupNames(groupName);
+    if (groupNames.length > 1) {
+      const rows = await Promise.all(
+        groupNames.map((group) => this.getHostsByGroup(group)),
+      );
+      return this.dedupeBy(rows.flat(), (host) => host.hostid);
+    }
+
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return [];
@@ -725,6 +774,14 @@ export class ZabbixService {
   async getHostsDetailedByGroup(
     groupName: string,
   ): Promise<ZabbixDetailedHost[]> {
+    const groupNames = parseZabbixGroupNames(groupName);
+    if (groupNames.length > 1) {
+      const rows = await Promise.all(
+        groupNames.map((group) => this.getHostsDetailedByGroup(group)),
+      );
+      return this.dedupeBy(rows.flat(), (host) => host.hostid);
+    }
+
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return [];
@@ -762,10 +819,23 @@ export class ZabbixService {
     groupName: string,
   ): Promise<ZabbixTemplateSummary[]> {
     const hosts = await this.getHostsDetailedByGroup(groupName);
-    return this.buildTemplatesFromDetailedHosts(hosts);
+    return this.dedupeBy(
+      this.buildTemplatesFromDetailedHosts(hosts),
+      (template) => template.templateid,
+    );
   }
 
   async getEventsByGroup(groupName: string, days = 7): Promise<ZabbixEvent[]> {
+    const groupNames = parseZabbixGroupNames(groupName);
+    if (groupNames.length > 1) {
+      const rows = await Promise.all(
+        groupNames.map((group) => this.getEventsByGroup(group, days)),
+      );
+      return this.dedupeBy(rows.flat(), (event) => event.eventid).sort(
+        (a, b) => Number(b.clock ?? 0) - Number(a.clock ?? 0),
+      );
+    }
+
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return [];
@@ -865,6 +935,14 @@ export class ZabbixService {
   }
 
   async getOverviewByGroup(groupName: string): Promise<ZabbixOverview> {
+    const groupNames = parseZabbixGroupNames(groupName);
+    if (groupNames.length > 1) {
+      const details = await this.getDashboardDetailsByGroup(groupName, 7, {
+        skipCache: true,
+      });
+      return details.overview;
+    }
+
     const groupid = await this.getHostGroupIdByExactName(groupName);
     if (!groupid) {
       return {
@@ -907,14 +985,150 @@ export class ZabbixService {
     };
   }
 
+  private dedupeBy<T>(
+    items: T[],
+    getKey: (item: T, index: number) => string | null | undefined,
+  ): T[] {
+    const seen = new Set<string>();
+    const result: T[] = [];
+
+    for (const [index, item] of items.entries()) {
+      const key = getKey(item, index);
+      if (!key) {
+        result.push(item);
+        continue;
+      }
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      result.push(item);
+    }
+
+    return result;
+  }
+
+  private recordKey(
+    item: unknown,
+    candidates: string[],
+    fallbackPrefix: string,
+    index: number,
+  ): string {
+    if (item && typeof item === 'object') {
+      const record = item as Record<string, unknown>;
+      for (const field of candidates) {
+        const value = record[field];
+        if (value !== undefined && value !== null && String(value).trim()) {
+          return String(value);
+        }
+      }
+    }
+
+    return `${fallbackPrefix}:${index}`;
+  }
+
+  private mergeDashboardDetails(
+    groupName: string,
+    days: number,
+    range: { time_from: number; time_till: number },
+    packs: ZabbixDashboardDetails[],
+  ): ZabbixDashboardDetails {
+    const hosts = this.dedupeBy(
+      packs.flatMap((pack) => pack.hosts),
+      (host, index) => this.recordKey(host, ['hostid', 'host', 'name'], 'host', index),
+    );
+    const templates = this.dedupeBy(
+      packs.flatMap((pack) => pack.templates),
+      (template, index) =>
+        this.recordKey(template, ['templateid', 'host', 'name'], 'template', index),
+    );
+    const events = this.dedupeBy(
+      packs.flatMap((pack) => pack.events),
+      (event, index) =>
+        this.recordKey(event, ['eventid', 'objectid'], 'event', index),
+    );
+
+    const totalHosts = hosts.length;
+    const hostsAtivos = hosts.filter(
+      (host) =>
+        host &&
+        typeof host === 'object' &&
+        String((host as Record<string, unknown>).status) === '0',
+    ).length;
+    const hostsInativos = hosts.filter(
+      (host) =>
+        host &&
+        typeof host === 'object' &&
+        String((host as Record<string, unknown>).status) === '1',
+    ).length;
+    const problemasAbertos = packs.reduce(
+      (sum, pack) => sum + pack.overview.problemasAbertos,
+      0,
+    );
+    const problemasAlta = packs.reduce(
+      (sum, pack) => sum + pack.overview.problemasAlta,
+      0,
+    );
+    const problemasMedia = packs.reduce(
+      (sum, pack) => sum + pack.overview.problemasMedia,
+      0,
+    );
+
+    const eventosCriticos = events.filter(
+      (event) => Number(event.severity ?? 0) >= 4,
+    ).length;
+    const eventosMedios = events.filter(
+      (event) => Number(event.severity ?? 0) === 3,
+    ).length;
+    const eventosProblema = events.filter((event) => event.value === '1').length;
+    const eventosRecuperacao = events.filter((event) => event.value === '0').length;
+
+    return {
+      overview: {
+        group: groupName,
+        totalHosts,
+        hostsAtivos,
+        hostsInativos,
+        problemasAbertos,
+        problemasAlta,
+        problemasMedia,
+      },
+      hosts,
+      templates,
+      events,
+      resumo: {
+        totalTemplates: templates.length,
+        totalEventos: events.length,
+        eventosProblema,
+        eventosRecuperacao,
+        eventosCriticos,
+        eventosMedios,
+      },
+      periodo: {
+        dias: days,
+        de: this.getUnixTimestamp(String(range.time_from)),
+        ate: this.getUnixTimestamp(String(range.time_till)),
+      },
+    };
+  }
+
   async getDashboardDetailsByGroup(
     groupName: string,
     period: number | { startDate: Date; endDate: Date } = 7,
     options?: { skipCache?: boolean },
   ): Promise<ZabbixDashboardDetails> {
+    const groupNames = parseZabbixGroupNames(groupName);
     const { range, days } = this.resolveDashboardPeriod(period);
     const startDate = new Date(range.time_from * 1000);
     const endDate = new Date(range.time_till * 1000);
+
+    if (groupNames.length > 1) {
+      const packs = await Promise.all(
+        groupNames.map((group) =>
+          this.getDashboardDetailsByGroup(group, period, options),
+        ),
+      );
+      return this.mergeDashboardDetails(groupName, days, range, packs);
+    }
 
     const useDbCache = process.env.ZABBIX_USE_DB_CACHE !== 'false';
     if (useDbCache && !options?.skipCache) {
@@ -1085,5 +1299,136 @@ export class ZabbixService {
         ate: this.getUnixTimestamp(String(range.time_till)),
       },
     };
+  }
+
+  async getConsoleAlertsForGroup(
+    groupName: string,
+    options: {
+      severities?: number[];
+      acknowledged?: 'yes' | 'no' | 'all';
+      search?: string;
+      limit?: number;
+    } = {},
+  ): Promise<ConsoleAlertsResponse> {
+    const groupNames = parseZabbixGroupNames(groupName);
+    if (groupNames.length > 1) {
+      const parts = await Promise.all(
+        groupNames.map((group) => this.getConsoleAlertsForGroup(group, options)),
+      );
+      const merged = this.dedupeBy(
+        parts.flatMap((part) => part.alerts),
+        (alert) => alert.eventId,
+      );
+      merged.sort(
+        (a, b) =>
+          b.severity - a.severity ||
+          b.clock - a.clock ||
+          a.hostName?.localeCompare(b.hostName ?? '', 'pt-BR') ||
+          0,
+      );
+      const limit = options.limit ?? 500;
+      const alerts = merged.slice(0, limit);
+      return {
+        group: groupName,
+        alerts,
+        priorityAlerts: alerts.filter((row) => row.severity >= 4),
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+
+    const groupid = await this.getHostGroupIdByExactName(groupName);
+    if (!groupid) {
+      return {
+        group: groupName,
+        alerts: [],
+        priorityAlerts: [],
+        fetchedAt: new Date().toISOString(),
+      };
+    }
+
+    const problems = await this.request<ZabbixProblemConsole[]>('problem.get', {
+      output: ['eventid', 'objectid', 'name', 'severity', 'clock', 'acknowledged'],
+      groupids: [groupid],
+      selectTags: ['tag', 'value'],
+      sortfield: ['severity', 'eventid'],
+      sortorder: 'DESC',
+    });
+
+    const triggerIds = [
+      ...new Set(problems.map((problem) => problem.objectid).filter(Boolean)),
+    ];
+    const triggers = triggerIds.length
+      ? await this.request<ZabbixTriggerWithHosts[]>('trigger.get', {
+          triggerids: triggerIds,
+          output: ['triggerid'],
+          selectHosts: ['hostid', 'name', 'host'],
+        })
+      : [];
+    const hostByTrigger = new Map(
+      triggers.map((trigger) => [
+        trigger.triggerid,
+        trigger.hosts?.[0] ?? null,
+      ]),
+    );
+
+    const now = Math.floor(Date.now() / 1000);
+    let alerts: ConsoleAlertDto[] = problems.map((problem) => {
+      const host = hostByTrigger.get(problem.objectid);
+      const clock = Number(problem.clock ?? now);
+      return {
+        eventId: problem.eventid,
+        objectId: problem.objectid,
+        name: problem.name?.trim() || 'Problema sem descrição',
+        severity: Number(problem.severity ?? 0),
+        clock,
+        acknowledged: problem.acknowledged === '1',
+        durationSeconds: Math.max(0, now - clock),
+        hostId: host?.hostid ?? null,
+        hostName: host?.name ?? host?.host ?? null,
+        tags: problem.tags ?? [],
+        groupName,
+      };
+    });
+
+    if (options.severities?.length) {
+      const allowed = new Set(options.severities);
+      alerts = alerts.filter((alert) => allowed.has(alert.severity));
+    }
+
+    if (options.acknowledged === 'yes') {
+      alerts = alerts.filter((alert) => alert.acknowledged);
+    } else if (options.acknowledged === 'no') {
+      alerts = alerts.filter((alert) => !alert.acknowledged);
+    }
+
+    const search = options.search?.trim().toLowerCase();
+    if (search) {
+      alerts = alerts.filter(
+        (alert) =>
+          alert.name.toLowerCase().includes(search) ||
+          (alert.hostName?.toLowerCase().includes(search) ?? false),
+      );
+    }
+
+    const limit = options.limit ?? 500;
+    alerts = alerts.slice(0, limit);
+
+    return {
+      group: groupName,
+      alerts,
+      priorityAlerts: alerts.filter((row) => row.severity >= 4),
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  async acknowledgeEvents(eventIds: string[], message: string) {
+    if (!eventIds.length) {
+      throw new BadGatewayException('Nenhum evento informado para reconhecer.');
+    }
+    return this.request<{ eventids?: string[] }>('event.acknowledge', {
+      eventids: eventIds,
+      action: 6,
+      message: message.trim() || 'Reconhecido via Portal AlleOne',
+    });
   }
 }

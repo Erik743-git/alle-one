@@ -108,6 +108,8 @@ export type RendimentoTimesheet = {
   rangeEnd: string;
   totalMinutes: number;
   totalHoursFormatted: string;
+  totalRegularMinutes: number;
+  totalRegularHoursFormatted: string;
   totalRawMinutes: number;
   totalRawHoursFormatted: string;
   periodOvertimeMinutes: number;

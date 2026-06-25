@@ -16,6 +16,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { ZabbixService } from './zabbix.service';
+import { parseZabbixGroupNames } from '../companies/zabbix-groups.util';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
@@ -35,7 +36,7 @@ export class ZabbixController {
       req.user,
     );
     if (clientGroup) {
-      return [{ name: clientGroup }];
+      return parseZabbixGroupNames(clientGroup).map((name) => ({ name }));
     }
     return this.service.getGroups();
   }

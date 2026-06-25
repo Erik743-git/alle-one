@@ -120,6 +120,8 @@ export type RendimentoTimesheetDto = {
   rangeEnd: string;
   totalMinutes: number;
   totalHoursFormatted: string;
+  totalRegularMinutes: number;
+  totalRegularHoursFormatted: string;
   totalRawMinutes: number;
   totalRawHoursFormatted: string;
   periodOvertimeMinutes: number;
@@ -510,6 +512,31 @@ export class RendimentoService {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  /** Lacunas que cruzam meia-noite (ex. 20:00→03:00) usam gapMinutes no eixo estendido. */
+  private resolveGapSpanMinutes(
+    gap: Pick<RendimentoGapDto, 'fromTime' | 'toTime' | 'gapMinutes'>,
+  ): { from: number; to: number } {
+    const from = this.parseHHMMToMinutes(gap.fromTime);
+    const clockTo = this.parseHHMMToMinutes(gap.toTime);
+    if (clockTo > from) {
+      return { from, to: clockTo };
+    }
+    const span =
+      Number(gap.gapMinutes) > 0
+        ? Math.trunc(Number(gap.gapMinutes))
+        : clockTo + 24 * 60 - from;
+    return { from, to: from + Math.max(span, 0) };
+  }
+
+  private overlapsMinutes(
+    aFrom: number,
+    aTo: number,
+    bFrom: number,
+    bTo: number,
+  ): boolean {
+    return Math.max(aFrom, bFrom) < Math.min(aTo, bTo);
+  }
+
   private justificationSuffix(
     justification?: { status: RendimentoJustificationStatus },
   ): string {
@@ -532,13 +559,12 @@ export class RendimentoService {
   /** Lacuna idle só existe se for estritamente maior que 1h (mesma regra do dia). */
   private demoteLunchGapToIdle(gap: RendimentoGapDto): RendimentoGapDto | null {
     if (gap.gapMinutes <= GAP_ALERT_MINUTES) {
-      return null;
+      return gap.justification ? gap : null;
     }
     return {
       ...gap,
       type: 'idle',
       label: this.gapLabelForType('idle', gap.gapMinutes),
-      justification: undefined,
     };
   }
 
@@ -547,7 +573,118 @@ export class RendimentoService {
   ): RendimentoGapDto[] {
     return gaps.filter(
       (gap) =>
-        gap.type !== 'idle' || gap.gapMinutes > GAP_ALERT_MINUTES,
+        gap.type !== 'idle' ||
+        gap.gapMinutes > GAP_ALERT_MINUTES ||
+        gap.justification != null,
+    );
+  }
+
+  private gapFromJustificationRow(row: GapJustificationRow): RendimentoGapDto {
+    const fromTime = this.normalizeTimeHHMM(row.from_time);
+    const toTime = this.normalizeTimeHHMM(row.to_time);
+    const fromMinutes = this.parseHHMMToMinutes(fromTime);
+    const toMinutes = this.parseHHMMToMinutes(toTime);
+    const gapMinutes =
+      Number(row.gap_minutes) > 0
+        ? Number(row.gap_minutes)
+        : Math.max(0, toMinutes - fromMinutes);
+    const gapType = row.gap_type as 'idle' | 'lunch';
+    const justification = this.mapJustificationDto(row);
+    const suffix = this.justificationStatusSuffix(row.status);
+
+    return {
+      type: gapType,
+      fromTime,
+      toTime,
+      gapMinutes,
+      label: `${this.gapLabelForType(gapType, gapMinutes)}${suffix}`,
+      justification,
+    };
+  }
+
+  /** Garante que justificativas salvas no banco não sumam após filtros de lacuna. */
+  private recoverMissingJustificationGaps(
+    gaps: RendimentoGapDto[],
+    alertJustifications: GapJustificationRow[],
+  ): RendimentoGapDto[] {
+    const visibleIds = new Set(
+      gaps
+        .map((gap) => gap.justification?.id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const missing = alertJustifications.filter((row) => !visibleIds.has(row.id));
+    if (!missing.length) return gaps;
+
+    const recovered = missing.map((row) => this.gapFromJustificationRow(row));
+    return [...gaps, ...recovered].sort((a, b) =>
+      a.fromTime.localeCompare(b.fromTime),
+    );
+  }
+
+  /**
+   * Remove trechos já cobertos por justificativa de alerta (pendente ou aprovada)
+   * de lacunas idle ainda sem vínculo — evita alerta de 90 min quando 12:00–12:30 já foi justificado.
+   */
+  private subtractAlertJustificationsFromUnjustifiedIdleGaps(
+    gaps: RendimentoGapDto[],
+    alertJustifications: GapJustificationRow[],
+  ): RendimentoGapDto[] {
+    const activeCuts = alertJustifications.filter(
+      (row) => row.status === 'PENDING' || row.status === 'APPROVED',
+    );
+    if (!activeCuts.length) return gaps;
+
+    const result: RendimentoGapDto[] = [];
+
+    for (const gap of gaps) {
+      if (gap.type !== 'idle' || gap.justification) {
+        result.push(gap);
+        continue;
+      }
+
+      const { from: gapFrom, to: gapTo } = this.resolveGapSpanMinutes(gap);
+      if (gapTo <= gapFrom) continue;
+
+      let segments: Array<{ from: number; to: number }> = [
+        { from: gapFrom, to: gapTo },
+      ];
+
+      for (const row of activeCuts) {
+        const cutSpan = this.resolvePeriodSpanMinutes(
+          this.normalizeTimeHHMM(row.from_time),
+          this.normalizeTimeHHMM(row.to_time),
+        );
+        if (!cutSpan) continue;
+        const next: Array<{ from: number; to: number }> = [];
+        for (const segment of segments) {
+          next.push(
+            ...this.subtractIntervalFromSegment(
+              segment.from,
+              segment.to,
+              cutSpan.from,
+              cutSpan.to,
+            ),
+          );
+        }
+        segments = next;
+      }
+
+      for (const segment of segments) {
+        const gapMinutes = segment.to - segment.from;
+        if (gapMinutes <= 0) continue;
+        result.push({
+          ...gap,
+          fromTime: this.formatMinutesAsTime(segment.from),
+          toTime: this.formatMinutesAsTime(segment.to),
+          gapMinutes,
+          label: this.gapLabelForType('idle', gapMinutes),
+          justification: undefined,
+        });
+      }
+    }
+
+    return this.filterSubThresholdIdleGaps(
+      result.sort((a, b) => a.fromTime.localeCompare(b.fromTime)),
     );
   }
 
@@ -665,9 +802,19 @@ export class RendimentoService {
     toTime: string,
   ): boolean {
     if (!initTime?.trim() || !endTime?.trim()) return false;
-    const apptFrom = this.normalizeTimeHHMM(initTime);
-    const apptTo = this.normalizeTimeHHMM(endTime);
-    return this.overlaps(fromTime, toTime, apptFrom, apptTo);
+    const period = this.resolvePeriodSpanMinutes(fromTime, toTime);
+    if (!period) return false;
+    const apptFrom = this.parseHHMMToMinutes(this.normalizeTimeHHMM(initTime));
+    let apptTo = this.parseHHMMToMinutes(this.normalizeTimeHHMM(endTime));
+    if (apptTo <= apptFrom) {
+      apptTo += 24 * 60;
+    }
+    return this.overlapsMinutes(
+      period.from,
+      period.to,
+      apptFrom,
+      apptTo,
+    );
   }
 
   private isPeriodContainedInRawGaps(
@@ -675,13 +822,176 @@ export class RendimentoService {
     fromTime: string,
     toTime: string,
   ): boolean {
-    const from = this.parseHHMMToMinutes(fromTime);
-    const to = this.parseHHMMToMinutes(toTime);
+    const period = this.resolvePeriodSpanMinutes(fromTime, toTime);
+    if (!period) return false;
     return rawGaps.some((gap) => {
-      const gapFrom = this.parseHHMMToMinutes(gap.fromTime);
-      const gapTo = this.parseHHMMToMinutes(gap.toTime);
-      return from >= gapFrom && to <= gapTo;
+      const gapSpan = this.resolveGapSpanMinutes(gap);
+      return period.from >= gapSpan.from && period.to <= gapSpan.to;
     });
+  }
+
+  private resolvePeriodSpanMinutes(
+    fromTime: string,
+    toTime: string,
+  ): { from: number; to: number; gapMinutes: number } | null {
+    const from = this.parseHHMMToMinutes(this.normalizeTimeHHMM(fromTime));
+    let to = this.parseHHMMToMinutes(this.normalizeTimeHHMM(toTime));
+    if (to <= from) {
+      to += 24 * 60;
+    }
+    if (to <= from) return null;
+    const gapMinutes = to - from;
+    if (gapMinutes > 24 * 60) return null;
+    return { from, to, gapMinutes };
+  }
+
+  private assertValidJustificationPeriod(fromTime: string, toTime: string): {
+    from: number;
+    to: number;
+    gapMinutes: number;
+  } {
+    const span = this.resolvePeriodSpanMinutes(fromTime, toTime);
+    if (!span) {
+      throw new BadRequestException(
+        'Horário inválido. Se o expediente cruza a meia-noite (ex.: 23:00 até 07:00), informe o horário do dia seguinte no campo fim.',
+      );
+    }
+    return span;
+  }
+
+  private resolveAlertSpanMinutes(
+    alertFrom: string,
+    alertTo: string,
+    alertGapMinutes?: number,
+  ): { from: number; to: number } {
+    const from = this.parseHHMMToMinutes(this.normalizeTimeHHMM(alertFrom));
+    const clockTo = this.parseHHMMToMinutes(this.normalizeTimeHHMM(alertTo));
+    if (clockTo > from) {
+      return { from, to: clockTo };
+    }
+    const span =
+      alertGapMinutes && alertGapMinutes > 0
+        ? Math.trunc(alertGapMinutes)
+        : clockTo + 24 * 60 - from;
+    return { from, to: from + span };
+  }
+
+  private computeTailGapStartMinutes(
+    entries: RendimentoEntryDto[],
+    gaps: RendimentoGapDto[],
+  ): number | null {
+    const regular = entries.filter((entry) => !entry.isOvertime);
+    if (!regular.length) return null;
+
+    let lastEnd = 0;
+    for (const entry of regular) {
+      if (!entry.endTime?.trim()) continue;
+      lastEnd = Math.max(
+        lastEnd,
+        this.parseHHMMToMinutes(this.normalizeTimeHHMM(entry.endTime)),
+      );
+    }
+
+    const lastLunchEnd = gaps
+      .filter((gap) => gap.type === 'lunch')
+      .map((gap) => this.resolveGapSpanMinutes(gap).to)
+      .sort((a, b) => b - a)[0];
+
+    return Math.max(lastEnd, lastLunchEnd ?? lastEnd);
+  }
+
+  /**
+   * Justificativa voluntária aprovada conta como jornada (sem ticket) e reduz
+   * o alerta virtual de fim de dia ("faltou apontar").
+   */
+  private applyApprovedVoluntaryCreditToTailGap(
+    insights: RendimentoDayInsightsDto,
+    entries: RendimentoEntryDto[],
+    dayJustifications: GapJustificationRow[],
+    schedule: RendimentoDaySchedule,
+  ): RendimentoDayInsightsDto {
+    const approvedVoluntaryMinutes = dayJustifications
+      .filter((j) => j.kind === 'VOLUNTARY' && j.status === 'APPROVED')
+      .reduce(
+        (sum, row) => sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
+        0,
+      );
+
+    if (!approvedVoluntaryMinutes) return insights;
+
+    const alertJustifications = dayJustifications.filter(
+      (j) => j.kind !== 'VOLUNTARY',
+    );
+    const explainedAlertMinutes = alertJustifications
+      .filter((j) => j.status === 'APPROVED' || j.status === 'PENDING')
+      .reduce(
+        (sum, row) => sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
+        0,
+      );
+
+    const stillNeeded = Math.max(
+      0,
+      schedule.dailyWorkMinutes -
+        insights.regularMinutes -
+        approvedVoluntaryMinutes,
+    );
+
+    const tailFrom = this.computeTailGapStartMinutes(entries, insights.gaps);
+    if (tailFrom == null) return insights;
+
+    const withoutTailVirtual = insights.gaps.filter((gap) => {
+      if (gap.type !== 'idle') return true;
+      const span = this.resolveGapSpanMinutes(gap);
+      if (Math.abs(span.from - tailFrom) > 1) return true;
+      const justification = gap.justification;
+      if (
+        justification &&
+        justification.kind !== 'VOLUNTARY' &&
+        justification.status === 'PENDING'
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    let nextGaps = [...withoutTailVirtual];
+    const unjustifiedTailMinutes = Math.max(
+      0,
+      stillNeeded - explainedAlertMinutes,
+    );
+    if (unjustifiedTailMinutes > GAP_ALERT_MINUTES) {
+      nextGaps.push({
+        type: 'idle',
+        fromTime: this.formatMinutesAsTime(tailFrom),
+        toTime: this.formatMinutesAsTime(tailFrom + unjustifiedTailMinutes),
+        gapMinutes: unjustifiedTailMinutes,
+        label: this.gapLabelForType('idle', unjustifiedTailMinutes),
+      });
+    }
+
+    nextGaps = this.subtractAlertJustificationsFromUnjustifiedIdleGaps(
+      nextGaps,
+      alertJustifications,
+    );
+    nextGaps = this.recoverMissingJustificationGaps(
+      nextGaps,
+      alertJustifications,
+    );
+    nextGaps.sort((a, b) => a.fromTime.localeCompare(b.fromTime));
+
+    const hasIdleGapAlert = nextGaps.some((gap) => {
+      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
+      const justification = gap.justification;
+      if (!justification) return true;
+      if (justification.kind === 'VOLUNTARY') return false;
+      return justification.status !== 'APPROVED';
+    });
+
+    return {
+      ...insights,
+      gaps: nextGaps,
+      hasIdleGapAlert,
+    };
   }
 
   private assertPeriodWithinAlertBounds(
@@ -689,17 +999,21 @@ export class RendimentoService {
     toTime: string,
     alertFrom?: string,
     alertTo?: string,
+    alertGapMinutes?: number,
   ) {
     if (!alertFrom?.trim() || !alertTo?.trim()) return;
-    const from = this.parseHHMMToMinutes(fromTime);
-    const to = this.parseHHMMToMinutes(toTime);
-    const alertFromMinutes = this.parseHHMMToMinutes(
-      this.normalizeTimeHHMM(alertFrom),
+    const period = this.resolvePeriodSpanMinutes(fromTime, toTime);
+    if (!period) {
+      throw new BadRequestException(
+        'Horário inválido. Se o expediente cruza a meia-noite (ex.: 23:00 até 07:00), informe o horário do dia seguinte no campo fim.',
+      );
+    }
+    const alertSpan = this.resolveAlertSpanMinutes(
+      alertFrom,
+      alertTo,
+      alertGapMinutes,
     );
-    const alertToMinutes = this.parseHHMMToMinutes(
-      this.normalizeTimeHHMM(alertTo),
-    );
-    if (from < alertFromMinutes || to > alertToMinutes) {
+    if (period.from < alertSpan.from || period.to > alertSpan.to) {
       throw new BadRequestException(
         'O período deve estar dentro do alerta selecionado.',
       );
@@ -789,12 +1103,22 @@ export class RendimentoService {
       ) {
         continue;
       }
+      const rowSpan = this.resolvePeriodSpanMinutes(
+        this.normalizeTimeHHMM(row.from_time),
+        this.normalizeTimeHHMM(row.to_time),
+      );
+      const newSpan = this.resolvePeriodSpanMinutes(
+        this.normalizeTimeHHMM(params.fromTime),
+        this.normalizeTimeHHMM(params.toTime),
+      );
       if (
-        this.overlaps(
-          params.fromTime,
-          params.toTime,
-          this.normalizeTimeHHMM(row.from_time),
-          this.normalizeTimeHHMM(row.to_time),
+        rowSpan &&
+        newSpan &&
+        this.overlapsMinutes(
+          newSpan.from,
+          newSpan.to,
+          rowSpan.from,
+          rowSpan.to,
         )
       ) {
         throw new BadRequestException(
@@ -808,17 +1132,15 @@ export class RendimentoService {
     gap: RendimentoGapDto,
     matched: GapJustificationRow,
   ): RendimentoGapDto[] {
-    const gapFrom = this.parseHHMMToMinutes(gap.fromTime);
-    const gapTo = this.parseHHMMToMinutes(gap.toTime);
-    const justFrom = this.parseHHMMToMinutes(
+    const { from: gapFrom, to: gapTo } = this.resolveGapSpanMinutes(gap);
+    const justSpan = this.resolvePeriodSpanMinutes(
       this.normalizeTimeHHMM(matched.from_time),
-    );
-    const justTo = this.parseHHMMToMinutes(
       this.normalizeTimeHHMM(matched.to_time),
     );
+    if (!justSpan) return [gap];
 
-    const overlapFrom = Math.max(gapFrom, justFrom);
-    const overlapTo = Math.min(gapTo, justTo);
+    const overlapFrom = Math.max(gapFrom, justSpan.from);
+    const overlapTo = Math.min(gapTo, justSpan.to);
     if (overlapTo <= overlapFrom) return [gap];
 
     const justification = this.mapJustificationDto(matched);
@@ -909,29 +1231,31 @@ export class RendimentoService {
       }
 
       if (
-        gap.justification?.status === 'APPROVED' &&
+        gap.justification &&
         gap.justification.kind !== 'VOLUNTARY'
       ) {
         result.push(gap);
         continue;
       }
 
-      const from = this.parseHHMMToMinutes(gap.fromTime);
-      const to = this.parseHHMMToMinutes(gap.toTime);
+      const { from, to } = this.resolveGapSpanMinutes(gap);
       if (to <= from) continue;
 
       let segments: Array<{ from: number; to: number }> = [{ from, to }];
       for (const voluntary of approvedVoluntary) {
-        const cutFrom = this.parseHHMMToMinutes(voluntary.from_time);
-        const cutTo = this.parseHHMMToMinutes(voluntary.to_time);
+        const cutSpan = this.resolvePeriodSpanMinutes(
+          this.normalizeTimeHHMM(voluntary.from_time),
+          this.normalizeTimeHHMM(voluntary.to_time),
+        );
+        if (!cutSpan) continue;
         const next: Array<{ from: number; to: number }> = [];
         for (const segment of segments) {
           next.push(
             ...this.subtractIntervalFromSegment(
               segment.from,
               segment.to,
-              cutFrom,
-              cutTo,
+              cutSpan.from,
+              cutSpan.to,
             ),
           );
         }
@@ -971,15 +1295,24 @@ export class RendimentoService {
     justifications: GapJustificationRow[],
     usedIds: Set<string>,
   ): GapJustificationRow | undefined {
-    const gapFrom = this.normalizeTimeHHMM(gap.fromTime);
-    const gapTo = this.normalizeTimeHHMM(gap.toTime);
+    const gapSpan = this.resolveGapSpanMinutes(gap);
 
     return justifications.find((row) => {
       if (usedIds.has(row.id)) return false;
-      const justFrom = this.normalizeTimeHHMM(row.from_time);
-      const justTo = this.normalizeTimeHHMM(row.to_time);
-      if (justFrom === gapFrom && justTo === gapTo) return true;
-      return this.overlaps(gapFrom, gapTo, justFrom, justTo);
+      const justSpan = this.resolvePeriodSpanMinutes(
+        this.normalizeTimeHHMM(row.from_time),
+        this.normalizeTimeHHMM(row.to_time),
+      );
+      if (!justSpan) return false;
+      if (justSpan.from === gapSpan.from && justSpan.to === gapSpan.to) {
+        return true;
+      }
+      return this.overlapsMinutes(
+        gapSpan.from,
+        gapSpan.to,
+        justSpan.from,
+        justSpan.to,
+      );
     });
   }
 
@@ -1008,28 +1341,7 @@ export class RendimentoService {
 
     const orphanJustificationGaps: RendimentoGapDto[] = alertJustifications
       .filter((row) => !usedJustificationIds.has(row.id))
-      .map((row) => {
-        const fromTime = this.normalizeTimeHHMM(row.from_time);
-        const toTime = this.normalizeTimeHHMM(row.to_time);
-        const fromMinutes = this.parseHHMMToMinutes(fromTime);
-        const toMinutes = this.parseHHMMToMinutes(toTime);
-        const gapMinutes =
-          Number(row.gap_minutes) > 0
-            ? Number(row.gap_minutes)
-            : Math.max(0, toMinutes - fromMinutes);
-        const gapType = row.gap_type as 'idle' | 'lunch';
-        const justification = this.mapJustificationDto(row);
-        const suffix = this.justificationStatusSuffix(row.status);
-
-        return {
-          type: gapType,
-          fromTime,
-          toTime,
-          gapMinutes,
-          label: `${this.gapLabelForType(gapType, gapMinutes)}${suffix}`,
-          justification,
-        };
-      });
+      .map((row) => this.gapFromJustificationRow(row));
 
     const mergedGaps = [...gaps, ...orphanJustificationGaps].sort((a, b) =>
       a.fromTime.localeCompare(b.fromTime),
@@ -1043,7 +1355,17 @@ export class RendimentoService {
         dayJustifications,
       );
 
-    const hasIdleGapAlert = gapsWithoutVoluntaryOverlap.some((gap) => {
+    const visibleGaps = this.recoverMissingJustificationGaps(
+      gapsWithoutVoluntaryOverlap,
+      alertJustifications,
+    );
+
+    const trimmedGaps = this.subtractAlertJustificationsFromUnjustifiedIdleGaps(
+      visibleGaps,
+      alertJustifications,
+    );
+
+    const hasIdleGapAlert = trimmedGaps.some((gap) => {
       if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
       const justification = gap.justification;
       if (!justification) return true;
@@ -1054,8 +1376,8 @@ export class RendimentoService {
     return {
       ...insights,
       hasIdleGapAlert,
-      hasExpectedLunch: gapsWithoutVoluntaryOverlap.some((g) => g.type === 'lunch'),
-      gaps: gapsWithoutVoluntaryOverlap,
+      hasExpectedLunch: trimmedGaps.some((g) => g.type === 'lunch'),
+      gaps: trimmedGaps,
     };
   }
 
@@ -1115,8 +1437,36 @@ export class RendimentoService {
       dayJustifications,
       schedule.lunchMinutes,
     );
+    patchedInsights = this.applyApprovedVoluntaryCreditToTailGap(
+      patchedInsights,
+      entries,
+      dayJustifications,
+      schedule,
+    );
     if (isRendimentoDateToday(dateOnly)) {
+      const justifiedGaps = patchedInsights.gaps.filter(
+        (gap) => gap.justification != null,
+      );
       patchedInsights = this.emptyGapInsights(patchedInsights);
+      if (justifiedGaps.length) {
+        const gaps = justifiedGaps.sort((a, b) =>
+          a.fromTime.localeCompare(b.fromTime),
+        );
+        patchedInsights = {
+          ...patchedInsights,
+          gaps,
+          hasIdleGapAlert: gaps.some((gap) => {
+            if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) {
+              return false;
+            }
+            const justification = gap.justification;
+            if (!justification) return true;
+            if (justification.kind === 'VOLUNTARY') return false;
+            return justification.status !== 'APPROVED';
+          }),
+          hasExpectedLunch: gaps.some((g) => g.type === 'lunch'),
+        };
+      }
     }
     return {
       date,
@@ -2095,6 +2445,8 @@ export class RendimentoService {
         rangeEnd: this.toDateOnlyString(end),
         totalMinutes: 0,
         totalHoursFormatted: this.formatMinutes(0),
+        totalRegularMinutes: 0,
+        totalRegularHoursFormatted: this.formatMinutes(0),
         totalRawMinutes: 0,
         totalRawHoursFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
@@ -2165,19 +2517,19 @@ export class RendimentoService {
       end: payrollPeriod.end,
     });
 
-    let totalMinutes = computeUnionWorkedMinutes(rows, 'ALL');
-    let totalRawMinutes = computeRawAppointmentMinutes(rows, 'ALL');
+    let scopedRows = rows;
     if (params.view === 'month') {
       const cal = this.resolveCalendarMonthBounds(reference);
       const calStart = this.toDateOnlyString(cal.start);
       const calEnd = this.toDateOnlyString(cal.end);
-      const monthRows = rows.filter((row) => {
+      scopedRows = rows.filter((row) => {
         const day = String(row.appointment_date).slice(0, 10);
         return day >= calStart && day <= calEnd;
       });
-      totalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
-      totalRawMinutes = computeRawAppointmentMinutes(monthRows, 'ALL');
     }
+    const totalMinutes = computeUnionWorkedMinutes(scopedRows, 'ALL');
+    const totalRawMinutes = computeRawAppointmentMinutes(scopedRows, 'ALL');
+    const totalRegularMinutes = computeUnionWorkedMinutes(scopedRows, 'NORMAL');
 
     const periodOvertimeMinutes = computeUnionWorkedMinutes(
       payrollRows,
@@ -2203,6 +2555,8 @@ export class RendimentoService {
       rangeEnd: this.toDateOnlyString(end),
       totalMinutes,
       totalHoursFormatted: this.formatMinutes(totalMinutes),
+      totalRegularMinutes,
+      totalRegularHoursFormatted: this.formatMinutes(totalRegularMinutes),
       totalRawMinutes,
       totalRawHoursFormatted: this.formatMinutes(totalRawMinutes),
       periodOvertimeMinutes,
@@ -2268,13 +2622,7 @@ export class RendimentoService {
     const date = this.toDateOnlyString(this.parseDateOnly(params.date));
     const fromTime = this.normalizeTimeHHMM(params.fromTime);
     const toTime = this.normalizeTimeHHMM(params.toTime);
-    const fromMinutes = this.parseHHMMToMinutes(fromTime);
-    const toMinutes = this.parseHHMMToMinutes(toTime);
-    if (toMinutes <= fromMinutes) {
-      throw new BadRequestException(
-        'Horário final deve ser maior que o horário inicial.',
-      );
-    }
+    const periodSpan = this.assertValidJustificationPeriod(fromTime, toTime);
 
     const reason = String(params.reason || '').trim();
     if (!reason) {
@@ -2284,7 +2632,7 @@ export class RendimentoService {
     const gapMinutesPreview =
       Number(params.gapMinutes) > 0
         ? Math.trunc(Number(params.gapMinutes))
-        : toMinutes - fromMinutes;
+        : periodSpan.gapMinutes;
     if (
       params.kind !== 'VOLUNTARY' &&
       params.gapType === 'lunch' &&
@@ -2316,7 +2664,7 @@ export class RendimentoService {
     const gapMinutes =
       Number(params.gapMinutes) > 0
         ? Math.trunc(Number(params.gapMinutes))
-        : toMinutes - fromMinutes;
+        : periodSpan.gapMinutes;
     const debitOvertime = Boolean(params.debitOvertime);
     const overtimeMinutes = debitOvertime
       ? Math.max(0, Math.trunc(Number(params.overtimeMinutes) || gapMinutes))
@@ -2436,13 +2784,7 @@ export class RendimentoService {
       ? this.normalizeTimeHHMM(params.toTime ?? current.to_time)
       : this.normalizeTimeHHMM(params.toTime ?? current.to_time);
 
-    const fromMinutes = this.parseHHMMToMinutes(fromTime);
-    const toMinutes = this.parseHHMMToMinutes(toTime);
-    if (toMinutes <= fromMinutes) {
-      throw new BadRequestException(
-        'Horário final deve ser maior que o horário inicial.',
-      );
-    }
+    const periodSpan = this.assertValidJustificationPeriod(fromTime, toTime);
 
     if (!isVoluntary) {
       const user = await this.prisma.user.findFirst({
@@ -2469,7 +2811,7 @@ export class RendimentoService {
       });
     }
 
-    const gapMinutes = toMinutes - fromMinutes;
+    const gapMinutes = periodSpan.gapMinutes;
 
     await this.prisma.$executeRawUnsafe(
       `

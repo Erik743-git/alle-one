@@ -46,6 +46,7 @@ export const PORTAL_PERMISSION_MODULES: Array<{
   { key: "RENDIMENTO", label: "Apontamentos" },
   { key: "CORREIO", label: "Correio" },
   { key: "INVENTARIO", label: "Inventário" },
+  { key: "PROJECTS", label: "Projetos" },
   { key: "TICKETS", label: "Tickets" },
   { key: "ADMIN", label: "Administração" },
 ];

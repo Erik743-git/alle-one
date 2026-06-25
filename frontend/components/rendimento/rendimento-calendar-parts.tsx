@@ -505,7 +505,7 @@ export function dayInsightsForDisplay(summary?: RendimentoDaySummary) {
     const j = g.justification;
     if (!j) return true;
     if (j.kind === "VOLUNTARY") return false;
-    return j.status !== "APPROVED";
+    return j.status === "PENDING";
   });
 
   return {

@@ -89,6 +89,13 @@ const ROLE_FALLBACK: Record<
       canDelete: true,
       canApprove: false,
     },
+    PROJECTS: {
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: true,
+      canApprove: false,
+    },
   },
   PJ: {
     DASHBOARD: {
@@ -133,6 +140,13 @@ const ROLE_FALLBACK: Record<
       canDelete: false,
       canApprove: false,
     },
+    PROJECTS: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
   },
   CLIENT: {
     DASHBOARD: {
@@ -171,6 +185,13 @@ const ROLE_FALLBACK: Record<
       canApprove: false,
     },
     INVENTARIO: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    PROJECTS: {
       canView: true,
       canCreate: false,
       canEdit: false,

@@ -35,6 +35,17 @@ export {
   type TimelineRange,
 } from "@/lib/rendimento/timeline";
 
+function resolveGapTimelineTone(gap: RendimentoGap): TimelineBlockTone {
+  if (gap.type === "lunch") return "lunch";
+  const justification = gap.justification;
+  if (justification && justification.kind !== "VOLUNTARY") {
+    if (justification.status === "APPROVED") return "justifiedApproved";
+    if (justification.status === "PENDING") return "justifiedPending";
+    if (justification.status === "REJECTED") return "justifiedRejected";
+  }
+  return "gap";
+}
+
 export function buildTimelineBlocks(
   summary: RendimentoDaySummary,
   options?: { appointmentsOnly?: boolean },
@@ -75,7 +86,7 @@ export function buildTimelineBlocks(
           endMin: interval.endMin,
           label: gap.label,
           sub: `${gap.gapMinutes} min`,
-          tone: gap.type === "lunch" ? "lunch" : "gap",
+          tone: resolveGapTimelineTone(gap),
         };
       }
 
@@ -104,6 +115,12 @@ export function timelineBlockClass(tone: TimelineBlockTone): string {
       return "bg-emerald-500/80 border-emerald-600/40";
     case "gap":
       return "bg-orange-500/80 border-orange-600/40";
+    case "justifiedApproved":
+      return "bg-emerald-500/80 border-emerald-600/40";
+    case "justifiedPending":
+      return "bg-sky-500/75 border-sky-600/40";
+    case "justifiedRejected":
+      return "bg-rose-500/80 border-rose-600/40";
     case "voluntary":
       return "bg-sky-500/75 border-sky-600/40";
     default:

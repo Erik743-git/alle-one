@@ -52,6 +52,7 @@ const COLLABORATOR_DEFAULT_VIEW: PermissionModuleKey[] = [
   "GMUD",
   "CORREIO",
   "INVENTARIO",
+  "PROJECTS",
   "RENDIMENTO",
 ];
 
@@ -75,6 +76,7 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
       "RENDIMENTO",
       "GMUD",
       "INVENTARIO",
+      "PROJECTS",
     ];
     if (clientMatrixModules.includes(module)) {
       const entry = getModuleEntry(module);
@@ -82,7 +84,8 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
       if (
         module === "FINANCIAL" ||
         module === "RENDIMENTO" ||
-        module === "INVENTARIO"
+        module === "INVENTARIO" ||
+        module === "PROJECTS"
       ) {
         return true;
       }
@@ -230,6 +233,26 @@ export function canDeleteInventario() {
   if (isClient() || isPj()) return false;
   if (isAdmin()) return true;
   return hasPermission("INVENTARIO", "canDelete");
+}
+
+export function canAccessProjetos() {
+  if (isPj()) return canViewModule("PROJECTS");
+  if (isClient()) {
+    const entry = getModuleEntry("PROJECTS");
+    if (entry && entry.canView === false) return false;
+    return true;
+  }
+  return canViewModule("PROJECTS");
+}
+
+export function canEditProjetos() {
+  if (isClient() || isPj()) return false;
+  if (isAdmin()) return true;
+  return hasPermission("PROJECTS", "canEdit");
+}
+
+export function canImportProjetos() {
+  return canEditProjetos();
 }
 
 export function canAccessAplicativos() {

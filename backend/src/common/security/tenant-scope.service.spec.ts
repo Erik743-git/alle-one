@@ -61,4 +61,20 @@ describe('TenantScopeService', () => {
       service.assertZabbixGroupAccess(clientUser, 'ALLE - Cliente'),
     ).resolves.toBe('ALLE - Cliente');
   });
+
+  it('aceita múltiplos grupos Zabbix separados por ponto e vírgula', async () => {
+    (prisma.company.findFirst as jest.Mock).mockResolvedValue({
+      id: 'c1',
+      tifluxClientId: 42,
+      zabbixGroupName: 'Grupo A;Grupo B',
+    });
+
+    await expect(
+      service.assertZabbixGroupAccess(clientUser, 'Grupo B'),
+    ).resolves.toBe('Grupo B');
+
+    await expect(service.resolveZabbixGroupForList(clientUser)).resolves.toBe(
+      'Grupo A;Grupo B',
+    );
+  });
 });

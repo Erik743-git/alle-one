@@ -35,7 +35,7 @@ export class UpdateCompanyDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(150)
+  @MaxLength(1000)
   zabbixGroupName?: string;
 
   @IsOptional()

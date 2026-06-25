@@ -28,6 +28,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { RendimentoModule } from './modules/rendimento/rendimento.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
+import { ProjetosModule } from './modules/projetos/projetos.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { IntegrationsHealthJob } from './integrations/integrations-health.job';
 
@@ -63,6 +64,7 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
     RendimentoModule,
     MailboxModule,
     InventarioModule,
+    ProjetosModule,
     TicketsModule,
   ],
   controllers: [AppController],

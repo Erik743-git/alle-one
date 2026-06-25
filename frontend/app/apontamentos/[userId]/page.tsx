@@ -29,6 +29,11 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { useConfirm } from "@/lib/confirm";
 import {
+  isInvalidSameTimePeriod,
+  isPeriodWithinAlertBounds,
+  minutesBetweenClockTimes,
+} from "@/lib/rendimento/alert-period";
+import {
   RENDIMENTO_LUNCH_MAX_MINUTES,
   rendimentoLunchMaxLabel,
 } from "@/lib/rendimento/constants";
@@ -61,10 +66,7 @@ function parseTimeToMinutes(value: string): number | null {
 }
 
 function minutesBetweenTimes(from: string, to: string): number {
-  const start = parseTimeToMinutes(from);
-  const end = parseTimeToMinutes(to);
-  if (start === null || end === null || end <= start) return 0;
-  return end - start;
+  return minutesBetweenClockTimes(from, to);
 }
 
 export default function RendimentoAgendaPage() {
@@ -100,6 +102,7 @@ export default function RendimentoAgendaPage() {
   const [justTo, setJustTo] = useState("");
   const [justAlertFrom, setJustAlertFrom] = useState("");
   const [justAlertTo, setJustAlertTo] = useState("");
+  const [justAlertGapMinutes, setJustAlertGapMinutes] = useState(0);
   const [defineLunch, setDefineLunch] = useState(false);
   const [justReason, setJustReason] = useState("");
   const [debitOvertime, setDebitOvertime] = useState(false);
@@ -118,31 +121,32 @@ export default function RendimentoAgendaPage() {
     () => minutesBetweenTimes(justFrom, justTo),
     [justFrom, justTo],
   );
-  const invalidTimeRange = useMemo(() => {
-    const start = parseTimeToMinutes(justFrom);
-    const end = parseTimeToMinutes(justTo);
-    return start !== null && end !== null && end <= start;
-  }, [justFrom, justTo]);
+  const invalidTimeRange = useMemo(
+    () => isInvalidSameTimePeriod(justFrom, justTo),
+    [justFrom, justTo],
+  );
   const lunchTooLong =
     justMode === "ALERT" &&
     defineLunch &&
     justGapMinutes > RENDIMENTO_LUNCH_MAX_MINUTES;
   const alertPeriodOutOfBounds = useMemo(() => {
     if (justMode !== "ALERT" || !justAlertFrom || !justAlertTo) return false;
-    const start = parseTimeToMinutes(justFrom);
-    const end = parseTimeToMinutes(justTo);
-    const alertStart = parseTimeToMinutes(justAlertFrom);
-    const alertEnd = parseTimeToMinutes(justAlertTo);
-    if (
-      start === null ||
-      end === null ||
-      alertStart === null ||
-      alertEnd === null
-    ) {
-      return false;
-    }
-    return start < alertStart || end > alertEnd;
-  }, [justAlertFrom, justAlertTo, justFrom, justMode, justTo]);
+    if (!justFrom.trim() || !justTo.trim()) return false;
+    return !isPeriodWithinAlertBounds({
+      from: justFrom,
+      to: justTo,
+      alertFrom: justAlertFrom,
+      alertTo: justAlertTo,
+      alertGapMinutes: justAlertGapMinutes,
+    });
+  }, [
+    justAlertFrom,
+    justAlertGapMinutes,
+    justAlertTo,
+    justFrom,
+    justMode,
+    justTo,
+  ]);
 
   const loadTimesheet = useCallback(async () => {
     if (!userId) return;
@@ -198,6 +202,7 @@ export default function RendimentoAgendaPage() {
     setJustTo(params.toTime);
     setJustAlertFrom(params.fromTime);
     setJustAlertTo(params.toTime);
+    setJustAlertGapMinutes(params.gapMinutes);
     setDefineLunch(params.gapType === "lunch");
     setJustReason("");
     setDebitOvertime(false);
@@ -212,6 +217,7 @@ export default function RendimentoAgendaPage() {
     setJustTo("09:00");
     setJustAlertFrom("");
     setJustAlertTo("");
+    setJustAlertGapMinutes(0);
     setDefineLunch(false);
     setJustReason("");
     setDebitOvertime(false);
@@ -249,7 +255,9 @@ export default function RendimentoAgendaPage() {
       return;
     }
     if (invalidTimeRange) {
-      notifyError("O horário final deve ser maior que o horário inicial.");
+      notifyError(
+        "Informe horários válidos. Se o expediente cruza a meia-noite (ex.: 23:00 até 07:00), use o horário do dia seguinte no campo fim.",
+      );
       return;
     }
     if (lunchTooLong) {
@@ -467,14 +475,27 @@ export default function RendimentoAgendaPage() {
                       </p>
                     ) : null}
                   </div>
-                  {alertPeriodOutOfBounds ? (
+                    {alertPeriodOutOfBounds ? (
                     <p className="text-xs font-medium text-rose-500">
-                      O período deve estar entre {justAlertFrom} e {justAlertTo}.
+                      O período deve estar dentro do alerta (
+                      {justAlertFrom} – {justAlertTo}
+                      {justAlertGapMinutes > 0 &&
+                      parseTimeToMinutes(justAlertTo) !== null &&
+                      parseTimeToMinutes(justAlertFrom) !== null &&
+                      (parseTimeToMinutes(justAlertTo) ?? 0) <=
+                        (parseTimeToMinutes(justAlertFrom) ?? 0)
+                        ? ` · ${justAlertGapMinutes} min`
+                        : ""}
+                      ). Para outro horário do dia (ex.: trabalhou cedo sem
+                      ticket), feche e use{" "}
+                      <span className="font-semibold">Justificativa voluntária</span>.
                     </p>
                   ) : null}
                   {invalidTimeRange ? (
                     <p className="text-xs font-medium text-rose-500">
-                      O horário final deve ser maior que o horário inicial.
+                      Horário inválido ou início igual ao fim. Expediente
+                      noturno: informe o fim no dia seguinte (ex.: início 23:00,
+                      fim 07:00).
                     </p>
                   ) : null}
                   {lunchTooLong ? (
