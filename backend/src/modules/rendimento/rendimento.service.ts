@@ -960,12 +960,41 @@ export class RendimentoService {
       stillNeeded - explainedAlertMinutes,
     );
     if (unjustifiedTailMinutes > GAP_ALERT_MINUTES) {
+      // Os minutos da justificativa voluntária já foram creditados acima
+      // (em `stillNeeded`). Aqui é só posicionamento visual: o déficit de
+      // jornada começa no fim do último apontamento, mas não pode invadir a
+      // janela de uma justificativa voluntária aprovada — senão parece que o
+      // alerta ignora a justificativa.
+      const approvedVoluntarySpans = dayJustifications
+        .filter((j) => j.kind === 'VOLUNTARY' && j.status === 'APPROVED')
+        .map((j) =>
+          this.resolvePeriodSpanMinutes(
+            this.normalizeTimeHHMM(j.from_time),
+            this.normalizeTimeHHMM(j.to_time),
+          ),
+        )
+        .filter(
+          (span): span is { from: number; to: number; gapMinutes: number } =>
+            span != null,
+        )
+        .sort((a, b) => a.from - b.from);
+
+      let tailTo = tailFrom + unjustifiedTailMinutes;
+      for (const span of approvedVoluntarySpans) {
+        if (span.from > tailFrom && span.from < tailTo) {
+          tailTo = span.from;
+        }
+      }
+      if (tailTo <= tailFrom) {
+        tailTo = tailFrom + unjustifiedTailMinutes;
+      }
+
       nextGaps.push({
         type: 'idle',
         fromTime: this.formatMinutesAsTime(tailFrom),
-        toTime: this.formatMinutesAsTime(tailFrom + unjustifiedTailMinutes),
+        toTime: this.formatMinutesAsTime(tailTo),
         gapMinutes: unjustifiedTailMinutes,
-        label: this.gapLabelForType('idle', unjustifiedTailMinutes),
+        label: `Faltam ${unjustifiedTailMinutes} min para fechar a jornada`,
       });
     }
 
