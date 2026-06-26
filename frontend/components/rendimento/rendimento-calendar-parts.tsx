@@ -180,6 +180,7 @@ export function RendimentoGapBlock({
   const justificationPending = justification?.status === "PENDING";
   const justificationApproved = justification?.status === "APPROVED";
   const justificationRejected = justification?.status === "REJECTED";
+  const isTailDeficit = gap.label.startsWith("Faltam ");
   return (
     <li
       className={cn(
@@ -225,7 +226,7 @@ export function RendimentoGapBlock({
         </div>
       ) : null}
       <div className="flex flex-wrap gap-1">
-        {onJustify && !isLunch && !justification ? (
+        {onJustify && !isLunch && !justification && !isTailDeficit ? (
           <button
             type="button"
             className="rounded bg-background/70 px-2 py-0.5 text-[10px] font-bold text-foreground hover:bg-background"
