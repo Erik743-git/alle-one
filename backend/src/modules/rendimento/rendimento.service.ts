@@ -1695,8 +1695,12 @@ export class RendimentoService {
             AND date_ref = $2::date
             AND event_type = $3
             AND appointment_external_id = $4
-            AND deleted_at IS NULL
+            AND (
+              deleted_at IS NULL
+              OR status IN ('APPROVED', 'REJECTED')
+            )
           ORDER BY
+            deleted_at NULLS FIRST,
             CASE status
               WHEN 'APPROVED' THEN 0
               WHEN 'REJECTED' THEN 1
@@ -1900,6 +1904,7 @@ export class RendimentoService {
           AND appointment_external_id = $4
           AND id <> $5
           AND deleted_at IS NULL
+          AND status NOT IN ('APPROVED', 'REJECTED')
       `,
         params.userId,
         params.dateRef,
@@ -1917,6 +1922,7 @@ export class RendimentoService {
         AND source_key = $2
         AND id <> $3
         AND deleted_at IS NULL
+        AND status NOT IN ('APPROVED', 'REJECTED')
     `,
       params.userId,
       params.sourceKey,
@@ -3457,7 +3463,6 @@ export class RendimentoService {
                 AND decided.event_type = e.event_type
                 AND decided.appointment_external_id = e.appointment_external_id
                 AND decided.status IN ('APPROVED', 'REJECTED')
-                AND decided.deleted_at IS NULL
                 AND decided.id <> e.id
             )
           )

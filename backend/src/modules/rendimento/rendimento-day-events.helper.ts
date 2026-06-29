@@ -27,6 +27,33 @@ export type RendimentoDayEventStatus =
   | 'APPROVED'
   | 'REJECTED';
 
+/** Decisões de HE/plantão que o sync nunca deve apagar (soft-delete). */
+export const PROTECTED_OVERTIME_DECISION_STATUSES: RendimentoDayEventStatus[] = [
+  'APPROVED',
+  'REJECTED',
+];
+
+export function isProtectedOvertimeDecisionStatus(
+  status: RendimentoDayEventStatus,
+): boolean {
+  return PROTECTED_OVERTIME_DECISION_STATUSES.includes(status);
+}
+
+export function dayEventStatusPriority(
+  status: RendimentoDayEventStatus,
+): number {
+  switch (status) {
+    case 'APPROVED':
+      return 0;
+    case 'REJECTED':
+      return 1;
+    case 'PENDING':
+      return 2;
+    default:
+      return 3;
+  }
+}
+
 export type RendimentoDayEventRow = {
   id: string;
   user_id: string;
