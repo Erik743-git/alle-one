@@ -47,5 +47,17 @@ module.exports = {
         PORT: "3031",
       },
     },
+    {
+      name: "alleone-tiflux-sync",
+      cwd: "/home/alleone/producao/alleone-tiflux-sync",
+      script: "dist/main.js",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      max_memory_restart: "512M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
   ],
 };
