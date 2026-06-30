@@ -245,6 +245,14 @@ export function canAccessProjetos() {
   return canViewModule("PROJECTS");
 }
 
+export function canAccessConsole() {
+  return canViewModule("MONITORING");
+}
+
+export function canAcknowledgeConsoleAlerts() {
+  return hasPermission("MONITORING", "canEdit");
+}
+
 export function canEditProjetos() {
   if (isClient() || isPj()) return false;
   if (isAdmin()) return true;
