@@ -10,6 +10,14 @@ export type InventoryCompany = {
   expiredCount: number;
 };
 
+export type InventoryAssetTypeOverview = {
+  id: string;
+  name: string;
+  assetsCount: number;
+  expiredCount: number;
+  companiesCount: number;
+};
+
 export type InventoryAssetType = {
   id: string;
   name: string;
@@ -45,6 +53,15 @@ export const INVENTORY_DEFAULT_SUPPLIER = "Alle Tecnologia";
 export type InventoryAssetsResponse = {
   company: { id: string; name: string };
   assets: InventoryAsset[];
+};
+
+export type InventoryAssetWithCompany = InventoryAsset & {
+  companyName: string;
+};
+
+export type InventoryAssetsByTypeResponse = {
+  assetType: { id: string; name: string };
+  assets: InventoryAssetWithCompany[];
 };
 
 export const INVENTORY_REMINDER_OPTIONS = [
@@ -117,6 +134,18 @@ export const inventarioService = {
 
   listCompanies() {
     return apiRequest<InventoryCompany[]>("/inventario/companies");
+  },
+
+  listAssetTypesOverview() {
+    return apiRequest<InventoryAssetTypeOverview[]>(
+      "/inventario/asset-types/overview",
+    );
+  },
+
+  listAssetsByType(assetTypeId: string) {
+    return apiRequest<InventoryAssetsByTypeResponse>(
+      `/inventario/asset-types/${assetTypeId}/assets`,
+    );
   },
 
   listAssets(companyId: string) {

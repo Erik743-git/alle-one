@@ -2501,17 +2501,28 @@ export class ReportsService {
   }
 
   private async loadInventarioReportRows(
-    companyId: string,
+    companyIds: string[],
   ): Promise<InventarioReportRow[]> {
     const today = this.startOfDay();
+    const multiCompany = companyIds.length > 1;
     const rows = await this.prisma.inventoryAsset.findMany({
-      where: { companyId, deletedAt: null },
-      include: { assetType: { select: { name: true } } },
-      orderBy: [
-        { assetType: { name: 'asc' } },
-        { brand: 'asc' },
-        { name: 'asc' },
-      ],
+      where: { companyId: { in: companyIds }, deletedAt: null },
+      include: {
+        assetType: { select: { name: true } },
+        company: { select: { name: true } },
+      },
+      orderBy: multiCompany
+        ? [
+            { company: { name: 'asc' } },
+            { assetType: { name: 'asc' } },
+            { brand: 'asc' },
+            { name: 'asc' },
+          ]
+        : [
+            { assetType: { name: 'asc' } },
+            { brand: 'asc' },
+            { name: 'asc' },
+          ],
     });
 
     return rows.map((row) => {
@@ -2523,6 +2534,7 @@ export class ReportsService {
         : false;
 
       return {
+        ...(multiCompany ? { companyName: row.company.name } : {}),
         assetTypeName: row.assetType.name,
         brand: row.brand,
         quantity: row.quantity,
@@ -2536,44 +2548,111 @@ export class ReportsService {
     });
   }
 
-  private async generateInventarioCsv(params: {
-    companyId: string;
-    generatedAt: Date;
-  }) {
-    const company = await this.prisma.company.findFirst({
-      where: { id: params.companyId, deletedAt: null },
-      select: { name: true },
-    });
-    if (!company) throw new NotFoundException('Empresa não encontrada');
+  private async resolveInventarioReportScope(
+    user: AuthenticatedRequestUser,
+    payload: { companyId?: string; companyIds?: string[] },
+  ) {
+    const scope = await this.getAccessibleCompanyIds(user);
+    const companyId = payload.companyId?.trim() || '';
 
-    const rows = await this.loadInventarioReportRows(params.companyId);
+    if (companyId === ALL_COMPANIES_REPORT_ID) {
+      const companies = await this.prisma.company.findMany({
+        where: { id: { in: scope }, deletedAt: null },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      });
+      return {
+        companyIds: companies.map((c) => c.id),
+        scopeLabel: 'Todas as empresas',
+        allCompanies: true,
+        representativeCompanyId: companies[0]?.id ?? '',
+        logoCompanyId: companies.find((c) =>
+          c.name.trim().toLowerCase().includes('alle'),
+        )?.id,
+      };
+    }
+
+    const rawIds =
+      payload.companyIds?.length && payload.companyIds.length > 0
+        ? payload.companyIds
+        : companyId
+          ? [companyId]
+          : [];
+
+    const unique = [...new Set(rawIds.map((id) => id.trim()).filter(Boolean))];
+    if (!unique.length) {
+      throw new BadRequestException('Selecione ao menos uma empresa.');
+    }
+
+    for (const id of unique) {
+      this.ensureCompanyInScope(id, scope);
+    }
+
+    const companies = await this.prisma.company.findMany({
+      where: { id: { in: unique }, deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    if (companies.length !== unique.length) {
+      throw new BadRequestException('Empresa inválida.');
+    }
+
+    const scopeLabel =
+      companies.length === 1
+        ? companies[0].name
+        : `${companies.length} empresas selecionadas`;
+
+    return {
+      companyIds: companies.map((c) => c.id),
+      scopeLabel,
+      allCompanies: companies.length === scope.length,
+      representativeCompanyId: companies[0].id,
+      logoCompanyId: companies.length === 1 ? companies[0].id : undefined,
+    };
+  }
+
+  private async generateInventarioCsv(params: {
+    companyIds: string[];
+    scopeLabel: string;
+    generatedAt: Date;
+    logoCompanyId?: string;
+  }) {
+    const rows = await this.loadInventarioReportRows(params.companyIds);
     return buildInventarioReportCsv({
-      companyName: company.name,
+      scopeLabel: params.scopeLabel,
       generatedAt: params.generatedAt,
       rows,
+      multiCompany: params.companyIds.length > 1,
     });
   }
 
   private async generateInventarioXlsx(params: {
-    companyId: string;
+    companyIds: string[];
+    scopeLabel: string;
     generatedAt: Date;
+    logoCompanyId?: string;
   }) {
-    const company = await this.prisma.company.findFirst({
-      where: { id: params.companyId, deletedAt: null },
-      select: {
-        name: true,
-        logoFile: { select: { path: true, mimeType: true } },
-      },
-    });
-    if (!company) throw new NotFoundException('Empresa não encontrada');
+    let logoPath: string | null = null;
+    let logoMimeType: string | null = null;
+    if (params.logoCompanyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: params.logoCompanyId, deletedAt: null },
+        select: {
+          logoFile: { select: { path: true, mimeType: true } },
+        },
+      });
+      logoPath = company?.logoFile?.path ?? null;
+      logoMimeType = company?.logoFile?.mimeType ?? null;
+    }
 
-    const rows = await this.loadInventarioReportRows(params.companyId);
+    const rows = await this.loadInventarioReportRows(params.companyIds);
     return buildInventarioReportXlsx({
-      companyName: company.name,
+      scopeLabel: params.scopeLabel,
       generatedAt: params.generatedAt,
       rows,
-      logoPath: company.logoFile?.path ?? null,
-      logoMimeType: company.logoFile?.mimeType ?? null,
+      multiCompany: params.companyIds.length > 1,
+      logoPath,
+      logoMimeType,
     });
   }
 
@@ -2689,6 +2768,7 @@ export class ReportsService {
       start?: string;
       end?: string;
       userId?: string | null;
+      companyIds?: string[];
     },
   ) {
     const companyId = payload.companyId?.trim();
@@ -2703,15 +2783,19 @@ export class ReportsService {
     }
 
     const isInventario = type === '5';
+    const inventarioScope = isInventario
+      ? await this.resolveInventarioReportScope(user, {
+          companyId,
+          companyIds: payload.companyIds,
+        })
+      : null;
 
     if (
-      (type === '4' || isInventario) &&
+      type === '4' &&
       companyId === ALL_COMPANIES_REPORT_ID
     ) {
       throw new BadRequestException(
-        isInventario
-          ? 'Inventário exige uma empresa específica.'
-          : 'Estatística Geral exige uma empresa específica.',
+        'Estatística Geral exige uma empresa específica.',
       );
     }
 
@@ -2721,12 +2805,13 @@ export class ReportsService {
         : null;
 
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
-    if (type === '4' || isInventario) {
+    if (type === '4') {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
     const reportCompanyId =
       rendimentoScope?.representativeCompanyId ??
+      inventarioScope?.representativeCompanyId ??
       (companyId === ALL_COMPANIES_REPORT_ID ? '' : companyId);
     if (!reportCompanyId) {
       throw new BadRequestException(
@@ -2761,11 +2846,19 @@ export class ReportsService {
     const reportId = randomUUID();
     const uploadsDir = join(process.cwd(), 'uploads', 'reports', reportId);
 
-    const companyPart =
-      rendimentoScope?.allCompanies
+    const companyPart = isInventario
+      ? inventarioScope!.allCompanies
+        ? 'todas-empresas'
+        : inventarioScope!.companyIds.length > 1
+          ? 'multiplas-empresas'
+          : safeFilenamePart(inventarioScope!.scopeLabel) || 'empresa'
+      : rendimentoScope?.allCompanies
         ? 'todas-empresas'
         : safeFilenamePart(company.name) || 'empresa';
-    const companyLabel = rendimentoScope?.displayName ?? company.name;
+    const companyLabel =
+      inventarioScope?.scopeLabel ??
+      rendimentoScope?.displayName ??
+      company.name;
     const typePart =
       REPORT_TYPE_SLUGS[type] ??
       `tipo-${safeFilenamePart(reportType) || 'x'}`;
@@ -2785,8 +2878,10 @@ export class ReportsService {
             buffer:
               type === '5'
                 ? await this.generateInventarioXlsx({
-                    companyId: reportCompanyId,
+                    companyIds: inventarioScope!.companyIds,
+                    scopeLabel: inventarioScope!.scopeLabel,
                     generatedAt,
+                    logoCompanyId: inventarioScope!.logoCompanyId,
                   })
                 : Buffer.from(
                     type === '4'
@@ -2812,7 +2907,8 @@ export class ReportsService {
               mimeType: 'text/csv; charset=utf-8',
               buffer: Buffer.from(
                 await this.generateInventarioCsv({
-                  companyId: reportCompanyId,
+                  companyIds: inventarioScope!.companyIds,
+                  scopeLabel: inventarioScope!.scopeLabel,
                   generatedAt,
                 }),
                 'utf8',
@@ -2873,6 +2969,15 @@ export class ReportsService {
           companyId,
           companyLabel,
           ...(rendimentoScope?.allCompanies ? { allCompanies: true } : {}),
+          ...(inventarioScope?.allCompanies ? { allCompanies: true } : {}),
+          ...(inventarioScope &&
+          inventarioScope.companyIds.length > 1 &&
+          !inventarioScope.allCompanies
+            ? {
+                companyIds: inventarioScope.companyIds,
+                multiCompany: true,
+              }
+            : {}),
           ...(isInventario ? { noPeriod: true } : {}),
           type,
           format,

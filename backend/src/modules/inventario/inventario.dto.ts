@@ -24,6 +24,11 @@ export class InventarioAssetIdParamDto {
   id!: string;
 }
 
+export class InventarioAssetTypeIdParamDto {
+  @IsUUID()
+  assetTypeId!: string;
+}
+
 export class CreateInventoryAssetTypeDto {
   @IsString()
   @MinLength(1)

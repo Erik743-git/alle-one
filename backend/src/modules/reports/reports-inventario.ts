@@ -2,6 +2,7 @@ import { existsSync } from 'fs';
 import ExcelJS from 'exceljs';
 
 export type InventarioReportRow = {
+  companyName?: string;
   assetTypeName: string;
   brand: string | null;
   quantity: number | null;
@@ -35,8 +36,8 @@ function formatDueStatus(row: InventarioReportRow) {
   return 'Em dia';
 }
 
-function rowToValues(row: InventarioReportRow) {
-  return [
+function rowToValues(row: InventarioReportRow, multiCompany: boolean) {
+  const base = [
     row.assetTypeName,
     row.brand?.trim() || '',
     row.quantity != null ? String(row.quantity) : '',
@@ -47,9 +48,13 @@ function rowToValues(row: InventarioReportRow) {
     formatReminder(row.reminderDaysBefore),
     formatDueStatus(row),
   ];
+  if (multiCompany) {
+    return [row.companyName?.trim() || '', ...base];
+  }
+  return base;
 }
 
-const CSV_HEADERS = [
+const CSV_HEADERS_SINGLE = [
   'tipo',
   'marca',
   'quantidade',
@@ -61,7 +66,9 @@ const CSV_HEADERS = [
   'status_vencimento',
 ];
 
-const XLSX_HEADERS = [
+const CSV_HEADERS_MULTI = ['empresa', ...CSV_HEADERS_SINGLE];
+
+const XLSX_HEADERS_SINGLE = [
   'Tipo',
   'Marca',
   'Quantidade',
@@ -73,10 +80,13 @@ const XLSX_HEADERS = [
   'Status vencimento',
 ];
 
+const XLSX_HEADERS_MULTI = ['Empresa', ...XLSX_HEADERS_SINGLE];
+
 export function buildInventarioReportCsv(params: {
-  companyName: string;
+  scopeLabel: string;
   generatedAt: Date;
   rows: InventarioReportRow[];
+  multiCompany: boolean;
 }) {
   const generatedLabel = params.generatedAt
     .toISOString()
@@ -86,22 +96,26 @@ export function buildInventarioReportCsv(params: {
   const meta = [
     escapeCsv('Relatório de Inventário'),
     '',
-    escapeCsv(`Empresa: ${params.companyName}`),
+    escapeCsv(`Empresas: ${params.scopeLabel}`),
     escapeCsv(`Gerado em: ${generatedLabel}`),
     '',
   ].join('\n');
 
+  const headers = params.multiCompany ? CSV_HEADERS_MULTI : CSV_HEADERS_SINGLE;
   const lines = params.rows.map((row) =>
-    rowToValues(row).map((value) => escapeCsv(value)).join(','),
+    rowToValues(row, params.multiCompany)
+      .map((value) => escapeCsv(value))
+      .join(','),
   );
 
-  return [meta, CSV_HEADERS.join(','), ...lines].join('\n');
+  return [meta, headers.join(','), ...lines].join('\n');
 }
 
 export async function buildInventarioReportXlsx(params: {
-  companyName: string;
+  scopeLabel: string;
   generatedAt: Date;
   rows: InventarioReportRow[];
+  multiCompany: boolean;
   logoPath?: string | null;
   logoMimeType?: string | null;
 }) {
@@ -109,21 +123,26 @@ export async function buildInventarioReportXlsx(params: {
   workbook.creator = 'Alle One';
   workbook.created = params.generatedAt;
 
+  const lastCol = params.multiCompany ? 'J' : 'I';
+  const headers = params.multiCompany ? XLSX_HEADERS_MULTI : XLSX_HEADERS_SINGLE;
+  const statusCol = params.multiCompany ? 10 : 9;
+
   const sheet = workbook.addWorksheet('Inventário', {
     views: [{ state: 'frozen', ySplit: 7 }],
   });
 
-  sheet.getColumn(1).width = 24;
-  sheet.getColumn(2).width = 18;
-  sheet.getColumn(3).width = 12;
-  sheet.getColumn(4).width = 22;
-  sheet.getColumn(5).width = 18;
-  sheet.getColumn(6).width = 40;
-  sheet.getColumn(7).width = 14;
-  sheet.getColumn(8).width = 16;
-  sheet.getColumn(9).width = 18;
+  sheet.getColumn(1).width = params.multiCompany ? 22 : 24;
+  sheet.getColumn(2).width = params.multiCompany ? 24 : 18;
+  sheet.getColumn(3).width = params.multiCompany ? 18 : 12;
+  sheet.getColumn(4).width = 12;
+  sheet.getColumn(5).width = 22;
+  sheet.getColumn(6).width = 18;
+  sheet.getColumn(7).width = 40;
+  sheet.getColumn(8).width = 14;
+  sheet.getColumn(9).width = 16;
+  sheet.getColumn(10).width = 18;
 
-  sheet.mergeCells('A1:I1');
+  sheet.mergeCells(`A1:${lastCol}1`);
   sheet.getCell('A1').value = 'Relatório de Inventário';
   sheet.getCell('A1').font = {
     bold: true,
@@ -138,8 +157,8 @@ export async function buildInventarioReportXlsx(params: {
   sheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
   sheet.getRow(1).height = 28;
 
-  sheet.getCell('A2').value = 'Empresa:';
-  sheet.getCell('B2').value = params.companyName;
+  sheet.getCell('A2').value = 'Empresas:';
+  sheet.getCell('B2').value = params.scopeLabel;
   sheet.getCell('A3').value = 'Gerado em:';
   sheet.getCell('B3').value = params.generatedAt
     .toISOString()
@@ -166,14 +185,14 @@ export async function buildInventarioReportXlsx(params: {
         extension: ext,
       });
       sheet.addImage(imageId, {
-        tl: { col: 6.2, row: 0.2 },
+        tl: { col: params.multiCompany ? 7.2 : 6.2, row: 0.2 },
         ext: { width: 120, height: 40 },
       });
     }
   }
 
   const headerRowIndex = 7;
-  sheet.getRow(headerRowIndex).values = XLSX_HEADERS;
+  sheet.getRow(headerRowIndex).values = headers;
   sheet.getRow(headerRowIndex).font = {
     bold: true,
     color: { argb: 'FFFFFFFF' },
@@ -188,9 +207,9 @@ export async function buildInventarioReportXlsx(params: {
 
   let rowIndex = headerRowIndex + 1;
   for (const row of params.rows) {
-    sheet.getRow(rowIndex).values = rowToValues(row);
+    sheet.getRow(rowIndex).values = rowToValues(row, params.multiCompany);
     if (row.overdue) {
-      sheet.getRow(rowIndex).getCell(9).font = {
+      sheet.getRow(rowIndex).getCell(statusCol).font = {
         color: { argb: 'FFB42318' },
         bold: true,
       };

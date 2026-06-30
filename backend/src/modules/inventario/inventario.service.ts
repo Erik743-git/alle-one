@@ -267,6 +267,103 @@ export class InventarioService {
     });
   }
 
+  async listAssetTypesOverview(user: AuthenticatedRequestUser) {
+    const scope = await this.getAccessibleCompanyIds(user);
+    const today = this.startOfDay();
+
+    const types = await this.prisma.inventoryAssetType.findMany({
+      where: { deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const countGroups = await this.prisma.inventoryAsset.groupBy({
+      by: ['assetTypeId'],
+      where: { companyId: { in: scope }, deletedAt: null },
+      _count: { _all: true },
+    });
+
+    const expiredGroups = await this.prisma.inventoryAsset.groupBy({
+      by: ['assetTypeId'],
+      where: {
+        companyId: { in: scope },
+        deletedAt: null,
+        dueDate: { not: null, lt: today },
+      },
+      _count: { _all: true },
+    });
+
+    const companyGroups = await this.prisma.inventoryAsset.groupBy({
+      by: ['assetTypeId', 'companyId'],
+      where: { companyId: { in: scope }, deletedAt: null },
+    });
+
+    const countMap = new Map(
+      countGroups.map((g) => [g.assetTypeId, g._count._all]),
+    );
+    const expiredMap = new Map(
+      expiredGroups.map((g) => [g.assetTypeId, g._count._all]),
+    );
+    const companiesMap = new Map<string, Set<string>>();
+    for (const row of companyGroups) {
+      const set = companiesMap.get(row.assetTypeId) ?? new Set<string>();
+      set.add(row.companyId);
+      companiesMap.set(row.assetTypeId, set);
+    }
+
+    return types.map((type) => ({
+      id: type.id,
+      name: type.name,
+      assetsCount: countMap.get(type.id) ?? 0,
+      expiredCount: expiredMap.get(type.id) ?? 0,
+      companiesCount: companiesMap.get(type.id)?.size ?? 0,
+    }));
+  }
+
+  async listAssetsByType(
+    user: AuthenticatedRequestUser,
+    assetTypeId: string,
+  ) {
+    const scope = await this.getAccessibleCompanyIds(user);
+    const assetType = await this.resolveAssetType(assetTypeId);
+
+    const rows = await this.prisma.inventoryAsset.findMany({
+      where: {
+        assetTypeId: assetType.id,
+        companyId: { in: scope },
+        deletedAt: null,
+      },
+      include: {
+        ...this.assetInclude(),
+        company: { select: { id: true, name: true } },
+      },
+      orderBy: [
+        { company: { name: 'asc' } },
+        { dueDate: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+
+    return {
+      assetType: { id: assetType.id, name: assetType.name },
+      assets: rows.map((row) => ({
+        ...this.mapAsset({
+          ...row,
+          file:
+            row.file && !row.file.deletedAt
+              ? {
+                  id: row.file.id,
+                  originalName: row.file.originalName,
+                  mimeType: row.file.mimeType,
+                  size: row.file.size,
+                }
+              : null,
+        }),
+        companyName: row.company.name,
+      })),
+    };
+  }
+
   async createAssetType(body: CreateInventoryAssetTypeDto) {
     const name = body.name.trim();
     const existing = await this.prisma.inventoryAssetType.findFirst({

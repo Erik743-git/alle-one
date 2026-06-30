@@ -30,6 +30,7 @@ import {
   CreateInventoryAssetDto,
   CreateInventoryAssetTypeDto,
   InventarioAssetIdParamDto,
+  InventarioAssetTypeIdParamDto,
   InventarioAttachmentQueryDto,
   InventarioCompanyIdParamDto,
   UpdateInventoryAssetDto,
@@ -56,6 +57,23 @@ export class InventarioController {
   @AuditMeta({ entity: 'InventoryAssetType', action: 'CREATE' })
   createAssetType(@Body() body: CreateInventoryAssetTypeDto) {
     return this.inventario.createAssetType(body);
+  }
+
+  @Get('asset-types/overview')
+  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @RequirePermission(PermissionModule.INVENTARIO, 'canView')
+  listAssetTypesOverview(@CurrentUser() user: AuthenticatedRequestUser) {
+    return this.inventario.listAssetTypesOverview(user);
+  }
+
+  @Get('asset-types/:assetTypeId/assets')
+  @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
+  @RequirePermission(PermissionModule.INVENTARIO, 'canView')
+  listAssetsByType(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: InventarioAssetTypeIdParamDto,
+  ) {
+    return this.inventario.listAssetsByType(user, params.assetTypeId);
   }
 
   @Get('companies')

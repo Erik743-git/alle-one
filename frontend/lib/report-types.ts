@@ -50,3 +50,7 @@ export function reportTypeRequiresPeriod(type: string): boolean {
 export function reportTypeSupportsCollaborator(type: string): boolean {
   return type === "1";
 }
+
+export function reportTypeSupportsMultiCompany(type: string): boolean {
+  return type === "5";
+}

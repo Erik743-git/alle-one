@@ -71,6 +71,7 @@ export class ReportsController {
       start?: string;
       end?: string;
       userId?: string | null;
+      companyIds?: string[];
     },
   ) {
     return this.reports.generateReport(user, body);

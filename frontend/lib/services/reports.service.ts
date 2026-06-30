@@ -89,6 +89,7 @@ export const reportsService = {
     start?: string;
     end?: string;
     userId?: string;
+    companyIds?: string[];
   }) {
     return apiRequest<ReportRow>("/reports/generate", {
       method: "POST",

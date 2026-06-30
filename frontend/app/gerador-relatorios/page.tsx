@@ -20,11 +20,14 @@ import {
   getReportTypeLabel,
   reportTypeRequiresPeriod,
   reportTypeSupportsCollaborator,
+  reportTypeSupportsMultiCompany,
   REPORT_TYPES,
   type ReportFormatOption,
 } from "@/lib/report-types";
 import { reportsService } from "@/lib/services/reports.service";
 import type { ReportRow } from "@/lib/services/reports.service";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { cn } from "@/lib/utils";
 
 function getReportCompanyLabel(report: ReportRow): string {
   if (report.filters?.allCompanies) {
@@ -53,6 +56,7 @@ export default function GeradorRelatoriosPage() {
     []
   );
   const [companyId, setCompanyId] = useState<string>("");
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [collaboratorId, setCollaboratorId] = useState<string>("");
   const [collaborators, setCollaborators] = useState<
     Array<{ id: string; name: string; hasTifluxLink?: boolean }>
@@ -75,6 +79,7 @@ export default function GeradorRelatoriosPage() {
     [type],
   );
   const isRendimento = type === "1";
+  const isInventario = reportTypeSupportsMultiCompany(type);
   const requiresPeriod = reportTypeRequiresPeriod(type);
   const supportsCollaborator = reportTypeSupportsCollaborator(type);
   const alleCompanyId = useMemo(
@@ -83,6 +88,17 @@ export default function GeradorRelatoriosPage() {
     [companies],
   );
   const effectiveCompanyId = companyId;
+  const allInventarioCompaniesSelected =
+    isInventario &&
+    companies.length > 0 &&
+    selectedCompanyIds.length === companies.length;
+  const listCompanyFilter = isInventario
+    ? allInventarioCompaniesSelected
+      ? ALL_COMPANIES_REPORT_VALUE
+      : selectedCompanyIds.length === 1
+        ? selectedCompanyIds[0]
+        : undefined
+    : effectiveCompanyId;
   const canSelectAllCompanies =
     isRendimento && user?.role !== "CLIENT";
   const companyOptions = useMemo(() => {
@@ -115,6 +131,22 @@ export default function GeradorRelatoriosPage() {
   );
 
   useEffect(() => {
+    if (isInventario) {
+      setSelectedCompanyIds((prev) => {
+        if (prev.length > 0 && prev.every((id) => companies.some((c) => c.id === id))) {
+          return prev;
+        }
+        const fallback =
+          (companyId && companyId !== ALL_COMPANIES_REPORT_VALUE
+            ? companyId
+            : null) ??
+          alleCompanyId ??
+          companies[0]?.id ??
+          "";
+        return fallback ? [fallback] : [];
+      });
+      return;
+    }
     if (isRendimento && canSelectAllCompanies) {
       setCompanyId((prev) =>
         prev === ALL_COMPANIES_REPORT_VALUE || companies.some((c) => c.id === prev)
@@ -127,7 +159,7 @@ export default function GeradorRelatoriosPage() {
       setCompanyId(alleCompanyId || companies[0]?.id || "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRendimento, canSelectAllCompanies, type]);
+  }, [isRendimento, isInventario, canSelectAllCompanies, type, companies.length]);
 
   useEffect(() => {
     const allowed = getFormatsForReportType(type);
@@ -233,8 +265,8 @@ export default function GeradorRelatoriosPage() {
     setErro("");
     try {
       const [items, last] = await Promise.all([
-        reportsService.list({ companyId: effectiveCompanyId || undefined, type }),
-        reportsService.last({ companyId: effectiveCompanyId || undefined, type }),
+        reportsService.list({ companyId: listCompanyFilter || undefined, type }),
+        reportsService.last({ companyId: listCompanyFilter || undefined, type }),
       ]);
       setReports(items ?? []);
       setLastReport(last ?? null);
@@ -243,16 +275,35 @@ export default function GeradorRelatoriosPage() {
     }
   }
 
+  function toggleInventarioCompany(id: string) {
+    setSelectedCompanyIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  }
+
+  function selectAllInventarioCompanies() {
+    setSelectedCompanyIds(companies.map((c) => c.id));
+  }
+
+  function clearInventarioCompanies() {
+    setSelectedCompanyIds([]);
+  }
+
   async function handleGenerate() {
     setErro("");
 
     const isAllCompanies =
       isRendimento && effectiveCompanyId === ALL_COMPANIES_REPORT_VALUE;
-    if (!effectiveCompanyId && !isAllCompanies) {
+
+    if (isInventario) {
+      if (selectedCompanyIds.length === 0) {
+        setErro("Selecione ao menos uma empresa.");
+        return;
+      }
+    } else if (!effectiveCompanyId && !isAllCompanies) {
       setErro("Selecione a empresa.");
       return;
-    }
-    if (!isRendimento && effectiveCompanyId === ALL_COMPANIES_REPORT_VALUE) {
+    } else if (!isRendimento && effectiveCompanyId === ALL_COMPANIES_REPORT_VALUE) {
       setErro("Selecione uma empresa para este tipo de relatório.");
       return;
     }
@@ -277,11 +328,22 @@ export default function GeradorRelatoriosPage() {
     try {
       setGerando(true);
       await reportsService.generate({
-        companyId: isAllCompanies ? ALL_COMPANIES_REPORT_VALUE : effectiveCompanyId,
+        companyId: isInventario
+          ? allInventarioCompaniesSelected
+            ? ALL_COMPANIES_REPORT_VALUE
+            : selectedCompanyIds[0]
+          : isAllCompanies
+            ? ALL_COMPANIES_REPORT_VALUE
+            : effectiveCompanyId,
         type,
         format,
         ...(requiresPeriod ? { start, end } : {}),
         ...(supportsCollaborator && collaboratorId ? { userId: collaboratorId } : {}),
+        ...(isInventario &&
+        selectedCompanyIds.length > 1 &&
+        !allInventarioCompaniesSelected
+          ? { companyIds: selectedCompanyIds }
+          : {}),
       });
       await refreshList();
     } catch (e) {
@@ -372,34 +434,94 @@ export default function GeradorRelatoriosPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
+                <div
+                  className={cn(
+                    "space-y-2",
+                    isInventario && "md:col-span-2 xl:col-span-2",
+                  )}
+                >
                   <label className="text-xs font-semibold text-muted-foreground">
-                    Empresa
+                    Empresa{isInventario ? "s" : ""}
                   </label>
-                  <SearchableSelectField
-                    value={companyId}
-                    onChange={(id) => {
-                      setCompanyId(id);
-                      if (
-                        user?.id &&
-                        id &&
-                        id !== ALL_COMPANIES_REPORT_VALUE
-                      ) {
-                        setPersistedCompanyId(user.id, id);
+                  {isInventario ? (
+                    <div className="rounded-xl border border-border bg-muted/20 p-3">
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={selectAllInventarioCompanies}
+                          disabled={carregando || companies.length === 0}
+                        >
+                          Selecionar todas
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={clearInventarioCompanies}
+                          disabled={carregando || selectedCompanyIds.length === 0}
+                        >
+                          Limpar seleção
+                        </Button>
+                        <span className="self-center text-xs text-muted-foreground">
+                          {selectedCompanyIds.length} de {companies.length} selecionada
+                          {selectedCompanyIds.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                        {carregando ? (
+                          <p className="text-sm text-muted-foreground">Carregando...</p>
+                        ) : companies.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma empresa disponível.
+                          </p>
+                        ) : (
+                          companies.map((company) => {
+                            const checked = selectedCompanyIds.includes(company.id);
+                            return (
+                              <label
+                                key={company.id}
+                                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/60"
+                              >
+                                <FlipCheckbox
+                                  checked={checked}
+                                  onChange={() => toggleInventarioCompany(company.id)}
+                                  aria-label={company.name}
+                                />
+                                <span className="text-sm text-foreground">{company.name}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <SearchableSelectField
+                      value={companyId}
+                      onChange={(id) => {
+                        setCompanyId(id);
+                        if (
+                          user?.id &&
+                          id &&
+                          id !== ALL_COMPANIES_REPORT_VALUE
+                        ) {
+                          setPersistedCompanyId(user.id, id);
+                        }
+                      }}
+                      options={companyOptions}
+                      loading={carregando}
+                      disabled={carregando || companies.length === 0}
+                      preserveOrder={canSelectAllCompanies}
+                      emptyLabel={
+                        canSelectAllCompanies
+                          ? ""
+                          : carregando
+                            ? "Carregando..."
+                            : "Selecione"
                       }
-                    }}
-                    options={companyOptions}
-                    loading={carregando}
-                    disabled={carregando || companies.length === 0}
-                    preserveOrder={canSelectAllCompanies}
-                    emptyLabel={
-                      canSelectAllCompanies
-                        ? ""
-                        : carregando
-                          ? "Carregando..."
-                          : "Selecione"
-                    }
-                  />
+                    />
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -455,8 +577,9 @@ export default function GeradorRelatoriosPage() {
                   visão geral. Colaborador opcional. Estatística Geral: visão
                   Zabbix/TiFlux de uma empresa (sem colaborador); CSV com as
                   mesmas tabelas do XLSX (gráficos só no XLSX). Inventário:
-                  snapshot dos ativos da empresa (sem período e sem colaborador),
-                  em CSV ou XLSX.
+                  snapshot dos ativos das empresas selecionadas (sem período e
+                  sem colaborador), em CSV ou XLSX — use &quot;Selecionar
+                  todas&quot; para incluir todas as empresas.
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
