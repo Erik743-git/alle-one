@@ -4,11 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, Download, Loader2, RefreshCw } from "lucide-react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useAuth } from "@/lib/use-auth";
 import {
   pickCompanyIdFromList,
@@ -27,7 +33,6 @@ import {
 import { reportsService } from "@/lib/services/reports.service";
 import type { ReportRow } from "@/lib/services/reports.service";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
-import { cn } from "@/lib/utils";
 
 function getReportCompanyLabel(report: ReportRow): string {
   if (report.filters?.allCompanies) {
@@ -57,6 +62,7 @@ export default function GeradorRelatoriosPage() {
   );
   const [companyId, setCompanyId] = useState<string>("");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
+  const [companySearch, setCompanySearch] = useState("");
   const [collaboratorId, setCollaboratorId] = useState<string>("");
   const [collaborators, setCollaborators] = useState<
     Array<{ id: string; name: string; hasTifluxLink?: boolean }>
@@ -129,6 +135,24 @@ export default function GeradorRelatoriosPage() {
     ],
     [collaborators],
   );
+  const filteredInventarioCompanies = useMemo(() => {
+    const term = companySearch.trim().toLowerCase();
+    if (!term) return companies;
+    return companies.filter((company) =>
+      company.name.toLowerCase().includes(term),
+    );
+  }, [companies, companySearch]);
+  const inventarioCompanySummary = useMemo(() => {
+    if (selectedCompanyIds.length === 0) return "Selecione empresas";
+    if (allInventarioCompaniesSelected) return "Todas as empresas";
+    if (selectedCompanyIds.length === 1) {
+      return (
+        companies.find((company) => company.id === selectedCompanyIds[0])
+          ?.name ?? "1 empresa selecionada"
+      );
+    }
+    return `${selectedCompanyIds.length} empresas selecionadas`;
+  }, [allInventarioCompaniesSelected, companies, selectedCompanyIds]);
 
   useEffect(() => {
     if (isInventario) {
@@ -434,68 +458,96 @@ export default function GeradorRelatoriosPage() {
                   />
                 </div>
 
-                <div
-                  className={cn(
-                    "space-y-2",
-                    isInventario && "md:col-span-2 xl:col-span-2",
-                  )}
-                >
+                <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
                     Empresa{isInventario ? "s" : ""}
                   </label>
                   {isInventario ? (
-                    <div className="rounded-xl border border-border bg-muted/20 p-3">
-                      <div className="mb-3 flex flex-wrap gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
                         <Button
                           type="button"
                           variant="outline"
-                          size="sm"
-                          onClick={selectAllInventarioCompanies}
                           disabled={carregando || companies.length === 0}
+                          className="h-11 w-full justify-between px-3 font-normal"
                         >
-                          Selecionar todas
+                          <span className="min-w-0 truncate text-left">
+                            {inventarioCompanySummary}
+                          </span>
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-70" />
                         </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={clearInventarioCompanies}
-                          disabled={carregando || selectedCompanyIds.length === 0}
-                        >
-                          Limpar seleção
-                        </Button>
-                        <span className="self-center text-xs text-muted-foreground">
-                          {selectedCompanyIds.length} de {companies.length} selecionada
-                          {selectedCompanyIds.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
-                        {carregando ? (
-                          <p className="text-sm text-muted-foreground">Carregando...</p>
-                        ) : companies.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">
-                            Nenhuma empresa disponível.
-                          </p>
-                        ) : (
-                          companies.map((company) => {
-                            const checked = selectedCompanyIds.includes(company.id);
-                            return (
-                              <label
-                                key={company.id}
-                                className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-muted/60"
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[min(92vw,380px)] p-3">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {selectedCompanyIds.length} de {companies.length}
+                            </span>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={selectAllInventarioCompanies}
+                                disabled={companies.length === 0}
+                                className="h-8"
                               >
-                                <FlipCheckbox
-                                  checked={checked}
-                                  onChange={() => toggleInventarioCompany(company.id)}
-                                  aria-label={company.name}
-                                />
-                                <span className="text-sm text-foreground">{company.name}</span>
-                              </label>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
+                                Todas
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={clearInventarioCompanies}
+                                disabled={selectedCompanyIds.length === 0}
+                                className="h-8"
+                              >
+                                Limpar
+                              </Button>
+                            </div>
+                          </div>
+
+                          <Input
+                            value={companySearch}
+                            onChange={(event) =>
+                              setCompanySearch(event.target.value)
+                            }
+                            placeholder="Buscar empresa..."
+                          />
+
+                          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                            {filteredInventarioCompanies.length === 0 ? (
+                              <p className="px-2 py-3 text-sm text-muted-foreground">
+                                Nenhuma empresa encontrada.
+                              </p>
+                            ) : (
+                              filteredInventarioCompanies.map((company) => {
+                                const checked = selectedCompanyIds.includes(
+                                  company.id,
+                                );
+                                return (
+                                  <label
+                                    key={company.id}
+                                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
+                                  >
+                                    <FlipCheckbox
+                                      checked={checked}
+                                      onChange={() =>
+                                        toggleInventarioCompany(company.id)
+                                      }
+                                      aria-label={company.name}
+                                    />
+                                    <span className="min-w-0 truncate text-sm text-foreground">
+                                      {company.name}
+                                    </span>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   ) : (
                     <SearchableSelectField
                       value={companyId}
