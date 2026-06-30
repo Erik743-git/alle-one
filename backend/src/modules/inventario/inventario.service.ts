@@ -24,12 +24,18 @@ import type {
   UpdateInventoryAssetDto,
 } from './inventario.dto';
 
+export const INVENTORY_DEFAULT_SUPPLIER = 'Alle Tecnologia';
+
 export type InventoryAssetDto = {
   id: string;
   companyId: string;
   assetTypeId: string;
   assetTypeName: string;
   name: string;
+  brand: string | null;
+  quantity: number | null;
+  supplier: string | null;
+  supplierThirdParty: boolean;
   description: string | null;
   dueDate: string | null;
   reminderDaysBefore: number | null;
@@ -114,6 +120,10 @@ export class InventarioService {
     companyId: string;
     assetTypeId: string;
     name: string;
+    brand: string | null;
+    quantity: number | null;
+    supplier: string | null;
+    supplierThirdParty: boolean;
     description: string | null;
     dueDate: Date | null;
     reminderDaysBefore: number | null;
@@ -133,6 +143,10 @@ export class InventarioService {
       assetTypeId: row.assetTypeId,
       assetTypeName: row.assetType.name,
       name: row.name,
+      brand: row.brand,
+      quantity: row.quantity,
+      supplier: row.supplier,
+      supplierThirdParty: row.supplierThirdParty,
       description: row.description,
       dueDate: row.dueDate ? row.dueDate.toISOString().slice(0, 10) : null,
       reminderDaysBefore: row.reminderDaysBefore,
@@ -140,6 +154,46 @@ export class InventarioService {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
+  }
+
+  private parseQuantity(value?: string | null): number | null {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    const n = Number(trimmed);
+    if (!Number.isInteger(n) || n < 0) {
+      throw new BadRequestException(
+        'Quantidade inválida. Informe um número inteiro maior ou igual a zero.',
+      );
+    }
+    return n;
+  }
+
+  private parseBoolean(value?: string | null): boolean {
+    const normalized = String(value ?? '').trim().toLowerCase();
+    return normalized === 'true' || normalized === '1' || normalized === 'sim';
+  }
+
+  /**
+   * Resolve o fornecedor a partir do campo lógico "fornecedor terceiro?".
+   * Quando NÃO é terceiro, preenche automaticamente com o fornecedor padrão.
+   * Quando É terceiro, exige o nome digitado.
+   */
+  private resolveSupplier(
+    thirdPartyRaw?: string | null,
+    supplierRaw?: string | null,
+  ): { supplierThirdParty: boolean; supplier: string } {
+    const thirdParty = this.parseBoolean(thirdPartyRaw);
+    if (!thirdParty) {
+      return { supplierThirdParty: false, supplier: INVENTORY_DEFAULT_SUPPLIER };
+    }
+    const supplier = String(supplierRaw ?? '').trim();
+    if (!supplier) {
+      throw new BadRequestException(
+        'Informe o nome do fornecedor terceiro.',
+      );
+    }
+    return { supplierThirdParty: true, supplier };
   }
 
   private assetInclude() {
@@ -339,12 +393,21 @@ export class InventarioService {
     );
 
     const savedFile = file ? await this.saveUploadedFile(user, file) : null;
+    const quantity = this.parseQuantity(body.quantity);
+    const { supplier, supplierThirdParty } = this.resolveSupplier(
+      body.supplierThirdParty,
+      body.supplier,
+    );
 
     const created = await this.prisma.inventoryAsset.create({
       data: {
         companyId,
         assetTypeId: assetType.id,
         name: assetType.name,
+        brand: body.brand?.trim() || null,
+        quantity,
+        supplier,
+        supplierThirdParty,
         description: body.description?.trim() || null,
         dueDate: dueDate === undefined ? null : dueDate,
         reminderDaysBefore,
@@ -366,6 +429,10 @@ export class InventarioService {
           companyId: created.companyId,
           assetTypeId: created.assetTypeId,
           name: created.name,
+          brand: created.brand,
+          quantity: created.quantity,
+          supplier: created.supplier,
+          supplierThirdParty: created.supplierThirdParty,
           description: created.description,
           dueDate: created.dueDate ? created.dueDate.toISOString().slice(0, 10) : null,
           reminderDaysBefore: created.reminderDaysBefore,
@@ -443,11 +510,31 @@ export class InventarioService {
       name = assetType.name;
     }
 
+    const brand =
+      body.brand !== undefined ? body.brand.trim() || null : undefined;
+    const quantity =
+      body.quantity !== undefined ? this.parseQuantity(body.quantity) : undefined;
+
+    let supplier: string | undefined;
+    let supplierThirdParty: boolean | undefined;
+    if (body.supplierThirdParty !== undefined) {
+      const resolved = this.resolveSupplier(
+        body.supplierThirdParty,
+        body.supplier,
+      );
+      supplier = resolved.supplier;
+      supplierThirdParty = resolved.supplierThirdParty;
+    }
+
     const updated = await this.prisma.inventoryAsset.update({
       where: { id: assetId },
       data: {
         assetTypeId,
         name,
+        brand,
+        quantity,
+        supplier,
+        supplierThirdParty,
         description:
           body.description !== undefined
             ? body.description.trim() || null
@@ -470,6 +557,10 @@ export class InventarioService {
           companyId: existing.companyId,
           assetTypeId: existing.assetTypeId,
           name: existing.name,
+          brand: existing.brand,
+          quantity: existing.quantity,
+          supplier: existing.supplier,
+          supplierThirdParty: existing.supplierThirdParty,
           description: existing.description,
           dueDate: existing.dueDate ? existing.dueDate.toISOString().slice(0, 10) : null,
           reminderDaysBefore: existing.reminderDaysBefore,
@@ -480,6 +571,10 @@ export class InventarioService {
           companyId: updated.companyId,
           assetTypeId: updated.assetTypeId,
           name: updated.name,
+          brand: updated.brand,
+          quantity: updated.quantity,
+          supplier: updated.supplier,
+          supplierThirdParty: updated.supplierThirdParty,
           description: updated.description,
           dueDate: updated.dueDate ? updated.dueDate.toISOString().slice(0, 10) : null,
           reminderDaysBefore: updated.reminderDaysBefore,

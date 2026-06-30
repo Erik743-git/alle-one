@@ -6,10 +6,11 @@ import { UsersModule } from '../users/users.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { DeskClassificationService } from './desk-classification.service';
+import { TicketStageService } from './ticket-stage.service';
 
 @Module({
   imports: [PrismaModule, RendimentoModule, TicketsModule, UsersModule],
   controllers: [AdminController],
-  providers: [AdminService, DeskClassificationService],
+  providers: [AdminService, DeskClassificationService, TicketStageService],
 })
 export class AdminModule {}

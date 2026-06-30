@@ -13,11 +13,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { InventoryAssetTypeDialog } from "@/components/inventario/inventory-asset-type-dialog";
 import {
+  INVENTORY_DEFAULT_SUPPLIER,
   INVENTORY_REMINDER_OPTIONS,
   inventarioService,
   type InventoryAsset,
@@ -34,6 +36,10 @@ type Props = {
   canManageTypes?: boolean;
   onSubmit: (payload: {
     assetTypeId: string;
+    brand: string;
+    quantity: string;
+    supplierThirdParty: boolean;
+    supplier: string;
     description: string;
     dueDate: string;
     reminderDaysBefore: string;
@@ -56,6 +62,10 @@ export function InventoryAssetModal({
   const [assetTypes, setAssetTypes] = useState<InventoryAssetType[]>([]);
   const [loadingTypes, setLoadingTypes] = useState(false);
   const [assetTypeId, setAssetTypeId] = useState("");
+  const [brand, setBrand] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [supplierThirdParty, setSupplierThirdParty] = useState(false);
+  const [supplier, setSupplier] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [reminderDaysBefore, setReminderDaysBefore] = useState("");
@@ -95,6 +105,12 @@ export function InventoryAssetModal({
     if (!open) return;
     if (mode === "edit" && asset) {
       setAssetTypeId(asset.assetTypeId);
+      setBrand(asset.brand ?? "");
+      setQuantity(asset.quantity != null ? String(asset.quantity) : "");
+      setSupplierThirdParty(asset.supplierThirdParty ?? false);
+      setSupplier(
+        asset.supplierThirdParty ? (asset.supplier ?? "") : "",
+      );
       setDescription(asset.description ?? "");
       setDueDate(asset.dueDate ?? "");
       setReminderDaysBefore(
@@ -102,6 +118,10 @@ export function InventoryAssetModal({
       );
     } else {
       setAssetTypeId("");
+      setBrand("");
+      setQuantity("");
+      setSupplierThirdParty(false);
+      setSupplier("");
       setDescription("");
       setDueDate("");
       setReminderDaysBefore("");
@@ -137,8 +157,16 @@ export function InventoryAssetModal({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!assetTypeId) return;
+    if (supplierThirdParty && !supplier.trim()) {
+      notifyError("Informe o nome do fornecedor terceiro.");
+      return;
+    }
     void onSubmit({
       assetTypeId,
+      brand: brand.trim(),
+      quantity: quantity.trim(),
+      supplierThirdParty,
+      supplier: supplierThirdParty ? supplier.trim() : "",
       description: description.trim(),
       dueDate: dueDate.trim(),
       reminderDaysBefore: dueDate.trim() ? reminderDaysBefore : "",
@@ -197,6 +225,64 @@ export function InventoryAssetModal({
                 placeholder="Selecione o tipo de ativo"
                 emptyLabel="Nenhum tipo cadastrado"
               />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="inv-brand">Marca</Label>
+                <Input
+                  id="inv-brand"
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value)}
+                  maxLength={120}
+                  placeholder="Ex.: Dell, HP, Cisco…"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="inv-quantity">Quantidade</Label>
+                <Input
+                  id="inv-quantity"
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  placeholder="Ex.: 1"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-md border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="inv-supplier-third">Fornecedor terceiro?</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Não: preenche automaticamente “{INVENTORY_DEFAULT_SUPPLIER}”.
+                    Sim: informe o fornecedor.
+                  </p>
+                </div>
+                <Switch
+                  id="inv-supplier-third"
+                  checked={supplierThirdParty}
+                  aria-label="Fornecedor terceiro"
+                  onCheckedChange={(checked) => {
+                    setSupplierThirdParty(checked);
+                    if (!checked) setSupplier("");
+                  }}
+                />
+              </div>
+              {supplierThirdParty ? (
+                <Input
+                  id="inv-supplier"
+                  value={supplier}
+                  onChange={(e) => setSupplier(e.target.value)}
+                  maxLength={160}
+                  placeholder="Nome do fornecedor"
+                />
+              ) : (
+                <Input value={INVENTORY_DEFAULT_SUPPLIER} disabled readOnly />
+              )}
             </div>
 
             <div className="space-y-2">

@@ -27,6 +27,15 @@ export type ListAuditLogsResponse = {
   items: AuditLogItem[];
 };
 
+export type TicketStage = {
+  id: string;
+  name: string;
+  isSystem: boolean;
+  syncsToTiflux: boolean;
+  active: boolean;
+  sortOrder: number;
+};
+
 export const adminService = {
   async overviewStats() {
     return apiRequest<AdminOverviewStats>("/admin/overview-stats");
@@ -71,6 +80,41 @@ export const adminService = {
     }>("/admin/reprocess-rendimento-alerts", {
       method: "POST",
       body: body ?? {},
+    });
+  },
+
+  async listTicketStages() {
+    return apiRequest<TicketStage[]>("/admin/ticket-stages");
+  },
+
+  async createTicketStage(body: {
+    name: string;
+    syncsToTiflux?: boolean;
+  }) {
+    return apiRequest<TicketStage>("/admin/ticket-stages", {
+      method: "POST",
+      body,
+    });
+  },
+
+  async updateTicketStage(
+    id: string,
+    body: {
+      name?: string;
+      syncsToTiflux?: boolean;
+      active?: boolean;
+      sortOrder?: number;
+    },
+  ) {
+    return apiRequest<TicketStage>(`/admin/ticket-stages/${id}`, {
+      method: "PATCH",
+      body,
+    });
+  },
+
+  async deleteTicketStage(id: string) {
+    return apiRequest<{ ok: boolean }>(`/admin/ticket-stages/${id}`, {
+      method: "DELETE",
     });
   },
 };

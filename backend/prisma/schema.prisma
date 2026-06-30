@@ -207,6 +207,10 @@ model InventoryAsset {
   companyId          String    @map("company_id")
   assetTypeId        String    @map("asset_type_id")
   name               String
+  brand              String?
+  quantity           Int?
+  supplier           String?
+  supplierThirdParty Boolean   @default(false) @map("supplier_third_party")
   unit               String?
   dueDate            DateTime? @map("due_date") @db.Date
   description        String?
@@ -378,6 +382,7 @@ model PasswordResetToken {
 enum ReportType {
   RENDIMENTO        @map("1")
   ESTATISTICA_GERAL @map("4")
+  INVENTARIO        @map("5")
 }
 
 enum ReportStatus {
@@ -516,6 +521,20 @@ model Report {
   @@index([companyId])
   @@index([fileId])
   @@map("reports")
+}
+
+model TicketStage {
+  id            String    @id @default(uuid())
+  name          String
+  isSystem      Boolean   @default(false) @map("is_system")
+  syncsToTiflux Boolean   @default(false) @map("syncs_to_tiflux")
+  active        Boolean   @default(true)
+  sortOrder     Int       @default(0) @map("sort_order")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  @@map("ticket_stages")
 }
 
 model BillingEntry {

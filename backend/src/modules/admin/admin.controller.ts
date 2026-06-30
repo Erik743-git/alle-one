@@ -25,12 +25,17 @@ import { ReprocessRendimentoAlertsDto } from './admin-reprocess.dto';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { TicketsOutboxService } from '../tickets/tickets-outbox.service';
 import { DeskClassificationService } from './desk-classification.service';
+import { TicketStageService } from './ticket-stage.service';
 import {
   CreateDeskClassificationDto,
   CreateServiceDeskDto,
   UpdateDeskClassificationDto,
   UpdateServiceDeskDto,
 } from './desk-classification.dto';
+import {
+  CreateTicketStageDto,
+  UpdateTicketStageDto,
+} from './ticket-stage.dto';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
@@ -42,6 +47,7 @@ export class AdminController {
     private readonly adminService: AdminService,
     private readonly rendimentoService: RendimentoService,
     private readonly deskClassificationService: DeskClassificationService,
+    private readonly ticketStageService: TicketStageService,
     private readonly ticketsOutboxService: TicketsOutboxService,
   ) {}
 
@@ -163,5 +169,44 @@ export class AdminController {
   })
   deleteClassification(@Param('id') id: string) {
     return this.deskClassificationService.remove(id);
+  }
+
+  @Get('ticket-stages')
+  @RequirePermission(PermissionModule.ADMIN, 'canView')
+  listTicketStages() {
+    return this.ticketStageService.list();
+  }
+
+  @Post('ticket-stages')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketStage',
+    action: 'CREATE',
+  })
+  createTicketStage(@Body() body: CreateTicketStageDto) {
+    return this.ticketStageService.create(body);
+  }
+
+  @Patch('ticket-stages/:id')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketStage',
+    action: 'UPDATE',
+  })
+  updateTicketStage(
+    @Param('id') id: string,
+    @Body() body: UpdateTicketStageDto,
+  ) {
+    return this.ticketStageService.update(id, body);
+  }
+
+  @Delete('ticket-stages/:id')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketStage',
+    action: 'DELETE',
+  })
+  deleteTicketStage(@Param('id') id: string) {
+    return this.ticketStageService.remove(id);
   }
 }

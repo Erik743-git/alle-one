@@ -68,8 +68,8 @@ export class ReportsController {
       companyId: string;
       type: string;
       format: 'CSV' | 'XLSX';
-      start: string;
-      end: string;
+      start?: string;
+      end?: string;
       userId?: string | null;
     },
   ) {

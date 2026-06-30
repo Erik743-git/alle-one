@@ -37,6 +37,25 @@ export class CreateInventoryAssetDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(120)
+  brand?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  quantity?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierThirdParty?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  supplier?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(4000)
   description?: string;
 
@@ -55,6 +74,25 @@ export class UpdateInventoryAssetDto {
   @IsOptional()
   @IsUUID()
   assetTypeId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  brand?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  quantity?: string;
+
+  @IsOptional()
+  @IsString()
+  supplierThirdParty?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  supplier?: string;
 
   @IsOptional()
   @IsString()

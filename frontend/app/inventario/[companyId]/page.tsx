@@ -121,6 +121,10 @@ export default function InventarioEmpresaPage() {
 
   async function handleSave(payload: {
     assetTypeId: string;
+    brand: string;
+    quantity: string;
+    supplierThirdParty: boolean;
+    supplier: string;
     description: string;
     dueDate: string;
     reminderDaysBefore: string;
@@ -137,6 +141,10 @@ export default function InventarioEmpresaPage() {
           companyId,
           {
             assetTypeId: payload.assetTypeId,
+            brand: payload.brand || undefined,
+            quantity: payload.quantity || undefined,
+            supplierThirdParty: payload.supplierThirdParty,
+            supplier: payload.supplier || undefined,
             description: payload.description || undefined,
             dueDate: payload.dueDate || undefined,
             reminderDaysBefore: payload.reminderDaysBefore || undefined,
@@ -149,6 +157,10 @@ export default function InventarioEmpresaPage() {
           editing.id,
           {
             assetTypeId: payload.assetTypeId,
+            brand: payload.brand,
+            quantity: payload.quantity,
+            supplierThirdParty: payload.supplierThirdParty,
+            supplier: payload.supplier,
             description: payload.description,
             dueDate: payload.dueDate,
             reminderDaysBefore: payload.reminderDaysBefore,
@@ -271,6 +283,18 @@ export default function InventarioEmpresaPage() {
                           <div>
                             <dt className="text-muted-foreground">Tipo</dt>
                             <dd>{asset.assetTypeName || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Marca</dt>
+                            <dd>{asset.brand?.trim() || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Quantidade</dt>
+                            <dd>{asset.quantity != null ? asset.quantity : "—"}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-muted-foreground">Fornecedor</dt>
+                            <dd>{asset.supplier?.trim() || "—"}</dd>
                           </div>
                           <div>
                             <dt className="text-muted-foreground">Lembrete</dt>

@@ -28,21 +28,28 @@ import {
 } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
+import {
+  buildInventarioReportCsv,
+  buildInventarioReportXlsx,
+  type InventarioReportRow,
+} from './reports-inventario';
 import { toDateOnlyISO, parseDateInput } from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 
-const ALLOWED_REPORT_TYPES = new Set(['1', '4']);
+const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5']);
 const ALL_COMPANIES_REPORT_ID = '__all__';
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   '1': 'Rendimento',
   '4': 'Estatística Geral',
+  '5': 'Inventário',
 };
 
 const REPORT_TYPE_SLUGS: Record<string, string> = {
   '1': 'rendimento',
   '4': 'estatistica-geral',
+  '5': 'inventario',
 };
 
 function parseDateOrThrow(value: string, label: string) {
@@ -2487,6 +2494,89 @@ export class ReportsService {
     return workbook.xlsx.writeBuffer();
   }
 
+  private startOfDay(date = new Date()) {
+    const d = new Date(date);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  private async loadInventarioReportRows(
+    companyId: string,
+  ): Promise<InventarioReportRow[]> {
+    const today = this.startOfDay();
+    const rows = await this.prisma.inventoryAsset.findMany({
+      where: { companyId, deletedAt: null },
+      include: { assetType: { select: { name: true } } },
+      orderBy: [
+        { assetType: { name: 'asc' } },
+        { brand: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+
+    return rows.map((row) => {
+      const dueDate = row.dueDate
+        ? row.dueDate.toISOString().slice(0, 10)
+        : null;
+      const overdue = row.dueDate
+        ? this.startOfDay(row.dueDate).getTime() < today.getTime()
+        : false;
+
+      return {
+        assetTypeName: row.assetType.name,
+        brand: row.brand,
+        quantity: row.quantity,
+        supplier: row.supplier,
+        supplierThirdParty: row.supplierThirdParty,
+        description: row.description,
+        dueDate,
+        reminderDaysBefore: row.reminderDaysBefore,
+        overdue,
+      };
+    });
+  }
+
+  private async generateInventarioCsv(params: {
+    companyId: string;
+    generatedAt: Date;
+  }) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: params.companyId, deletedAt: null },
+      select: { name: true },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+
+    const rows = await this.loadInventarioReportRows(params.companyId);
+    return buildInventarioReportCsv({
+      companyName: company.name,
+      generatedAt: params.generatedAt,
+      rows,
+    });
+  }
+
+  private async generateInventarioXlsx(params: {
+    companyId: string;
+    generatedAt: Date;
+  }) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: params.companyId, deletedAt: null },
+      select: {
+        name: true,
+        logoFile: { select: { path: true, mimeType: true } },
+      },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+
+    const rows = await this.loadInventarioReportRows(params.companyId);
+    return buildInventarioReportXlsx({
+      companyName: company.name,
+      generatedAt: params.generatedAt,
+      rows,
+      logoPath: company.logoFile?.path ?? null,
+      logoMimeType: company.logoFile?.mimeType ?? null,
+    });
+  }
+
   async listReports(
     user: AuthenticatedRequestUser,
     query: {
@@ -2596,8 +2686,8 @@ export class ReportsService {
       companyId: string;
       type: string;
       format: ReportFormat;
-      start: string;
-      end: string;
+      start?: string;
+      end?: string;
       userId?: string | null;
     },
   ) {
@@ -2608,13 +2698,20 @@ export class ReportsService {
     if (!type) throw new BadRequestException('type é obrigatório');
     if (!ALLOWED_REPORT_TYPES.has(type)) {
       throw new BadRequestException(
-        'Tipo de relatório inválido. Use Rendimento (1) ou Estatística Geral (4).',
+        'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4) ou Inventário (5).',
       );
     }
 
-    if (type === '4' && companyId === ALL_COMPANIES_REPORT_ID) {
+    const isInventario = type === '5';
+
+    if (
+      (type === '4' || isInventario) &&
+      companyId === ALL_COMPANIES_REPORT_ID
+    ) {
       throw new BadRequestException(
-        'Estatística Geral exige uma empresa específica.',
+        isInventario
+          ? 'Inventário exige uma empresa específica.'
+          : 'Estatística Geral exige uma empresa específica.',
       );
     }
 
@@ -2624,7 +2721,7 @@ export class ReportsService {
         : null;
 
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
-    if (type === '4') {
+    if (type === '4' || isInventario) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
@@ -2647,32 +2744,37 @@ export class ReportsService {
     const reportType = toReportType(type);
 
     const userId = payload.userId?.trim() || null;
-    if (type === '4' && userId) {
+    if ((type === '4' || isInventario) && userId) {
       throw new BadRequestException(
-        'Estatística Geral não utiliza filtro por colaborador.',
+        'Este tipo de relatório não utiliza filtro por colaborador.',
       );
     }
 
-    const start = parseDateOrThrow(payload.start, 'Data inicial');
-    const end = parseDateOrThrow(payload.end, 'Data final');
-    const range = normalizeRange(start, end);
+    const generatedAt = new Date();
+    const range = isInventario
+      ? { start: this.startOfDay(generatedAt), end: generatedAt }
+      : normalizeRange(
+          parseDateOrThrow(payload.start ?? '', 'Data inicial'),
+          parseDateOrThrow(payload.end ?? '', 'Data final'),
+        );
 
     const reportId = randomUUID();
-
     const uploadsDir = join(process.cwd(), 'uploads', 'reports', reportId);
 
     const companyPart =
       rendimentoScope?.allCompanies
         ? 'todas-empresas'
         : safeFilenamePart(company.name) || 'empresa';
-    const companyLabel =
-      rendimentoScope?.displayName ?? company.name;
+    const companyLabel = rendimentoScope?.displayName ?? company.name;
     const typePart =
       REPORT_TYPE_SLUGS[type] ??
       `tipo-${safeFilenamePart(reportType) || 'x'}`;
+    const snapshotPart = toDateOnlyISO(generatedAt);
     const startPart = toDateOnlyISO(range.start);
     const endPart = toDateOnlyISO(range.end);
-    const baseName = `${companyPart}-${typePart}-${startPart}-a-${endPart}`;
+    const baseName = isInventario
+      ? `${companyPart}-${typePart}-${snapshotPart}`
+      : `${companyPart}-${typePart}-${startPart}-a-${endPart}`;
 
     const built =
       format === 'XLSX'
@@ -2680,52 +2782,70 @@ export class ReportsService {
             filename: `${baseName}.xlsx`,
             mimeType:
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            buffer: Buffer.from(
-              type === '4'
-                ? await this.generateTipo4Xlsx({
-                    user,
-                    companyId,
-                    start: range.start,
-                    end: range.end,
+            buffer:
+              type === '5'
+                ? await this.generateInventarioXlsx({
+                    companyId: reportCompanyId,
+                    generatedAt,
                   })
-                : await this.generateHoursUsageXlsx({
-                    user,
-                    companyId,
-                    start: range.start,
-                    end: range.end,
-                    type,
-                    userId,
-                  }),
-            ),
+                : Buffer.from(
+                    type === '4'
+                      ? await this.generateTipo4Xlsx({
+                          user,
+                          companyId,
+                          start: range.start,
+                          end: range.end,
+                        })
+                      : await this.generateHoursUsageXlsx({
+                          user,
+                          companyId,
+                          start: range.start,
+                          end: range.end,
+                          type,
+                          userId,
+                        }),
+                  ),
           }
-        : type === '4'
+        : type === '5'
           ? {
               filename: `${baseName}.csv`,
               mimeType: 'text/csv; charset=utf-8',
               buffer: Buffer.from(
-                await this.generateTipo4Csv({
-                  user,
-                  companyId,
-                  start: range.start,
-                  end: range.end,
+                await this.generateInventarioCsv({
+                  companyId: reportCompanyId,
+                  generatedAt,
                 }),
                 'utf8',
               ),
             }
-          : {
-              filename: `${baseName}.csv`,
-              mimeType: 'text/csv; charset=utf-8',
-              buffer: Buffer.from(
-                await this.generateHoursUsageCsv({
-                  user,
-                  companyId,
-                  start: range.start,
-                  end: range.end,
-                  userId,
-                }),
-                'utf8',
-              ),
-            };
+          : type === '4'
+            ? {
+                filename: `${baseName}.csv`,
+                mimeType: 'text/csv; charset=utf-8',
+                buffer: Buffer.from(
+                  await this.generateTipo4Csv({
+                    user,
+                    companyId,
+                    start: range.start,
+                    end: range.end,
+                  }),
+                  'utf8',
+                ),
+              }
+            : {
+                filename: `${baseName}.csv`,
+                mimeType: 'text/csv; charset=utf-8',
+                buffer: Buffer.from(
+                  await this.generateHoursUsageCsv({
+                    user,
+                    companyId,
+                    start: range.start,
+                    end: range.end,
+                    userId,
+                  }),
+                  'utf8',
+                ),
+              };
 
     const targetPath = join(uploadsDir, built.filename);
     await writeUploadedBuffer(targetPath, built.buffer);
@@ -2753,10 +2873,12 @@ export class ReportsService {
           companyId,
           companyLabel,
           ...(rendimentoScope?.allCompanies ? { allCompanies: true } : {}),
+          ...(isInventario ? { noPeriod: true } : {}),
           type,
           format,
           start: range.start.toISOString(),
           end: range.end.toISOString(),
+          generatedAt: generatedAt.toISOString(),
           ...(userId ? { userId } : {}),
         },
         generatedBy: user.userId,
@@ -2800,11 +2922,20 @@ export class ReportsService {
 
     const companyPart =
       safeFilenamePart(report.company?.name ?? '') || 'empresa';
-    const typePart = `tipo-${safeFilenamePart(report.type ?? '') || 'x'}`;
-    const startPart = toDateOnlyISO(new Date(report.periodStart));
-    const endPart = toDateOnlyISO(new Date(report.periodEnd));
+    const filters = report.filters as {
+      noPeriod?: boolean;
+      type?: string;
+    } | null;
+    const typeKey = filters?.type ?? report.type;
+    const typePart =
+      REPORT_TYPE_SLUGS[typeKey] ??
+      `tipo-${safeFilenamePart(String(report.type ?? '')) || 'x'}`;
     const ext = report.format?.toLowerCase?.() === 'xlsx' ? 'xlsx' : 'csv';
-    const downloadName = `${companyPart}-${typePart}-${startPart}-a-${endPart}.${ext}`;
+    const isInventario =
+      report.type === ReportType.INVENTARIO || filters?.noPeriod === true;
+    const downloadName = isInventario
+      ? `${companyPart}-${typePart}-${toDateOnlyISO(new Date(report.createdAt))}.${ext}`
+      : `${companyPart}-${typePart}-${toDateOnlyISO(new Date(report.periodStart))}-a-${toDateOnlyISO(new Date(report.periodEnd))}.${ext}`;
 
     return {
       file: new StreamableFile(createReadStream(report.file.path)),

@@ -14,6 +14,11 @@ export const REPORT_TYPES = [
     label: "Estatística Geral",
     formats: ["CSV", "XLSX"] as const,
   },
+  {
+    value: "5",
+    label: "Inventário",
+    formats: ["CSV", "XLSX"] as const,
+  },
 ] as const;
 
 export type ReportTypeValue = (typeof REPORT_TYPES)[number]["value"];
@@ -36,4 +41,12 @@ export function getFormatsForReportType(
 
 export function isAllowedReportType(type: string): boolean {
   return REPORT_TYPES.some((item) => item.value === type);
+}
+
+export function reportTypeRequiresPeriod(type: string): boolean {
+  return type !== "5";
+}
+
+export function reportTypeSupportsCollaborator(type: string): boolean {
+  return type === "1";
 }

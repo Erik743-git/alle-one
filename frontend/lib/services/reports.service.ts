@@ -23,6 +23,7 @@ export type ReportRow = {
   filters?: {
     allCompanies?: boolean;
     companyLabel?: string;
+    noPeriod?: boolean;
   } | null;
   file: {
     id: string;
@@ -85,8 +86,8 @@ export const reportsService = {
     companyId?: string;
     type: string;
     format: ReportFormat;
-    start: string;
-    end: string;
+    start?: string;
+    end?: string;
     userId?: string;
   }) {
     return apiRequest<ReportRow>("/reports/generate", {

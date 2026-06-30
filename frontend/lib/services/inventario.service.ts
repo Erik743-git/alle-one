@@ -28,6 +28,10 @@ export type InventoryAsset = {
   assetTypeId: string;
   assetTypeName: string;
   name: string;
+  brand: string | null;
+  quantity: number | null;
+  supplier: string | null;
+  supplierThirdParty: boolean;
   description: string | null;
   dueDate: string | null;
   reminderDaysBefore: number | null;
@@ -35,6 +39,8 @@ export type InventoryAsset = {
   createdAt: string;
   updatedAt: string;
 };
+
+export const INVENTORY_DEFAULT_SUPPLIER = "Alle Tecnologia";
 
 export type InventoryAssetsResponse = {
   company: { id: string; name: string };
@@ -66,6 +72,10 @@ function appendAssetFields(
   form: FormData,
   data: {
     assetTypeId: string;
+    brand?: string;
+    quantity?: string;
+    supplierThirdParty?: boolean;
+    supplier?: string;
     description?: string;
     dueDate?: string;
     reminderDaysBefore?: string;
@@ -75,6 +85,12 @@ function appendAssetFields(
   },
 ) {
   form.append("assetTypeId", data.assetTypeId);
+  if (data.brand !== undefined) form.append("brand", data.brand);
+  if (data.quantity !== undefined) form.append("quantity", data.quantity);
+  if (data.supplierThirdParty !== undefined) {
+    form.append("supplierThirdParty", data.supplierThirdParty ? "true" : "false");
+  }
+  if (data.supplier !== undefined) form.append("supplier", data.supplier);
   if (data.description !== undefined) {
     form.append("description", data.description);
   }
@@ -113,6 +129,10 @@ export const inventarioService = {
     companyId: string,
     data: {
       assetTypeId: string;
+      brand?: string;
+      quantity?: string;
+      supplierThirdParty?: boolean;
+      supplier?: string;
       description?: string;
       dueDate?: string;
       reminderDaysBefore?: string;
@@ -137,6 +157,10 @@ export const inventarioService = {
     assetId: string,
     data: {
       assetTypeId?: string;
+      brand?: string;
+      quantity?: string;
+      supplierThirdParty?: boolean;
+      supplier?: string;
       description?: string;
       dueDate?: string;
       reminderDaysBefore?: string;
@@ -148,6 +172,12 @@ export const inventarioService = {
   ) {
     const form = new FormData();
     if (data.assetTypeId) form.append("assetTypeId", data.assetTypeId);
+    if (data.brand !== undefined) form.append("brand", data.brand);
+    if (data.quantity !== undefined) form.append("quantity", data.quantity);
+    if (data.supplierThirdParty !== undefined) {
+      form.append("supplierThirdParty", data.supplierThirdParty ? "true" : "false");
+    }
+    if (data.supplier !== undefined) form.append("supplier", data.supplier);
     if (data.description !== undefined) form.append("description", data.description);
     if (data.dueDate !== undefined) form.append("dueDate", data.dueDate);
     if (data.reminderDaysBefore !== undefined) {

@@ -13,6 +13,7 @@ import {
   FileText,
   LayoutDashboard,
   FolderTree,
+  Ticket,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -71,6 +72,13 @@ export default function AdminPage() {
       href: "/admin/classificacao",
     },
     {
+      name: "Ticket",
+      description:
+        "Parametrize os estágios de ticket. Os estágios padrão são fixos e há mais configurações por vir.",
+      icon: Ticket,
+      href: "/admin/ticket",
+    },
+    {
       name: "Auditoria",
       description:
         "Pesquise ações administrativas: criação, edição, exclusão e aprovações.",
@@ -104,61 +112,61 @@ export default function AdminPage() {
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
             <Card>
-              <CardContent className="flex min-h-[132px] items-center justify-between p-6">
+              <CardContent className="flex min-h-[104px] items-center justify-between p-5">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">
                     Empresas ativas
                   </p>
-                  <p className="text-3xl font-bold">{companiesActive}</p>
+                  <p className="text-2xl font-bold">{companiesActive}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Building2 size={28} />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Building2 size={24} />
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="flex min-h-[132px] items-center justify-between p-6">
+              <CardContent className="flex min-h-[104px] items-center justify-between p-5">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">
                     Usuários ativos
                   </p>
-                  <p className="text-3xl font-bold">{usersActive}</p>
+                  <p className="text-2xl font-bold">{usersActive}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600/15 text-emerald-700 dark:text-green-400">
-                  <Users size={28} />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-600/15 text-emerald-700 dark:text-green-400">
+                  <Users size={24} />
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="flex min-h-[132px] items-center justify-between p-6">
+              <CardContent className="flex min-h-[104px] items-center justify-between p-5">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">
                     Perfis ADMIN
                   </p>
-                  <p className="text-3xl font-bold">{adminUsers}</p>
+                  <p className="text-2xl font-bold">{adminUsers}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/12 text-orange-400">
-                  <ShieldCheck size={28} />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-500/12 text-orange-400">
+                  <ShieldCheck size={24} />
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="flex min-h-[132px] items-center justify-between p-6">
+              <CardContent className="flex min-h-[104px] items-center justify-between p-5">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">
                     Arquivos de contrato
                   </p>
-                  <p className="text-3xl font-bold">{contractFiles}</p>
+                  <p className="text-2xl font-bold">{contractFiles}</p>
                 </div>
 
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/12 text-violet-400">
-                  <FileText size={28} />
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-500/12 text-violet-400">
+                  <FileText size={24} />
                 </div>
               </CardContent>
             </Card>
@@ -176,24 +184,24 @@ export default function AdminPage() {
                     className="group block h-full min-w-0"
                   >
                     <Card className="h-full overflow-hidden transition duration-300 hover:border-primary/40 hover:bg-muted/40 hover:shadow-[0_0_0_1px_rgba(18,181,217,0.12),0_20px_40px_rgba(0,0,0,0.28)]">
-                      <CardContent className="flex h-full min-h-[230px] min-w-0 flex-col justify-between p-6">
-                        <div className="min-w-0 space-y-5">
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary transition group-hover:bg-primary/15">
-                            <Icon size={28} />
+                      <CardContent className="flex h-full min-h-[160px] min-w-0 flex-col justify-between p-5">
+                        <div className="min-w-0 space-y-3">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary transition group-hover:bg-primary/15">
+                            <Icon size={22} />
                           </div>
 
-                          <div className="min-w-0 space-y-2">
-                            <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                          <div className="min-w-0 space-y-1.5">
+                            <h2 className="text-lg font-bold tracking-tight text-foreground">
                               {module.name}
                             </h2>
 
-                            <p className="break-words text-sm leading-6 text-muted-foreground">
+                            <p className="break-words text-sm leading-5 text-muted-foreground">
                               {module.description}
                             </p>
                           </div>
                         </div>
 
-                        <div className="mt-6 flex items-center gap-2 text-sm font-semibold text-primary">
+                        <div className="mt-4 flex items-center gap-2 text-sm font-semibold text-primary">
                           Acessar módulo
                           <ArrowRight
                             size={16}
@@ -208,14 +216,14 @@ export default function AdminPage() {
             </div>
 
             <Card>
-              <CardContent className="flex h-full min-h-[230px] flex-col justify-between p-6">
-                <div className="space-y-5">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <LayoutDashboard size={28} />
+              <CardContent className="flex h-full min-h-[160px] flex-col justify-between p-5">
+                <div className="space-y-4">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <LayoutDashboard size={22} />
                   </div>
 
-                  <div className="space-y-2">
-                    <h2 className="text-2xl font-bold tracking-tight text-foreground">
+                  <div className="space-y-1.5">
+                    <h2 className="text-lg font-bold tracking-tight text-foreground">
                       Visão administrativa
                     </h2>
 

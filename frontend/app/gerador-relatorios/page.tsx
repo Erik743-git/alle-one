@@ -18,6 +18,8 @@ import {
   ALL_COMPANIES_REPORT_VALUE,
   getFormatsForReportType,
   getReportTypeLabel,
+  reportTypeRequiresPeriod,
+  reportTypeSupportsCollaborator,
   REPORT_TYPES,
   type ReportFormatOption,
 } from "@/lib/report-types";
@@ -29,6 +31,16 @@ function getReportCompanyLabel(report: ReportRow): string {
     return report.filters.companyLabel ?? "Todas as empresas";
   }
   return report.company?.name ?? "-";
+}
+
+function getReportPeriodLabel(report: ReportRow): string {
+  if (report.filters?.noPeriod) return "Sem período";
+  return `${String(report.periodStart).slice(0, 10)} até ${String(report.periodEnd).slice(0, 10)}`;
+}
+
+function getReportPeriodTableLabel(report: ReportRow): string {
+  if (report.filters?.noPeriod) return "Sem período";
+  return `${String(report.periodStart).slice(0, 10)} → ${String(report.periodEnd).slice(0, 10)}`;
 }
 
 export default function GeradorRelatoriosPage() {
@@ -63,7 +75,8 @@ export default function GeradorRelatoriosPage() {
     [type],
   );
   const isRendimento = type === "1";
-  const isEstatisticaGeral = type === "4";
+  const requiresPeriod = reportTypeRequiresPeriod(type);
+  const supportsCollaborator = reportTypeSupportsCollaborator(type);
   const alleCompanyId = useMemo(
     () =>
       companies.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "",
@@ -124,13 +137,7 @@ export default function GeradorRelatoriosPage() {
   }, [type, format]);
 
   useEffect(() => {
-    if (isEstatisticaGeral) {
-      setCollaboratorId("");
-    }
-  }, [isEstatisticaGeral]);
-
-  useEffect(() => {
-    if (!isRendimento) {
+    if (!supportsCollaborator) {
       setCollaborators([]);
       setCollaboratorId("");
       return;
@@ -169,7 +176,7 @@ export default function GeradorRelatoriosPage() {
     return () => {
       cancelled = true;
     };
-  }, [isRendimento, type]);
+  }, [supportsCollaborator, type]);
 
   async function loadAll() {
     setErro("");
@@ -249,21 +256,22 @@ export default function GeradorRelatoriosPage() {
       setErro("Selecione uma empresa para este tipo de relatório.");
       return;
     }
-    if (!start || !end) {
-      setErro("Selecione data inicial e final.");
-      return;
-    }
+    if (requiresPeriod) {
+      if (!start || !end) {
+        setErro("Selecione data inicial e final.");
+        return;
+      }
 
-    // valida datas (input type="date" pode virar string vazia quando a data é inválida)
-    const startDate = new Date(`${start}T00:00:00`);
-    const endDate = new Date(`${end}T23:59:59`);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-      setErro("Data inválida. Verifique a data inicial e a data final.");
-      return;
-    }
-    if (endDate.getTime() < startDate.getTime()) {
-      setErro("Período inválido (data final menor que a data inicial).");
-      return;
+      const startDate = new Date(`${start}T00:00:00`);
+      const endDate = new Date(`${end}T23:59:59`);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        setErro("Data inválida. Verifique a data inicial e a data final.");
+        return;
+      }
+      if (endDate.getTime() < startDate.getTime()) {
+        setErro("Período inválido (data final menor que a data inicial).");
+        return;
+      }
     }
 
     try {
@@ -272,9 +280,8 @@ export default function GeradorRelatoriosPage() {
         companyId: isAllCompanies ? ALL_COMPANIES_REPORT_VALUE : effectiveCompanyId,
         type,
         format,
-        start,
-        end,
-        ...(isRendimento && collaboratorId ? { userId: collaboratorId } : {}),
+        ...(requiresPeriod ? { start, end } : {}),
+        ...(supportsCollaborator && collaboratorId ? { userId: collaboratorId } : {}),
       });
       await refreshList();
     } catch (e) {
@@ -349,6 +356,7 @@ export default function GeradorRelatoriosPage() {
                     value={start}
                     onChange={setStart}
                     max={end || undefined}
+                    disabled={!requiresPeriod}
                   />
                 </div>
 
@@ -360,6 +368,7 @@ export default function GeradorRelatoriosPage() {
                     value={end}
                     onChange={setEnd}
                     min={start || undefined}
+                    disabled={!requiresPeriod}
                   />
                 </div>
 
@@ -404,12 +413,11 @@ export default function GeradorRelatoriosPage() {
                     loading={loadingCollaborators}
                     preserveOrder
                     disabled={
-                      !isRendimento ||
-                      isEstatisticaGeral ||
+                      !supportsCollaborator ||
                       loadingCollaborators
                     }
                     placeholder={
-                      !isRendimento
+                      !supportsCollaborator
                         ? "Só no relatório de Apontamentos"
                         : "Todos os colaboradores"
                     }
@@ -446,7 +454,9 @@ export default function GeradorRelatoriosPage() {
                   selecionada no período; use &quot;Todas as empresas&quot; para
                   visão geral. Colaborador opcional. Estatística Geral: visão
                   Zabbix/TiFlux de uma empresa (sem colaborador); CSV com as
-                  mesmas tabelas do XLSX (gráficos só no XLSX).
+                  mesmas tabelas do XLSX (gráficos só no XLSX). Inventário:
+                  snapshot dos ativos da empresa (sem período e sem colaborador),
+                  em CSV ou XLSX.
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -503,9 +513,7 @@ export default function GeradorRelatoriosPage() {
                       Empresa: {getReportCompanyLabel(lastReport)}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Período:{" "}
-                      {String(lastReport.periodStart).slice(0, 10)} até{" "}
-                      {String(lastReport.periodEnd).slice(0, 10)}
+                      Período: {getReportPeriodLabel(lastReport)}
                     </p>
                     <p className="text-sm text-muted-foreground">
                       Formato: {lastReport.format}
@@ -565,8 +573,7 @@ export default function GeradorRelatoriosPage() {
                               {getReportCompanyLabel(r)}
                             </td>
                             <td className="px-2 py-3">
-                              {String(r.periodStart).slice(0, 10)} →{" "}
-                              {String(r.periodEnd).slice(0, 10)}
+                              {getReportPeriodTableLabel(r)}
                             </td>
                             <td className="px-2 py-3">{r.format}</td>
                             <td className="px-2 py-3">
