@@ -301,6 +301,7 @@ export function ProjectGanttChart({
 export function ProjectActivityTable({
   activities,
   canEdit,
+  hideDurations = false,
   onEdit,
   onAddChild,
   onDelete,
@@ -308,6 +309,7 @@ export function ProjectActivityTable({
 }: {
   activities: ProjectActivity[];
   canEdit: boolean;
+  hideDurations?: boolean;
   onEdit: (activity: ProjectActivity) => void;
   onAddChild: (parent: ProjectActivity) => void;
   onDelete: (activity: ProjectActivity) => void;
@@ -323,11 +325,16 @@ export function ProjectActivityTable({
             <tr>
               <th className="px-3 py-2.5 text-center font-medium w-12">Feita</th>
               <th className="px-3 py-2.5 text-left font-medium">Tarefa</th>
-              <th className="px-3 py-2.5 text-left font-medium">Duração</th>
+              {!hideDurations ? (
+                <th className="px-3 py-2.5 text-left font-medium">Duração</th>
+              ) : null}
               <th className="px-3 py-2.5 text-left font-medium">Início</th>
               <th className="px-3 py-2.5 text-left font-medium">Término</th>
               <th className="px-3 py-2.5 text-left font-medium">Responsável</th>
-              <th className="px-3 py-2.5 text-left font-medium">Real</th>
+              {!hideDurations ? (
+                <th className="px-3 py-2.5 text-left font-medium">Real</th>
+              ) : null}
+              <th className="px-3 py-2.5 text-left font-medium">Apontamentos</th>
               <th className="px-3 py-2.5 text-left font-medium">Andamento</th>
               {canEdit ? (
                 <th className="px-3 py-2.5 text-right font-medium">Ações</th>
@@ -370,9 +377,11 @@ export function ProjectActivityTable({
                   <td className="px-3 py-2">
                     <ActivityLabel row={row} />
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                    {row.isMilestone ? "—" : `${row.durationDays}d`}
-                  </td>
+                  {!hideDurations ? (
+                    <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                      {row.isMilestone ? "—" : `${row.durationDays ?? 0}d`}
+                    </td>
+                  ) : null}
                   <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
                     {formatShortDate(row.startDate)}
                   </td>
@@ -382,8 +391,34 @@ export function ProjectActivityTable({
                   <td className="px-3 py-2 whitespace-nowrap">
                     {row.assigneeDisplayName ?? "—"}
                   </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                    {row.actualDurationDays != null ? `${row.actualDurationDays}d` : "—"}
+                  {!hideDurations ? (
+                    <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                      {row.actualDurationDays != null
+                        ? `${row.actualDurationDays}d`
+                        : "—"}
+                    </td>
+                  ) : null}
+                  <td className="px-3 py-2 align-top">
+                    {(row.appointments ?? []).length === 0 ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      <div className="space-y-2 max-w-[260px]">
+                        {(row.appointments ?? []).map((item) => (
+                          <div key={item.id} className="rounded-md bg-muted/30 px-2 py-1.5">
+                            <p className="text-xs font-medium text-foreground">
+                              {formatShortDate(item.appointmentDate)} · {item.initTime}–
+                              {item.endTime}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {item.authorName}
+                            </p>
+                            <p className="text-xs text-muted-foreground line-clamp-2">
+                              {item.description}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2 min-w-[120px]">

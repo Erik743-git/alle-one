@@ -38,6 +38,7 @@ import {
 } from './appointment-doc.util';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 import { isAlleOneTifluxDesk, normalizeDeskName } from './tiflux-portal-desk.config';
+import { ProjetosService } from '../projetos/projetos.service';
 
 type TicketRow = {
   ticket_number: number;
@@ -122,6 +123,7 @@ export class TicketsService {
     private readonly prisma: PrismaService,
     private readonly tiflux: TifluxService,
     private readonly fileStorage: FileStorageService,
+    private readonly projetos: ProjetosService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -1344,6 +1346,7 @@ export class TicketsService {
         appointmentType: '',
         tifluxSyncAvailable,
       },
+      projectLink: await this.projetos.listActivitiesForTicket(ticketNumber),
       serviceTypes: ['HORA NORMAL', 'HORA EXTRA', 'PLANTÃO'],
       attendances: [
         { value: 'Remote', label: 'Remoto' },
@@ -2085,6 +2088,12 @@ export class TicketsService {
       },
     });
 
+    await this.projetos.refreshPortalAppointmentLink(
+      row.id,
+      dto.initTime,
+      dto.endTime,
+    );
+
     return {
       ok: true,
       message: syncToTiflux
@@ -2119,6 +2128,7 @@ export class TicketsService {
     await this.prisma.portalTicketAppointmentAttachment.deleteMany({
       where: { portalAppointmentId: row.id },
     });
+    await this.projetos.handlePortalAppointmentDeleted(row.id);
     await this.prisma.portalTicketAppointment.delete({
       where: { id: row.id },
     });
@@ -2230,6 +2240,17 @@ export class TicketsService {
       attachments.length > 0
         ? ` ${attachments.length} anexo(s) salvos.`
         : '';
+
+    if (dto.projectActivityId?.trim()) {
+      await this.projetos.linkPortalAppointmentToActivity({
+        ticketNumber,
+        projectActivityId: dto.projectActivityId.trim(),
+        portalAppointmentId: portalAppointment.id,
+        initTime: dto.initTime,
+        endTime: dto.endTime,
+        createdBy: actor.userId,
+      });
+    }
 
     return {
       ok: true,

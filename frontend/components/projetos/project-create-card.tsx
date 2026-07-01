@@ -28,6 +28,7 @@ export function ProjectCreateCard({ companyId, onCreated }: Props) {
   const [description, setDescription] = useState("");
   const [budgetUnit, setBudgetUnit] = useState<ProjectBudgetUnit>("HOURS");
   const [budgetAmount, setBudgetAmount] = useState("40");
+  const [ticketNumber, setTicketNumber] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,8 +48,13 @@ export function ProjectCreateCard({ companyId, onCreated }: Props) {
   async function handleSubmit() {
     if (!name.trim()) return;
     const amount = Number(budgetAmount);
+    const ticket = Number(ticketNumber);
     if (!Number.isFinite(amount) || amount < 1) {
       setError("Informe um orçamento válido (mínimo 1).");
+      return;
+    }
+    if (!Number.isFinite(ticket) || ticket < 1) {
+      setError("Informe o número do ticket vinculado ao projeto.");
       return;
     }
     try {
@@ -61,6 +67,7 @@ export function ProjectCreateCard({ companyId, onCreated }: Props) {
           description: description.trim() || undefined,
           budgetUnit,
           budgetAmount: amount,
+          ticketNumber: ticket,
         },
         files.length ? files : undefined,
       );
@@ -102,6 +109,22 @@ export function ProjectCreateCard({ companyId, onCreated }: Props) {
               placeholder="Objetivo e escopo do projeto..."
               className="min-h-[72px]"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="project-ticket">Ticket vinculado</Label>
+            <Input
+              id="project-ticket"
+              type="number"
+              min={1}
+              value={ticketNumber}
+              onChange={(e) => setTicketNumber(e.target.value)}
+              placeholder="Ex.: 12345"
+              className="h-11"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cada projeto fica ligado a um único chamado TiFlux.
+            </p>
           </div>
 
           <div className="space-y-2">

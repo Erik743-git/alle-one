@@ -220,6 +220,14 @@ export default function ProjectDetailPage() {
                         >
                           {PROJECT_STATUS_LABELS[project.status]}
                         </span>
+                        {project.ticketNumber ? (
+                          <Link
+                            href={`/tickets/${project.ticketNumber}`}
+                            className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-semibold text-foreground hover:bg-muted/80"
+                          >
+                            Ticket #{project.ticketNumber}
+                          </Link>
+                        ) : null}
                         {project.startDate || project.endDate ? (
                           <span className="inline-flex items-center gap-1 text-muted-foreground">
                             <CalendarRange className="h-3.5 w-3.5" />
@@ -321,6 +329,7 @@ export default function ProjectDetailPage() {
                   project={project}
                   canEdit={canEdit}
                   isAdmin={adminUser}
+                  hideConsumed={clientUser}
                   onUpdated={() => void load(true)}
                 />
 
@@ -337,6 +346,7 @@ export default function ProjectDetailPage() {
                   <ProjectActivityTable
                     activities={project.activities}
                     canEdit={canEdit}
+                    hideDurations={clientUser}
                     onEdit={openEdit}
                     onAddChild={(row) => openCreate(row.id)}
                     onDelete={(row) => void handleDelete(row)}

@@ -59,6 +59,17 @@ export type ProjectCompletionApprovalDto = {
   note: string | null;
 };
 
+export type ProjectActivityAppointmentDto = {
+  id: string;
+  portalAppointmentId: string;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  description: string;
+  authorName: string;
+  minutes?: number;
+};
+
 export type ProjectActivityDto = {
   id: string;
   projectId: string;
@@ -67,7 +78,7 @@ export type ProjectActivityDto = {
   name: string;
   level: number;
   sortOrder: number;
-  durationDays: number;
+  durationDays: number | null;
   startDate: string | null;
   endDate: string | null;
   actualDurationDays: number | null;
@@ -78,6 +89,7 @@ export type ProjectActivityDto = {
   isMilestone: boolean;
   notes: string | null;
   predecessorIds: string[];
+  appointments: ProjectActivityAppointmentDto[];
   children: ProjectActivityDto[];
 };
 
@@ -88,6 +100,7 @@ export type ProjectSummaryDto = {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  ticketNumber: number | null;
   startDate: string | null;
   endDate: string | null;
   progressPercent: number;
@@ -103,6 +116,20 @@ export type ProjectDetailDto = ProjectSummaryDto & {
   company: { id: string; name: string };
   activities: ProjectActivityDto[];
   documents: ProjectDocumentDto[];
+};
+
+type ActivityAppointmentRow = {
+  id: string;
+  minutes: number;
+  portalAppointment: {
+    id: string;
+    appointmentDate: Date;
+    initTime: string;
+    endTime: string;
+    description: string;
+    createdBy: string;
+    creator: { name: string };
+  };
 };
 
 type ActivityRow = {
@@ -124,6 +151,7 @@ type ActivityRow = {
   notes: string | null;
   assignee: { name: string } | null;
   predecessors: Array<{ predecessorId: string }>;
+  appointments: ActivityAppointmentRow[];
 };
 
 @Injectable()
@@ -134,6 +162,7 @@ export class ProjetosExcelService {
     project?: ProjectDetailDto;
     companyName: string;
     template: boolean;
+    hideDurations?: boolean;
   }): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Alle One';
@@ -152,21 +181,35 @@ export class ProjetosExcelService {
     instructions.getColumn(1).width = 100;
 
     const sheet = workbook.addWorksheet('Atividades');
-    const headers = [
-      'WBS',
-      'WBS pai',
-      'Nome da tarefa',
-      'Duração (dias)',
-      'Início',
-      'Término',
-      'Responsável',
-      'E-mail responsável',
-      '% Andamento',
-      'Tempo real (dias)',
-      'Predecessoras (WBS)',
-      'Marco (S/N)',
-      'Observações',
-    ];
+    const headers = params.hideDurations
+      ? [
+          'WBS',
+          'WBS pai',
+          'Nome da tarefa',
+          'Início',
+          'Término',
+          'Responsável',
+          'E-mail responsável',
+          '% Andamento',
+          'Predecessoras (WBS)',
+          'Marco (S/N)',
+          'Observações',
+        ]
+      : [
+          'WBS',
+          'WBS pai',
+          'Nome da tarefa',
+          'Duração (dias)',
+          'Início',
+          'Término',
+          'Responsável',
+          'E-mail responsável',
+          '% Andamento',
+          'Tempo real (dias)',
+          'Predecessoras (WBS)',
+          'Marco (S/N)',
+          'Observações',
+        ];
     sheet.addRow(headers);
     sheet.getRow(1).font = { bold: true };
     headers.forEach((_, index) => {
@@ -176,21 +219,37 @@ export class ProjetosExcelService {
     if (!params.template && params.project) {
       const flat = this.flattenActivities(params.project.activities);
       for (const row of flat) {
-        sheet.addRow([
-          row.wbsCode,
-          row.parentWbs ?? '',
-          row.name,
-          row.durationDays,
-          row.startDate ?? '',
-          row.endDate ?? '',
-          row.assigneeDisplayName ?? row.assigneeName ?? '',
-          row.assigneeEmail ?? '',
-          row.progressPercent,
-          row.actualDurationDays ?? '',
-          row.predecessorWbs.join('; '),
-          row.isMilestone ? 'S' : 'N',
-          row.notes ?? '',
-        ]);
+        sheet.addRow(
+          params.hideDurations
+            ? [
+                row.wbsCode,
+                row.parentWbs ?? '',
+                row.name,
+                row.startDate ?? '',
+                row.endDate ?? '',
+                row.assigneeDisplayName ?? row.assigneeName ?? '',
+                row.assigneeEmail ?? '',
+                row.progressPercent,
+                row.predecessorWbs.join('; '),
+                row.isMilestone ? 'S' : 'N',
+                row.notes ?? '',
+              ]
+            : [
+                row.wbsCode,
+                row.parentWbs ?? '',
+                row.name,
+                row.durationDays,
+                row.startDate ?? '',
+                row.endDate ?? '',
+                row.assigneeDisplayName ?? row.assigneeName ?? '',
+                row.assigneeEmail ?? '',
+                row.progressPercent,
+                row.actualDurationDays ?? '',
+                row.predecessorWbs.join('; '),
+                row.isMilestone ? 'S' : 'N',
+                row.notes ?? '',
+              ],
+        );
       }
 
       const summary = workbook.addWorksheet('Resumo');
@@ -509,6 +568,293 @@ export class ProjetosService {
     }
   }
 
+  private isClientView(user: AuthenticatedRequestUser) {
+    return user.role === UserRole.CLIENT;
+  }
+
+  private appointmentMinutesFromStrings(
+    initTime: string | null,
+    endTime: string | null,
+  ): number {
+    const parse = (value: string | null) => {
+      if (!value) return null;
+      const [h, m] = value.split(':').map((part) => Number(part));
+      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+      return h * 60 + m;
+    };
+    const start = parse(initTime);
+    const end = parse(endTime);
+    if (start == null || end == null) return 0;
+    return Math.max(0, end - start);
+  }
+
+  private minutesToDays(minutes: number): number {
+    if (minutes <= 0) return 0;
+    return Math.max(1, Math.round(minutes / (HOURS_PER_WORK_DAY * 60)));
+  }
+
+  private stripAppointmentDescription(value: string): string {
+    return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private maskBudgetForClient(budget: ProjectBudgetDto): ProjectBudgetDto {
+    return {
+      ...budget,
+      consumedDays: 0,
+      consumedHours: 0,
+      consumedInUnit: null,
+      exceeded: false,
+    };
+  }
+
+  private async assertTicketLinkable(
+    companyId: string,
+    ticketNumber: number,
+    excludeProjectId?: string,
+  ) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { tifluxClientId: true },
+    });
+    if (!company) {
+      throw new NotFoundException('Empresa não encontrada.');
+    }
+
+    const rows =
+      (await this.prisma.$queryRaw<
+        Array<{ ticket_number: number; client_external_id: number | null }>
+      >`
+        SELECT t.ticket_number, t.client_external_id
+        FROM tiflux.tickets t
+        WHERE t.ticket_number = ${ticketNumber}
+        LIMIT 1
+      `) ?? [];
+    const ticket = rows[0];
+    if (!ticket) {
+      throw new BadRequestException(`Ticket #${ticketNumber} não encontrado.`);
+    }
+
+    if (
+      company.tifluxClientId != null &&
+      ticket.client_external_id != null &&
+      company.tifluxClientId !== ticket.client_external_id
+    ) {
+      throw new BadRequestException(
+        'O ticket informado não pertence à empresa do projeto.',
+      );
+    }
+
+    const existing = await this.prisma.project.findFirst({
+      where: {
+        ticketNumber,
+        deletedAt: null,
+        ...(excludeProjectId ? { NOT: { id: excludeProjectId } } : {}),
+      },
+      select: { id: true, code: true },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `O ticket #${ticketNumber} já está vinculado ao projeto #${existing.code}.`,
+      );
+    }
+  }
+
+  async listActivitiesForTicket(ticketNumber: number) {
+    const project = await this.prisma.project.findFirst({
+      where: { ticketNumber, deletedAt: null },
+      select: { id: true, code: true, name: true },
+    });
+    if (!project) return null;
+
+    const activities = await this.prisma.projectActivity.findMany({
+      where: { projectId: project.id, deletedAt: null, isMilestone: false },
+      select: { id: true, wbsCode: true, name: true, parentId: true },
+      orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { wbsCode: 'asc' }],
+    });
+
+    return {
+      project: {
+        id: project.id,
+        code: project.code,
+        name: project.name,
+      },
+      activities: activities.map((row) => ({
+        id: row.id,
+        wbsCode: row.wbsCode,
+        name: row.name,
+        label: `${row.wbsCode} — ${row.name}`,
+      })),
+    };
+  }
+
+  async linkPortalAppointmentToActivity(params: {
+    ticketNumber: number;
+    projectActivityId: string;
+    portalAppointmentId: string;
+    initTime: string;
+    endTime: string;
+    createdBy: string;
+  }) {
+    const activity = await this.prisma.projectActivity.findFirst({
+      where: { id: params.projectActivityId, deletedAt: null },
+      include: {
+        project: { select: { id: true, ticketNumber: true, deletedAt: true } },
+      },
+    });
+    if (!activity?.project || activity.project.deletedAt) {
+      throw new BadRequestException('Atividade do projeto inválida.');
+    }
+    if (activity.project.ticketNumber !== params.ticketNumber) {
+      throw new BadRequestException(
+        'A atividade não pertence ao projeto vinculado a este ticket.',
+      );
+    }
+
+    const minutes = this.appointmentMinutesFromStrings(
+      params.initTime,
+      params.endTime,
+    );
+    if (minutes <= 0) {
+      throw new BadRequestException('Horário do apontamento inválido.');
+    }
+
+    await this.prisma.projectActivityAppointment.create({
+      data: {
+        activityId: activity.id,
+        portalAppointmentId: params.portalAppointmentId,
+        minutes,
+      },
+    });
+
+    await this.recalculateActivityFromAppointments(activity.id, params.createdBy);
+  }
+
+  async refreshPortalAppointmentLink(
+    portalAppointmentId: string,
+    initTime: string,
+    endTime: string,
+  ) {
+    const link = await this.prisma.projectActivityAppointment.findUnique({
+      where: { portalAppointmentId },
+      select: { id: true, activityId: true },
+    });
+    if (!link) return;
+
+    const minutes = this.appointmentMinutesFromStrings(initTime, endTime);
+    await this.prisma.projectActivityAppointment.update({
+      where: { id: link.id },
+      data: { minutes },
+    });
+    await this.recalculateActivityFromAppointments(link.activityId);
+  }
+
+  async handlePortalAppointmentDeleted(portalAppointmentId: string) {
+    const link = await this.prisma.projectActivityAppointment.findUnique({
+      where: { portalAppointmentId },
+      select: { id: true, activityId: true },
+    });
+    if (!link) return;
+    await this.prisma.projectActivityAppointment.delete({
+      where: { id: link.id },
+    });
+    await this.recalculateActivityFromAppointments(link.activityId);
+  }
+
+  private async recalculateActivityFromAppointments(
+    activityId: string,
+    latestAssigneeUserId?: string,
+  ) {
+    const activity = await this.prisma.projectActivity.findFirst({
+      where: { id: activityId, deletedAt: null },
+      include: {
+        appointments: {
+          include: {
+            portalAppointment: {
+              select: { createdBy: true },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+        assignee: { select: { name: true } },
+      },
+    });
+    if (!activity) return;
+
+    const totalMinutes = activity.appointments.reduce(
+      (sum, row) => sum + row.minutes,
+      0,
+    );
+    const actualDurationDays =
+      totalMinutes > 0 ? this.minutesToDays(totalMinutes) : null;
+    const latestCreator =
+      activity.appointments.at(-1)?.portalAppointment.createdBy ??
+      latestAssigneeUserId ??
+      activity.assigneeUserId;
+
+    let progressPercent = activity.progressPercent;
+    if (activity.durationDays > 0 && actualDurationDays != null) {
+      progressPercent = Math.min(
+        100,
+        Math.round((actualDurationDays / activity.durationDays) * 100),
+      );
+    }
+
+    const assigneeUser = latestCreator
+      ? await this.prisma.user.findFirst({
+          where: { id: latestCreator },
+          select: { id: true, name: true },
+        })
+      : null;
+
+    await this.prisma.projectActivity.update({
+      where: { id: activityId },
+      data: {
+        actualDurationDays,
+        progressPercent,
+        assigneeUserId: assigneeUser?.id ?? null,
+        assigneeName: assigneeUser?.name ?? activity.assigneeName,
+      },
+    });
+  }
+
+  private activityConsumedDays(row: ActivityRow): number {
+    if (row.isMilestone) return 0;
+    if (row.appointments.length > 0) {
+      const totalMinutes = row.appointments.reduce(
+        (sum, item) => sum + item.minutes,
+        0,
+      );
+      return totalMinutes / (HOURS_PER_WORK_DAY * 60);
+    }
+    return (
+      row.actualDurationDays ??
+      (row.progressPercent >= 100 ? row.durationDays : 0)
+    );
+  }
+
+  private mapAppointmentRow(
+    row: ActivityAppointmentRow,
+    hideDurations: boolean,
+  ): ProjectActivityAppointmentDto {
+    const mapped: ProjectActivityAppointmentDto = {
+      id: row.id,
+      portalAppointmentId: row.portalAppointment.id,
+      appointmentDate: row.portalAppointment.appointmentDate
+        .toISOString()
+        .slice(0, 10),
+      initTime: row.portalAppointment.initTime,
+      endTime: row.portalAppointment.endTime,
+      description: this.stripAppointmentDescription(
+        row.portalAppointment.description,
+      ),
+      authorName: row.portalAppointment.creator.name,
+    };
+    if (!hideDurations) {
+      mapped.minutes = row.minutes;
+    }
+    return mapped;
+  }
+
   private assertProjectDocumentMime(mimeType: string | undefined | null) {
     assertAllowedUploadMime(mimeType);
     const mime = (mimeType || '').toLowerCase();
@@ -523,11 +869,7 @@ export class ProjetosService {
   private computeBudgetMetrics(activities: ActivityRow[]) {
     let consumedDays = 0;
     for (const row of activities) {
-      if (row.isMilestone) continue;
-      const days =
-        row.actualDurationDays ??
-        (row.progressPercent >= 100 ? row.durationDays : 0);
-      consumedDays += Math.max(0, days);
+      consumedDays += Math.max(0, this.activityConsumedDays(row));
     }
     const consumedHours = consumedDays * HOURS_PER_WORK_DAY;
     return { consumedDays, consumedHours };
@@ -728,7 +1070,10 @@ export class ProjetosService {
     return Math.min(100, Math.round(weighted / totalWeight));
   }
 
-  private mapActivityRow(row: ActivityRow): Omit<ProjectActivityDto, 'children'> {
+  private mapActivityRow(
+    row: ActivityRow,
+    hideDurations: boolean,
+  ): Omit<ProjectActivityDto, 'children'> {
     return {
       id: row.id,
       projectId: row.projectId,
@@ -737,10 +1082,10 @@ export class ProjetosService {
       name: row.name,
       level: row.level,
       sortOrder: row.sortOrder,
-      durationDays: row.durationDays,
+      durationDays: hideDurations ? null : row.durationDays,
       startDate: this.formatDateOnly(row.startDate),
       endDate: this.formatDateOnly(row.endDate),
-      actualDurationDays: row.actualDurationDays,
+      actualDurationDays: hideDurations ? null : row.actualDurationDays,
       progressPercent: row.progressPercent,
       assigneeUserId: row.assigneeUserId,
       assigneeName: row.assigneeName,
@@ -748,12 +1093,18 @@ export class ProjetosService {
       isMilestone: row.isMilestone,
       notes: row.notes,
       predecessorIds: row.predecessors.map((p) => p.predecessorId),
+      appointments: row.appointments.map((item) =>
+        this.mapAppointmentRow(item, hideDurations),
+      ),
     };
   }
 
-  private buildActivityTree(rows: ActivityRow[]): ProjectActivityDto[] {
+  private buildActivityTree(
+    rows: ActivityRow[],
+    hideDurations: boolean,
+  ): ProjectActivityDto[] {
     const mapped = rows.map((row) => ({
-      ...this.mapActivityRow(row),
+      ...this.mapActivityRow(row, hideDurations),
       children: [] as ProjectActivityDto[],
     }));
     const byId = new Map(mapped.map((row) => [row.id, row]));
@@ -780,8 +1131,69 @@ export class ProjetosService {
       include: {
         assignee: { select: { name: true } },
         predecessors: { select: { predecessorId: true } },
+        appointments: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            portalAppointment: {
+              select: {
+                id: true,
+                appointmentDate: true,
+                initTime: true,
+                endTime: true,
+                description: true,
+                createdBy: true,
+                creator: { select: { name: true } },
+              },
+            },
+          },
+        },
       },
     });
+  }
+
+  private buildProjectSummary(
+    project: {
+      id: string;
+      code: number;
+      companyId: string;
+      name: string;
+      description: string | null;
+      status: ProjectStatus;
+      ticketNumber: number | null;
+      startDate: Date | null;
+      endDate: Date | null;
+      budgetUnit: ProjectBudgetUnit | null;
+      budgetAmount: number | null;
+      completionApprovalStatus: ProjectCompletionApprovalStatus;
+      completionApprovalNote: string | null;
+      completionApprovedAt: Date | null;
+      completionApprover?: { name: string } | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    activities: ActivityRow[],
+    documentsCount: number,
+    hideDurations: boolean,
+  ): ProjectSummaryDto {
+    const budget = this.buildBudgetDto(project, activities);
+    return {
+      id: project.id,
+      code: project.code,
+      companyId: project.companyId,
+      name: project.name,
+      description: project.description,
+      status: project.status,
+      ticketNumber: project.ticketNumber,
+      startDate: this.formatDateOnly(project.startDate),
+      endDate: this.formatDateOnly(project.endDate),
+      progressPercent: this.computeProgress(activities),
+      activitiesCount: activities.length,
+      budget: hideDurations ? this.maskBudgetForClient(budget) : budget,
+      completionApproval: this.buildCompletionApprovalDto(project),
+      documentsCount,
+      createdAt: project.createdAt.toISOString(),
+      updatedAt: project.updatedAt.toISOString(),
+    };
   }
 
   private async resolveProjectInScope(
@@ -839,28 +1251,20 @@ export class ProjetosService {
     });
 
     const summaries: ProjectSummaryDto[] = [];
+    const hideDurations = this.isClientView(user);
     for (const project of projects) {
       const activities = await this.loadProjectActivities(project.id);
       const documentsCount = await this.prisma.projectDocument.count({
         where: { projectId: project.id },
       });
-      summaries.push({
-        id: project.id,
-        code: project.code,
-        companyId: project.companyId,
-        name: project.name,
-        description: project.description,
-        status: project.status,
-        startDate: this.formatDateOnly(project.startDate),
-        endDate: this.formatDateOnly(project.endDate),
-        progressPercent: this.computeProgress(activities),
-        activitiesCount: activities.length,
-        budget: this.buildBudgetDto(project, activities),
-        completionApproval: this.buildCompletionApprovalDto(project),
-        documentsCount,
-        createdAt: project.createdAt.toISOString(),
-        updatedAt: project.updatedAt.toISOString(),
-      });
+      summaries.push(
+        this.buildProjectSummary(
+          project,
+          activities,
+          documentsCount,
+          hideDurations,
+        ),
+      );
     }
 
     return { company, projects: summaries };
@@ -880,24 +1284,16 @@ export class ProjetosService {
     }
     const activities = await this.loadProjectActivities(project.id);
     const documents = await this.loadProjectDocuments(project.id);
+    const hideDurations = this.isClientView(user);
     return {
-      id: full.id,
-      code: full.code,
-      companyId: full.companyId,
-      name: full.name,
-      description: full.description,
-      status: full.status,
-      startDate: this.formatDateOnly(full.startDate),
-      endDate: this.formatDateOnly(full.endDate),
-      progressPercent: this.computeProgress(activities),
-      activitiesCount: activities.length,
-      budget: this.buildBudgetDto(full, activities),
-      completionApproval: this.buildCompletionApprovalDto(full),
-      documentsCount: documents.length,
-      createdAt: full.createdAt.toISOString(),
-      updatedAt: full.updatedAt.toISOString(),
+      ...this.buildProjectSummary(
+        full,
+        activities,
+        documents.length,
+        hideDurations,
+      ),
       company: full.company,
-      activities: this.buildActivityTree(activities),
+      activities: this.buildActivityTree(activities, hideDurations),
       documents,
     };
   }
@@ -911,6 +1307,7 @@ export class ProjetosService {
     this.assertCanMutate(user);
     const scope = await this.getAccessibleCompanyIds(user);
     this.ensureCompanyInScope(companyId, scope);
+    await this.assertTicketLinkable(companyId, body.ticketNumber);
 
     const project = await this.prisma.project.create({
       data: {
@@ -922,6 +1319,7 @@ export class ProjetosService {
         endDate: body.endDate ? new Date(`${body.endDate}T00:00:00.000Z`) : null,
         budgetUnit: body.budgetUnit as ProjectBudgetUnit,
         budgetAmount: body.budgetAmount,
+        ticketNumber: body.ticketNumber,
         createdBy: user.userId,
       },
     });
@@ -1011,6 +1409,14 @@ export class ProjetosService {
       await this.assertCanCompleteProject(project, activities);
     }
 
+    if (body.ticketNumber !== undefined) {
+      await this.assertTicketLinkable(
+        project.companyId,
+        body.ticketNumber,
+        projectId,
+      );
+    }
+
     await this.prisma.project.update({
       where: { id: projectId },
       data: {
@@ -1038,6 +1444,9 @@ export class ProjetosService {
           : {}),
         ...(body.budgetAmount !== undefined
           ? { budgetAmount: body.budgetAmount }
+          : {}),
+        ...(body.ticketNumber !== undefined
+          ? { ticketNumber: body.ticketNumber }
           : {}),
       },
     });
@@ -1428,10 +1837,12 @@ export class ProjetosService {
     template: boolean,
   ) {
     const project = await this.getProject(user, projectId);
+    const hideDurations = this.isClientView(user);
     const buffer = await this.excel.buildExportBuffer({
       project,
       companyName: project.company.name,
       template,
+      hideDurations,
     });
     const suffix = template ? 'modelo' : `projeto-${project.code}`;
     return {

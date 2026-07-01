@@ -27,6 +27,7 @@ type Props = {
   project: ProjectDetail;
   canEdit: boolean;
   isAdmin: boolean;
+  hideConsumed?: boolean;
   onUpdated: () => void;
 };
 
@@ -34,6 +35,7 @@ export function ProjectBudgetDocumentsPanel({
   project,
   canEdit,
   isAdmin,
+  hideConsumed = false,
   onUpdated,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -98,28 +100,32 @@ export function ProjectBudgetDocumentsPanel({
                   {budget.amount} {budget.unitLabel}
                 </p>
               </div>
-              <div
-                className={cn(
-                  "rounded-lg p-3",
-                  budget.exceeded ? "bg-rose-500/10" : "bg-emerald-500/10",
-                )}
-              >
-                <p className="text-xs text-muted-foreground">Consumido</p>
-                <p
+              {!hideConsumed ? (
+                <div
                   className={cn(
-                    "text-lg font-semibold",
-                    budget.exceeded ? "text-rose-400" : "text-emerald-400",
+                    "rounded-lg p-3",
+                    budget.exceeded ? "bg-rose-500/10" : "bg-emerald-500/10",
                   )}
                 >
-                  {budget.consumedInUnit ?? 0} {budget.unitLabel}
-                </p>
-              </div>
+                  <p className="text-xs text-muted-foreground">Consumido</p>
+                  <p
+                    className={cn(
+                      "text-lg font-semibold",
+                      budget.exceeded ? "text-rose-400" : "text-emerald-400",
+                    )}
+                  >
+                    {budget.consumedInUnit ?? 0} {budget.unitLabel}
+                  </p>
+                </div>
+              ) : null}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Equivalente: {budget.consumedDays} dias · {budget.consumedHours} horas
-              (jornada de 8h/dia)
-            </p>
-            {budget.exceeded ? (
+            {!hideConsumed ? (
+              <p className="text-xs text-muted-foreground">
+                Equivalente: {budget.consumedDays} dias · {budget.consumedHours} horas
+                (jornada de 8h/dia)
+              </p>
+            ) : null}
+            {!hideConsumed && budget.exceeded ? (
               <p className="flex items-start gap-2 text-sm text-amber-400">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 Orçamento excedido. Para concluir o projeto, um administrador precisa

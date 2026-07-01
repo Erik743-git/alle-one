@@ -692,6 +692,7 @@ model PortalTicketAppointment {
   creator     User                                @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   outbox      PortalTifluxOutbox?                 @relation(fields: [outboxId], references: [id], onDelete: SetNull)
   attachments PortalTicketAppointmentAttachment[]
+  projectActivityLink ProjectActivityAppointment?
 
   @@index([ticketNumber])
   @@index([tifluxAppointmentExternalId])
@@ -900,6 +901,7 @@ model Project {
   completionApprovedBy String? @map("completion_approved_by")
   completionApprovedAt DateTime? @map("completion_approved_at")
   completionApprovalNote String? @map("completion_approval_note")
+  ticketNumber Int? @unique @map("ticket_number")
   createdBy   String        @map("created_by")
   createdAt   DateTime      @default(now()) @map("created_at")
   updatedAt   DateTime      @updatedAt @map("updated_at")
@@ -914,6 +916,7 @@ model Project {
   @@index([companyId])
   @@index([status])
   @@index([completionApprovalStatus])
+  @@index([ticketNumber])
   @@map("projects")
 }
 
@@ -944,6 +947,7 @@ model ProjectActivity {
   assignee     User?                        @relation("ProjectActivityAssignee", fields: [assigneeUserId], references: [id])
   predecessors ProjectActivityPredecessor[] @relation("ActivitySuccessors")
   successors   ProjectActivityPredecessor[] @relation("ActivityPredecessors")
+  appointments ProjectActivityAppointment[]
 
   @@unique([projectId, wbsCode])
   @@index([projectId])
@@ -965,6 +969,20 @@ model ProjectActivityPredecessor {
   @@index([activityId])
   @@index([predecessorId])
   @@map("project_activity_predecessors")
+}
+
+model ProjectActivityAppointment {
+  id                  String   @id @default(uuid())
+  activityId          String   @map("activity_id")
+  portalAppointmentId String   @unique @map("portal_appointment_id")
+  minutes             Int
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  activity          ProjectActivity         @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  portalAppointment PortalTicketAppointment @relation(fields: [portalAppointmentId], references: [id], onDelete: Cascade)
+
+  @@index([activityId])
+  @@map("project_activity_appointments")
 }
 
 model ProjectDocument {

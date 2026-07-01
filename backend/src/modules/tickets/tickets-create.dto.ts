@@ -100,6 +100,11 @@ export class CreateTicketAppointmentDto {
   @IsIn(['HORA NORMAL', 'HORA EXTRA', 'PLANTÃO', 'Plantão'])
   serviceName!: string;
 
+  /** Atividade do projeto vinculado ao ticket (opcional). */
+  @IsOptional()
+  @IsUUID()
+  projectActivityId?: string;
+
   /** Remote, External ou Internal. */
   @IsIn(['Remote', 'External', 'Internal'])
   attendance!: 'Remote' | 'External' | 'Internal';

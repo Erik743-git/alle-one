@@ -66,6 +66,7 @@ export function TicketAppointmentModal({
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
+  const [projectLink, setProjectLink] = useState<AppointmentCatalogs["projectLink"]>(null);
   const [tifluxAppointmentSyncEnabled, setTifluxAppointmentSyncEnabled] = useState(false);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -73,6 +74,7 @@ export function TicketAppointmentModal({
   const [endTime, setEndTime] = useState(nowTime);
   const [serviceName, setServiceName] = useState("");
   const [attendance, setAttendance] = useState("Remote");
+  const [projectActivityId, setProjectActivityId] = useState("");
   const [descriptionPlain, setDescriptionPlain] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
@@ -92,6 +94,7 @@ export function TicketAppointmentModal({
       setLoadingMeta(true);
       const data = await ticketsService.appointmentCatalogs(ticketNumber);
       setTicketMeta(data.ticket);
+      setProjectLink(data.projectLink ?? null);
       setTifluxAppointmentSyncEnabled(data.tifluxAppointmentSyncEnabled ?? false);
     } catch {
       setTicketMeta(null);
@@ -114,11 +117,23 @@ export function TicketAppointmentModal({
         setInitTime(nowTime());
         setEndTime(nowTime());
         setDescriptionPlain("");
+        setProjectActivityId("");
         setComposerKey((k) => k + 1);
       }
       void loadTicketMeta();
     }
   }, [open, loadTicketMeta, editingAppointment]);
+
+  const projectActivityOptions = useMemo(
+    () => [
+      { value: "", label: "Sem vínculo com atividade do projeto" },
+      ...(projectLink?.activities ?? []).map((item) => ({
+        value: item.id,
+        label: item.label,
+      })),
+    ],
+    [projectLink],
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -146,6 +161,7 @@ export function TicketAppointmentModal({
       description: exported.description,
       serviceName: serviceName.trim(),
       attendance: attendance as CreateAppointmentPayload["attendance"],
+      ...(projectActivityId ? { projectActivityId } : {}),
     };
 
     try {
@@ -298,6 +314,27 @@ export function TicketAppointmentModal({
                 />
               </div>
             </div>
+
+            {!isEdit && projectLink?.activities.length ? (
+              <div className="space-y-2">
+                <Label className={FIELD_LABEL}>
+                  Atividade do projeto {projectLink.project.name}
+                </Label>
+                <SearchableSelectField
+                  value={projectActivityId}
+                  onChange={setProjectActivityId}
+                  options={projectActivityOptions}
+                  preserveOrder
+                  placeholder="Opcional"
+                  emptyLabel="Sem vínculo"
+                  modal
+                />
+                <p className="text-xs text-muted-foreground">
+                  Se escolher uma atividade, o tempo abate no cronograma e o responsável
+                  é atualizado automaticamente.
+                </p>
+              </div>
+            ) : null}
 
             {!isEdit ? (
               <AppointmentDescriptionComposer

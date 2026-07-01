@@ -50,6 +50,17 @@ export type ProjectDocument = {
   createdAt: string;
 };
 
+export type ProjectActivityAppointment = {
+  id: string;
+  portalAppointmentId: string;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  description: string;
+  authorName: string;
+  minutes?: number;
+};
+
 export type ProjectSummary = {
   id: string;
   code: number;
@@ -57,6 +68,7 @@ export type ProjectSummary = {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  ticketNumber: number | null;
   startDate: string | null;
   endDate: string | null;
   progressPercent: number;
@@ -76,7 +88,7 @@ export type ProjectActivity = {
   name: string;
   level: number;
   sortOrder: number;
-  durationDays: number;
+  durationDays: number | null;
   startDate: string | null;
   endDate: string | null;
   actualDurationDays: number | null;
@@ -87,6 +99,7 @@ export type ProjectActivity = {
   isMilestone: boolean;
   notes: string | null;
   predecessorIds: string[];
+  appointments: ProjectActivityAppointment[];
   children: ProjectActivity[];
 };
 
@@ -166,6 +179,7 @@ export const projetosService = {
       endDate?: string;
       budgetUnit: ProjectBudgetUnit;
       budgetAmount: number;
+      ticketNumber: number;
     },
     files?: File[],
   ) {
@@ -181,6 +195,7 @@ export const projetosService = {
           endDate: data.endDate,
           budgetUnit: data.budgetUnit,
           budgetAmount: data.budgetAmount,
+          ticketNumber: data.ticketNumber,
         }),
       );
       for (const file of files) {
@@ -210,6 +225,7 @@ export const projetosService = {
     endDate: string;
     budgetUnit: ProjectBudgetUnit;
     budgetAmount: number;
+    ticketNumber: number;
   }>) {
     return apiRequest<ProjectDetail>(`/projetos/projects/${projectId}`, {
       method: "PATCH",

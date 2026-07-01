@@ -74,6 +74,11 @@ export class CreateProjectDto {
   @IsInt()
   @Min(1)
   budgetAmount!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  ticketNumber!: number;
 }
 
 export class UpdateProjectDto {
@@ -107,6 +112,12 @@ export class UpdateProjectDto {
   @IsInt()
   @Min(1)
   budgetAmount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  ticketNumber?: number;
 }
 
 export class ApproveProjectCompletionDto {

@@ -206,6 +206,10 @@ export type AppointmentCatalogs = {
     appointmentType: string;
     tifluxSyncAvailable: boolean;
   };
+  projectLink?: {
+    project: { id: string; code: number; name: string };
+    activities: Array<{ id: string; wbsCode: string; name: string; label: string }>;
+  } | null;
   serviceTypes: string[];
   attendances: Array<{ value: string; label: string }>;
 };
@@ -228,6 +232,7 @@ export type CreateAppointmentPayload = {
   description: string;
   serviceName: string;
   attendance: "Remote" | "External" | "Internal";
+  projectActivityId?: string;
 };
 
 export type CreateTicketResult = {
