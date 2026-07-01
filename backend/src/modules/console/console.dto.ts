@@ -32,6 +32,10 @@ export class ConsoleAlertsQueryDto {
   @Min(1)
   @Max(1000)
   limit?: number;
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  priorityOnly?: 'true' | 'false';
 }
 
 export class ConsoleHostsQueryDto {

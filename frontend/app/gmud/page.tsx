@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/accordion";
 import { sortByName } from "@/lib/collections";
 import { getStoredUser } from "@/lib/session";
-import { companiesService, type Company } from "@/lib/services/companies.service";
+import { type Company } from "@/lib/services/companies.service";
 import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 import { GmudStatusBadge } from "./_components/gmud-status-badge";
 import {
@@ -121,9 +121,11 @@ export default function GmudPage() {
       const seesGmudsByParticipation =
         user?.role === "COLLABORATOR" || user?.role === "PJ";
       const [companiesData, gmudsData] = await Promise.all([
-        isClient || seesGmudsByParticipation
+        isClient
           ? Promise.resolve([] as Company[])
-          : companiesService.list(),
+          : gmudsService.listCompanies().then((rows) =>
+              rows.map((c) => companyFromGmudRef(c)),
+            ),
         gmudsService.list(),
       ]);
 

@@ -62,6 +62,22 @@ export class InventarioService {
     }
   }
 
+  async assertCompanyScopeForImport(
+    user: AuthenticatedRequestUser,
+    companyId: string,
+  ) {
+    this.assertCanMutate(user);
+    const scope = await this.getAccessibleCompanyIds(user);
+    this.ensureCompanyInScope(companyId, scope);
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!company) {
+      throw new NotFoundException('Empresa não encontrada.');
+    }
+  }
+
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {

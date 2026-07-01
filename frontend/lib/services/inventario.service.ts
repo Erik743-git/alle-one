@@ -1,6 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
-import { readBlobDownload } from "@/lib/download-blob";
+import { readBlobDownload, triggerBrowserDownload } from "@/lib/download-blob";
 import { API_URL } from "@/lib/env";
 
 export type InventoryCompany = {
@@ -120,6 +120,11 @@ function appendAssetFields(
   if (data.removeAttachment) form.append("removeAttachment", "true");
 }
 
+export type InventoryImportResult = {
+  created: number;
+  errors: Array<{ row: number; message: string }>;
+};
+
 export const inventarioService = {
   listAssetTypes() {
     return apiRequest<InventoryAssetType[]>("/inventario/asset-types");
@@ -231,6 +236,31 @@ export const inventarioService = {
     return apiRequest<{ ok: boolean }>(`/inventario/assets/${assetId}`, {
       method: "DELETE",
     });
+  },
+
+  async downloadImportTemplate() {
+    const response = await authFetch(`${API_URL}/inventario/import-template`);
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Falha ao baixar modelo."));
+    }
+    const meta = await readBlobDownload(
+      response,
+      "modelo-importacao-inventario.xlsx",
+    );
+    triggerBrowserDownload(meta.blob, meta.filename);
+  },
+
+  async importAssets(companyId: string, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    const response = await authFetch(
+      `${API_URL}/inventario/companies/${companyId}/assets/import`,
+      { method: "POST", body: form },
+    );
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Falha ao importar planilha."));
+    }
+    return (await response.json()) as InventoryImportResult;
   },
 
   async fetchAttachment(params: {

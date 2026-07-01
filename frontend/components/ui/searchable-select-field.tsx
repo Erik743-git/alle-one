@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 type SelectOption = {
   value: string;
   label: string;
+  description?: string;
 };
 
 type SearchableSelectFieldProps = {
@@ -27,6 +28,10 @@ type SearchableSelectFieldProps = {
   modal?: boolean;
   /** Mantém a ordem das opções quando true (ex.: "Todas as empresas" primeiro). */
   preserveOrder?: boolean;
+  /** Exibe busca mesmo com poucas opções (listas longas no Console). */
+  alwaysShowSearch?: boolean;
+  /** Largura mínima do painel aberto (útil para nomes longos de grupos Zabbix). */
+  popoverMinWidth?: string;
 };
 
 export function SearchableSelectField({
@@ -41,6 +46,8 @@ export function SearchableSelectField({
   searchPlaceholder = "Pesquisar...",
   modal = false,
   preserveOrder = false,
+  alwaysShowSearch = false,
+  popoverMinWidth,
 }: SearchableSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -57,8 +64,11 @@ export function SearchableSelectField({
   const filteredOptions = React.useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return sortedOptions;
-    return sortedOptions.filter((item) =>
-      item.label.toLowerCase().includes(normalizedQuery),
+    return sortedOptions.filter(
+      (item) =>
+        item.label.toLowerCase().includes(normalizedQuery) ||
+        item.description?.toLowerCase().includes(normalizedQuery) ||
+        item.value.toLowerCase().includes(normalizedQuery),
     );
   }, [query, sortedOptions]);
 
@@ -68,7 +78,7 @@ export function SearchableSelectField({
   const displayLabel =
     selectedLabel || (loading ? "Carregando..." : emptyLabel || placeholder);
 
-  const showSearch = sortedOptions.length > 8;
+  const showSearch = alwaysShowSearch || sortedOptions.length > 8;
 
   const handleListWheel = React.useCallback(
     (event: React.WheelEvent<HTMLUListElement>) => {
@@ -92,8 +102,9 @@ export function SearchableSelectField({
             !selectedLabel && "text-muted-foreground",
             className,
           )}
+          title={selectedLabel || undefined}
         >
-          <span className="truncate">{displayLabel}</span>
+          <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
           <ChevronDown className="ml-2 size-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
@@ -106,7 +117,11 @@ export function SearchableSelectField({
         collisionBoundary={
           typeof document !== "undefined" ? [document.documentElement] : undefined
         }
-        className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] p-2"
+        className={cn(
+          "p-2",
+          popoverMinWidth ??
+            "w-[min(100vw-2rem,var(--radix-popover-trigger-width))]",
+        )}
       >
         {showSearch ? (
           <Input
@@ -119,7 +134,7 @@ export function SearchableSelectField({
         ) : null}
 
         <ul
-          className="max-h-48 overflow-y-auto overscroll-contain rounded-md border border-border"
+          className="max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border"
           role="listbox"
           onWheelCapture={handleListWheel}
         >
@@ -171,7 +186,16 @@ export function SearchableSelectField({
                     ) : (
                       <span className="size-4 shrink-0" />
                     )}
-                    <span className="truncate">{item.label}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block break-words text-sm leading-snug">
+                        {item.label}
+                      </span>
+                      {item.description ? (
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          {item.description}
+                        </span>
+                      ) : null}
+                    </span>
                   </button>
                 </li>
               );

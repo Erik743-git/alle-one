@@ -50,4 +50,8 @@ export class UpdateCompanyDto {
   @IsOptional()
   @IsBoolean()
   status?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  monitoringPriority?: boolean;
 }

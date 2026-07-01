@@ -8,9 +8,11 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -36,13 +38,17 @@ import {
   UpdateInventoryAssetDto,
 } from './inventario.dto';
 import { InventarioService } from './inventario.service';
+import { InventarioImportService } from './inventario-import.service';
 
 @ApiTags('Inventário')
 @ApiBearerAuth()
 @Controller('inventario')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class InventarioController {
-  constructor(private readonly inventario: InventarioService) {}
+  constructor(
+    private readonly inventario: InventarioService,
+    private readonly inventarioImport: InventarioImportService,
+  ) {}
 
   @Get('asset-types')
   @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
@@ -83,6 +89,22 @@ export class InventarioController {
     return this.inventario.listCompanies(user);
   }
 
+  @Get('import-template')
+  @Roles('ADMIN', 'COLLABORATOR')
+  @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
+  async downloadImportTemplate(@Res({ passthrough: true }) res: Response) {
+    const buffer = await this.inventarioImport.buildTemplateBuffer();
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="modelo-importacao-inventario.xlsx"',
+    );
+    return new StreamableFile(buffer);
+  }
+
   @Get('companies/:companyId/assets')
   @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')
   @RequirePermission(PermissionModule.INVENTARIO, 'canView')
@@ -110,6 +132,31 @@ export class InventarioController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.inventario.createAsset(user, params.companyId, body, file);
+  }
+
+  @Post('companies/:companyId/assets/import')
+  @Roles('ADMIN', 'COLLABORATOR')
+  @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @AuditMeta({
+    entity: 'InventoryAsset',
+    action: 'CREATE',
+    entityIdParam: 'companyId',
+  })
+  @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
+  importAssets(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: InventarioCompanyIdParamDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie um arquivo Excel (.xlsx).');
+    }
+    return this.inventarioImport.importFromBuffer({
+      user,
+      companyId: params.companyId,
+      buffer: file.buffer,
+    });
   }
 
   @Patch('assets/:id')

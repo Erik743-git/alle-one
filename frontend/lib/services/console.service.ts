@@ -12,6 +12,8 @@ export type ConsoleAlert = {
   hostName: string | null;
   tags: Array<{ tag: string; value: string }>;
   groupName: string;
+  companyName?: string | null;
+  isPriorityCompany?: boolean;
 };
 
 export type ConsoleAlertsResponse = {
@@ -19,11 +21,15 @@ export type ConsoleAlertsResponse = {
   alerts: ConsoleAlert[];
   priorityAlerts: ConsoleAlert[];
   fetchedAt: string;
+  warnings?: string[];
+  groupNotFound?: boolean;
 };
 
 export type ConsoleGroupOption = {
   name: string;
   groupid?: string;
+  companyName?: string | null;
+  isPriority?: boolean;
 };
 
 export type ConsoleGroupsResponse = {
@@ -52,6 +58,7 @@ export type ConsoleAlertsQuery = {
   ack?: "yes" | "no" | "all";
   search?: string;
   limit?: number;
+  priorityOnly?: boolean;
 };
 
 function buildQuery(params: Record<string, string | number | undefined>) {
@@ -77,6 +84,7 @@ export function getConsoleAlerts(query: ConsoleAlertsQuery = {}) {
       ack: query.ack,
       search: query.search,
       limit: query.limit,
+      priorityOnly: query.priorityOnly ? "true" : undefined,
     })}`,
   );
 }

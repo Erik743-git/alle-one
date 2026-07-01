@@ -1,7 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { parseZabbixGroupNames } from '../companies/zabbix-groups.util';
 import {
+  ConsoleAlertDto,
   ConsoleAlertsResponse,
   ZabbixService,
 } from '../zabbix/zabbix.service';
@@ -12,11 +15,17 @@ import type {
   ConsoleHostsQueryDto,
 } from './console.dto';
 
+type CompanyGroupMeta = {
+  companyName: string;
+  isPriority: boolean;
+};
+
 @Injectable()
 export class ConsoleService {
   constructor(
     private readonly zabbix: ZabbixService,
     private readonly tenantScope: TenantScopeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private parseSeverities(raw?: string): number[] | undefined {
@@ -28,9 +37,81 @@ export class ConsoleService {
     return values.length ? values : undefined;
   }
 
+  private async loadCompanyGroupMap(): Promise<Map<string, CompanyGroupMeta>> {
+    const companies = await this.prisma.company.findMany({
+      where: { deletedAt: null, zabbixGroupName: { not: null } },
+      select: {
+        name: true,
+        zabbixGroupName: true,
+        monitoringPriority: true,
+      },
+    });
+
+    const map = new Map<string, CompanyGroupMeta>();
+    for (const company of companies) {
+      for (const group of parseZabbixGroupNames(company.zabbixGroupName)) {
+        map.set(group.toLowerCase(), {
+          companyName: company.name,
+          isPriority: company.monitoringPriority,
+        });
+      }
+    }
+    return map;
+  }
+
+  private async getPriorityCompanyGroups(): Promise<string[]> {
+    const companies = await this.prisma.company.findMany({
+      where: {
+        deletedAt: null,
+        monitoringPriority: true,
+        zabbixGroupName: { not: null },
+      },
+      select: { zabbixGroupName: true },
+      orderBy: { name: 'asc' },
+    });
+
+    const groups = new Set<string>();
+    for (const company of companies) {
+      for (const group of parseZabbixGroupNames(company.zabbixGroupName)) {
+        groups.add(group);
+      }
+    }
+    return [...groups];
+  }
+
+  private enrichAlerts(
+    response: ConsoleAlertsResponse,
+    companyByGroup: Map<string, CompanyGroupMeta>,
+  ): ConsoleAlertsResponse {
+    const alerts = response.alerts.map((alert) => {
+      const meta = companyByGroup.get(alert.groupName.trim().toLowerCase());
+      return {
+        ...alert,
+        companyName: meta?.companyName ?? null,
+        isPriorityCompany: meta?.isPriority ?? false,
+      };
+    });
+
+    alerts.sort(
+      (a, b) =>
+        Number(b.isPriorityCompany) - Number(a.isPriorityCompany) ||
+        b.severity - a.severity ||
+        b.clock - a.clock ||
+        a.hostName?.localeCompare(b.hostName ?? '', 'pt-BR') ||
+        0,
+    );
+
+    return {
+      ...response,
+      alerts,
+      priorityAlerts: alerts.filter((row) => row.isPriorityCompany),
+    };
+  }
+
   private async resolveGroup(
     user: AuthenticatedRequestUser,
     group?: string,
+    priorityOnly?: boolean,
   ): Promise<string> {
     const clientGroup = await this.tenantScope.resolveZabbixGroupForList(user);
     if (clientGroup) {
@@ -38,6 +119,28 @@ export class ConsoleService {
         return this.tenantScope.assertZabbixGroupAccess(user, group);
       }
       return clientGroup;
+    }
+
+    if (priorityOnly) {
+      const priorityGroups = await this.getPriorityCompanyGroups();
+      if (!priorityGroups.length) {
+        throw new BadRequestException(
+          'Nenhuma empresa marcada como prioritária no cadastro.',
+        );
+      }
+      if (group?.trim()) {
+        const normalized = group.trim().toLowerCase();
+        const allowed = priorityGroups.some(
+          (item) => item.toLowerCase() === normalized,
+        );
+        if (!allowed) {
+          throw new BadRequestException(
+            'O grupo selecionado não pertence a uma empresa prioritária.',
+          );
+        }
+        return group.trim();
+      }
+      return priorityGroups.join(';');
     }
 
     if (!group?.trim()) {
@@ -53,13 +156,19 @@ export class ConsoleService {
     user: AuthenticatedRequestUser,
     query: ConsoleAlertsQueryDto,
   ): Promise<ConsoleAlertsResponse> {
-    const group = await this.resolveGroup(user, query.group);
-    return this.zabbix.getConsoleAlertsForGroup(group, {
+    const group = await this.resolveGroup(
+      user,
+      query.group,
+      query.priorityOnly === 'true',
+    );
+    const companyByGroup = await this.loadCompanyGroupMap();
+    const raw = await this.zabbix.getConsoleAlertsForGroup(group, {
       severities: this.parseSeverities(query.severity),
       acknowledged: query.ack ?? 'all',
       search: query.search,
       limit: query.limit ?? 500,
     });
+    return this.enrichAlerts(raw, companyByGroup);
   }
 
   async listHosts(user: AuthenticatedRequestUser, query: ConsoleHostsQueryDto) {
@@ -121,10 +230,17 @@ export class ConsoleService {
     eventid: string,
     body: ConsoleAcknowledgeDto,
   ) {
-    if (body.group?.trim()) {
-      await this.tenantScope.assertZabbixGroupAccess(user, body.group);
-    } else {
-      await this.resolveGroup(user, body.group);
+    const group = body.group?.trim()
+      ? await this.tenantScope.assertZabbixGroupAccess(user, body.group)
+      : await this.resolveGroup(user, body.group);
+
+    const scoped = await this.zabbix.getConsoleAlertsForGroup(group, {
+      limit: 1000,
+    });
+    if (!scoped.alerts.some((alert: ConsoleAlertDto) => alert.eventId === eventid)) {
+      throw new BadRequestException(
+        'Evento fora do escopo do grupo selecionado.',
+      );
     }
 
     await this.zabbix.acknowledgeEvents(
@@ -136,15 +252,39 @@ export class ConsoleService {
   }
 
   async listGroups(user: AuthenticatedRequestUser) {
+    const companyByGroup = await this.loadCompanyGroupMap();
     const clientGroup = await this.tenantScope.resolveZabbixGroupForList(user);
     if (clientGroup) {
       return {
-        groups: clientGroup.split(';').map((name) => ({ name: name.trim() })),
+        groups: clientGroup.split(';').map((name) => {
+          const trimmed = name.trim();
+          const meta = companyByGroup.get(trimmed.toLowerCase());
+          return {
+            name: trimmed,
+            companyName: meta?.companyName ?? null,
+            isPriority: meta?.isPriority ?? false,
+          };
+        }),
       };
     }
+
     const groups = await this.zabbix.getGroups();
-    return {
-      groups: groups.map((group) => ({ name: group.name, groupid: group.groupid })),
-    };
+    const mapped = groups.map((group) => {
+      const meta = companyByGroup.get(group.name.trim().toLowerCase());
+      return {
+        name: group.name,
+        groupid: group.groupid,
+        companyName: meta?.companyName ?? null,
+        isPriority: meta?.isPriority ?? false,
+      };
+    });
+
+    mapped.sort(
+      (a, b) =>
+        Number(b.isPriority) - Number(a.isPriority) ||
+        a.name.localeCompare(b.name, 'pt-BR'),
+    );
+
+    return { groups: mapped };
   }
 }

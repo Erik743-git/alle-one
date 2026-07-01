@@ -165,6 +165,7 @@ model Company {
   status               Boolean                   @default(true)
 
   zabbixGroupName      String?                   @map("zabbix_group_name")
+  monitoringPriority   Boolean                   @default(false) @map("monitoring_priority")
   tifluxClientId       Int?                      @map("tiflux_client_id")
   tifluxClientName String?                       @map("tiflux_client_name")
 

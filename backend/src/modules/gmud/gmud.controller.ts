@@ -63,6 +63,13 @@ export class GmudController {
     return this.service.searchUsers(user, query);
   }
 
+  @Get('companies')
+  @RequirePermission(PermissionModule.GMUD, 'canView')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  listCompanies(@CurrentUser() user: AuthenticatedRequestUser) {
+    return this.service.listCompanies(user);
+  }
+
   @Get(':id/pdf')
   @RequirePermission(PermissionModule.GMUD, 'canView')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')

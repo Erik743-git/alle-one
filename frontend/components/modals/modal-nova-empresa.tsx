@@ -30,6 +30,7 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
   const [cnpj, setCnpj] = useState('');
   const [address, setAddress] = useState('');
   const [zabbixGroupName, setZabbixGroupName] = useState('');
+  const [monitoringPriority, setMonitoringPriority] = useState(false);
   const [tifluxClientId, setTifluxClientId] = useState<number | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
@@ -83,6 +84,7 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
         cnpj: cnpj.trim() || undefined,
         address: address.trim() || undefined,
         zabbixGroupName: zabbixGroupName.trim() || undefined,
+        monitoringPriority,
         tifluxClientId: tifluxClientId ?? undefined,
       });
 
@@ -96,6 +98,7 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
       setCnpj('');
       setAddress('');
       setZabbixGroupName('');
+      setMonitoringPriority(false);
       setTifluxClientId(null);
       setLogoFile(null);
       setLogoPreviewUrl((prev) => {
@@ -214,6 +217,37 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
                 value={zabbixGroupName}
                 onChange={setZabbixGroupName}
               />
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <button
+                type="button"
+                onClick={() => setMonitoringPriority((prev) => !prev)}
+                className={`font-sans flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${
+                  monitoringPriority
+                    ? "border-destructive/40 bg-destructive/10"
+                    : "border-border bg-muted/30 hover:bg-muted/50"
+                }`}
+              >
+                <span
+                  className={`inline-flex size-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
+                    monitoringPriority
+                      ? "border-destructive bg-destructive text-destructive-foreground"
+                      : "border-border bg-background"
+                  }`}
+                  aria-hidden
+                >
+                  {monitoringPriority ? "★" : ""}
+                </span>
+                <span>
+                  <span className="block font-semibold text-foreground">
+                    Empresa prioritária no Console
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Alertas aparecem primeiro no painel de monitoramento.
+                  </span>
+                </span>
+              </button>
             </div>
 
             <div className="space-y-2 sm:col-span-2">

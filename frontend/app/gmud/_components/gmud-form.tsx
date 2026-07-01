@@ -8,12 +8,12 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { sortByName } from "@/lib/collections";
-import { companiesService, type Company } from "@/lib/services/companies.service";
 import { getStoredUser } from "@/lib/session";
 import {
   gmudsService,
   type CreateGmudPayload,
   type Gmud,
+  type GmudCompanyOption,
   type GmudUser,
 } from "@/lib/services/gmuds.service";
 import { DateTimePickerField } from "@/components/ui/datetime-picker-field";
@@ -75,8 +75,9 @@ export function GmudForm({
   const authUser = getStoredUser();
   const isClient = authUser?.role === "CLIENT";
 
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<GmudCompanyOption[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [companiesError, setCompaniesError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,11 +134,24 @@ export function GmudForm({
     async function run() {
       if (isClient) return;
       setLoadingCompanies(true);
+      setCompaniesError(null);
       try {
-        const data = await companiesService.list();
-        if (!cancelled) setCompanies(sortByName(data));
-      } catch {
-        // manter silencioso, a tela ainda pode funcionar com companyId preenchido
+        const data = await gmudsService.listCompanies();
+        if (!cancelled) {
+          setCompanies(sortByName(data));
+          if (data.length === 1) {
+            setCompanyId((prev) => prev || data[0].id);
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCompanies([]);
+          setCompaniesError(
+            err instanceof Error
+              ? err.message
+              : "Não foi possível carregar as empresas.",
+          );
+        }
       } finally {
         if (!cancelled) setLoadingCompanies(false);
       }
@@ -148,7 +162,7 @@ export function GmudForm({
     };
   }, [isClient]);
 
-  const companyLocked = isClient;
+  const companyLocked = isClient || (companies.length <= 1 && !loadingCompanies);
 
   const executorOptions = useMemo(() => sortByName(executors), [executors]);
 
@@ -265,7 +279,11 @@ export function GmudForm({
             </div>
             {companyLocked ? (
               <Input
-                value={authUser?.companyName ?? ""}
+                value={
+                  authUser?.companyName ??
+                  companies.find((c) => c.id === companyId)?.name ??
+                  ""
+                }
                 disabled
                 className=""
               />
@@ -276,7 +294,9 @@ export function GmudForm({
                   disabled={readonly || !canEdit || loadingCompanies}
                   onChange={setCompanyId}
                   options={companies.map((c) => ({ value: c.id, label: c.name }))}
-                  emptyLabel="Selecione..."
+                  placeholder="Selecione a empresa"
+                  alwaysShowSearch
+                  popoverMinWidth="min-w-[min(28rem,calc(100vw-2rem))]"
                   className="min-w-0 flex-1"
                 />
                 <Button
@@ -285,9 +305,16 @@ export function GmudForm({
                   disabled={readonly || !canEdit || loadingCompanies}
                   onClick={async () => {
                     setLoadingCompanies(true);
+                    setCompaniesError(null);
                     try {
-                      const data = await companiesService.list();
+                      const data = await gmudsService.listCompanies();
                       setCompanies(sortByName(data));
+                    } catch (err) {
+                      setCompaniesError(
+                        err instanceof Error
+                          ? err.message
+                          : "Não foi possível carregar as empresas.",
+                      );
                     } finally {
                       setLoadingCompanies(false);
                     }
@@ -301,6 +328,16 @@ export function GmudForm({
             {!companyLocked ? (
               <div className="text-xs text-muted-foreground">
                 Selecione a empresa para habilitar busca de usuários.
+              </div>
+            ) : null}
+            {companiesError ? (
+              <div className="alle-alert-error rounded-lg px-3 py-2 text-xs">
+                {companiesError}
+              </div>
+            ) : null}
+            {!companyLocked && !loadingCompanies && companies.length === 0 && !companiesError ? (
+              <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                Nenhuma empresa disponível para sua conta nesta GMUD.
               </div>
             ) : null}
           </div>

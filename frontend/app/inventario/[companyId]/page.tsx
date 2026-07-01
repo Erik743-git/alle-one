@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
+  FileSpreadsheet,
   FileText,
   Loader2,
   Pencil,
   Plus,
   Trash2,
+  Upload,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -37,6 +39,7 @@ import {
   inventarioService,
   type InventoryAsset,
   type InventoryAssetFile,
+  type InventoryImportResult,
 } from "@/lib/services/inventario.service";
 
 function formatDueDate(value: string | null) {
@@ -76,6 +79,8 @@ export default function InventarioEmpresaPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<InventoryAssetFile | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canEdit = canEditInventario();
   const canDelete = canDeleteInventario();
@@ -202,6 +207,44 @@ export default function InventarioEmpresaPage() {
     }
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      await inventarioService.downloadImportTemplate();
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível baixar o modelo.",
+      );
+    }
+  }
+
+  async function handleImport(file: File) {
+    if (!companyId) return;
+    try {
+      setImporting(true);
+      const result: InventoryImportResult =
+        await inventarioService.importAssets(companyId, file);
+      if (result.created > 0) {
+        notifySuccess(
+          `${result.created} ativo(s) importado(s)${result.errors.length ? ` (${result.errors.length} linha(s) com erro)` : ""}.`,
+        );
+        await load();
+      } else if (result.errors.length) {
+        notifyError(
+          `Nenhum ativo importado. ${result.errors.length} linha(s) com erro.`,
+        );
+      } else {
+        notifyError("Planilha sem linhas válidas para importar.");
+      }
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Falha ao importar planilha.",
+      );
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
   return (
     <ProtectedPage>
       <PermissionGate module="INVENTARIO">
@@ -226,10 +269,43 @@ export default function InventarioEmpresaPage() {
                 </p>
               </div>
               {canEdit ? (
-                <Button onClick={openCreate} className="shrink-0">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Adicionar ativo
-                </Button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) void handleImport(file);
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleDownloadTemplate()}
+                  >
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Modelo Excel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={importing}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {importing ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Importar Excel
+                  </Button>
+                  <Button onClick={openCreate}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar ativo
+                  </Button>
+                </div>
               ) : null}
             </div>
 

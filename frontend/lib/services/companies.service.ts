@@ -13,6 +13,7 @@ export type Company = {
   tifluxClientId?: number | null;
   tifluxClientName?: string | null;
   zabbixGroupName?: string | null;
+  monitoringPriority?: boolean;
   logoFileId: string | null;
   contractsCount?: number;
   documentsCount?: number;
@@ -28,6 +29,7 @@ export type CreateCompanyPayload = {
   cnpj?: string;
   address?: string;
   zabbixGroupName?: string;
+  monitoringPriority?: boolean;
   tifluxClientId?: number;
   tifluxClientName?: string;
   status?: boolean;
@@ -40,6 +42,7 @@ export type UpdateCompanyPayload = {
   cnpj?: string;
   address?: string;
   zabbixGroupName?: string;
+  monitoringPriority?: boolean;
   tifluxClientId?: number;
   tifluxClientName?: string;
   status?: boolean;

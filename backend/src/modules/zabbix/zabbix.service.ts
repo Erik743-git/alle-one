@@ -156,6 +156,8 @@ export type ConsoleAlertDto = {
   hostName: string | null;
   tags: Array<{ tag: string; value: string }>;
   groupName: string;
+  companyName?: string | null;
+  isPriorityCompany?: boolean;
 };
 
 export type ConsoleAlertsResponse = {
@@ -163,6 +165,8 @@ export type ConsoleAlertsResponse = {
   alerts: ConsoleAlertDto[];
   priorityAlerts: ConsoleAlertDto[];
   fetchedAt: string;
+  warnings?: string[];
+  groupNotFound?: boolean;
 };
 
 type ZabbixProblemConsole = ZabbixProblem & {
@@ -1331,26 +1335,34 @@ export class ZabbixService {
       return {
         group: groupName,
         alerts,
-        priorityAlerts: alerts.filter((row) => row.severity >= 4),
+        priorityAlerts: alerts.filter((row) => row.isPriorityCompany),
         fetchedAt: new Date().toISOString(),
       };
     }
 
-    const groupid = await this.getHostGroupIdByExactName(groupName);
-    if (!groupid) {
+    const resolved = await this.resolveGroupByName(groupName);
+    if (!resolved.groupid) {
       return {
         group: groupName,
         alerts: [],
         priorityAlerts: [],
         fetchedAt: new Date().toISOString(),
+        groupNotFound: true,
+        warnings: [
+          `Grupo Zabbix não encontrado: "${groupName}". Verifique o cadastro da empresa.`,
+        ],
       };
     }
+
+    const groupid = resolved.groupid;
+    const resolvedGroupName = resolved.name ?? groupName;
 
     const problems = await this.request<ZabbixProblemConsole[]>('problem.get', {
       output: ['eventid', 'objectid', 'name', 'severity', 'clock', 'acknowledged'],
       groupids: [groupid],
       selectTags: ['tag', 'value'],
-      sortfield: ['severity', 'eventid'],
+      // problem.get só permite sortfield "eventid" (doc Zabbix API)
+      sortfield: ['eventid'],
       sortorder: 'DESC',
     });
 
@@ -1386,9 +1398,17 @@ export class ZabbixService {
         hostId: host?.hostid ?? null,
         hostName: host?.name ?? host?.host ?? null,
         tags: problem.tags ?? [],
-        groupName,
+        groupName: resolvedGroupName,
       };
     });
+
+    alerts.sort(
+      (a, b) =>
+        b.severity - a.severity ||
+        b.clock - a.clock ||
+        a.hostName?.localeCompare(b.hostName ?? '', 'pt-BR') ||
+        0,
+    );
 
     if (options.severities?.length) {
       const allowed = new Set(options.severities);
@@ -1414,9 +1434,9 @@ export class ZabbixService {
     alerts = alerts.slice(0, limit);
 
     return {
-      group: groupName,
+      group: resolvedGroupName,
       alerts,
-      priorityAlerts: alerts.filter((row) => row.severity >= 4),
+      priorityAlerts: alerts.filter((row) => row.isPriorityCompany),
       fetchedAt: new Date().toISOString(),
     };
   }

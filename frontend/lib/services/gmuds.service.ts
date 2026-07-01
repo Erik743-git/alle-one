@@ -102,7 +102,16 @@ export type CreateGmudPayload = {
 
 export type UpdateGmudPayload = Partial<CreateGmudPayload>;
 
+export type GmudCompanyOption = {
+  id: string;
+  name: string;
+};
+
 export const gmudsService = {
+  async listCompanies() {
+    return apiRequest<GmudCompanyOption[]>("/gmuds/companies");
+  },
+
   async list(params?: { companyId?: string; status?: GmudStatus }) {
     const search = new URLSearchParams();
     if (isValidCompanyUuid(params?.companyId)) {

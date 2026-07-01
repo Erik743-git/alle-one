@@ -67,6 +67,7 @@ import {
 } from "@/lib/services/console.service";
 
 const REFRESH_OPTIONS = [
+  { label: "5s", value: "5000" },
   { label: "15s", value: "15000" },
   { label: "30s", value: "30000" },
   { label: "60s", value: "60000" },
@@ -144,7 +145,8 @@ export default function ConsolePage() {
   const [ackFilter, setAckFilter] = useState<"all" | "yes" | "no">("all");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [refreshInterval, setRefreshInterval] = useState(30000);
+  const [refreshInterval, setRefreshInterval] = useState(15000);
+  const [priorityOnly, setPriorityOnly] = useState(false);
   const [data, setData] = useState<ConsoleAlertsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedAlert, setSelectedAlert] = useState<ConsoleAlert | null>(null);
@@ -153,6 +155,7 @@ export default function ConsolePage() {
   const [ackSubmitting, setAckSubmitting] = useState(false);
 
   const fetchSeq = useRef(0);
+  const hasLoadedOnce = useRef(false);
   const showGroupPicker = !isClient();
   const canAck = canAcknowledgeConsoleAlerts();
 
@@ -167,7 +170,9 @@ export default function ConsolePage() {
       const list = response.groups ?? [];
       setGroups(list);
       if (list.length >= 1) {
-        setSelectedGroup((current) => current || list[0].name);
+        const preferred =
+          list.find((item) => item.isPriority)?.name ?? list[0].name;
+        setSelectedGroup((current) => current || preferred);
       }
     } catch (err) {
       notifyError(
@@ -180,21 +185,23 @@ export default function ConsolePage() {
 
   const fetchAlerts = useCallback(
     async (silent = false) => {
-      if (showGroupPicker && !selectedGroup) {
+      if (!priorityOnly && showGroupPicker && !selectedGroup) {
         setLoading(false);
         return;
       }
 
       const seq = ++fetchSeq.current;
+      if (!silent && !hasLoadedOnce.current) setLoading(true);
       if (!silent) setRefreshing(true);
 
       try {
         const response = await getConsoleAlerts({
-          group: selectedGroup || undefined,
+          group: priorityOnly ? undefined : selectedGroup || undefined,
           severity: severityFilter || undefined,
           ack: ackFilter,
           search: debouncedSearch || undefined,
           limit: 500,
+          priorityOnly,
         });
         if (seq !== fetchSeq.current) return;
         setData(response);
@@ -212,12 +219,20 @@ export default function ConsolePage() {
           );
       } finally {
         if (seq === fetchSeq.current) {
+          hasLoadedOnce.current = true;
           setLoading(false);
           setRefreshing(false);
         }
       }
     },
-    [ackFilter, debouncedSearch, selectedGroup, severityFilter, showGroupPicker],
+    [
+      ackFilter,
+      debouncedSearch,
+      priorityOnly,
+      selectedGroup,
+      severityFilter,
+      showGroupPicker,
+    ],
   );
 
   useEffect(() => {
@@ -225,8 +240,7 @@ export default function ConsolePage() {
   }, [loadGroups]);
 
   useEffect(() => {
-    setLoading(true);
-    void fetchAlerts();
+    void fetchAlerts(!hasLoadedOnce.current);
   }, [fetchAlerts]);
 
   useEffect(() => {
@@ -236,11 +250,28 @@ export default function ConsolePage() {
   }, [fetchAlerts, refreshInterval]);
 
   const groupOptions = useMemo(
-    () => groups.map((g) => ({ value: g.name, label: g.name })),
+    () =>
+      groups.map((g) => ({
+        value: g.name,
+        label: g.isPriority ? `★ ${g.name}` : g.name,
+        description: g.companyName
+          ? g.isPriority
+            ? `${g.companyName} · prioritária no Console`
+            : g.companyName
+          : g.isPriority
+            ? "Empresa prioritária no Console"
+            : "Sem empresa vinculada no portal",
+      })),
     [groups],
   );
 
-  const priorityAlerts = useMemo(
+  const refreshLabel = useMemo(() => {
+    if (refreshInterval <= 0) return "Atualização pausada";
+    const seconds = refreshInterval / 1000;
+    return `Atualização automática a cada ${seconds}s (consulta à API Zabbix)`;
+  }, [refreshInterval]);
+
+  const priorityCompanyAlerts = useMemo(
     () => data?.priorityAlerts ?? [],
     [data?.priorityAlerts],
   );
@@ -260,7 +291,11 @@ export default function ConsolePage() {
     try {
       await acknowledgeConsoleAlert(ackTarget.eventId, {
         message: ackMessage.trim() || undefined,
-        group: data?.group || selectedGroup || undefined,
+        group:
+          ackTarget.groupName ||
+          data?.group ||
+          selectedGroup ||
+          undefined,
       });
       notifySuccess("Alerta reconhecido no Zabbix.");
       setAckTarget(null);
@@ -289,13 +324,16 @@ export default function ConsolePage() {
             <PageHeader
               icon={<MonitorDot className="size-6" />}
               title="Console"
-              description="Visão operacional dos alertas do Zabbix em tempo real. Consulta direta à API, sem persistência no portal."
+              description="Visão operacional dos alertas do Zabbix com atualização automática. Consulta direta à API do Zabbix — não é WebSocket em tempo real."
               actions={
                 <div className="flex flex-col items-end gap-1.5">
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={refreshing || (showGroupPicker && !selectedGroup)}
+                    disabled={
+                      refreshing ||
+                      (!priorityOnly && showGroupPicker && !selectedGroup)
+                    }
                     onClick={() => void fetchAlerts()}
                   >
                     {refreshing ? (
@@ -336,19 +374,55 @@ export default function ConsolePage() {
 
             {/* Filtros */}
             <Card>
-              <CardContent className="grid gap-4 py-4 md:grid-cols-2 xl:grid-cols-5">
+              <CardContent className="flex flex-col gap-4 py-4">
                 {(showGroupPicker || groups.length > 1) && (
-                  <FilterField label="Grupo Zabbix">
-                    <SearchableSelectField
-                      value={selectedGroup}
-                      onChange={setSelectedGroup}
-                      options={groupOptions}
-                      placeholder="Selecione o grupo"
-                      searchPlaceholder="Buscar grupo…"
-                    />
-                  </FilterField>
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                    <FilterField label="Grupo Zabbix" className="min-w-0">
+                      <SearchableSelectField
+                        value={selectedGroup}
+                        onChange={setSelectedGroup}
+                        options={groupOptions}
+                        placeholder="Selecione o grupo"
+                        searchPlaceholder="Buscar grupo…"
+                        disabled={priorityOnly}
+                        preserveOrder
+                        alwaysShowSearch
+                        popoverMinWidth="min-w-[min(42rem,calc(100vw-2rem))]"
+                      />
+                      <p className="text-xs leading-relaxed text-muted-foreground">
+                        Grupos com ★ pertencem a empresas marcadas como
+                        prioritárias em{" "}
+                        <span className="font-medium text-foreground">
+                          Admin → Empresas
+                        </span>
+                        .
+                      </p>
+                    </FilterField>
+
+                    {showGroupPicker ? (
+                      <FilterField label="Visão de empresas prioritárias">
+                        <SearchableSelectField
+                          value={priorityOnly ? "yes" : "no"}
+                          onChange={(value) => setPriorityOnly(value === "yes")}
+                          options={[
+                            { value: "no", label: "Um grupo por vez" },
+                            {
+                              value: "yes",
+                              label: "Todos os alertas de empresas prioritárias",
+                            },
+                          ]}
+                          preserveOrder
+                        />
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          Prioridade é definida por empresa, não por grupo
+                          isolado no Zabbix.
+                        </p>
+                      </FilterField>
+                    ) : null}
+                  </div>
                 )}
 
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <FilterField label="Severidade">
                   <SearchableSelectField
                     value={severityFilter}
@@ -374,12 +448,13 @@ export default function ConsolePage() {
                     value={String(refreshInterval)}
                     onChange={(v) => setRefreshInterval(Number(v))}
                     options={REFRESH_OPTIONS}
-                    placeholder="30s"
+                    placeholder="15s"
                     preserveOrder
                   />
+                  <p className="text-xs text-muted-foreground">{refreshLabel}</p>
                 </FilterField>
 
-                <FilterField label="Busca" className="md:col-span-2 xl:col-span-1">
+                <FilterField label="Busca" className="sm:col-span-2 lg:col-span-1">
                   <div className="relative">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -390,6 +465,7 @@ export default function ConsolePage() {
                     />
                   </div>
                 </FilterField>
+                </div>
               </CardContent>
             </Card>
 
@@ -398,7 +474,7 @@ export default function ConsolePage() {
                 <Loader2 className="size-5 animate-spin" />
                 Carregando problemas…
               </div>
-            ) : showGroupPicker && !selectedGroup ? (
+            ) : !priorityOnly && showGroupPicker && !selectedGroup ? (
               <Card>
                 <CardContent className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
                   <Activity className="size-8 opacity-50" />
@@ -407,11 +483,17 @@ export default function ConsolePage() {
               </Card>
             ) : (
               <div className="space-y-5">
+                {data?.warnings?.length ? (
+                  <div className="alle-alert-error rounded-xl px-4 py-3 text-sm">
+                    {data.warnings.join(" ")}
+                  </div>
+                ) : null}
+
                 <ConsoleProblemsWidget
-                  title="Prioritários"
+                  title="Empresas prioritárias"
                   accent="danger"
-                  alerts={priorityAlerts}
-                  emptyLabel="Nenhum problema de alta prioridade (Alta / Desastre)."
+                  alerts={priorityCompanyAlerts}
+                  emptyLabel="Nenhum alerta de empresas marcadas como prioritárias."
                   onSelectAlert={setSelectedAlert}
                   onAckAlert={setAckTarget}
                   canAck={canAck}
@@ -470,6 +552,15 @@ export default function ConsolePage() {
                       </dt>
                       <dd className="mt-0.5 font-medium text-foreground">
                         {selectedAlert.hostName ?? "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                        Empresa
+                      </dt>
+                      <dd className="mt-0.5 font-medium text-foreground">
+                        {selectedAlert.companyName ?? selectedAlert.groupName}
+                        {selectedAlert.isPriorityCompany ? " ★" : ""}
                       </dd>
                     </div>
                     <div>

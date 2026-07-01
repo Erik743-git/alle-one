@@ -52,21 +52,18 @@ export class GmudService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (
-      user.role === 'CLIENT' ||
-      user.role === 'COLLABORATOR' ||
-      user.role === 'PJ'
-    ) {
+    if (user.role === 'CLIENT') {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada');
       }
       return [user.companyId];
     }
 
+    // Equipe interna (ADMIN, COLLABORATOR, PJ): todas as empresas — igual ao Inventário.
     const companies = await this.prisma.company.findMany({
       where: { deletedAt: null },
       select: { id: true },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { name: 'asc' },
     });
 
     return companies.map((c) => c.id);
@@ -76,6 +73,15 @@ export class GmudService {
     if (!scopeCompanyIds.includes(companyId)) {
       throw new ForbiddenException('Sem acesso à empresa informada');
     }
+  }
+
+  async listCompanies(user: AuthenticatedRequestUser) {
+    const ids = await this.getAccessibleCompanyIds(user);
+    return this.prisma.company.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   private canEditGmudStatus(status: GmudStatus) {

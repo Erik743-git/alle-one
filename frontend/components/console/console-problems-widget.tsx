@@ -82,11 +82,12 @@ export function ConsoleProblemsWidget({
         </p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] border-collapse text-sm">
+          <table className="w-full min-w-[960px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border text-left text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <th className="w-[96px] px-3 py-2">Hora</th>
-                <th className="min-w-[200px] px-3 py-2">Host</th>
+                <th className="min-w-[140px] px-3 py-2">Empresa</th>
+                <th className="min-w-[180px] px-3 py-2">Host</th>
                 <th className="min-w-[300px] px-3 py-2">Problema</th>
                 <th className="w-[150px] px-3 py-2">Severidade</th>
                 <th className="w-[96px] px-3 py-2">Duração</th>
@@ -116,7 +117,22 @@ export function ConsoleProblemsWidget({
                       </div>
                     </td>
 
-                    <td className="max-w-[240px] truncate px-3 py-2.5 align-middle">
+                    <td className="max-w-[180px] truncate px-3 py-2.5 align-middle">
+                      <span
+                        className={cn(
+                          "truncate font-medium",
+                          alert.isPriorityCompany
+                            ? "text-destructive"
+                            : "text-foreground/80",
+                        )}
+                        title={alert.companyName ?? alert.groupName}
+                      >
+                        {alert.isPriorityCompany ? "★ " : ""}
+                        {alert.companyName ?? alert.groupName}
+                      </span>
+                    </td>
+
+                    <td className="max-w-[200px] truncate px-3 py-2.5 align-middle">
                       <button
                         type="button"
                         className="truncate text-left font-medium text-foreground transition-colors hover:text-primary"

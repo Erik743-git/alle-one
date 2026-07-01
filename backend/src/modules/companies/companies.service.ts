@@ -300,6 +300,7 @@ export class CompaniesService {
         tifluxClientId,
         tifluxClientName,
         status: data.status ?? true,
+        monitoringPriority: data.monitoringPriority ?? false,
       },
     });
 
@@ -400,6 +401,9 @@ export class CompaniesService {
         ...(data.tifluxClientId !== undefined && { tifluxClientId }),
         ...(data.tifluxClientName !== undefined && { tifluxClientName }),
         ...(data.status !== undefined && { status: data.status }),
+        ...(data.monitoringPriority !== undefined && {
+          monitoringPriority: data.monitoringPriority,
+        }),
       },
     });
 

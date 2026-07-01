@@ -60,6 +60,7 @@ type EditCompanyForm = {
   zabbixGroupName: string;
   tifluxClientId: number | null;
   tifluxClientName: string;
+  monitoringPriority: boolean;
 };
 
 function mapCompanyToUI(company: Company): EmpresaUI {
@@ -290,6 +291,43 @@ function EditarEmpresaModal({
                 value={form.zabbixGroupName}
                 onChange={(next) => onChange("zabbixGroupName", next)}
               />
+            </div>
+
+            <div className="space-y-3 md:col-span-2">
+              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
+                Console de operação
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  onChange("monitoringPriority", !form.monitoringPriority)
+                }
+                className={`font-sans flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left text-sm transition ${
+                  form.monitoringPriority
+                    ? "border-destructive/40 bg-destructive/10 text-foreground"
+                    : "border-border bg-background text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                }`}
+              >
+                <span
+                  className={`inline-flex size-5 shrink-0 items-center justify-center rounded border text-xs font-bold ${
+                    form.monitoringPriority
+                      ? "border-destructive bg-destructive text-destructive-foreground"
+                      : "border-border bg-muted"
+                  }`}
+                  aria-hidden
+                >
+                  {form.monitoringPriority ? "★" : ""}
+                </span>
+                <span>
+                  <span className="block font-semibold text-foreground">
+                    Empresa prioritária no Console
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Alertas desta empresa aparecem primeiro e no painel de
+                    prioritários.
+                  </span>
+                </span>
+              </button>
             </div>
 
             <div className="space-y-2 md:col-span-2">
@@ -573,6 +611,7 @@ export default function AdminEmpresasPage() {
         zabbixGroupName: company.zabbixGroupName ?? "",
         tifluxClientId: company.tifluxClientId ?? null,
         tifluxClientName: company.tifluxClientName ?? "",
+        monitoringPriority: company.monitoringPriority ?? false,
       });
 
       setModalEditarEmpresa(true);
@@ -631,6 +670,7 @@ export default function AdminEmpresasPage() {
         tifluxClientId: empresaEdicao.tifluxClientId ?? undefined,
         tifluxClientName: empresaEdicao.tifluxClientName.trim() || undefined,
         status: empresaEdicao.status,
+        monitoringPriority: empresaEdicao.monitoringPriority,
       });
 
       setModalEditarEmpresa(false);

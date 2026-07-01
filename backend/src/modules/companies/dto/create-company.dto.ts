@@ -47,4 +47,8 @@ export class CreateCompanyDto {
   @IsOptional()
   @IsBoolean()
   status?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  monitoringPriority?: boolean;
 }
