@@ -61,6 +61,18 @@ curl -s -o /dev/null -w "admin-pagina:%{http_code}\n" \
 curl -s -o /dev/null -w "inventario-tipos:%{http_code}\n" \
   -H "Host: alleone.alletecnologia.com" \
   http://127.0.0.1/inventario/asset-types
+
+curl -s -o /dev/null -w "console-api:%{http_code}\n" \
+  -H "Host: alleone.alletecnologia.com" \
+  http://127.0.0.1/console/groups
+
+curl -s -o /dev/null -w "inventario-modelo:%{http_code}\n" \
+  -H "Host: alleone.alletecnologia.com" \
+  http://127.0.0.1/inventario/import-template
+
+curl -s -o /dev/null -w "projetos-modelo:%{http_code}\n" \
+  -H "Host: alleone.alletecnologia.com" \
+  http://127.0.0.1/projetos/import-template
 ```
 
 | Código | Significado |
