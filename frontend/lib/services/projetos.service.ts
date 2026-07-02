@@ -343,6 +343,15 @@ export const projetosService = {
     triggerBrowserDownload(meta.blob, meta.filename);
   },
 
+  async downloadImportTemplate() {
+    const response = await authFetch(`${API_URL}/projetos/import-template`);
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Falha ao baixar modelo."));
+    }
+    const meta = await readBlobDownload(response, "modelo-projeto.xlsx");
+    triggerBrowserDownload(meta.blob, meta.filename);
+  },
+
   async importProject(projectId: string, file: File) {
     const form = new FormData();
     form.append("file", file);

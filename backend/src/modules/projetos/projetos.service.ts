@@ -281,6 +281,13 @@ export class ProjetosExcelService {
       throw new BadRequestException('Planilha sem aba de atividades.');
     }
 
+    const columns = this.resolveImportColumns(sheet.getRow(1));
+    if (columns.wbs == null || columns.name == null) {
+      throw new BadRequestException(
+        'Cabeçalho inválido. Informe as colunas WBS e Nome da tarefa.',
+      );
+    }
+
     const project = await this.prisma.project.findFirst({
       where: { id: params.projectId, deletedAt: null },
       select: { id: true },
@@ -308,40 +315,54 @@ export class ProjetosExcelService {
 
     sheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return;
-      const wbsCode = String(row.getCell(1).text ?? '').trim();
-      const name = String(row.getCell(3).text ?? '').trim();
+      const wbsCode = this.cellText(row, columns.wbs);
+      const name = this.cellText(row, columns.name);
       if (!wbsCode && !name) return;
       if (!wbsCode || !name) {
         return;
       }
-      const parentWbsRaw = String(row.getCell(2).text ?? '').trim();
-      const durationDays = Math.max(
-        0,
-        Math.trunc(Number(row.getCell(4).value) || 0),
+      const parentWbsRaw = this.cellText(row, columns.parentWbs);
+      const durationDays = columns.duration
+        ? Math.max(0, Math.trunc(Number(this.cellRaw(row, columns.duration)) || 0))
+        : 0;
+      const startDate = this.parseExcelDate(
+        columns.start ? this.cellRaw(row, columns.start) : null,
       );
-      const startDate = this.parseExcelDate(row.getCell(5).value);
-      const endDate = this.parseExcelDate(row.getCell(6).value);
-      const assigneeName = String(row.getCell(7).text ?? '').trim() || null;
-      const assigneeEmail = String(row.getCell(8).text ?? '').trim() || null;
+      const endDate = this.parseExcelDate(
+        columns.end ? this.cellRaw(row, columns.end) : null,
+      );
+      const assigneeName =
+        this.cellText(row, columns.assigneeName) || null;
+      const assigneeEmail =
+        this.cellText(row, columns.assigneeEmail) || null;
       const progressPercent = Math.min(
         100,
-        Math.max(0, Math.trunc(Number(row.getCell(9).value) || 0)),
+        Math.max(
+          0,
+          Math.trunc(
+            Number(
+              columns.progress
+                ? this.cellRaw(row, columns.progress)
+                : 0,
+            ) || 0,
+          ),
+        ),
       );
-      const actualRaw = row.getCell(10).value;
+      const actualRaw = columns.actual
+        ? this.cellRaw(row, columns.actual)
+        : null;
       const actualDurationDays =
         actualRaw == null || actualRaw === ''
           ? null
           : Math.max(0, Math.trunc(Number(actualRaw) || 0));
-      const predecessorWbs = String(row.getCell(11).text ?? '')
+      const predecessorWbs = this.cellText(row, columns.predecessors)
         .split(';')
         .map((part) => part.trim())
         .filter(Boolean);
       const isMilestone = ['s', 'sim', 'yes', 'y', '1', 'true'].includes(
-        String(row.getCell(12).text ?? '')
-          .trim()
-          .toLowerCase(),
+        this.cellText(row, columns.milestone).trim().toLowerCase(),
       );
-      const notes = String(row.getCell(13).text ?? '').trim() || null;
+      const notes = this.cellText(row, columns.notes) || null;
 
       rows.push({
         rowNumber,
@@ -484,6 +505,56 @@ export class ProjetosExcelService {
     });
 
     return { created, updated, errors };
+  }
+
+  private normalizeHeader(value: string) {
+    return value
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  private cellText(row: ExcelJS.Row, column?: number | null) {
+    if (column == null) return '';
+    return String(row.getCell(column).text ?? '').trim();
+  }
+
+  private cellRaw(row: ExcelJS.Row, column?: number | null) {
+    if (column == null) return null;
+    return row.getCell(column).value;
+  }
+
+  private resolveImportColumns(headerRow: ExcelJS.Row) {
+    const map = new Map<string, number>();
+    headerRow.eachCell({ includeEmpty: false }, (cell, col) => {
+      const key = this.normalizeHeader(String(cell.value ?? ''));
+      if (key) map.set(key, col);
+    });
+
+    const col = (aliases: string[]) => {
+      for (const alias of aliases) {
+        const found = map.get(this.normalizeHeader(alias));
+        if (found != null) return found;
+      }
+      return null;
+    };
+
+    return {
+      wbs: col(['wbs']),
+      parentWbs: col(['wbs pai', 'wbs_pai', 'parent wbs']),
+      name: col(['nome da tarefa', 'nome', 'name', 'tarefa']),
+      duration: col(['duracao (dias)', 'duração (dias)', 'duracao', 'duration']),
+      start: col(['inicio', 'início', 'start', 'data inicio']),
+      end: col(['termino', 'término', 'fim', 'end', 'data termino']),
+      assigneeName: col(['responsavel', 'responsável', 'assignee']),
+      assigneeEmail: col(['e-mail responsavel', 'email responsavel', 'e-mail', 'email']),
+      progress: col(['% andamento', 'andamento', 'progresso', 'progress']),
+      actual: col(['tempo real (dias)', 'tempo real', 'actual']),
+      predecessors: col(['predecessoras (wbs)', 'predecessoras', 'predecessors']),
+      milestone: col(['marco (s/n)', 'marco', 'milestone']),
+      notes: col(['observacoes', 'observações', 'notes', 'obs']),
+    };
   }
 
   private parseExcelDate(value: unknown): Date | null {
@@ -1831,6 +1902,21 @@ export class ProjetosService {
     });
   }
 
+  async exportImportTemplate(user: AuthenticatedRequestUser) {
+    const hideDurations = this.isClientView(user);
+    const buffer = await this.excel.buildExportBuffer({
+      companyName: '',
+      template: true,
+      hideDurations,
+    });
+    return {
+      buffer,
+      filename: 'modelo-projeto.xlsx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
+  }
+
   async exportProject(
     user: AuthenticatedRequestUser,
     projectId: string,
@@ -1844,7 +1930,7 @@ export class ProjetosService {
       template,
       hideDurations,
     });
-    const suffix = template ? 'modelo' : `projeto-${project.code}`;
+    const suffix = template ? 'modelo-projeto' : `projeto-${project.code}`;
     return {
       buffer,
       filename: `${suffix}.xlsx`,

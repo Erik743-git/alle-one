@@ -154,6 +154,7 @@ export default function ProjectDetailPage() {
     if (!projectId) return;
     try {
       await projetosService.exportProject(projectId, template);
+      notifySuccess(template ? "Modelo baixado." : "Planilha exportada.");
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao exportar.");
     }

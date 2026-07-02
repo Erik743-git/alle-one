@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   Res,
+  StreamableFile,
   UploadedFile,
   UploadedFiles,
   UseGuards,
@@ -234,6 +235,23 @@ export class ProjetosController {
     return this.projetos.deleteActivity(user, params.activityId);
   }
 
+  @Get('import-template')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.PROJECTS, 'canView')
+  async exportImportTemplate(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, filename, mimeType } =
+      await this.projetos.exportImportTemplate(user);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    return new StreamableFile(buffer);
+  }
+
   @Get('projects/:projectId/export')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.PROJECTS, 'canView')
@@ -252,9 +270,9 @@ export class ProjetosController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="${encodeURIComponent(filename)}"`,
+      `attachment; filename="${filename}"`,
     );
-    return buffer;
+    return new StreamableFile(buffer);
   }
 
   @Post('projects/:projectId/import')

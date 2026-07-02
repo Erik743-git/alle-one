@@ -80,12 +80,8 @@ export default function ProjetosCompanyPage() {
   );
 
   async function handleExportTemplate() {
-    if (!sorted[0]) {
-      notifyError("Crie um projeto antes de baixar o modelo em branco.");
-      return;
-    }
     try {
-      await projetosService.exportProject(sorted[0].id, true);
+      await projetosService.downloadImportTemplate();
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao exportar modelo.");
     }
