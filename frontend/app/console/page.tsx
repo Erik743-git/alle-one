@@ -515,110 +515,147 @@ export default function ConsolePage() {
             open={selectedAlert !== null}
             onOpenChange={(open) => !open && setSelectedAlert(null)}
           >
-            <SheetContent className="w-full overflow-y-auto sm:max-w-md">
-              <SheetHeader>
+            <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-xl lg:max-w-3xl">
+              <SheetHeader className="sticky top-0 z-10 border-b border-border bg-background/90 backdrop-blur-sm">
                 <SheetTitle>Detalhe do problema</SheetTitle>
                 <SheetDescription>
                   Consulta em tempo real — não persistido no portal.
                 </SheetDescription>
               </SheetHeader>
+
               {selectedAlert ? (
-                <div className="mt-6 space-y-5 px-4 text-sm sm:px-0">
-                  <div className="flex items-start gap-3">
-                    <span
-                      className="mt-1 h-full w-1 shrink-0 self-stretch rounded-full"
-                      style={{
-                        backgroundColor: getSeverityAccent(selectedAlert.severity),
-                      }}
-                      aria-hidden
-                    />
-                    <div className="space-y-2">
+                <div className="space-y-5 p-4 sm:p-6">
+                  <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
                       <span
-                        className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
-                        style={severityBadgeStyle(selectedAlert.severity)}
-                      >
-                        {getZabbixSeverityLabel(selectedAlert.severity)}
-                      </span>
-                      <p className="font-medium leading-snug text-foreground">
-                        {selectedAlert.name}
-                      </p>
+                        className="mt-1 h-full w-1 shrink-0 self-stretch rounded-full"
+                        style={{
+                          backgroundColor: getSeverityAccent(selectedAlert.severity),
+                        }}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                            style={severityBadgeStyle(selectedAlert.severity)}
+                          >
+                            {getZabbixSeverityLabel(selectedAlert.severity)}
+                          </span>
+
+                          {selectedAlert.acknowledged ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-500">
+                              <ShieldCheck className="size-3.5" /> Reconhecido
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                              Não reconhecido
+                            </span>
+                          )}
+                        </div>
+
+                        <p className="text-base font-semibold leading-snug text-foreground">
+                          {selectedAlert.name}
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  <dl className="grid grid-cols-2 gap-4">
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Host
-                      </dt>
-                      <dd className="mt-0.5 font-medium text-foreground">
-                        {selectedAlert.hostName ?? "—"}
-                      </dd>
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Contexto
+                      </p>
+                      <dl className="mt-3 grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Empresa
+                          </dt>
+                          <dd className="mt-0.5 truncate font-medium text-foreground">
+                            {selectedAlert.companyName ?? selectedAlert.groupName}
+                            {selectedAlert.isPriorityCompany ? " ★" : ""}
+                          </dd>
+                        </div>
+
+                        <div className="col-span-2">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Host
+                          </dt>
+                          <dd
+                            className="mt-0.5 break-words font-medium text-foreground"
+                            title={selectedAlert.hostName ?? undefined}
+                          >
+                            {selectedAlert.hostName ?? "—"}
+                          </dd>
+                        </div>
+
+                        <div className="col-span-2">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Grupo
+                          </dt>
+                          <dd className="mt-0.5 break-words text-foreground">
+                            {selectedAlert.groupName}
+                          </dd>
+                        </div>
+                      </dl>
                     </div>
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Empresa
-                      </dt>
-                      <dd className="mt-0.5 font-medium text-foreground">
-                        {selectedAlert.companyName ?? selectedAlert.groupName}
-                        {selectedAlert.isPriorityCompany ? " ★" : ""}
-                      </dd>
+
+                    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Tempo
+                      </p>
+                      <dl className="mt-3 grid grid-cols-2 gap-4">
+                        <div className="col-span-2 sm:col-span-1">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Início
+                          </dt>
+                          <dd className="mt-0.5 tabular-nums font-medium text-foreground">
+                            {formatConsoleClock(selectedAlert.clock)}
+                          </dd>
+                        </div>
+                        <div className="col-span-2 sm:col-span-1">
+                          <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                            Duração
+                          </dt>
+                          <dd className="mt-0.5 tabular-nums font-medium text-foreground">
+                            {formatConsoleDuration(selectedAlert.durationSeconds)}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      {!selectedAlert.acknowledged && canAck ? (
+                        <div className="mt-4">
+                          <Button type="button" onClick={() => setAckTarget(selectedAlert)}>
+                            Reconhecer problema
+                          </Button>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            O reconhecimento é enviado diretamente ao Zabbix via API.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Grupo
-                      </dt>
-                      <dd className="mt-0.5 text-foreground">
-                        {selectedAlert.groupName}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Início
-                      </dt>
-                      <dd className="mt-0.5 tabular-nums text-foreground">
-                        {formatConsoleClock(selectedAlert.clock)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Duração
-                      </dt>
-                      <dd className="mt-0.5 tabular-nums text-foreground">
-                        {formatConsoleDuration(selectedAlert.durationSeconds)}
-                      </dd>
-                    </div>
-                  </dl>
+                  </div>
 
                   {selectedAlert.tags.length > 0 ? (
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         Tags
                       </p>
-                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                      <ul className="mt-3 flex flex-wrap gap-2">
                         {selectedAlert.tags.map((tag) => (
                           <li
                             key={`${tag.tag}-${tag.value}`}
-                            className="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground"
+                            className="max-w-full rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground"
+                            title={`${tag.tag}${tag.value ? `: ${tag.value}` : ""}`}
                           >
-                            {tag.tag}
-                            {tag.value ? `: ${tag.value}` : ""}
+                            <span className="break-all">
+                              {tag.tag}
+                              {tag.value ? `: ${tag.value}` : ""}
+                            </span>
                           </li>
                         ))}
                       </ul>
                     </div>
-                  ) : null}
-
-                  {selectedAlert.acknowledged ? (
-                    <p className="inline-flex items-center gap-1.5 text-sm font-medium text-emerald-500">
-                      <ShieldCheck className="size-4" /> Já reconhecido
-                    </p>
-                  ) : canAck ? (
-                    <Button
-                      type="button"
-                      onClick={() => setAckTarget(selectedAlert)}
-                    >
-                      Reconhecer problema
-                    </Button>
                   ) : null}
                 </div>
               ) : null}
