@@ -79,6 +79,17 @@ export class ConsoleService {
     return [...groups];
   }
 
+  private compareConsoleAlerts(a: ConsoleAlertDto, b: ConsoleAlertDto): number {
+    return (
+      Number(b.isPriorityCompany) - Number(a.isPriorityCompany) ||
+      Number(a.acknowledged) - Number(b.acknowledged) ||
+      b.severity - a.severity ||
+      b.clock - a.clock ||
+      a.hostName?.localeCompare(b.hostName ?? '', 'pt-BR') ||
+      0
+    );
+  }
+
   private enrichAlerts(
     response: ConsoleAlertsResponse,
     companyByGroup: Map<string, CompanyGroupMeta>,
@@ -92,14 +103,7 @@ export class ConsoleService {
       };
     });
 
-    alerts.sort(
-      (a, b) =>
-        Number(b.isPriorityCompany) - Number(a.isPriorityCompany) ||
-        b.severity - a.severity ||
-        b.clock - a.clock ||
-        a.hostName?.localeCompare(b.hostName ?? '', 'pt-BR') ||
-        0,
-    );
+    alerts.sort((a, b) => this.compareConsoleAlerts(a, b));
 
     return {
       ...response,
