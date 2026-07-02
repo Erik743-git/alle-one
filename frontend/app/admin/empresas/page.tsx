@@ -872,7 +872,7 @@ export default function AdminEmpresasPage() {
                           </th>
                           <th className="px-4 py-4 font-semibold">Contratos</th>
                           <th className="px-4 py-4 font-semibold">Status</th>
-                          <th className="sticky right-0 z-20 bg-muted/40 px-4 py-4 font-semibold text-right shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
+                          <th className="sticky right-0 z-20 w-[200px] min-w-[200px] whitespace-nowrap bg-muted px-4 py-4 font-semibold text-right shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
                             Ações
                           </th>
                         </tr>
@@ -971,7 +971,7 @@ export default function AdminEmpresasPage() {
                               </span>
                             </td>
 
-                            <td className="sticky right-0 z-10 bg-card px-4 py-4 shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
+                            <td className="sticky right-0 z-10 w-[200px] min-w-[200px] bg-card px-4 py-4 shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => {
