@@ -205,7 +205,7 @@ export default function RendimentoAgendaPage() {
     setJustAlertGapMinutes(params.gapMinutes);
     setDefineLunch(params.gapType === "lunch");
     setJustReason("");
-    setDebitOvertime(false);
+    setDebitOvertime(true);
     setJustModalOpen(true);
   }
 
@@ -250,10 +250,13 @@ export default function RendimentoAgendaPage() {
 
   async function submitJustification() {
     if (!userId) return;
-    if (!justReason.trim()) {
+    const reasonTrimmed = justReason.trim();
+    if (!reasonTrimmed && justMode === "VOLUNTARY") {
       notifyError("Informe a justificativa.");
       return;
     }
+    const effectiveDebitOvertime =
+      debitOvertime || (justMode === "ALERT" && !reasonTrimmed);
     if (invalidTimeRange) {
       notifyError(
         "Informe horários válidos. Se o expediente cruza a meia-noite (ex.: 23:00 até 07:00), use o horário do dia seguinte no campo fim.",
@@ -278,7 +281,7 @@ export default function RendimentoAgendaPage() {
           date: justMode === "VOLUNTARY" ? justDate : undefined,
           fromTime: justFrom,
           toTime: justTo,
-          reason: justReason.trim(),
+          reason: reasonTrimmed,
           alertFromTime:
             justMode === "ALERT" && justAlertFrom ? justAlertFrom : undefined,
           alertToTime:
@@ -301,8 +304,8 @@ export default function RendimentoAgendaPage() {
           justMode === "VOLUNTARY" ? "idle" : defineLunch ? "lunch" : "idle",
         gapMinutes,
         kind: justMode,
-        reason: justReason.trim(),
-        debitOvertime,
+        reason: reasonTrimmed,
+        debitOvertime: effectiveDebitOvertime,
         alertFromTime:
           justMode === "ALERT" && justAlertFrom ? justAlertFrom : undefined,
         alertToTime:
@@ -507,7 +510,11 @@ export default function RendimentoAgendaPage() {
                   <Textarea
                     value={justReason}
                     onChange={(e) => setJustReason(e.target.value)}
-                    placeholder="Descreva a justificativa (ex.: consulta médica)."
+                    placeholder={
+                      justMode === "ALERT"
+                        ? "Opcional. Se deixar em branco, o período será debitado do saldo de horas extras."
+                        : "Descreva a justificativa (ex.: consulta médica)."
+                    }
                     className="min-h-[120px]"
                   />
                   {justMode === "ALERT" && !justEditingId ? (

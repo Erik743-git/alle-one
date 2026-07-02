@@ -37,7 +37,7 @@ export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
   "Listar na tela";
 
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
-  "Descreva o motivo do intervalo detectado pelo sistema (lacuna entre apontamentos ou fim do dia). Você pode escolher um período parcial dentro deste alerta. Para horários em outras faixas do dia (ex.: trabalhou cedo sem ticket), use Justificativa voluntária.";
+  "Informe o período da lacuna detectada pelo sistema. A descrição é opcional; se deixar em branco, o débito será feito no saldo de horas extras (pode ficar negativo). Para horários em outras faixas do dia, use Justificativa voluntária.";
 
 export const RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC =
   "Registre um período em que você trabalhou ou esteve ausente sem apontamento em ticket. Escolha livremente data e horário — inclusive se cruzar a meia-noite (ex.: início 23:00, fim 07:00 do dia seguinte).";
@@ -45,7 +45,7 @@ export const RENDIMENTO_JUSTIFICATION_VOLUNTARY_DESC =
 export const RENDIMENTO_DEFINE_LUNCH_HINT =
   "Marque se este intervalo corresponde ao horário de almoço.";
 
-export const RENDIMENTO_DEBIT_OVERTIME_LABEL = "Ajustar saldo de horas extras";
+export const RENDIMENTO_DEBIT_OVERTIME_LABEL = "Descontar saldo de horas extras";
 
 export const RENDIMENTO_OVERTIME_BALANCE_LABEL = "Saldo de horas extras";
 

@@ -183,6 +183,15 @@ export class RendimentoService {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
   }
 
+  private formatSignedMinutes(totalMinutes: number): string {
+    const total = Math.trunc(Number(totalMinutes) || 0);
+    const sign = total < 0 ? '-' : '';
+    const abs = Math.abs(total);
+    const h = Math.floor(abs / 60);
+    const m = abs % 60;
+    return `${sign}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
   private parseHHMMToMinutes(value: string): number {
     const raw = String(value || '').trim();
     const match = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/.exec(raw);
@@ -1613,6 +1622,18 @@ export class RendimentoService {
     return Number(rows[0]?.total) || 0;
   }
 
+  private getNetOvertimeBalanceMinutes(
+    periodOvertimeMinutes: number,
+    protectedMinutes: number,
+    debitedMinutes: number,
+  ): number {
+    return (
+      Math.trunc(periodOvertimeMinutes) -
+      Math.trunc(protectedMinutes) -
+      Math.trunc(debitedMinutes)
+    );
+  }
+
   private getDebitableOvertimeMinutes(
     periodOvertimeMinutes: number,
     protectedMinutes: number,
@@ -1620,9 +1641,11 @@ export class RendimentoService {
   ): number {
     return Math.max(
       0,
-      Math.trunc(periodOvertimeMinutes) -
-        Math.trunc(protectedMinutes) -
-        Math.trunc(debitedMinutes),
+      this.getNetOvertimeBalanceMinutes(
+        periodOvertimeMinutes,
+        protectedMinutes,
+        debitedMinutes,
+      ),
     );
   }
 
@@ -1642,7 +1665,7 @@ export class RendimentoService {
       payroll.start,
       payroll.end,
     );
-    const available = this.getDebitableOvertimeMinutes(
+    const available = this.getNetOvertimeBalanceMinutes(
       periodOvertimeMinutes,
       protectedMinutes,
       debitedMinutes,
@@ -2490,7 +2513,7 @@ export class RendimentoService {
         periodPlantaoMinutes: 0,
         periodPlantaoFormatted: this.formatMinutes(0),
         overtimeBalanceMinutes,
-        overtimeBalanceFormatted: this.formatMinutes(overtimeBalanceMinutes),
+        overtimeBalanceFormatted: this.formatSignedMinutes(overtimeBalanceMinutes),
         days: [],
       };
     }
@@ -2600,7 +2623,7 @@ export class RendimentoService {
       periodPlantaoMinutes,
       periodPlantaoFormatted: this.formatMinutes(periodPlantaoMinutes),
       overtimeBalanceMinutes,
-      overtimeBalanceFormatted: this.formatMinutes(overtimeBalanceMinutes),
+      overtimeBalanceFormatted: this.formatSignedMinutes(overtimeBalanceMinutes),
       days: timesheetDays,
     };
   }
@@ -2660,7 +2683,7 @@ export class RendimentoService {
     const periodSpan = this.assertValidJustificationPeriod(fromTime, toTime);
 
     const reason = String(params.reason || '').trim();
-    if (!reason) {
+    if (!reason && params.kind === 'VOLUNTARY') {
       throw new BadRequestException('Justificativa é obrigatória.');
     }
 
@@ -2700,7 +2723,10 @@ export class RendimentoService {
       Number(params.gapMinutes) > 0
         ? Math.trunc(Number(params.gapMinutes))
         : periodSpan.gapMinutes;
-    const debitOvertime = Boolean(params.debitOvertime);
+    const debitOvertime =
+      params.kind === 'ALERT' && !reason
+        ? true
+        : Boolean(params.debitOvertime);
     const overtimeMinutes = debitOvertime
       ? Math.max(0, Math.trunc(Number(params.overtimeMinutes) || gapMinutes))
       : 0;
@@ -2804,7 +2830,7 @@ export class RendimentoService {
     }
 
     const reason = String(params.reason || '').trim();
-    if (!reason) {
+    if (!reason && current.kind === 'VOLUNTARY') {
       throw new BadRequestException('Justificativa é obrigatória.');
     }
 
@@ -3047,41 +3073,6 @@ export class RendimentoService {
     }
     if (current.status !== 'PENDING') {
       throw new BadRequestException('Justificativa já foi decidida.');
-    }
-
-    if (params.decision === 'APPROVED' && current.debit_overtime) {
-      const debit = Math.max(
-        0,
-        Math.trunc(Number(current.overtime_minutes) || 0),
-      );
-      const payroll = resolvePayrollPeriodRange(new Date());
-      const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
-        current.user_id,
-        payroll.start,
-        payroll.end,
-      );
-      const protectedMinutes = await this.getProtectedOvertimeMinutes(
-        current.user_id,
-        payroll.start,
-        payroll.end,
-      );
-      const debitedMinutes = await this.getDebitedOvertimeMinutes(
-        current.user_id,
-        payroll.start,
-        payroll.end,
-      );
-      const debitable = this.getDebitableOvertimeMinutes(
-        periodOvertimeMinutes,
-        protectedMinutes,
-        debitedMinutes,
-      );
-      if (debit > debitable) {
-        throw new BadRequestException(
-          `Não é possível debitar ${this.formatMinutes(debit)} em horas extras. ` +
-            `Disponível para débito: ${this.formatMinutes(debitable)}. ` +
-            `Horas extras ou plantão já aprovados pelo administrador não podem ser debitados.`,
-        );
-      }
     }
 
     await this.prisma.$executeRawUnsafe(
