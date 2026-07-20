@@ -9,6 +9,7 @@ import {
   Download,
   FileSpreadsheet,
   FolderKanban,
+  History,
   Layers,
   Loader2,
   Plus,
@@ -27,6 +28,7 @@ import {
 } from "@/components/projetos/project-activity-modal";
 import { ProjectPhaseModal } from "@/components/projetos/project-phase-modal";
 import { ProjectTicketAppointmentsPanel } from "@/components/projetos/project-ticket-appointments-panel";
+import { ProjectHistoryPanel } from "@/components/projetos/project-history-panel";
 import { ProjectBudgetDocumentsPanel } from "@/components/projetos/project-budget-documents-panel";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import {
@@ -60,6 +62,8 @@ const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
   CANCELED: "bg-rose-500/15 text-rose-400",
 };
 
+type ProjectMainView = "schedule" | "history";
+
 function formatRangeDate(value: string | null): string {
   if (!value) return "—";
   const d = parseISO(value);
@@ -86,6 +90,8 @@ export default function ProjectDetailPage() {
   const [importing, setImporting] = useState(false);
   const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
   const [appointmentActivityId, setAppointmentActivityId] = useState<string | undefined>();
+  const [mainView, setMainView] = useState<ProjectMainView>("schedule");
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
 
   const load = useCallback(async (silent = false) => {
     if (!projectId) return;
@@ -94,6 +100,7 @@ export default function ProjectDetailPage() {
       else setLoading(true);
       const data = await projetosService.getProject(projectId);
       setProject(data);
+      setHistoryRefreshToken((value) => value + 1);
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível carregar o projeto.",
@@ -387,6 +394,29 @@ export default function ProjectDetailPage() {
 
                 <ProjectProgressHeader value={project.progressPercent} />
 
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mainView === "schedule" ? "default" : "outline"}
+                    onClick={() => setMainView("schedule")}
+                  >
+                    <CalendarRange className="mr-1.5 h-3.5 w-3.5" />
+                    Cronograma
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mainView === "history" ? "default" : "outline"}
+                    onClick={() => setMainView("history")}
+                  >
+                    <History className="mr-1.5 h-3.5 w-3.5" />
+                    Histórico
+                  </Button>
+                </div>
+
+                {mainView === "schedule" ? (
+                  <>
                 <ProjectBudgetDocumentsPanel
                   project={project}
                   canEdit={canMutate}
@@ -429,6 +459,13 @@ export default function ProjectDetailPage() {
                     }
                   />
                 </section>
+                  </>
+                ) : (
+                  <ProjectHistoryPanel
+                    projectId={projectId}
+                    refreshToken={historyRefreshToken}
+                  />
+                )}
               </>
             )}
           </div>

@@ -1,7 +1,7 @@
 # V2 Projetos — Especificação (fases, horas, apontamentos, histórico)
 
 **Versão:** 1.0 · **Data:** 03/07/2026  
-**Status:** Em implementação (Fase 1 iniciada)
+**Status:** Em implementação (Fase 4 concluída; Fase 5 pendente)
 
 Documento de referência para a refatoração do módulo Projetos. Complementa `docs/V2-PROJETOS.md` (integração ticket/apontamento).
 
@@ -237,9 +237,10 @@ enum ProjectActivityStatus {
 
 ### Fase 4 — Histórico completo + reabrir
 
-- [ ] Aba Histórico no frontend (timeline)
-- [ ] `POST reopen`
-- [ ] Filtros e export PDF (opcional)
+- [x] Aba Histórico no frontend (timeline)
+- [x] Filtros por tipo e busca textual
+- [x] `POST reopen` (backend + botão na UI)
+- [ ] Export PDF do histórico (opcional)
 
 ### Fase 5 — Ticket histórico + Excel
 

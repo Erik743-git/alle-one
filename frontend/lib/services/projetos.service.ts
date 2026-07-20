@@ -142,6 +142,17 @@ export type ProjectDetail = ProjectSummary & {
   documents: ProjectDocument[];
 };
 
+export type ProjectHistoryEntry = {
+  id: string;
+  eventType: string;
+  summary: string;
+  actorName: string | null;
+  createdAt: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  payload?: unknown;
+};
+
 export const PROJECT_BUDGET_UNIT_LABELS: Record<ProjectBudgetUnit, string> = {
   HOURS: "Horas",
   DAYS: "Dias",
@@ -292,15 +303,9 @@ export const projetosService = {
   },
 
   getProjectHistory(projectId: string) {
-    return apiRequest<
-      Array<{
-        id: string;
-        eventType: string;
-        summary: string;
-        actorName: string | null;
-        createdAt: string;
-      }>
-    >(`/projetos/projects/${projectId}/history`);
+    return apiRequest<ProjectHistoryEntry[]>(
+      `/projetos/projects/${projectId}/history`,
+    );
   },
 
   reopenProject(projectId: string) {
