@@ -88,6 +88,7 @@ export type RendimentoTimelineCalendarProps = {
     toTime: string;
     gapType?: "idle" | "lunch";
     reason: string;
+    debitOvertime: boolean;
   }) => void;
   onApproveDayEvent?: (id: string) => void;
   onRejectDayEvent?: (id: string) => void;
@@ -180,6 +181,7 @@ function DayDetailList({
     toTime: string;
     gapType?: "idle" | "lunch";
     reason: string;
+    debitOvertime: boolean;
   }) => void;
   onApproveDayEvent?: (id: string) => void;
   onRejectDayEvent?: (id: string) => void;
@@ -238,6 +240,7 @@ function DayDetailList({
                         toTime: item.gap.toTime,
                         gapType: item.gap.type,
                         reason: item.gap.justification!.reason,
+                        debitOvertime: item.gap.justification!.debitOvertime,
                       })
                   : undefined
               }
@@ -277,6 +280,7 @@ function DayDetailList({
                         toTime: item.voluntary.toTime,
                         gapType: item.voluntary.gapType,
                         reason: item.voluntary.reason,
+                        debitOvertime: item.voluntary.debitOvertime,
                       })
                   : undefined
               }

@@ -97,6 +97,10 @@ export class UpdateRendimentoJustificationDto {
   @IsString()
   alertToTime?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  debitOvertime?: boolean;
+
   @IsString()
   reason!: string;
 }

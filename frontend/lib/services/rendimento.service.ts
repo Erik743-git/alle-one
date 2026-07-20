@@ -354,6 +354,7 @@ export const rendimentoService = {
     fromTime?: string;
     toTime?: string;
     reason: string;
+    debitOvertime?: boolean;
     alertFromTime?: string;
     alertToTime?: string;
   }) {
@@ -366,6 +367,7 @@ export const rendimentoService = {
           fromTime: params.fromTime,
           toTime: params.toTime,
           reason: params.reason,
+          debitOvertime: params.debitOvertime,
           alertFromTime: params.alertFromTime,
           alertToTime: params.alertToTime,
         },

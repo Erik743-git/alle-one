@@ -256,6 +256,7 @@ export class RendimentoController {
       reason: body.reason,
       alertFromTime: body.alertFromTime,
       alertToTime: body.alertToTime,
+      debitOvertime: body.debitOvertime,
     });
   }
 

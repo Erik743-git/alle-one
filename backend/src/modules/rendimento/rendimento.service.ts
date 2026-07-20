@@ -2806,6 +2806,7 @@ export class RendimentoService {
     reason: string;
     alertFromTime?: string;
     alertToTime?: string;
+    debitOvertime?: boolean;
   }) {
     const rows =
       (await this.prisma.$queryRawUnsafe<
@@ -2895,6 +2896,11 @@ export class RendimentoService {
     }
 
     const gapMinutes = periodSpan.gapMinutes;
+    const debitOvertime =
+      current.kind === 'ALERT' && !reason
+        ? true
+        : Boolean(params.debitOvertime);
+    const overtimeMinutes = debitOvertime ? gapMinutes : 0;
 
     await this.prisma.$executeRawUnsafe(
       `
@@ -2904,7 +2910,9 @@ export class RendimentoService {
         from_time = $3::time,
         to_time = $4::time,
         gap_minutes = $5,
-        reason = $6
+        reason = $6,
+        debit_overtime = $7,
+        overtime_minutes = $8
       WHERE id = $1
     `,
       params.justificationId,
@@ -2913,6 +2921,8 @@ export class RendimentoService {
       toTime,
       gapMinutes,
       reason,
+      debitOvertime,
+      overtimeMinutes,
     );
 
     await this.prisma.$executeRawUnsafe(

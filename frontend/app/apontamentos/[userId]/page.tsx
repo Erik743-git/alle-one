@@ -232,6 +232,7 @@ export default function RendimentoAgendaPage() {
     toTime: string;
     gapType?: "idle" | "lunch";
     reason: string;
+    debitOvertime: boolean;
     alertFromTime?: string;
     alertToTime?: string;
   }) {
@@ -244,7 +245,7 @@ export default function RendimentoAgendaPage() {
     setJustAlertTo(params.alertToTime?.slice(0, 5) ?? "");
     setDefineLunch(params.gapType === "lunch");
     setJustReason(params.reason);
-    setDebitOvertime(false);
+    setDebitOvertime(params.debitOvertime);
     setJustModalOpen(true);
   }
 
@@ -282,6 +283,7 @@ export default function RendimentoAgendaPage() {
           fromTime: justFrom,
           toTime: justTo,
           reason: reasonTrimmed,
+          debitOvertime: effectiveDebitOvertime,
           alertFromTime:
             justMode === "ALERT" && justAlertFrom ? justAlertFrom : undefined,
           alertToTime:
@@ -531,15 +533,24 @@ export default function RendimentoAgendaPage() {
                       </span>
                     </label>
                   ) : null}
-                  {!justEditingId ? (
-                    <label className="flex items-center gap-2 text-sm text-foreground">
-                      <FlipCheckbox
-                        checked={debitOvertime}
-                        onChange={(e) => setDebitOvertime(e.target.checked)}
-                      />
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <FlipCheckbox
+                      checked={
+                        debitOvertime ||
+                        (justMode === "ALERT" && !justReason.trim())
+                      }
+                      disabled={justMode === "ALERT" && !justReason.trim()}
+                      onChange={(e) => setDebitOvertime(e.target.checked)}
+                    />
+                    <span>
                       {RENDIMENTO_DEBIT_OVERTIME_LABEL}
-                    </label>
-                  ) : null}
+                      {justMode === "ALERT" && !justReason.trim() ? (
+                        <span className="mt-0.5 block text-xs text-muted-foreground">
+                          Obrigatório quando a descrição está em branco.
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
                   <div className="flex justify-end gap-2">
                     <Button
                       type="button"
