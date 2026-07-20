@@ -164,10 +164,22 @@ export class TicketsController {
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   updateStage(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Body() body: UpdateTicketStageDto,
   ) {
-    return this.ticketsService.updateTicketStage(ticketNumber, body.stageId);
+    return this.ticketsService.updateTicketStage(
+      actor,
+      ticketNumber,
+      body.stageId,
+    );
+  }
+
+  @Get(':ticketNumber/history')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  history(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
+    return this.ticketsService.getTicketHistory(ticketNumber);
   }
 
   @Get(':ticketNumber')

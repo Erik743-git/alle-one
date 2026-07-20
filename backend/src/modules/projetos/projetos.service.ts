@@ -221,13 +221,16 @@ export class ProjetosExcelService {
     const instructions = workbook.addWorksheet('Instruções');
     instructions.addRow(['Como usar esta planilha']);
     instructions.addRow([
-      '1. Preencha a aba Atividades com WBS, nome, duração em dias, datas (AAAA-MM-DD), responsável (e-mail ou nome livre), % andamento, tempo real (dias) e predecessoras (WBS separadas por ;).',
+      '1. Preencha a aba Atividades: Tipo (FASE, ATIVIDADE ou MARCO), WBS, WBS pai (fase), nome, duração em horas, datas (AAAA-MM-DD), responsável, % andamento, tempo real (horas) e predecessoras (WBS separadas por ;).',
     ]);
     instructions.addRow([
-      '2. Sub-atividades: informe o WBS do pai na coluna "WBS pai".',
+      '2. Fases não têm WBS pai nem duração. Atividades e marcos devem referenciar o WBS da fase pai.',
     ]);
     instructions.addRow([
-      '3. Importação disponível apenas para equipe interna (não cliente).',
+      '3. Planilhas antigas com "Duração (dias)" ainda são aceitas na importação (1 dia = 8h).',
+    ]);
+    instructions.addRow([
+      '4. Importação disponível apenas para equipe interna (não cliente).',
     ]);
     instructions.getColumn(1).width = 100;
 
@@ -236,6 +239,7 @@ export class ProjetosExcelService {
       ? [
           'WBS',
           'WBS pai',
+          'Tipo',
           'Nome da tarefa',
           'Início',
           'Término',
@@ -249,14 +253,15 @@ export class ProjetosExcelService {
       : [
           'WBS',
           'WBS pai',
+          'Tipo',
           'Nome da tarefa',
-          'Duração (dias)',
+          'Duração (horas)',
           'Início',
           'Término',
           'Responsável',
           'E-mail responsável',
           '% Andamento',
-          'Tempo real (dias)',
+          'Tempo real (horas)',
           'Predecessoras (WBS)',
           'Marco (S/N)',
           'Observações',
@@ -270,11 +275,21 @@ export class ProjetosExcelService {
     if (!params.template && params.project) {
       const flat = this.flattenActivities(params.project.activities);
       for (const row of flat) {
+        const tipo = this.kindExportLabel(row.kind, row.isMilestone);
+        const durationHours =
+          row.durationHours ??
+          (row.durationDays != null ? row.durationDays * HOURS_PER_WORK_DAY : '');
+        const actualHours =
+          row.actualDurationHours ??
+          (row.actualDurationDays != null
+            ? row.actualDurationDays * HOURS_PER_WORK_DAY
+            : '');
         sheet.addRow(
           params.hideDurations
             ? [
                 row.wbsCode,
                 row.parentWbs ?? '',
+                tipo,
                 row.name,
                 row.startDate ?? '',
                 row.endDate ?? '',
@@ -288,14 +303,15 @@ export class ProjetosExcelService {
             : [
                 row.wbsCode,
                 row.parentWbs ?? '',
+                tipo,
                 row.name,
-                row.durationDays,
+                row.kind === ProjectActivityKind.PHASE ? '' : durationHours,
                 row.startDate ?? '',
                 row.endDate ?? '',
                 row.assigneeDisplayName ?? row.assigneeName ?? '',
                 row.assigneeEmail ?? '',
                 row.progressPercent,
-                row.actualDurationDays ?? '',
+                row.kind === ProjectActivityKind.PHASE ? '' : actualHours,
                 row.predecessorWbs.join('; '),
                 row.isMilestone ? 'S' : 'N',
                 row.notes ?? '',
@@ -351,14 +367,15 @@ export class ProjetosExcelService {
       rowNumber: number;
       wbsCode: string;
       parentWbs: string | null;
+      tipo: string | null;
       name: string;
-      durationDays: number;
+      durationHours: number;
       startDate: Date | null;
       endDate: Date | null;
       assigneeEmail: string | null;
       assigneeName: string | null;
       progressPercent: number;
-      actualDurationDays: number | null;
+      actualDurationHours: number | null;
       predecessorWbs: string[];
       isMilestone: boolean;
       notes: string | null;
@@ -373,9 +390,8 @@ export class ProjetosExcelService {
         return;
       }
       const parentWbsRaw = this.cellText(row, columns.parentWbs);
-      const durationDays = columns.duration
-        ? Math.max(0, Math.trunc(Number(this.cellRaw(row, columns.duration)) || 0))
-        : 0;
+      const tipoRaw = this.cellText(row, columns.tipo) || null;
+      const durationHours = this.parseImportDurationHours(row, columns);
       const startDate = this.parseExcelDate(
         columns.start ? this.cellRaw(row, columns.start) : null,
       );
@@ -399,13 +415,7 @@ export class ProjetosExcelService {
           ),
         ),
       );
-      const actualRaw = columns.actual
-        ? this.cellRaw(row, columns.actual)
-        : null;
-      const actualDurationDays =
-        actualRaw == null || actualRaw === ''
-          ? null
-          : Math.max(0, Math.trunc(Number(actualRaw) || 0));
+      const actualDurationHours = this.parseImportActualHours(row, columns);
       const predecessorWbs = this.cellText(row, columns.predecessors)
         .split(';')
         .map((part) => part.trim())
@@ -419,14 +429,15 @@ export class ProjetosExcelService {
         rowNumber,
         wbsCode,
         parentWbs: parentWbsRaw || null,
+        tipo: tipoRaw,
         name,
-        durationDays: isMilestone ? 0 : durationDays || 1,
+        durationHours,
         startDate,
         endDate,
         assigneeEmail,
         assigneeName,
         progressPercent,
-        actualDurationDays,
+        actualDurationHours,
         predecessorWbs,
         isMilestone,
         notes,
@@ -453,13 +464,44 @@ export class ProjetosExcelService {
 
       for (const row of sorted) {
         try {
+          const kind = this.resolveImportRowKind(row);
+          const isPhase = kind === ProjectActivityKind.PHASE;
+          const isMilestone =
+            kind === ProjectActivityKind.MILESTONE || row.isMilestone;
+
+          if (isPhase && row.parentWbs) {
+            errors.push({
+              row: row.rowNumber,
+              message: 'Fase não deve ter WBS pai.',
+            });
+            continue;
+          }
+
           let parentId: string | null = null;
-          if (row.parentWbs) {
+          if (!isPhase) {
+            if (!row.parentWbs) {
+              errors.push({
+                row: row.rowNumber,
+                message: 'Informe o WBS pai (fase) da atividade.',
+              });
+              continue;
+            }
             parentId = wbsToId.get(row.parentWbs) ?? null;
             if (!parentId) {
               errors.push({
                 row: row.rowNumber,
                 message: `WBS pai "${row.parentWbs}" não encontrado.`,
+              });
+              continue;
+            }
+            const parent = await tx.projectActivity.findFirst({
+              where: { id: parentId, deletedAt: null },
+              select: { kind: true },
+            });
+            if (parent?.kind !== ProjectActivityKind.PHASE) {
+              errors.push({
+                row: row.rowNumber,
+                message: `WBS pai "${row.parentWbs}" deve ser uma fase.`,
               });
               continue;
             }
@@ -480,20 +522,55 @@ export class ProjetosExcelService {
             }
           }
 
-          const level = row.wbsCode.split('.').length;
+          const level = isPhase ? 1 : row.wbsCode.split('.').length;
+          const durationHours = isPhase
+            ? null
+            : isMilestone
+              ? 0
+              : Math.max(1, row.durationHours || 1);
+          const durationDays = isPhase
+            ? 0
+            : isMilestone
+              ? 0
+              : Math.max(1, Math.ceil((durationHours ?? 8) / HOURS_PER_WORK_DAY));
+          const actualDurationHours = isPhase
+            ? null
+            : row.actualDurationHours;
+          const actualDurationDays =
+            actualDurationHours != null
+              ? Math.max(
+                  0,
+                  Math.ceil(actualDurationHours / HOURS_PER_WORK_DAY),
+                )
+              : null;
+          const activityStatus =
+            row.progressPercent >= 100
+              ? ProjectActivityStatus.COMPLETED
+              : row.progressPercent > 0
+                ? ProjectActivityStatus.IN_PROGRESS
+                : ProjectActivityStatus.NOT_STARTED;
+
           const existingId = wbsToId.get(row.wbsCode);
           const data = {
             parentId,
             name: row.name,
             level,
-            durationDays: row.durationDays,
+            kind,
+            durationDays,
+            durationHours,
             startDate: row.startDate,
             endDate: row.endDate,
-            actualDurationDays: row.actualDurationDays,
+            actualDurationDays,
+            actualDurationHours,
             progressPercent: row.progressPercent,
+            activityStatus,
+            completedAt:
+              activityStatus === ProjectActivityStatus.COMPLETED
+                ? new Date()
+                : null,
             assigneeUserId,
             assigneeName: assigneeUserId ? null : row.assigneeName,
-            isMilestone: row.isMilestone,
+            isMilestone,
             notes: row.notes,
           };
 
@@ -594,18 +671,105 @@ export class ProjetosExcelService {
     return {
       wbs: col(['wbs']),
       parentWbs: col(['wbs pai', 'wbs_pai', 'parent wbs']),
+      tipo: col(['tipo', 'type', 'kind']),
       name: col(['nome da tarefa', 'nome', 'name', 'tarefa']),
+      durationHours: col([
+        'duracao (horas)',
+        'duração (horas)',
+        'duracao horas',
+        'duration hours',
+      ]),
       duration: col(['duracao (dias)', 'duração (dias)', 'duracao', 'duration']),
       start: col(['inicio', 'início', 'start', 'data inicio']),
       end: col(['termino', 'término', 'fim', 'end', 'data termino']),
       assigneeName: col(['responsavel', 'responsável', 'assignee']),
       assigneeEmail: col(['e-mail responsavel', 'email responsavel', 'e-mail', 'email']),
       progress: col(['% andamento', 'andamento', 'progresso', 'progress']),
+      actualHours: col([
+        'tempo real (horas)',
+        'tempo real horas',
+        'actual hours',
+      ]),
       actual: col(['tempo real (dias)', 'tempo real', 'actual']),
       predecessors: col(['predecessoras (wbs)', 'predecessoras', 'predecessors']),
       milestone: col(['marco (s/n)', 'marco', 'milestone']),
       notes: col(['observacoes', 'observações', 'notes', 'obs']),
     };
+  }
+
+  private kindExportLabel(
+    kind: ProjectActivityKind,
+    isMilestone: boolean,
+  ): string {
+    if (kind === ProjectActivityKind.PHASE) return 'FASE';
+    if (kind === ProjectActivityKind.MILESTONE || isMilestone) return 'MARCO';
+    return 'ATIVIDADE';
+  }
+
+  private resolveImportRowKind(row: {
+    tipo: string | null;
+    isMilestone: boolean;
+    parentWbs: string | null;
+    wbsCode: string;
+  }): ProjectActivityKind {
+    const normalized = String(row.tipo ?? '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/\p{M}/gu, '');
+    if (['FASE', 'PHASE'].includes(normalized)) {
+      return ProjectActivityKind.PHASE;
+    }
+    if (['MARCO', 'MILESTONE'].includes(normalized) || row.isMilestone) {
+      return ProjectActivityKind.MILESTONE;
+    }
+    if (['ATIVIDADE', 'TASK', 'TAREFA'].includes(normalized)) {
+      return ProjectActivityKind.TASK;
+    }
+    if (!row.parentWbs && !row.wbsCode.includes('.')) {
+      return ProjectActivityKind.PHASE;
+    }
+    return row.isMilestone
+      ? ProjectActivityKind.MILESTONE
+      : ProjectActivityKind.TASK;
+  }
+
+  private parseImportDurationHours(
+    row: ExcelJS.Row,
+    columns: ReturnType<ProjetosExcelService['resolveImportColumns']>,
+  ): number {
+    if (columns.durationHours != null) {
+      return Math.max(
+        0,
+        Math.trunc(Number(this.cellRaw(row, columns.durationHours)) || 0),
+      );
+    }
+    if (columns.duration != null) {
+      const days = Math.max(
+        0,
+        Math.trunc(Number(this.cellRaw(row, columns.duration)) || 0),
+      );
+      return days > 0 ? days * HOURS_PER_WORK_DAY : 0;
+    }
+    return 0;
+  }
+
+  private parseImportActualHours(
+    row: ExcelJS.Row,
+    columns: ReturnType<ProjetosExcelService['resolveImportColumns']>,
+  ): number | null {
+    if (columns.actualHours != null) {
+      const raw = this.cellRaw(row, columns.actualHours);
+      if (raw == null || raw === '') return null;
+      return Math.max(0, Math.trunc(Number(raw) || 0));
+    }
+    if (columns.actual != null) {
+      const raw = this.cellRaw(row, columns.actual);
+      if (raw == null || raw === '') return null;
+      const days = Math.max(0, Math.trunc(Number(raw) || 0));
+      return days * HOURS_PER_WORK_DAY;
+    }
+    return null;
   }
 
   private parseExcelDate(value: unknown): Date | null {

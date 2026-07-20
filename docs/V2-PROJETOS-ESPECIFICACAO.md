@@ -1,7 +1,7 @@
 # V2 Projetos — Especificação (fases, horas, apontamentos, histórico)
 
 **Versão:** 1.0 · **Data:** 03/07/2026  
-**Status:** Em implementação (Fase 4 concluída; Fase 5 pendente)
+**Status:** Fases 1–5 implementadas (histórico TiFlux legado parcial)
 
 Documento de referência para a refatoração do módulo Projetos. Complementa `docs/V2-PROJETOS.md` (integração ticket/apontamento).
 
@@ -244,8 +244,9 @@ enum ProjectActivityStatus {
 
 ### Fase 5 — Ticket histórico + Excel
 
-- [ ] Histórico no ticket
-- [ ] Import/export Excel alinhado ao modelo fase/atividade/horas
+- [x] Histórico no ticket (timeline portal + projeto + GMUD + estágio)
+- [x] Import/export Excel alinhado ao modelo fase/atividade/horas
+- [ ] Sincronização completa histórico TiFlux (estágios anteriores ao portal)
 
 **Estimativa total:** ~114–156h (3–4 semanas)
 

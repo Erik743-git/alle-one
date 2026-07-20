@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Clock,
   Download,
+  History,
   Link2,
   Loader2,
   Paperclip,
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
+import { TicketHistoryPanel } from "@/components/tickets/ticket-history-panel";
 import { PortalAppointmentTifluxWarningDialog } from "@/components/tickets/portal-appointment-tiflux-warning-dialog";
 import {
   canChangeTicketStage,
@@ -81,6 +83,8 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+type TicketMainView = "appointments" | "history";
+
 function isServerConfigMissingError(err: unknown) {
   return (
     err instanceof Error &&
@@ -130,6 +134,8 @@ export default function TicketDetailPage() {
   const [stageIdInput, setStageIdInput] = useState("");
   const [stageSaving, setStageSaving] = useState(false);
   const [stagesLoading, setStagesLoading] = useState(false);
+  const [mainView, setMainView] = useState<TicketMainView>("appointments");
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
@@ -137,6 +143,7 @@ export default function TicketDetailPage() {
       setLoading(true);
       const res = await ticketsService.detail(ticketNumber);
       setData(res);
+      setHistoryRefreshToken((value) => value + 1);
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível carregar o ticket.",
@@ -588,6 +595,37 @@ export default function TicketDetailPage() {
                   </CardContent>
                 </Card>
 
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mainView === "appointments" ? "default" : "outline"}
+                    onClick={() => setMainView("appointments")}
+                  >
+                    <Clock className="mr-1.5 h-3.5 w-3.5" />
+                    Apontamentos
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={mainView === "history" ? "default" : "outline"}
+                    onClick={() => setMainView("history")}
+                  >
+                    <History className="mr-1.5 h-3.5 w-3.5" />
+                    Histórico
+                  </Button>
+                </div>
+
+                {mainView === "history" ? (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <TicketHistoryPanel
+                        ticketNumber={ticketNumber}
+                        refreshToken={historyRefreshToken}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : (
                 <Card>
                   <CardHeader className="space-y-2">
                     <CardTitle className="text-base">Apontamentos</CardTitle>
@@ -739,6 +777,7 @@ export default function TicketDetailPage() {
                     </table>
                   </CardContent>
                 </Card>
+                )}
 
                 {canCreateTicketAppointment() ? (
                   <>

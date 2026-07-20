@@ -61,6 +61,14 @@ export type TicketAppointment = {
   }>;
 };
 
+export type TicketHistoryEntry = {
+  id: string;
+  eventType: string;
+  summary: string;
+  actorName: string | null;
+  createdAt: string;
+};
+
 export type TicketDetailResponse = {
   ticket: TicketListItem & {
     deskName: string | null;
@@ -329,6 +337,10 @@ export const ticketsService = {
 
   detail(ticketNumber: number) {
     return apiRequest<TicketDetailResponse>(`/tickets/${ticketNumber}`);
+  },
+
+  getTicketHistory(ticketNumber: number) {
+    return apiRequest<TicketHistoryEntry[]>(`/tickets/${ticketNumber}/history`);
   },
 
   listStages(ticketNumber: number) {

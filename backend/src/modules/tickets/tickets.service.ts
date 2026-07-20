@@ -20,6 +20,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { AuditService } from '../audit/audit.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import type {
   CreateTicketAppointmentDto,
@@ -86,6 +87,14 @@ export type TicketListItemDto = {
   externalGmudRef: string | null;
 };
 
+export type TicketHistoryDto = {
+  id: string;
+  eventType: string;
+  summary: string;
+  actorName: string | null;
+  createdAt: string;
+};
+
 export type TicketAppointmentDto = {
   externalId: number | null;
   portalAppointmentId: string | null;
@@ -124,6 +133,7 @@ export class TicketsService {
     private readonly tiflux: TifluxService,
     private readonly fileStorage: FileStorageService,
     private readonly projetos: ProjetosService,
+    private readonly audit: AuditService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -796,6 +806,138 @@ export class TicketsService {
     };
   }
 
+  async getTicketHistory(ticketNumber: number): Promise<TicketHistoryDto[]> {
+    const ticket = await this.getTicketContext(ticketNumber);
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    type HistoryEvent = TicketHistoryDto & { sortAt: Date };
+    const events: HistoryEvent[] = [];
+
+    const metaRows =
+      (await this.prisma.$queryRaw<Array<{ created_at_source: Date | null }>>`
+        SELECT t.created_at_source
+        FROM tiflux.tickets t
+        WHERE t.ticket_number = ${ticketNumber}
+        LIMIT 1
+      `) ?? [];
+    const createdAtSource = metaRows[0]?.created_at_source
+      ? new Date(metaRows[0].created_at_source)
+      : null;
+    if (createdAtSource && !Number.isNaN(createdAtSource.getTime())) {
+      events.push({
+        id: `ticket-created-${ticketNumber}`,
+        eventType: 'TICKET_CREATED',
+        summary: 'Ticket registrado no TiFlux',
+        actorName: null,
+        createdAt: createdAtSource.toISOString(),
+        sortAt: createdAtSource,
+      });
+    }
+
+    const portalAppointments = await this.prisma.portalTicketAppointment.findMany({
+      where: { ticketNumber },
+      include: { creator: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    for (const appt of portalAppointments) {
+      const dateLabel = this.formatDateOnly(appt.appointmentDate) ?? '';
+      events.push({
+        id: `appt-${appt.id}`,
+        eventType: 'APPOINTMENT_CREATED',
+        summary: `Apontamento ${appt.initTime}–${appt.endTime}${dateLabel ? ` em ${dateLabel}` : ''}`,
+        actorName: appt.creator.name,
+        createdAt: appt.createdAt.toISOString(),
+        sortAt: appt.createdAt,
+      });
+    }
+
+    const gmud = await this.prisma.portalTicketGmudLink.findUnique({
+      where: { ticketNumber },
+      include: { creator: { select: { name: true } } },
+    });
+    if (gmud) {
+      events.push({
+        id: `gmud-${ticketNumber}`,
+        eventType: 'GMUD_LINKED',
+        summary: `GMUD vinculada: ${gmud.externalGmudRef}`,
+        actorName: gmud.creator.name,
+        createdAt: gmud.createdAt.toISOString(),
+        sortAt: gmud.createdAt,
+      });
+      if (gmud.updatedAt.getTime() - gmud.createdAt.getTime() > 1000) {
+        events.push({
+          id: `gmud-updated-${ticketNumber}`,
+          eventType: 'GMUD_UPDATED',
+          summary: `GMUD atualizada: ${gmud.externalGmudRef}`,
+          actorName: gmud.creator.name,
+          createdAt: gmud.updatedAt.toISOString(),
+          sortAt: gmud.updatedAt,
+        });
+      }
+    }
+
+    const project = await this.prisma.project.findFirst({
+      where: { ticketNumber, deletedAt: null },
+      select: { id: true, code: true, name: true, createdAt: true },
+    });
+    if (project) {
+      events.push({
+        id: `project-${project.id}`,
+        eventType: 'PROJECT_LINKED',
+        summary: `Projeto #${project.code} — ${project.name}`,
+        actorName: null,
+        createdAt: project.createdAt.toISOString(),
+        sortAt: project.createdAt,
+      });
+
+      const projectHistory = await this.prisma.projectHistory.findMany({
+        where: {
+          projectId: project.id,
+          eventType: 'APPOINTMENT_LINKED',
+        },
+        include: { actor: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      for (const entry of projectHistory) {
+        events.push({
+          id: `project-hist-${entry.id}`,
+          eventType: 'PROJECT_APPOINTMENT_LINKED',
+          summary: entry.summary,
+          actorName: entry.actor?.name ?? null,
+          createdAt: entry.createdAt.toISOString(),
+          sortAt: entry.createdAt,
+        });
+      }
+    }
+
+    const auditRows = await this.prisma.auditLog.findMany({
+      where: { entity: 'Ticket', entityId: String(ticketNumber) },
+      include: { user: { select: { name: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    for (const log of auditRows) {
+      const payload = (log.payload ?? {}) as Record<string, unknown>;
+      let summary = String(payload.message ?? '').trim();
+      if (log.action === 'STAGE_CHANGED') {
+        summary = `Estágio alterado: ${payload.fromStageName ?? '—'} → ${payload.toStageName ?? '—'}`;
+      }
+      events.push({
+        id: `audit-${log.id}`,
+        eventType: log.action,
+        summary: summary || log.action,
+        actorName: log.user?.name ?? null,
+        createdAt: log.createdAt.toISOString(),
+        sortAt: log.createdAt,
+      });
+    }
+
+    return events
+      .sort((a, b) => b.sortAt.getTime() - a.sortAt.getTime())
+      .map(({ sortAt: _sortAt, ...entry }) => entry);
+  }
+
   async linkTicketGmud(
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
@@ -1441,7 +1583,11 @@ export class TicketsService {
     };
   }
 
-  async updateTicketStage(ticketNumber: number, stageId: number) {
+  async updateTicketStage(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    stageId: number,
+  ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
@@ -1491,6 +1637,18 @@ export class TicketsService {
     });
     const stageName = updated.stage?.name ?? targetStage.name;
     await this.patchLocalTicketStage(ticketNumber, stageName);
+
+    await this.audit.log({
+      actor,
+      action: 'STAGE_CHANGED',
+      entity: 'Ticket',
+      entityId: String(ticketNumber),
+      payload: {
+        fromStageName: ticket.stage_name,
+        toStageName: stageName,
+        stageId,
+      },
+    });
 
     return {
       ok: true,
