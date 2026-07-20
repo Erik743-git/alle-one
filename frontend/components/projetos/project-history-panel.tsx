@@ -6,6 +6,7 @@ import { ptBR } from "date-fns/locale";
 import {
   CheckCircle2,
   Clock,
+  FileDown,
   FolderKanban,
   History,
   Layers,
@@ -110,6 +111,7 @@ export function ProjectHistoryPanel({ projectId, refreshToken = 0 }: Props) {
   const [rows, setRows] = useState<ProjectHistoryEntry[]>([]);
   const [filter, setFilter] = useState<ProjectHistoryFilter>("ALL");
   const [search, setSearch] = useState("");
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const load = useCallback(
     async (silent = false) => {
@@ -156,18 +158,47 @@ export function ProjectHistoryPanel({ projectId, refreshToken = 0 }: Props) {
           <History className="h-5 w-5 text-primary" />
           Histórico do projeto
         </h2>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={refreshing}
-          onClick={() => void load(true)}
-        >
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={exportingPdf || loading}
+            onClick={async () => {
+              try {
+                setExportingPdf(true);
+                await projetosService.exportProjectHistoryPdf(projectId);
+              } catch (err) {
+                notifyError(
+                  err instanceof Error
+                    ? err.message
+                    : "Não foi possível exportar o PDF.",
+                );
+              } finally {
+                setExportingPdf(false);
+              }
+            }}
+          >
+            {exportingPdf ? (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+            )}
+            Exportar PDF
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={refreshing}
+            onClick={() => void load(true)}
+          >
           <RefreshCw
             className={cn("mr-1.5 h-3.5 w-3.5", refreshing && "animate-spin")}
           />
           Atualizar
         </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">

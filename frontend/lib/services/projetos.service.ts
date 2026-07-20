@@ -308,6 +308,17 @@ export const projetosService = {
     );
   },
 
+  async exportProjectHistoryPdf(projectId: string) {
+    const response = await authFetch(
+      `${API_URL}/projetos/projects/${projectId}/history/pdf`,
+    );
+    if (!response.ok) {
+      throw new Error(await parseError(response, "Falha ao exportar PDF."));
+    }
+    const meta = await readBlobDownload(response, "historico-projeto.pdf");
+    triggerBrowserDownload(meta.blob, meta.filename);
+  },
+
   reopenProject(projectId: string) {
     return apiRequest<ProjectDetail>(`/projetos/projects/${projectId}/reopen`, {
       method: "POST",

@@ -240,7 +240,7 @@ enum ProjectActivityStatus {
 - [x] Aba Histórico no frontend (timeline)
 - [x] Filtros por tipo e busca textual
 - [x] `POST reopen` (backend + botão na UI)
-- [ ] Export PDF do histórico (opcional)
+- [x] Export PDF do histórico (opcional)
 
 ### Fase 5 — Ticket histórico + Excel
 

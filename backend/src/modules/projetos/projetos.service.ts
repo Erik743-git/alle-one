@@ -21,6 +21,7 @@ import { FileStorageService } from '../../common/storage/file-storage.service';
 import { assertAllowedUploadMime, UPLOAD_MAX_BYTES } from '../../common/upload.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { ProjetosHistoryPdfService } from './projetos-history-pdf.service';
 import type {
   CreateProjectActivityDto,
   CreateProjectDto,
@@ -834,6 +835,7 @@ export class ProjetosService {
     private readonly prisma: PrismaService,
     private readonly excel: ProjetosExcelService,
     private readonly fileStorage: FileStorageService,
+    private readonly historyPdf: ProjetosHistoryPdfService,
   ) {}
 
   private assertCanMutate(user: AuthenticatedRequestUser) {
@@ -2370,6 +2372,20 @@ export class ProjetosService {
         createdAt: row.createdAt.toISOString(),
       }),
     );
+  }
+
+  async exportProjectHistoryPdf(
+    user: AuthenticatedRequestUser,
+    projectId: string,
+  ) {
+    const project = await this.getProject(user, projectId);
+    const events = await this.getProjectHistory(user, projectId);
+    return this.historyPdf.build({
+      projectCode: project.code,
+      projectName: project.name,
+      companyName: project.company.name,
+      events,
+    });
   }
 
   async reopenProject(user: AuthenticatedRequestUser, projectId: string) {

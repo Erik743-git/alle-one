@@ -263,6 +263,24 @@ export class ProjetosController {
     return this.projetos.getProjectHistory(user, params.projectId);
   }
 
+  @Get('projects/:projectId/history/pdf')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.PROJECTS, 'canView')
+  async exportProjectHistoryPdf(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosProjectIdParamDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, filename, mimeType } =
+      await this.projetos.exportProjectHistoryPdf(user, params.projectId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"`,
+    );
+    return new StreamableFile(buffer);
+  }
+
   @Post('projects/:projectId/reopen')
   @Roles('ADMIN')
   @AuditMeta({ entity: 'Project', action: 'UPDATE', entityIdParam: 'projectId' })
