@@ -751,6 +751,23 @@ model PortalTicketGmudLink {
   @@map("portal_ticket_gmud_links")
 }
 
+/// Cache de eventos do histórico TiFlux (estágios e interações anteriores ao portal).
+model TicketHistory {
+  id           String   @id @default(uuid())
+  ticketNumber Int      @map("ticket_number")
+  eventType    String   @map("event_type") @db.VarChar(80)
+  summary      String
+  actorName    String?  @map("actor_name")
+  source       String   @default("TIFLUX") @db.VarChar(20)
+  externalKey  String?  @map("external_key") @db.VarChar(255)
+  payload      Json?
+  occurredAt   DateTime @map("occurred_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([ticketNumber, occurredAt])
+  @@map("ticket_history")
+}
+
 enum RendimentoAppointmentQuestionStatus {
   PENDING
   ANSWERED

@@ -26,12 +26,15 @@ export const TICKET_HISTORY_FILTER_OPTIONS: Array<{
 
 const EVENT_LABELS: Record<string, string> = {
   TICKET_CREATED: "Ticket criado",
+  TICKET_UPDATED: "Ticket atualizado",
   APPOINTMENT_CREATED: "Apontamento registrado",
+  APPOINTMENT_TIFLUX: "Apontamento TiFlux",
   STAGE_CHANGED: "Estágio alterado",
   GMUD_LINKED: "GMUD vinculada",
   GMUD_UPDATED: "GMUD atualizada",
   PROJECT_LINKED: "Projeto vinculado",
   PROJECT_APPOINTMENT_LINKED: "Apontamento no projeto",
+  TIFLUX_EVENT: "Evento TiFlux",
 };
 
 export function ticketHistoryEventLabel(eventType: string): string {
@@ -44,6 +47,13 @@ export function ticketHistoryFilterCategory(
   if (eventType.startsWith("GMUD_")) return "GMUD";
   if (eventType.startsWith("PROJECT_")) return "PROJECT";
   if (eventType.includes("APPOINTMENT")) return "APPOINTMENT";
+  if (
+    eventType === "STAGE_CHANGED" ||
+    eventType === "TIFLUX_EVENT" ||
+    eventType === "TICKET_UPDATED"
+  ) {
+    return "TICKET";
+  }
   return "TICKET";
 }
 

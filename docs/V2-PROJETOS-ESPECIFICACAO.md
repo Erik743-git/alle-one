@@ -246,7 +246,7 @@ enum ProjectActivityStatus {
 
 - [x] Histórico no ticket (timeline portal + projeto + GMUD + estágio)
 - [x] Import/export Excel alinhado ao modelo fase/atividade/horas
-- [ ] Sincronização completa histórico TiFlux (estágios anteriores ao portal)
+- [x] Cache TiFlux (`ticket_history`) + apontamentos sync local + API `/histories` (requer `TIFLUX_RUNTIME_API=true`)
 
 **Estimativa total:** ~114–156h (3–4 semanas)
 

@@ -1254,4 +1254,64 @@ export class TifluxService {
     );
     return Array.isArray(data) ? data : [];
   }
+
+  /** Histórico do ticket no TiFlux (estágios, alterações de campos, etc.). */
+  async getTicketHistories(
+    ticketNumber: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    if (!Number.isFinite(ticketNumber) || ticketNumber <= 0) {
+      return [];
+    }
+
+    const paths = [
+      `/tickets/${ticketNumber}/histories`,
+      `/tickets/${ticketNumber}/history`,
+    ];
+
+    for (const path of paths) {
+      try {
+        const data = await this.request<unknown>(path, 'GET');
+        const rows = this.unwrapHistoryPayload(data);
+        if (rows.length) {
+          return rows;
+        }
+      } catch (err) {
+        this.logger.debug(
+          `TiFlux histórico indisponível em ${path}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
+    return [];
+  }
+
+  private unwrapHistoryPayload(data: unknown): Array<Record<string, unknown>> {
+    if (Array.isArray(data)) {
+      return data.filter(
+        (row): row is Record<string, unknown> =>
+          row != null && typeof row === 'object' && !Array.isArray(row),
+      );
+    }
+    if (data && typeof data === 'object') {
+      const obj = data as Record<string, unknown>;
+      for (const key of [
+        'histories',
+        'history',
+        'items',
+        'data',
+        'records',
+      ]) {
+        const nested = obj[key];
+        if (Array.isArray(nested)) {
+          return nested.filter(
+            (row): row is Record<string, unknown> =>
+              row != null && typeof row === 'object' && !Array.isArray(row),
+          );
+        }
+      }
+    }
+    return [];
+  }
 }
