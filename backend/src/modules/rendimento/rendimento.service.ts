@@ -384,13 +384,22 @@ export class RendimentoService {
 
     this.tifluxUserEmailMapLoadPromise = (async () => {
       const fromDb = await this.loadTifluxUserEmailMapFromDb();
-      if (fromDb.size > 0) {
-        return fromDb;
-      }
       if (!this.allowRuntimeTifluxApi) {
         return fromDb;
       }
-      return this.loadTifluxUserEmailMapFromApi();
+      try {
+        const fromApi = await this.loadTifluxUserEmailMapFromApi();
+        for (const [email, link] of fromApi) {
+          if (!fromDb.has(email)) {
+            fromDb.set(email, link);
+          }
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao complementar mapa TiFlux via API: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+      return fromDb;
     })();
 
     try {
@@ -1859,7 +1868,7 @@ export class RendimentoService {
           $8, $9, $10, $11, $12,
           $13, $14, $15
         )
-        ON CONFLICT (user_id, source_key) DO UPDATE SET
+        ON CONFLICT (user_id, source_key) WHERE deleted_at IS NULL DO UPDATE SET
           from_time = EXCLUDED.from_time,
           to_time = EXCLUDED.to_time,
           minutes = EXCLUDED.minutes,
@@ -2593,7 +2602,10 @@ export class RendimentoService {
       payrollRows,
       'EXTRA',
     );
-    const periodPlantaoMinutes = computeUnionWorkedMinutes(payrollRows, 'PLANTAO');
+    const periodPlantaoMinutes = computeRawAppointmentMinutes(
+      payrollRows,
+      'PLANTAO',
+    );
     const overtimeBalanceMinutes = await this.refreshOvertimeBalance(
       user.id,
       periodOvertimeMinutes,
@@ -2732,8 +2744,9 @@ export class RendimentoService {
       : 0;
 
     const id = randomUUID();
-    await this.prisma.$executeRawUnsafe(
-      `
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `
       INSERT INTO rendimento_gap_justifications (
         id, user_id, date_ref, from_time, to_time, gap_type, gap_minutes, kind, status,
         reason, debit_overtime, overtime_minutes, created_by
@@ -2742,35 +2755,44 @@ export class RendimentoService {
         $9, $10, $11, $12
       )
     `,
-      id,
-      params.userId,
-      date,
-      fromTime,
-      toTime,
-      params.gapType,
-      gapMinutes,
-      params.kind,
-      reason,
-      debitOvertime,
-      overtimeMinutes,
-      params.actor.userId,
-    );
+        id,
+        params.userId,
+        date,
+        fromTime,
+        toTime,
+        params.gapType,
+        gapMinutes,
+        params.kind,
+        reason,
+        debitOvertime,
+        overtimeMinutes,
+        params.actor.userId,
+      );
 
-    await this.upsertDayEvent({
-      userId: params.userId,
-      dateRef: date,
-      eventType: 'JUSTIFICATION',
-      fromTime,
-      toTime,
-      minutes: gapMinutes,
-      justificationId: id,
-      label:
-        params.kind === 'VOLUNTARY'
-          ? 'Justificativa voluntária'
-          : this.gapLabelForType(params.gapType, gapMinutes),
-      reason,
-      status: 'PENDING',
-    });
+      await this.upsertDayEvent({
+        userId: params.userId,
+        dateRef: date,
+        eventType: 'JUSTIFICATION',
+        fromTime,
+        toTime,
+        minutes: gapMinutes,
+        justificationId: id,
+        label:
+          params.kind === 'VOLUNTARY'
+            ? 'Justificativa voluntária'
+            : this.gapLabelForType(params.gapType, gapMinutes),
+        reason,
+        status: 'PENDING',
+      });
+    } catch (err) {
+      await this.prisma
+        .$executeRawUnsafe(
+          `DELETE FROM rendimento_gap_justifications WHERE id = $1`,
+          id,
+        )
+        .catch(() => undefined);
+      throw err;
+    }
 
     return { id, status: 'PENDING' as const };
   }
@@ -3221,6 +3243,73 @@ export class RendimentoService {
     return { id: params.justificationId, deleted: true as const };
   }
 
+  private async syncDayEventsForApprovalRange(params: {
+    start: string;
+    end: string;
+    userId?: string | null;
+  }): Promise<void> {
+    const start = this.parseDateOnly(params.start);
+    const end = this.parseDateOnly(params.end);
+    const collaborators = await this.listCollaboratorsForSelect();
+    const targets = params.userId
+      ? collaborators.filter((c) => c.id === params.userId)
+      : collaborators.filter((c) => c.tifluxUserId != null);
+
+    const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
+
+    for (const collaborator of targets) {
+      try {
+        const tifluxUser = this.lookupTifluxUser(
+          collaborator.email,
+          tifluxUserByEmail,
+        );
+        if (!tifluxUser) continue;
+
+        const user = await this.prisma.user.findFirst({
+          where: { id: collaborator.id, deletedAt: null },
+          select: {
+            rendimentoCustomSchedule: true,
+            rendimentoDailyWorkMinutes: true,
+            rendimentoLunchMinutes: true,
+          },
+        });
+        if (!user) continue;
+
+        const rows = await this.fetchAppointments({
+          tifluxUserId: tifluxUser.id,
+          start,
+          end,
+        });
+        const justifications = await this.listJustifications({
+          userId: collaborator.id,
+          start,
+          end,
+        });
+        const justificationsByDate = new Map<string, GapJustificationRow[]>();
+        for (const item of justifications) {
+          const key = item.date_ref.slice(0, 10);
+          if (!justificationsByDate.has(key)) {
+            justificationsByDate.set(key, []);
+          }
+          justificationsByDate.get(key)!.push(item);
+        }
+
+        const days = this.groupByDay(
+          rows,
+          justificationsByDate,
+          this.toRendimentoDaySchedule(user),
+        );
+        await this.syncDayEventsForDays(collaborator.id, days);
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao sincronizar eventos para aprovação (${collaborator.email}): ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+  }
+
   async listPendingJustifications(params: {
     start: string;
     end: string;
@@ -3388,6 +3477,8 @@ export class RendimentoService {
     const end = params.end.slice(0, 10);
     const userId = params.userId?.trim() || null;
     const statusFilters = this.normalizeBulkStatusFilters(params.statusFilters);
+
+    await this.syncDayEventsForApprovalRange({ start, end, userId });
 
     const rows =
       (await this.prisma.$queryRawUnsafe<

@@ -80,25 +80,58 @@ export type ProjectSummary = {
   updatedAt: string;
 };
 
+export type ProjectActivityKind = "PHASE" | "TASK" | "MILESTONE";
+export type ProjectActivityStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+
+export type ProjectActivityPredecessor = {
+  id: string;
+  wbsCode: string;
+  name: string;
+  completed: boolean;
+};
+
+export type ProjectTicketAppointment = {
+  portalAppointmentId: string;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  minutes: number;
+  description: string;
+  authorName: string;
+  serviceName: string;
+  attendance: string | null;
+  linkedActivityId: string | null;
+  linkedActivityLabel: string | null;
+  linkId: string | null;
+};
+
 export type ProjectActivity = {
   id: string;
   projectId: string;
   parentId: string | null;
   wbsCode: string;
   name: string;
+  kind: ProjectActivityKind;
   level: number;
   sortOrder: number;
   durationDays: number | null;
+  durationHours: number | null;
   startDate: string | null;
   endDate: string | null;
   actualDurationDays: number | null;
+  actualDurationHours: number | null;
   progressPercent: number;
+  activityStatus: ProjectActivityStatus;
+  completedAt: string | null;
   assigneeUserId: string | null;
   assigneeName: string | null;
   assigneeDisplayName: string | null;
   isMilestone: boolean;
   notes: string | null;
   predecessorIds: string[];
+  predecessors: ProjectActivityPredecessor[];
+  predecessorsComplete: boolean;
+  canStart: boolean;
   appointments: ProjectActivityAppointment[];
   children: ProjectActivity[];
 };
@@ -134,6 +167,18 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   ON_HOLD: "Pausado",
   COMPLETED: "Concluído",
   CANCELED: "Cancelado",
+};
+
+export const PROJECT_ACTIVITY_STATUS_LABELS: Record<ProjectActivityStatus, string> = {
+  NOT_STARTED: "Não iniciada",
+  IN_PROGRESS: "Em andamento",
+  COMPLETED: "Concluída",
+};
+
+export const PROJECT_ACTIVITY_STATUS_STYLES: Record<ProjectActivityStatus, string> = {
+  NOT_STARTED: "bg-muted text-muted-foreground",
+  IN_PROGRESS: "bg-primary/15 text-primary",
+  COMPLETED: "bg-emerald-500/15 text-emerald-500",
 };
 
 async function parseError(response: Response, fallback: string) {
@@ -239,13 +284,60 @@ export const projetosService = {
     });
   },
 
+  createPhase(projectId: string, data: { name: string; notes?: string }) {
+    return apiRequest<ProjectDetail>(`/projetos/projects/${projectId}/phases`, {
+      method: "POST",
+      body: data,
+    });
+  },
+
+  getProjectHistory(projectId: string) {
+    return apiRequest<
+      Array<{
+        id: string;
+        eventType: string;
+        summary: string;
+        actorName: string | null;
+        createdAt: string;
+      }>
+    >(`/projetos/projects/${projectId}/history`);
+  },
+
+  reopenProject(projectId: string) {
+    return apiRequest<ProjectDetail>(`/projetos/projects/${projectId}/reopen`, {
+      method: "POST",
+    });
+  },
+
+  listProjectTicketAppointments(projectId: string) {
+    return apiRequest<{
+      ticketNumber: number | null;
+      appointments: ProjectTicketAppointment[];
+    }>(`/projetos/projects/${projectId}/ticket-appointments`);
+  },
+
+  linkActivityAppointment(activityId: string, portalAppointmentId: string) {
+    return apiRequest<ProjectDetail>(
+      `/projetos/activities/${activityId}/appointments/link`,
+      { method: "POST", body: { portalAppointmentId } },
+    );
+  },
+
+  unlinkActivityAppointment(linkId: string) {
+    return apiRequest<ProjectDetail>(`/projetos/appointments/links/${linkId}`, {
+      method: "DELETE",
+    });
+  },
+
   createActivity(projectId: string, data: {
-    parentId?: string;
+    parentId: string;
     name: string;
+    durationHours?: number;
     durationDays?: number;
     startDate?: string;
     endDate?: string;
     actualDurationDays?: number;
+    actualDurationHours?: number;
     progressPercent?: number;
     assigneeUserId?: string;
     assigneeName?: string;
@@ -259,12 +351,21 @@ export const projetosService = {
     });
   },
 
+  completeActivity(activityId: string, completed: boolean) {
+    return apiRequest<ProjectDetail>(`/projetos/activities/${activityId}/complete`, {
+      method: "POST",
+      body: { completed },
+    });
+  },
+
   updateActivity(activityId: string, data: Partial<{
     name: string;
+    durationHours: number;
     durationDays: number;
     startDate: string;
     endDate: string;
     actualDurationDays: number;
+    actualDurationHours: number;
     progressPercent: number;
     assigneeUserId: string | null;
     assigneeName: string | null;

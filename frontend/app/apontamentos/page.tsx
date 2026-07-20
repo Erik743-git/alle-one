@@ -11,7 +11,7 @@ import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { monthRangeFor } from "@/lib/date-ranges";
+import { payrollPeriodRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -106,7 +106,7 @@ export default function ApontamentosPage() {
 
   useEffect(() => {
     if (!isAdmin) return;
-    const range = monthRangeFor(new Date());
+    const range = payrollPeriodRangeFor(new Date());
     void (async () => {
       try {
         setLoadingPending(true);

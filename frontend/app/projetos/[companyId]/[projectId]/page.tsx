@@ -9,6 +9,7 @@ import {
   Download,
   FileSpreadsheet,
   FolderKanban,
+  Layers,
   Loader2,
   Plus,
   RefreshCw,
@@ -24,7 +25,10 @@ import {
   ProjectActivityModal,
   type ActivityFormMode,
 } from "@/components/projetos/project-activity-modal";
+import { ProjectPhaseModal } from "@/components/projetos/project-phase-modal";
+import { ProjectTicketAppointmentsPanel } from "@/components/projetos/project-ticket-appointments-panel";
 import { ProjectBudgetDocumentsPanel } from "@/components/projetos/project-budget-documents-panel";
+import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import {
   ProjectActivityTable,
   ProjectGanttChart,
@@ -77,8 +81,11 @@ export default function ProjectDetailPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [phaseModalOpen, setPhaseModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ActivityFormMode | null>(null);
   const [importing, setImporting] = useState(false);
+  const [appointmentModalOpen, setAppointmentModalOpen] = useState(false);
+  const [appointmentActivityId, setAppointmentActivityId] = useState<string | undefined>();
 
   const load = useCallback(async (silent = false) => {
     if (!projectId) return;
@@ -101,6 +108,10 @@ export default function ProjectDetailPage() {
     void load();
   }, [load]);
 
+  const projectLocked =
+    project?.status === "COMPLETED" || project?.status === "CANCELED";
+  const canMutate = canEdit && !projectLocked;
+
   const flat = useMemo(
     () => (project ? flattenProjectActivities(project.activities) : []),
     [project],
@@ -111,10 +122,15 @@ export default function ProjectDetailPage() {
     [flat],
   );
 
-  function openCreate(parentId?: string) {
+  function openCreateActivity(parentId: string) {
     if (!projectId) return;
     setModalMode({ kind: "create", projectId, parentId });
     setModalOpen(true);
+  }
+
+  function openCreateAppointment(activityId?: string) {
+    setAppointmentActivityId(activityId);
+    setAppointmentModalOpen(true);
   }
 
   function openEdit(activity: ProjectActivity) {
@@ -123,13 +139,48 @@ export default function ProjectDetailPage() {
   }
 
   async function handleToggleDone(activity: ProjectActivity, done: boolean) {
+    if (!done) {
+      // desmarcar — update direto
+      try {
+        const updated = await projetosService.updateActivity(activity.id, {
+          progressPercent: 0,
+        });
+        setProject(updated);
+      } catch (err) {
+        notifyError(err instanceof Error ? err.message : "Falha ao atualizar.");
+      }
+      return;
+    }
+    if (!(activity.canStart ?? activity.predecessorsComplete ?? true)) {
+      const pending = (activity.predecessors ?? [])
+        .filter((p) => !p.completed)
+        .map((p) => p.name)
+        .join(", ");
+      notifyError(`Conclua as predecessoras antes: ${pending}`);
+      return;
+    }
     try {
-      const updated = await projetosService.updateActivity(activity.id, {
-        progressPercent: done ? 100 : 0,
-      });
+      const updated = await projetosService.completeActivity(activity.id, true);
       setProject(updated);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao atualizar.");
+    }
+  }
+
+  async function handleReopen() {
+    if (!projectId) return;
+    const ok = await confirm({
+      title: "Reabrir projeto?",
+      description: "O projeto voltará para edição (em andamento).",
+      confirmText: "Reabrir",
+    });
+    if (!ok) return;
+    try {
+      const updated = await projetosService.reopenProject(projectId);
+      setProject(updated);
+      notifySuccess("Projeto reaberto.");
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Falha ao reabrir.");
     }
   }
 
@@ -249,15 +300,25 @@ export default function ProjectDetailPage() {
                       ) : null}
                     </div>
 
-                    {canEdit ? (
+                    {canMutate ? (
                       <Button
                         type="button"
                         size="lg"
                         className="shrink-0"
-                        onClick={() => openCreate()}
+                        onClick={() => setPhaseModalOpen(true)}
                       >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Nova atividade
+                        <Layers className="mr-2 h-4 w-4" />
+                        Adicionar fase
+                      </Button>
+                    ) : adminUser && projectLocked ? (
+                      <Button
+                        type="button"
+                        size="lg"
+                        variant="outline"
+                        className="shrink-0"
+                        onClick={() => void handleReopen()}
+                      >
+                        Reabrir projeto
                       </Button>
                     ) : null}
                   </div>
@@ -328,10 +389,19 @@ export default function ProjectDetailPage() {
 
                 <ProjectBudgetDocumentsPanel
                   project={project}
-                  canEdit={canEdit}
+                  canEdit={canMutate}
                   isAdmin={adminUser}
                   hideConsumed={clientUser}
                   onUpdated={() => void load(true)}
+                />
+
+                <ProjectTicketAppointmentsPanel
+                  projectId={projectId}
+                  ticketNumber={project.ticketNumber}
+                  activities={project.activities}
+                  canEdit={canMutate}
+                  onUpdated={() => void load(true)}
+                  onCreateAppointment={(activityId) => openCreateAppointment(activityId)}
                 />
 
                 <section className="space-y-3">
@@ -346,17 +416,29 @@ export default function ProjectDetailPage() {
                   <h2 className="text-lg font-semibold">Atividades</h2>
                   <ProjectActivityTable
                     activities={project.activities}
-                    canEdit={canEdit}
+                    canEdit={canMutate}
                     hideDurations={clientUser}
                     onEdit={openEdit}
-                    onAddChild={(row) => openCreate(row.id)}
+                    onAddChild={(row) => openCreateActivity(row.id)}
                     onDelete={(row) => void handleDelete(row)}
                     onToggleDone={(row, done) => void handleToggleDone(row, done)}
+                    onLogTime={
+                      canMutate && project.ticketNumber
+                        ? (row) => openCreateAppointment(row.id)
+                        : undefined
+                    }
                   />
                 </section>
               </>
             )}
           </div>
+
+          <ProjectPhaseModal
+            open={phaseModalOpen}
+            onOpenChange={setPhaseModalOpen}
+            projectId={projectId}
+            onSaved={() => void load(true)}
+          />
 
           <ProjectActivityModal
             open={modalOpen}
@@ -366,6 +448,19 @@ export default function ProjectDetailPage() {
             allActivities={project?.activities ?? []}
             onSaved={() => void load(true)}
           />
+
+          {project?.ticketNumber ? (
+            <TicketAppointmentModal
+              ticketNumber={project.ticketNumber}
+              open={appointmentModalOpen}
+              onOpenChange={setAppointmentModalOpen}
+              fixedActivityId={appointmentActivityId}
+              onCreated={() => {
+                setAppointmentActivityId(undefined);
+                void load(true);
+              }}
+            />
+          ) : null}
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

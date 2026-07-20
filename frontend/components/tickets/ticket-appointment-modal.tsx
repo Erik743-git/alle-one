@@ -47,6 +47,8 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   onCreated?: () => void;
   editingAppointment?: PortalAppointmentEditContext | null;
+  /** Quando definido, vincula automaticamente à atividade e oculta o seletor. */
+  fixedActivityId?: string;
 };
 
 function nowTime() {
@@ -60,6 +62,7 @@ export function TicketAppointmentModal({
   onOpenChange,
   onCreated,
   editingAppointment = null,
+  fixedActivityId,
 }: Props) {
   const isEdit = Boolean(editingAppointment?.portalAppointmentId);
   const { user } = useAuth();
@@ -117,12 +120,12 @@ export function TicketAppointmentModal({
         setInitTime(nowTime());
         setEndTime(nowTime());
         setDescriptionPlain("");
-        setProjectActivityId("");
+        setProjectActivityId(fixedActivityId ?? "");
         setComposerKey((k) => k + 1);
       }
       void loadTicketMeta();
     }
-  }, [open, loadTicketMeta, editingAppointment]);
+  }, [open, loadTicketMeta, editingAppointment, fixedActivityId]);
 
   const projectActivityOptions = useMemo(
     () => [
@@ -315,7 +318,14 @@ export function TicketAppointmentModal({
               </div>
             </div>
 
-            {!isEdit && projectLink?.activities.length ? (
+            {!isEdit && fixedActivityId ? (
+              <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                O apontamento será vinculado automaticamente à atividade selecionada no
+                cronograma.
+              </div>
+            ) : null}
+
+            {!isEdit && !fixedActivityId && projectLink?.activities.length ? (
               <div className="space-y-2">
                 <Label className={FIELD_LABEL}>
                   Atividade do projeto {projectLink.project.name}

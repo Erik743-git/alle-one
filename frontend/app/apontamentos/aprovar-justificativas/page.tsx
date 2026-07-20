@@ -21,7 +21,7 @@ import { JustificationKindBadge } from "@/components/rendimento/justification-ki
 import { ApprovalAuditCell } from "@/components/apontamentos/approval-audit-cell";
 import { RENDIMENTO_DEBIT_OVERTIME_LABEL } from "@/lib/module-copy";
 import { BulkApprovalStatusFilterField } from "@/components/apontamentos/bulk-approval-status-filter";
-import { monthRangeFor } from "@/lib/date-ranges";
+import { payrollPeriodRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -62,7 +62,7 @@ export default function AprovarJustificativasPage() {
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
 
-  const defaultRange = useMemo(() => monthRangeFor(new Date()), []);
+  const defaultRange = useMemo(() => payrollPeriodRangeFor(new Date()), []);
 
   const [start, setStart] = useState(defaultRange.start);
   const [end, setEnd] = useState(defaultRange.end);

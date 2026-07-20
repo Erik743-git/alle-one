@@ -30,9 +30,10 @@ import {
   type ProjectActivity,
   type ProjectUserOption,
 } from "@/lib/services/projetos.service";
+import { cn } from "@/lib/utils";
 
 export type ActivityFormMode =
-  | { kind: "create"; projectId: string; parentId?: string }
+  | { kind: "create"; projectId: string; parentId: string }
   | { kind: "edit"; activity: ProjectActivity };
 
 type Props = {
@@ -56,10 +57,10 @@ export function ProjectActivityModal({
   const editing = mode?.kind === "edit" ? mode.activity : null;
 
   const [name, setName] = useState("");
-  const [durationDays, setDurationDays] = useState("1");
+  const [durationHours, setDurationHours] = useState("8");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [actualDurationDays, setActualDurationDays] = useState("");
+  const [actualDurationHours, setActualDurationHours] = useState("");
   const [progressPercent, setProgressPercent] = useState("0");
   const [assigneeUserId, setAssigneeUserId] = useState("");
   const [assigneeName, setAssigneeName] = useState("");
@@ -77,11 +78,17 @@ export function ProjectActivityModal({
     if (mode.kind === "edit") {
       const a = mode.activity;
       setName(a.name);
-      setDurationDays(String(a.durationDays));
+      setDurationHours(
+        String(a.durationHours ?? (a.durationDays != null ? a.durationDays * 8 : 8)),
+      );
       setStartDate(a.startDate ?? "");
       setEndDate(a.endDate ?? "");
-      setActualDurationDays(
-        a.actualDurationDays != null ? String(a.actualDurationDays) : "",
+      setActualDurationHours(
+        a.actualDurationHours != null
+          ? String(a.actualDurationHours)
+          : a.actualDurationDays != null
+            ? String(a.actualDurationDays * 8)
+            : "",
       );
       setProgressPercent(String(a.progressPercent));
       setAssigneeUserId(a.assigneeUserId ?? "");
@@ -90,21 +97,32 @@ export function ProjectActivityModal({
       setIsMilestone(a.isMilestone);
       setNotes(a.notes ?? "");
       setPredecessorIds(Array.isArray(a.predecessorIds) ? a.predecessorIds : []);
-    } else {
+    } else if (mode.kind === "create") {
       setName("");
-      setDurationDays("1");
+      setDurationHours("8");
       setStartDate("");
       setEndDate("");
-      setActualDurationDays("");
+      setActualDurationHours("");
       setProgressPercent("0");
       setAssigneeUserId("");
       setAssigneeName("");
       setAssigneeFreeText(false);
       setIsMilestone(false);
       setNotes("");
-      setPredecessorIds([]);
+      const siblings = flat.filter((row) => {
+        const kind =
+          row.kind ??
+          (row.level === 1 && !row.parentId
+            ? "PHASE"
+            : row.isMilestone
+              ? "MILESTONE"
+              : "TASK");
+        return row.parentId === mode.parentId && kind !== "PHASE";
+      });
+      const previous = siblings[siblings.length - 1];
+      setPredecessorIds(previous ? [previous.id] : []);
     }
-  }, [open, mode]);
+  }, [open, mode, flat]);
 
   useEffect(() => {
     if (!open) return;
@@ -127,10 +145,35 @@ export function ProjectActivityModal({
     };
   }, [open, userSearch, companyId]);
 
+  const activityById = useMemo(
+    () => new Map(flat.map((row) => [row.id, row])),
+    [flat],
+  );
+
+  const defaultPredecessorId =
+    mode?.kind === "create"
+      ? flat.filter((row) => {
+          const kind =
+            row.kind ??
+            (row.isMilestone ? "MILESTONE" : row.parentId ? "TASK" : "PHASE");
+          return row.parentId === mode.parentId && kind !== "PHASE";
+        }).at(-1)?.id
+      : null;
+
   const predecessorOptions = useMemo(
     () =>
       flat
-        .filter((row) => row.id !== editing?.id)
+        .filter((row) => {
+          if (row.id === editing?.id) return false;
+          const kind =
+            row.kind ??
+            (row.level === 1 && !row.parentId
+              ? "PHASE"
+              : row.isMilestone
+                ? "MILESTONE"
+                : "TASK");
+          return kind !== "PHASE";
+        })
         .map((row) => ({
           value: row.id,
           label: `${row.wbsCode} — ${row.name}`,
@@ -144,11 +187,11 @@ export function ProjectActivityModal({
       setSaving(true);
       const payload = {
         name: name.trim(),
-        durationDays: isMilestone ? 0 : Math.max(0, Number(durationDays) || 0),
+        durationHours: isMilestone ? 0 : Math.max(0, Number(durationHours) || 0),
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        actualDurationDays: actualDurationDays
-          ? Math.max(0, Number(actualDurationDays) || 0)
+        actualDurationHours: actualDurationHours
+          ? Math.max(0, Number(actualDurationHours) || 0)
           : undefined,
         progressPercent: Math.min(
           100,
@@ -183,6 +226,7 @@ export function ProjectActivityModal({
   }
 
   const isEdit = mode?.kind === "edit";
+  const isPhaseEdit = isEdit && mode.activity.kind === "PHASE";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -197,10 +241,16 @@ export function ProjectActivityModal({
             </div>
             <div className="space-y-1">
               <DialogTitle className="text-xl font-bold text-foreground sm:text-2xl">
-                {isEdit ? "Editar atividade" : "Nova atividade"}
+                {isPhaseEdit
+                  ? "Editar fase"
+                  : isEdit
+                    ? "Editar atividade"
+                    : "Nova atividade"}
               </DialogTitle>
               <DialogDescription className="text-sm text-muted-foreground">
-                Defina prazos, responsável e dependências da atividade no cronograma.
+                {isPhaseEdit
+                  ? "Altere o nome e observações da fase."
+                  : "Defina prazos em horas, responsável e dependências da atividade."}
               </DialogDescription>
             </div>
           </DialogHeader>
@@ -218,7 +268,7 @@ export function ProjectActivityModal({
         <div className="flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6 sm:py-6">
           <div className="space-y-2">
             <Label htmlFor="activity-name" className="text-sm font-semibold text-foreground">
-              Nome da tarefa
+              {isPhaseEdit ? "Nome da fase" : "Nome da tarefa"}
             </Label>
             <Input
               id="activity-name"
@@ -229,21 +279,24 @@ export function ProjectActivityModal({
             />
           </div>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3 transition hover:bg-muted/50">
-            <FlipCheckbox
-              checked={isMilestone}
-              onChange={(e) => setIsMilestone(e.target.checked)}
-            />
-            <span className="space-y-0.5">
-              <span className="block text-sm font-medium text-foreground">
-                Marco (duração zero)
+          {!isPhaseEdit ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3 transition hover:bg-muted/50">
+              <FlipCheckbox
+                checked={isMilestone}
+                onChange={(e) => setIsMilestone(e.target.checked)}
+              />
+              <span className="space-y-0.5">
+                <span className="block text-sm font-medium text-foreground">
+                  Marco (duração zero)
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Ponto de controle sem duração no cronograma.
+                </span>
               </span>
-              <span className="block text-xs text-muted-foreground">
-                Ponto de controle sem duração no cronograma.
-              </span>
-            </span>
-          </label>
+            </label>
+          ) : null}
 
+          {!isPhaseEdit ? (
           <section className="space-y-4 rounded-xl border border-border p-4">
             <div className="flex items-center gap-2 text-foreground">
               <CalendarClock className="h-4 w-4 text-primary" />
@@ -255,13 +308,13 @@ export function ProjectActivityModal({
             {!isMilestone ? (
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label htmlFor="duration" className="text-sm">Duração (dias)</Label>
+                  <Label htmlFor="duration" className="text-sm">Duração (horas)</Label>
                   <Input
                     id="duration"
                     type="number"
                     min={0}
-                    value={durationDays}
-                    onChange={(e) => setDurationDays(e.target.value)}
+                    value={durationHours}
+                    onChange={(e) => setDurationHours(e.target.value)}
                     className="h-11"
                   />
                 </div>
@@ -304,13 +357,13 @@ export function ProjectActivityModal({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="actual" className="text-sm">Tempo real (dias)</Label>
+                <Label htmlFor="actual" className="text-sm">Tempo real (horas)</Label>
                 <Input
                   id="actual"
                   type="number"
                   min={0}
-                  value={actualDurationDays}
-                  onChange={(e) => setActualDurationDays(e.target.value)}
+                  value={actualDurationHours}
+                  onChange={(e) => setActualDurationHours(e.target.value)}
                   placeholder="—"
                   className="h-11"
                 />
@@ -329,7 +382,10 @@ export function ProjectActivityModal({
               </div>
             </div>
           </section>
+          ) : null}
 
+          {!isPhaseEdit ? (
+          <>
           <section className="space-y-3 rounded-xl border border-border p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-foreground">
@@ -386,6 +442,11 @@ export function ProjectActivityModal({
                 Predecessoras
               </h3>
             </div>
+            {mode?.kind === "create" && defaultPredecessorId ? (
+              <p className="text-xs text-muted-foreground">
+                Por padrão, a atividade anterior da fase é predecessora. Você pode alterar abaixo.
+              </p>
+            ) : null}
             <SearchableSelectField
               modal
               value=""
@@ -403,18 +464,29 @@ export function ProjectActivityModal({
             {predecessorIds.length ? (
               <div className="flex flex-wrap gap-2">
                 {predecessorIds.map((id) => {
-                  const label =
-                    predecessorOptions.find((o) => o.value === id)?.label ?? id;
+                  const fromOptions = predecessorOptions.find((o) => o.value === id);
+                  const row = activityById.get(id);
+                  const label = fromOptions?.label ?? (row ? `${row.wbsCode} — ${row.name}` : id);
+                  const completed =
+                    row?.activityStatus === "COMPLETED" || (row?.progressPercent ?? 0) >= 100;
                   return (
                     <button
                       key={id}
                       type="button"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition",
+                        completed
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+                          : "border-amber-500/30 bg-amber-500/10 text-amber-700",
+                      )}
                       onClick={() =>
                         setPredecessorIds((prev) => prev.filter((x) => x !== id))
                       }
                     >
                       <span className="max-w-[220px] truncate">{label}</span>
+                      <span className="text-[10px] opacity-80">
+                        {completed ? "✓" : "pendente"}
+                      </span>
                       <X className="h-3 w-3" />
                     </button>
                   );
@@ -422,6 +494,8 @@ export function ProjectActivityModal({
               </div>
             ) : null}
           </section>
+          </>
+          ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="notes" className="flex items-center gap-2 text-sm font-semibold text-foreground">

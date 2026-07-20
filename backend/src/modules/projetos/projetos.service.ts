@@ -6,8 +6,11 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import {
+  ProjectActivityKind,
+  ProjectActivityStatus,
   ProjectBudgetUnit,
   ProjectCompletionApprovalStatus,
+  ProjectHistoryEventType,
   ProjectStatus,
   UserRole,
 } from '@prisma/client';
@@ -21,6 +24,7 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type {
   CreateProjectActivityDto,
   CreateProjectDto,
+  CreateProjectPhaseDto,
   SearchProjetosUsersQueryDto,
   UpdateProjectActivityDto,
   UpdateProjectDto,
@@ -59,6 +63,28 @@ export type ProjectCompletionApprovalDto = {
   note: string | null;
 };
 
+export type ProjectActivityPredecessorDto = {
+  id: string;
+  wbsCode: string;
+  name: string;
+  completed: boolean;
+};
+
+export type ProjectTicketAppointmentDto = {
+  portalAppointmentId: string;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  minutes: number;
+  description: string;
+  authorName: string;
+  serviceName: string;
+  attendance: string | null;
+  linkedActivityId: string | null;
+  linkedActivityLabel: string | null;
+  linkId: string | null;
+};
+
 export type ProjectActivityAppointmentDto = {
   id: string;
   portalAppointmentId: string;
@@ -76,21 +102,41 @@ export type ProjectActivityDto = {
   parentId: string | null;
   wbsCode: string;
   name: string;
+  kind: ProjectActivityKind;
   level: number;
   sortOrder: number;
   durationDays: number | null;
+  durationHours: number | null;
   startDate: string | null;
   endDate: string | null;
   actualDurationDays: number | null;
+  actualDurationHours: number | null;
   progressPercent: number;
+  activityStatus: ProjectActivityStatus;
+  completedAt: string | null;
   assigneeUserId: string | null;
   assigneeName: string | null;
   assigneeDisplayName: string | null;
   isMilestone: boolean;
   notes: string | null;
   predecessorIds: string[];
+  predecessors: ProjectActivityPredecessorDto[];
+  predecessorsComplete: boolean;
+  canStart: boolean;
   appointments: ProjectActivityAppointmentDto[];
   children: ProjectActivityDto[];
+};
+
+export type ProjectHistoryDto = {
+  id: string;
+  eventType: ProjectHistoryEventType;
+  entityType: string | null;
+  entityId: string | null;
+  summary: string;
+  payload: unknown;
+  actorUserId: string | null;
+  actorName: string | null;
+  createdAt: string;
 };
 
 export type ProjectSummaryDto = {
@@ -138,13 +184,18 @@ type ActivityRow = {
   parentId: string | null;
   wbsCode: string;
   name: string;
+  kind: ProjectActivityKind;
   level: number;
   sortOrder: number;
   durationDays: number;
+  durationHours: number | null;
   startDate: Date | null;
   endDate: Date | null;
   actualDurationDays: number | null;
+  actualDurationHours: number | null;
   progressPercent: number;
+  activityStatus: ProjectActivityStatus;
+  completedAt: Date | null;
   assigneeUserId: string | null;
   assigneeName: string | null;
   isMilestone: boolean;
@@ -627,6 +678,218 @@ export class ProjetosService {
     }
   }
 
+  private isProjectLocked(status: ProjectStatus) {
+    return status === ProjectStatus.COMPLETED || status === ProjectStatus.CANCELED;
+  }
+
+  private assertProjectEditable(status: ProjectStatus) {
+    if (this.isProjectLocked(status)) {
+      throw new BadRequestException(
+        'Projeto fechado. Somente leitura — solicite reabertura a um administrador.',
+      );
+    }
+  }
+
+  private hoursToDurationDays(hours: number, isMilestone: boolean): number {
+    if (isMilestone) return 0;
+    if (hours <= 0) return 1;
+    return Math.max(1, Math.ceil(hours / HOURS_PER_WORK_DAY));
+  }
+
+  private resolveDurationHours(params: {
+    durationHours?: number;
+    durationDays?: number;
+    isMilestone: boolean;
+  }): number {
+    if (params.isMilestone) return 0;
+    if (params.durationHours !== undefined) {
+      return Math.max(0, params.durationHours);
+    }
+    if (params.durationDays !== undefined) {
+      return Math.max(0, params.durationDays * HOURS_PER_WORK_DAY);
+    }
+    return HOURS_PER_WORK_DAY;
+  }
+
+  private deriveActivityStatus(
+    progressPercent: number,
+    current?: ProjectActivityStatus,
+  ): { activityStatus: ProjectActivityStatus; completedAt: Date | null } {
+    if (progressPercent >= 100) {
+      return { activityStatus: ProjectActivityStatus.COMPLETED, completedAt: new Date() };
+    }
+    if (progressPercent > 0) {
+      return {
+        activityStatus: ProjectActivityStatus.IN_PROGRESS,
+        completedAt: null,
+      };
+    }
+    return {
+      activityStatus: ProjectActivityStatus.NOT_STARTED,
+      completedAt: null,
+    };
+  }
+
+  private activityWeight(row: ActivityRow): number {
+    if (row.kind === ProjectActivityKind.PHASE || row.isMilestone) return 0;
+    return Math.max(1, row.durationHours ?? ((row.durationDays * HOURS_PER_WORK_DAY) || 1));
+  }
+
+  private async logProjectHistory(params: {
+    projectId: string;
+    eventType: ProjectHistoryEventType;
+    summary: string;
+    actorUserId?: string;
+    entityType?: string;
+    entityId?: string;
+    payload?: unknown;
+  }) {
+    await this.prisma.projectHistory.create({
+      data: {
+        projectId: params.projectId,
+        eventType: params.eventType,
+        summary: params.summary,
+        actorUserId: params.actorUserId ?? null,
+        entityType: params.entityType ?? null,
+        entityId: params.entityId ?? null,
+        payload:
+          params.payload === undefined
+            ? undefined
+            : (params.payload as object),
+      },
+    });
+  }
+
+  private isActivityCompleted(row: Pick<ActivityRow, 'activityStatus' | 'progressPercent'>) {
+    return (
+      row.activityStatus === ProjectActivityStatus.COMPLETED || row.progressPercent >= 100
+    );
+  }
+
+  private async syncPhaseFromChildren(phaseId: string) {
+    const phase = await this.prisma.projectActivity.findFirst({
+      where: { id: phaseId, deletedAt: null, kind: ProjectActivityKind.PHASE },
+    });
+    if (!phase) return;
+
+    const children = await this.prisma.projectActivity.findMany({
+      where: {
+        parentId: phaseId,
+        deletedAt: null,
+        kind: { in: [ProjectActivityKind.TASK, ProjectActivityKind.MILESTONE] },
+      },
+    });
+
+    if (!children.length) {
+      await this.prisma.projectActivity.update({
+        where: { id: phaseId },
+        data: {
+          progressPercent: 0,
+          activityStatus: ProjectActivityStatus.NOT_STARTED,
+          completedAt: null,
+          startDate: null,
+          endDate: null,
+        },
+      });
+      return;
+    }
+
+    const allCompleted = children.every((child) => this.isActivityCompleted(child));
+    const anyStarted = children.some(
+      (child) =>
+        child.progressPercent > 0 ||
+        child.activityStatus === ProjectActivityStatus.IN_PROGRESS ||
+        child.activityStatus === ProjectActivityStatus.COMPLETED,
+    );
+    const totalWeight = children.reduce(
+      (sum, child) =>
+        sum +
+        (child.kind === ProjectActivityKind.MILESTONE
+          ? 1
+          : Math.max(
+              1,
+              child.durationHours ?? ((child.durationDays * HOURS_PER_WORK_DAY) || 1),
+            )),
+      0,
+    );
+    const progressPercent = totalWeight
+      ? Math.min(
+          100,
+          Math.round(
+            children.reduce(
+              (sum, child) =>
+                sum +
+                child.progressPercent *
+                  (child.kind === ProjectActivityKind.MILESTONE
+                    ? 1
+                    : Math.max(
+                        1,
+                        child.durationHours ??
+                          ((child.durationDays * HOURS_PER_WORK_DAY) || 1),
+                      )),
+              0,
+            ) / totalWeight,
+          ),
+        )
+      : Math.round(
+          children.reduce((sum, child) => sum + child.progressPercent, 0) / children.length,
+        );
+
+    const startDates = children.map((child) => child.startDate).filter(Boolean) as Date[];
+    const endDates = children.map((child) => child.endDate).filter(Boolean) as Date[];
+
+    await this.prisma.projectActivity.update({
+      where: { id: phaseId },
+      data: {
+        progressPercent,
+        activityStatus: allCompleted
+          ? ProjectActivityStatus.COMPLETED
+          : anyStarted
+            ? ProjectActivityStatus.IN_PROGRESS
+            : ProjectActivityStatus.NOT_STARTED,
+        completedAt: allCompleted ? new Date() : null,
+        startDate: startDates.length
+          ? new Date(Math.min(...startDates.map((d) => d.getTime())))
+          : null,
+        endDate: endDates.length
+          ? new Date(Math.max(...endDates.map((d) => d.getTime())))
+          : null,
+      },
+    });
+  }
+
+  private async syncPhaseChain(parentId: string | null) {
+    if (!parentId) return;
+    await this.syncPhaseFromChildren(parentId);
+  }
+
+  private async assertPredecessorsCompleted(predecessorIds: string[]) {
+    const unique = [...new Set(predecessorIds.filter(Boolean))];
+    if (!unique.length) return;
+
+    const rows = await this.prisma.projectActivity.findMany({
+      where: { id: { in: unique }, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        activityStatus: true,
+        progressPercent: true,
+        kind: true,
+      },
+    });
+    const blocked = rows.filter(
+      (row) =>
+        row.kind !== ProjectActivityKind.PHASE &&
+        !this.isActivityCompleted(row),
+    );
+    if (blocked.length) {
+      const names = blocked.map((row) => row.name).join(', ');
+      throw new BadRequestException(
+        `Conclua as predecessoras antes de iniciar: ${names}.`,
+      );
+    }
+  }
+
   private assertCanImport(user: AuthenticatedRequestUser) {
     if (user.role === UserRole.CLIENT) {
       throw new ForbiddenException('Cliente não pode importar planilhas de projetos.');
@@ -738,7 +1001,11 @@ export class ProjetosService {
     if (!project) return null;
 
     const activities = await this.prisma.projectActivity.findMany({
-      where: { projectId: project.id, deletedAt: null, isMilestone: false },
+      where: {
+        projectId: project.id,
+        deletedAt: null,
+        kind: { in: [ProjectActivityKind.TASK, ProjectActivityKind.MILESTONE] },
+      },
       select: { id: true, wbsCode: true, name: true, parentId: true },
       orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { wbsCode: 'asc' }],
     });
@@ -766,19 +1033,38 @@ export class ProjetosService {
     endTime: string;
     createdBy: string;
   }) {
+    const existing = await this.prisma.projectActivityAppointment.findUnique({
+      where: { portalAppointmentId: params.portalAppointmentId },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException('Este apontamento já está vinculado a uma atividade.');
+    }
+
     const activity = await this.prisma.projectActivity.findFirst({
       where: { id: params.projectActivityId, deletedAt: null },
       include: {
-        project: { select: { id: true, ticketNumber: true, deletedAt: true } },
+        project: { select: { id: true, ticketNumber: true, deletedAt: true, status: true } },
       },
     });
     if (!activity?.project || activity.project.deletedAt) {
       throw new BadRequestException('Atividade do projeto inválida.');
     }
+    if (activity.kind === ProjectActivityKind.PHASE) {
+      throw new BadRequestException('Apontamentos vinculam-se a atividades, não a fases.');
+    }
     if (activity.project.ticketNumber !== params.ticketNumber) {
       throw new BadRequestException(
         'A atividade não pertence ao projeto vinculado a este ticket.',
       );
+    }
+
+    const portal = await this.prisma.portalTicketAppointment.findFirst({
+      where: { id: params.portalAppointmentId, ticketNumber: params.ticketNumber },
+      select: { id: true },
+    });
+    if (!portal) {
+      throw new BadRequestException('Apontamento do ticket não encontrado.');
     }
 
     const minutes = this.appointmentMinutesFromStrings(
@@ -798,6 +1084,148 @@ export class ProjetosService {
     });
 
     await this.recalculateActivityFromAppointments(activity.id, params.createdBy);
+
+    await this.logProjectHistory({
+      projectId: activity.projectId,
+      eventType: ProjectHistoryEventType.APPOINTMENT_LINKED,
+      summary: `Apontamento vinculado à atividade ${activity.wbsCode} — ${activity.name}`,
+      actorUserId: params.createdBy,
+      entityType: 'TASK',
+      entityId: activity.id,
+      payload: { portalAppointmentId: params.portalAppointmentId, minutes },
+    });
+  }
+
+  async listProjectTicketAppointments(
+    user: AuthenticatedRequestUser,
+    projectId: string,
+  ): Promise<{ ticketNumber: number | null; appointments: ProjectTicketAppointmentDto[] }> {
+    const project = await this.resolveProjectInScope(user, projectId);
+    if (!project.ticketNumber) {
+      return { ticketNumber: null, appointments: [] };
+    }
+
+    const [portalRows, links] = await Promise.all([
+      this.prisma.portalTicketAppointment.findMany({
+        where: { ticketNumber: project.ticketNumber },
+        include: { creator: { select: { name: true } } },
+        orderBy: [{ appointmentDate: 'desc' }, { initTime: 'desc' }],
+      }),
+      this.prisma.projectActivityAppointment.findMany({
+        where: { activity: { projectId, deletedAt: null } },
+        include: {
+          activity: { select: { id: true, wbsCode: true, name: true } },
+        },
+      }),
+    ]);
+
+    const linkByPortal = new Map(links.map((row) => [row.portalAppointmentId, row]));
+
+    return {
+      ticketNumber: project.ticketNumber,
+      appointments: portalRows.map((row) => {
+        const link = linkByPortal.get(row.id);
+        const minutes = this.appointmentMinutesFromStrings(row.initTime, row.endTime);
+        return {
+          portalAppointmentId: row.id,
+          appointmentDate: this.formatDateOnly(row.appointmentDate) ?? '',
+          initTime: row.initTime,
+          endTime: row.endTime,
+          minutes,
+          description: this.stripAppointmentDescription(row.description),
+          authorName: row.creator.name,
+          serviceName: row.serviceName,
+          attendance: row.attendance,
+          linkedActivityId: link?.activityId ?? null,
+          linkedActivityLabel: link
+            ? `${link.activity.wbsCode} — ${link.activity.name}`
+            : null,
+          linkId: link?.id ?? null,
+        };
+      }),
+    };
+  }
+
+  async linkActivityAppointment(
+    user: AuthenticatedRequestUser,
+    activityId: string,
+    portalAppointmentId: string,
+  ) {
+    this.assertCanMutate(user);
+    const activity = await this.prisma.projectActivity.findFirst({
+      where: { id: activityId, deletedAt: null },
+      include: { project: true },
+    });
+    if (!activity) {
+      throw new NotFoundException('Atividade não encontrada.');
+    }
+    await this.resolveProjectInScope(user, activity.projectId);
+    this.assertProjectEditable(activity.project.status);
+    if (!activity.project.ticketNumber) {
+      throw new BadRequestException('Projeto sem ticket vinculado.');
+    }
+
+    const portal = await this.prisma.portalTicketAppointment.findFirst({
+      where: { id: portalAppointmentId },
+      select: { initTime: true, endTime: true, ticketNumber: true },
+    });
+    if (!portal || portal.ticketNumber !== activity.project.ticketNumber) {
+      throw new BadRequestException('Apontamento inválido para este projeto.');
+    }
+
+    await this.linkPortalAppointmentToActivity({
+      ticketNumber: activity.project.ticketNumber,
+      projectActivityId: activityId,
+      portalAppointmentId,
+      initTime: portal.initTime,
+      endTime: portal.endTime,
+      createdBy: user.userId,
+    });
+
+    if (activity.parentId) {
+      await this.syncPhaseChain(activity.parentId);
+    }
+
+    return this.getProject(user, activity.projectId);
+  }
+
+  async unlinkActivityAppointment(
+    user: AuthenticatedRequestUser,
+    linkId: string,
+  ) {
+    this.assertCanMutate(user);
+    const link = await this.prisma.projectActivityAppointment.findUnique({
+      where: { id: linkId },
+      include: {
+        activity: {
+          include: { project: true },
+        },
+      },
+    });
+    if (!link?.activity || link.activity.deletedAt) {
+      throw new NotFoundException('Vínculo não encontrado.');
+    }
+    await this.resolveProjectInScope(user, link.activity.projectId);
+    this.assertProjectEditable(link.activity.project.status);
+
+    await this.prisma.projectActivityAppointment.delete({ where: { id: linkId } });
+    await this.recalculateActivityFromAppointments(link.activityId);
+
+    await this.logProjectHistory({
+      projectId: link.activity.projectId,
+      eventType: ProjectHistoryEventType.APPOINTMENT_LINKED,
+      summary: `Apontamento desvinculado da atividade ${link.activity.wbsCode} — ${link.activity.name}`,
+      actorUserId: user.userId,
+      entityType: link.activity.kind,
+      entityId: link.activityId,
+      payload: { portalAppointmentId: link.portalAppointmentId, action: 'UNLINK' },
+    });
+
+    if (link.activity.parentId) {
+      await this.syncPhaseChain(link.activity.parentId);
+    }
+
+    return this.getProject(user, link.activity.projectId);
   }
 
   async refreshPortalAppointmentLink(
@@ -855,6 +1283,8 @@ export class ProjetosService {
       (sum, row) => sum + row.minutes,
       0,
     );
+    const actualDurationHours =
+      totalMinutes > 0 ? Math.max(1, Math.round(totalMinutes / 60)) : null;
     const actualDurationDays =
       totalMinutes > 0 ? this.minutesToDays(totalMinutes) : null;
     const latestCreator =
@@ -862,13 +1292,23 @@ export class ProjetosService {
       latestAssigneeUserId ??
       activity.assigneeUserId;
 
+    const plannedHours =
+      activity.durationHours ??
+      (activity.durationDays > 0 ? activity.durationDays * HOURS_PER_WORK_DAY : 0);
+
     let progressPercent = activity.progressPercent;
-    if (activity.durationDays > 0 && actualDurationDays != null) {
+    if (plannedHours > 0 && totalMinutes > 0) {
       progressPercent = Math.min(
         100,
-        Math.round((actualDurationDays / activity.durationDays) * 100),
+        Math.round((totalMinutes / (plannedHours * 60)) * 100),
       );
+    } else if (totalMinutes > 0 && activity.isMilestone) {
+      progressPercent = 100;
+    } else if (totalMinutes === 0 && activity.appointments.length === 0) {
+      progressPercent = 0;
     }
+
+    const statusDerived = this.deriveActivityStatus(progressPercent);
 
     const assigneeUser = latestCreator
       ? await this.prisma.user.findFirst({
@@ -881,11 +1321,18 @@ export class ProjetosService {
       where: { id: activityId },
       data: {
         actualDurationDays,
+        actualDurationHours,
         progressPercent,
+        activityStatus: statusDerived.activityStatus,
+        completedAt: statusDerived.completedAt,
         assigneeUserId: assigneeUser?.id ?? null,
         assigneeName: assigneeUser?.name ?? activity.assigneeName,
       },
     });
+
+    if (activity.parentId) {
+      await this.syncPhaseFromChildren(activity.parentId);
+    }
   }
 
   private activityConsumedDays(row: ActivityRow): number {
@@ -1118,24 +1565,22 @@ export class ProjetosService {
 
   private computeProgress(activities: ActivityRow[]): number {
     const leaves = activities.filter(
-      (a) => !activities.some((child) => child.parentId === a.id),
+      (a) =>
+        a.kind !== ProjectActivityKind.PHASE &&
+        !activities.some((child) => child.parentId === a.id),
     );
-    const pool = leaves.length ? leaves : activities;
+    const pool = leaves.length
+      ? leaves
+      : activities.filter((a) => a.kind !== ProjectActivityKind.PHASE);
     if (!pool.length) return 0;
-    const totalWeight = pool.reduce(
-      (sum, row) => sum + Math.max(1, row.durationDays || (row.isMilestone ? 0 : 1)),
-      0,
-    );
+    const totalWeight = pool.reduce((sum, row) => sum + this.activityWeight(row), 0);
     if (!totalWeight) {
       return Math.round(
         pool.reduce((sum, row) => sum + row.progressPercent, 0) / pool.length,
       );
     }
     const weighted = pool.reduce(
-      (sum, row) =>
-        sum +
-        row.progressPercent *
-          Math.max(1, row.durationDays || (row.isMilestone ? 0 : 1)),
+      (sum, row) => sum + row.progressPercent * this.activityWeight(row),
       0,
     );
     return Math.min(100, Math.round(weighted / totalWeight));
@@ -1144,26 +1589,48 @@ export class ProjetosService {
   private mapActivityRow(
     row: ActivityRow,
     hideDurations: boolean,
+    byId: Map<string, ActivityRow>,
   ): Omit<ProjectActivityDto, 'children'> {
+    const predecessors = row.predecessors.map((p) => {
+      const pred = byId.get(p.predecessorId);
+      const completed = pred != null && this.isActivityCompleted(pred);
+      return {
+        id: p.predecessorId,
+        wbsCode: pred?.wbsCode ?? '',
+        name: pred?.name ?? 'Removida',
+        completed,
+      };
+    });
+    const predecessorsComplete =
+      predecessors.length === 0 || predecessors.every((p) => p.completed);
+
     return {
       id: row.id,
       projectId: row.projectId,
       parentId: row.parentId,
       wbsCode: row.wbsCode,
       name: row.name,
+      kind: row.kind,
       level: row.level,
       sortOrder: row.sortOrder,
       durationDays: hideDurations ? null : row.durationDays,
+      durationHours: hideDurations ? null : row.durationHours,
       startDate: this.formatDateOnly(row.startDate),
       endDate: this.formatDateOnly(row.endDate),
       actualDurationDays: hideDurations ? null : row.actualDurationDays,
+      actualDurationHours: hideDurations ? null : row.actualDurationHours,
       progressPercent: row.progressPercent,
+      activityStatus: row.activityStatus,
+      completedAt: row.completedAt?.toISOString() ?? null,
       assigneeUserId: row.assigneeUserId,
       assigneeName: row.assigneeName,
       assigneeDisplayName: row.assignee?.name ?? row.assigneeName,
       isMilestone: row.isMilestone,
       notes: row.notes,
       predecessorIds: row.predecessors.map((p) => p.predecessorId),
+      predecessors,
+      predecessorsComplete,
+      canStart: predecessorsComplete,
       appointments: row.appointments.map((item) =>
         this.mapAppointmentRow(item, hideDurations),
       ),
@@ -1174,15 +1641,16 @@ export class ProjetosService {
     rows: ActivityRow[],
     hideDurations: boolean,
   ): ProjectActivityDto[] {
+    const byId = new Map(rows.map((row) => [row.id, row]));
     const mapped = rows.map((row) => ({
-      ...this.mapActivityRow(row, hideDurations),
+      ...this.mapActivityRow(row, hideDurations, byId),
       children: [] as ProjectActivityDto[],
     }));
-    const byId = new Map(mapped.map((row) => [row.id, row]));
+    const mappedById = new Map(mapped.map((row) => [row.id, row]));
     const roots: ProjectActivityDto[] = [];
     for (const row of mapped) {
-      if (row.parentId && byId.has(row.parentId)) {
-        byId.get(row.parentId)!.children.push(row);
+      if (row.parentId && mappedById.has(row.parentId)) {
+        mappedById.get(row.parentId)!.children.push(row);
       } else {
         roots.push(row);
       }
@@ -1474,6 +1942,7 @@ export class ProjetosService {
   ) {
     this.assertCanMutate(user);
     const project = await this.resolveProjectInScope(user, projectId);
+    this.assertProjectEditable(project.status);
     const activities = await this.loadProjectActivities(projectId);
 
     if (body.status === ProjectStatus.COMPLETED) {
@@ -1582,10 +2051,13 @@ export class ProjetosService {
         id: { in: unique },
         deletedAt: null,
       },
-      select: { id: true, parentId: true },
+      select: { id: true, parentId: true, kind: true },
     });
     if (rows.length !== unique.length) {
       throw new BadRequestException('Predecessora inválida para este projeto.');
+    }
+    if (rows.some((row) => row.kind === ProjectActivityKind.PHASE)) {
+      throw new BadRequestException('Fases não podem ser predecessoras.');
     }
 
     if (!params.activityId) return;
@@ -1670,6 +2142,94 @@ export class ProjetosService {
     return { startDate: start, endDate: end, durationDays: duration };
   }
 
+  async createPhase(
+    user: AuthenticatedRequestUser,
+    projectId: string,
+    body: CreateProjectPhaseDto,
+  ) {
+    this.assertCanMutate(user);
+    const project = await this.resolveProjectInScope(user, projectId);
+    this.assertProjectEditable(project.status);
+
+    const wbsCode = await this.nextWbsCode(projectId, null);
+    const maxSort = await this.prisma.projectActivity.aggregate({
+      where: { projectId, parentId: null, deletedAt: null },
+      _max: { sortOrder: true },
+    });
+
+    const phase = await this.prisma.projectActivity.create({
+      data: {
+        projectId,
+        parentId: null,
+        wbsCode,
+        name: body.name.trim(),
+        kind: ProjectActivityKind.PHASE,
+        level: 1,
+        sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+        durationDays: 0,
+        durationHours: null,
+        progressPercent: 0,
+        activityStatus: ProjectActivityStatus.NOT_STARTED,
+        notes: body.notes?.trim() || null,
+      },
+    });
+
+    await this.logProjectHistory({
+      projectId,
+      eventType: ProjectHistoryEventType.PHASE_CREATED,
+      summary: `Fase criada: ${phase.name}`,
+      actorUserId: user.userId,
+      entityType: 'PHASE',
+      entityId: phase.id,
+    });
+
+    return this.getProject(user, projectId);
+  }
+
+  async getProjectHistory(user: AuthenticatedRequestUser, projectId: string) {
+    await this.resolveProjectInScope(user, projectId);
+    const rows = await this.prisma.projectHistory.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+      include: { actor: { select: { name: true } } },
+    });
+    return rows.map(
+      (row): ProjectHistoryDto => ({
+        id: row.id,
+        eventType: row.eventType,
+        entityType: row.entityType,
+        entityId: row.entityId,
+        summary: row.summary,
+        payload: row.payload,
+        actorUserId: row.actorUserId,
+        actorName: row.actor?.name ?? null,
+        createdAt: row.createdAt.toISOString(),
+      }),
+    );
+  }
+
+  async reopenProject(user: AuthenticatedRequestUser, projectId: string) {
+    this.assertAdmin(user);
+    const project = await this.resolveProjectInScope(user, projectId);
+    if (!this.isProjectLocked(project.status)) {
+      throw new BadRequestException('Projeto não está fechado.');
+    }
+
+    await this.prisma.project.update({
+      where: { id: projectId },
+      data: { status: ProjectStatus.IN_PROGRESS },
+    });
+
+    await this.logProjectHistory({
+      projectId,
+      eventType: ProjectHistoryEventType.PROJECT_REOPENED,
+      summary: 'Projeto reaberto',
+      actorUserId: user.userId,
+    });
+
+    return this.getProject(user, projectId);
+  }
+
   async createActivity(
     user: AuthenticatedRequestUser,
     projectId: string,
@@ -1677,32 +2237,63 @@ export class ProjetosService {
   ) {
     this.assertCanMutate(user);
     const project = await this.resolveProjectInScope(user, projectId);
-    const parentId = body.parentId ?? null;
-    if (parentId) {
-      const parent = await this.prisma.projectActivity.findFirst({
-        where: { id: parentId, projectId, deletedAt: null },
+    this.assertProjectEditable(project.status);
+
+    const parentId = body.parentId;
+    const parent = await this.prisma.projectActivity.findFirst({
+      where: { id: parentId, projectId, deletedAt: null },
+    });
+    if (!parent) {
+      throw new BadRequestException('Fase inválida.');
+    }
+    if (parent.kind !== ProjectActivityKind.PHASE) {
+      throw new BadRequestException(
+        'Atividades devem pertencer a uma fase. Use "Adicionar fase" para criar fases.',
+      );
+    }
+
+    let predecessorIds = [...(body.predecessorIds ?? [])];
+    if (!predecessorIds.length) {
+      const previous = await this.prisma.projectActivity.findFirst({
+        where: {
+          projectId,
+          parentId,
+          deletedAt: null,
+          kind: { in: [ProjectActivityKind.TASK, ProjectActivityKind.MILESTONE] },
+        },
+        orderBy: [{ sortOrder: 'desc' }, { wbsCode: 'desc' }],
       });
-      if (!parent) {
-        throw new BadRequestException('Atividade pai inválida.');
+      if (previous) {
+        predecessorIds = [previous.id];
       }
     }
 
     await this.validatePredecessors({
       projectId,
-      predecessorIds: body.predecessorIds ?? [],
+      predecessorIds,
       parentId,
     });
 
     const wbsCode = await this.nextWbsCode(projectId, parentId);
     const level = wbsCode.split('.').length;
     const isMilestone = Boolean(body.isMilestone);
-    const durationDays = isMilestone ? 0 : Math.max(0, body.durationDays ?? 1);
+    const kind = isMilestone
+      ? ProjectActivityKind.MILESTONE
+      : ProjectActivityKind.TASK;
+    const durationHours = this.resolveDurationHours({
+      durationHours: body.durationHours,
+      durationDays: body.durationDays,
+      isMilestone,
+    });
+    const durationDays = this.hoursToDurationDays(durationHours, isMilestone);
     const dates = this.resolveDates({
       startDate: body.startDate,
       endDate: body.endDate,
       durationDays,
       isMilestone,
     });
+    const progressPercent = body.progressPercent ?? 0;
+    const statusDerived = this.deriveActivityStatus(progressPercent);
 
     const maxSort = await this.prisma.projectActivity.aggregate({
       where: { projectId, parentId, deletedAt: null },
@@ -1715,13 +2306,22 @@ export class ProjetosService {
         parentId,
         wbsCode,
         name: body.name.trim(),
+        kind,
         level,
         sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
         durationDays: dates.durationDays,
+        durationHours: isMilestone ? 0 : durationHours,
         startDate: dates.startDate,
         endDate: dates.endDate,
         actualDurationDays: body.actualDurationDays ?? null,
-        progressPercent: body.progressPercent ?? 0,
+        actualDurationHours:
+          body.actualDurationHours ??
+          (body.actualDurationDays != null
+            ? body.actualDurationDays * HOURS_PER_WORK_DAY
+            : null),
+        progressPercent,
+        activityStatus: statusDerived.activityStatus,
+        completedAt: statusDerived.completedAt,
         assigneeUserId: body.assigneeUserId ?? null,
         assigneeName: body.assigneeUserId ? null : body.assigneeName?.trim() || null,
         isMilestone,
@@ -1729,11 +2329,22 @@ export class ProjetosService {
       },
     });
 
-    for (const predecessorId of body.predecessorIds ?? []) {
+    for (const predecessorId of predecessorIds) {
       await this.prisma.projectActivityPredecessor.create({
         data: { activityId: activity.id, predecessorId },
       });
     }
+
+    await this.logProjectHistory({
+      projectId,
+      eventType: isMilestone
+        ? ProjectHistoryEventType.TASK_CREATED
+        : ProjectHistoryEventType.TASK_CREATED,
+      summary: `${isMilestone ? 'Marco' : 'Atividade'} criada: ${activity.name}`,
+      actorUserId: user.userId,
+      entityType: kind,
+      entityId: activity.id,
+    });
 
     if (!project.startDate && dates.startDate) {
       await this.prisma.project.update({
@@ -1751,7 +2362,19 @@ export class ProjetosService {
       }
     }
 
+    await this.syncPhaseChain(parentId);
+
     return this.getProject(user, projectId);
+  }
+
+  async completeActivity(
+    user: AuthenticatedRequestUser,
+    activityId: string,
+    completed: boolean,
+  ) {
+    return this.updateActivity(user, activityId, {
+      progressPercent: completed ? 100 : 0,
+    });
   }
 
   async updateActivity(
@@ -1768,6 +2391,26 @@ export class ProjetosService {
       throw new NotFoundException('Atividade não encontrada.');
     }
     await this.resolveProjectInScope(user, current.projectId);
+    this.assertProjectEditable(current.project.status);
+
+    if (current.kind === ProjectActivityKind.PHASE) {
+      await this.prisma.projectActivity.update({
+        where: { id: activityId },
+        data: {
+          ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+          ...(body.notes !== undefined ? { notes: body.notes?.trim() || null } : {}),
+        },
+      });
+      await this.logProjectHistory({
+        projectId: current.projectId,
+        eventType: ProjectHistoryEventType.PHASE_UPDATED,
+        summary: `Fase atualizada: ${body.name?.trim() ?? current.name}`,
+        actorUserId: user.userId,
+        entityType: 'PHASE',
+        entityId: activityId,
+      });
+      return this.getProject(user, current.projectId);
+    }
 
     if (body.predecessorIds) {
       await this.validatePredecessors({
@@ -1780,12 +2423,21 @@ export class ProjetosService {
 
     const isMilestone =
       body.isMilestone !== undefined ? body.isMilestone : current.isMilestone;
+    const kind = isMilestone
+      ? ProjectActivityKind.MILESTONE
+      : ProjectActivityKind.TASK;
+    const durationHours =
+      body.durationHours !== undefined
+        ? Math.max(0, body.durationHours)
+        : body.durationDays !== undefined
+          ? body.durationDays * HOURS_PER_WORK_DAY
+          : current.durationHours ?? current.durationDays * HOURS_PER_WORK_DAY;
     const durationDays =
       body.durationDays !== undefined
         ? isMilestone
           ? 0
-          : Math.max(0, body.durationDays)
-        : current.durationDays;
+          : this.hoursToDurationDays(body.durationDays * HOURS_PER_WORK_DAY, false)
+        : this.hoursToDurationDays(durationHours, isMilestone);
     const dates = this.resolveDates({
       startDate: body.startDate ?? this.formatDateOnly(current.startDate) ?? undefined,
       endDate: body.endDate ?? this.formatDateOnly(current.endDate) ?? undefined,
@@ -1793,19 +2445,52 @@ export class ProjetosService {
       isMilestone,
     });
 
+    const progressPercent =
+      body.progressPercent !== undefined
+        ? body.progressPercent
+        : current.progressPercent;
+
+    if (progressPercent > 0 && current.progressPercent === 0) {
+      const predIds =
+        body.predecessorIds ??
+        (
+          await this.prisma.projectActivityPredecessor.findMany({
+            where: { activityId },
+            select: { predecessorId: true },
+          })
+        ).map((row) => row.predecessorId);
+      await this.assertPredecessorsCompleted(predIds);
+    }
+
+    const statusDerived = this.deriveActivityStatus(progressPercent, current.activityStatus);
+    const wasCompleted = current.activityStatus === ProjectActivityStatus.COMPLETED;
+
     await this.prisma.projectActivity.update({
       where: { id: activityId },
       data: {
         ...(body.name !== undefined ? { name: body.name.trim() } : {}),
+        kind,
         durationDays: dates.durationDays,
+        durationHours: isMilestone ? 0 : durationHours,
         startDate: dates.startDate,
         endDate: dates.endDate,
         ...(body.actualDurationDays !== undefined
-          ? { actualDurationDays: body.actualDurationDays }
-          : {}),
-        ...(body.progressPercent !== undefined
-          ? { progressPercent: body.progressPercent }
-          : {}),
+          ? {
+              actualDurationDays: body.actualDurationDays,
+              actualDurationHours: body.actualDurationDays * HOURS_PER_WORK_DAY,
+            }
+          : body.actualDurationHours !== undefined
+            ? {
+                actualDurationHours: body.actualDurationHours,
+                actualDurationDays: this.hoursToDurationDays(
+                  body.actualDurationHours,
+                  false,
+                ),
+              }
+            : {}),
+        progressPercent,
+        activityStatus: statusDerived.activityStatus,
+        completedAt: statusDerived.completedAt,
         ...(body.assigneeUserId !== undefined
           ? {
               assigneeUserId: body.assigneeUserId,
@@ -1830,6 +2515,26 @@ export class ProjetosService {
       }
     }
 
+    const eventType =
+      !wasCompleted && statusDerived.activityStatus === ProjectActivityStatus.COMPLETED
+        ? ProjectHistoryEventType.TASK_COMPLETED
+        : ProjectHistoryEventType.TASK_UPDATED;
+    await this.logProjectHistory({
+      projectId: current.projectId,
+      eventType,
+      summary:
+        eventType === ProjectHistoryEventType.TASK_COMPLETED
+          ? `Atividade concluída: ${body.name?.trim() ?? current.name}`
+          : `Atividade atualizada: ${body.name?.trim() ?? current.name}`,
+      actorUserId: user.userId,
+      entityType: kind,
+      entityId: activityId,
+    });
+
+    if (current.parentId) {
+      await this.syncPhaseChain(current.parentId);
+    }
+
     return this.getProject(user, current.projectId);
   }
 
@@ -1837,12 +2542,13 @@ export class ProjetosService {
     this.assertCanMutate(user);
     const current = await this.prisma.projectActivity.findFirst({
       where: { id: activityId, deletedAt: null },
-      select: { id: true, projectId: true },
+      include: { project: true },
     });
     if (!current) {
       throw new NotFoundException('Atividade não encontrada.');
     }
     await this.resolveProjectInScope(user, current.projectId);
+    this.assertProjectEditable(current.project.status);
     const now = new Date();
     const markDeleted = async (id: string) => {
       await this.prisma.projectActivity.update({
@@ -1858,6 +2564,23 @@ export class ProjetosService {
       }
     };
     await markDeleted(activityId);
+
+    await this.logProjectHistory({
+      projectId: current.projectId,
+      eventType:
+        current.kind === ProjectActivityKind.PHASE
+          ? ProjectHistoryEventType.PHASE_DELETED
+          : ProjectHistoryEventType.TASK_DELETED,
+      summary: `${current.kind === ProjectActivityKind.PHASE ? 'Fase' : 'Atividade'} excluída: ${current.name}`,
+      actorUserId: user.userId,
+      entityType: current.kind,
+      entityId: activityId,
+    });
+
+    if (current.parentId) {
+      await this.syncPhaseChain(current.parentId);
+    }
+
     return this.getProject(user, current.projectId);
   }
 

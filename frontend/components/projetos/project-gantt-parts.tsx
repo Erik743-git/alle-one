@@ -7,13 +7,51 @@ import {
   CheckCircle2,
   ChevronDown,
   Circle,
+  Clock,
   Diamond,
   Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
-import type { ProjectActivity } from "@/lib/services/projetos.service";
+import type {
+  ProjectActivity,
+  ProjectActivityKind,
+  ProjectActivityStatus,
+} from "@/lib/services/projetos.service";
+import {
+  PROJECT_ACTIVITY_STATUS_LABELS,
+  PROJECT_ACTIVITY_STATUS_STYLES,
+} from "@/lib/services/projetos.service";
 import { cn } from "@/lib/utils";
+
+function resolveActivityKind(row: ProjectActivity): ProjectActivityKind {
+  if (row.kind) return row.kind;
+  if (row.level === 1 && !row.parentId) return "PHASE";
+  if (row.isMilestone) return "MILESTONE";
+  return "TASK";
+}
+
+function isPhaseRow(row: ProjectActivity): boolean {
+  return resolveActivityKind(row) === "PHASE";
+}
+
+function activityStatus(row: ProjectActivity): ProjectActivityStatus {
+  return row.activityStatus ?? (row.progressPercent >= 100 ? "COMPLETED" : row.progressPercent > 0 ? "IN_PROGRESS" : "NOT_STARTED");
+}
+
+function ActivityStatusBadge({ row }: { row: ProjectActivity }) {
+  const status = activityStatus(row);
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap",
+        PROJECT_ACTIVITY_STATUS_STYLES[status],
+      )}
+    >
+      {PROJECT_ACTIVITY_STATUS_LABELS[status]}
+    </span>
+  );
+}
 
 type FlatActivity = ProjectActivity & {
   depth: number;
@@ -66,9 +104,9 @@ function ActivityLabel({ row }: { row: FlatActivity }) {
         />
       ))}
       <span className="flex items-center gap-1.5 min-w-0">
-        {row.isMilestone ? (
+        {row.isMilestone || resolveActivityKind(row) === "MILESTONE" ? (
           <Diamond className="size-3.5 shrink-0 text-amber-500" />
-        ) : row.hasChildren ? (
+        ) : isPhaseRow(row) || row.hasChildren ? (
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         ) : done ? (
           <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />
@@ -306,6 +344,7 @@ export function ProjectActivityTable({
   onAddChild,
   onDelete,
   onToggleDone,
+  onLogTime,
 }: {
   activities: ProjectActivity[];
   canEdit: boolean;
@@ -314,19 +353,22 @@ export function ProjectActivityTable({
   onAddChild: (parent: ProjectActivity) => void;
   onDelete: (activity: ProjectActivity) => void;
   onToggleDone: (activity: ProjectActivity, done: boolean) => void;
+  onLogTime?: (activity: ProjectActivity) => void;
 }) {
   const flat = useMemo(() => flattenWithDepth(activities), [activities]);
 
   return (
     <div className="rounded-xl border overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] text-sm">
+        <table className="w-full min-w-[1180px] text-sm">
           <thead className="bg-muted/50 text-muted-foreground">
             <tr>
               <th className="px-3 py-2.5 text-center font-medium w-12">Feita</th>
               <th className="px-3 py-2.5 text-left font-medium">Tarefa</th>
+              <th className="px-3 py-2.5 text-left font-medium w-28">Status</th>
+              <th className="px-3 py-2.5 text-left font-medium min-w-[140px]">Predecessoras</th>
               {!hideDurations ? (
-                <th className="px-3 py-2.5 text-left font-medium">Duração</th>
+                <th className="px-3 py-2.5 text-left font-medium">Horas</th>
               ) : null}
               <th className="px-3 py-2.5 text-left font-medium">Início</th>
               <th className="px-3 py-2.5 text-left font-medium">Término</th>
@@ -344,6 +386,13 @@ export function ProjectActivityTable({
           <tbody>
             {flat.map((row) => {
               const done = row.progressPercent >= 100;
+              const phase = isPhaseRow(row);
+              const canStart = row.canStart ?? row.predecessorsComplete ?? true;
+              const predecessors = row.predecessors ?? [];
+              const blockedLabel = predecessors
+                .filter((p) => !p.completed)
+                .map((p) => p.wbsCode)
+                .join(", ");
               return (
                 <tr
                   key={row.id}
@@ -353,18 +402,28 @@ export function ProjectActivityTable({
                   )}
                 >
                   <td className="px-3 py-2 text-center">
-                    {row.isMilestone ? (
+                    {row.isMilestone || resolveActivityKind(row) === "MILESTONE" ? (
                       <Diamond className="mx-auto size-4 text-amber-500" />
+                    ) : phase ? (
+                      <span className="text-muted-foreground/40">—</span>
                     ) : (
                       <button
                         type="button"
-                        disabled={!canEdit}
+                        disabled={!canEdit || (!done && !canStart)}
                         onClick={() => onToggleDone(row, !done)}
                         className={cn(
                           "inline-flex items-center justify-center rounded-full transition",
-                          canEdit ? "hover:scale-110 cursor-pointer" : "cursor-default",
+                          canEdit && (done || canStart)
+                            ? "hover:scale-110 cursor-pointer"
+                            : "cursor-not-allowed opacity-50",
                         )}
-                        title={done ? "Marcar como não concluída" : "Marcar como concluída"}
+                        title={
+                          !done && !canStart
+                            ? `Conclua as predecessoras: ${blockedLabel}`
+                            : done
+                              ? "Marcar como não concluída"
+                              : "Marcar como concluída"
+                        }
                       >
                         {done ? (
                           <CheckCircle2 className="size-5 text-emerald-500" />
@@ -377,9 +436,36 @@ export function ProjectActivityTable({
                   <td className="px-3 py-2">
                     <ActivityLabel row={row} />
                   </td>
+                  <td className="px-3 py-2">
+                    <ActivityStatusBadge row={row} />
+                  </td>
+                  <td className="px-3 py-2 align-top text-xs text-muted-foreground max-w-[180px]">
+                    {phase ? (
+                      <span>—</span>
+                    ) : predecessors.length === 0 ? (
+                      <span>—</span>
+                    ) : (
+                      <div className="space-y-1">
+                        {predecessors.map((pred) => (
+                          <div
+                            key={pred.id}
+                            className={cn(
+                              "truncate",
+                              pred.completed ? "text-emerald-600" : "text-amber-700",
+                            )}
+                            title={pred.name}
+                          >
+                            {pred.wbsCode} {pred.completed ? "✓" : "○"}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                   {!hideDurations ? (
                     <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                      {row.isMilestone ? "—" : `${row.durationDays ?? 0}d`}
+                      {phase || row.isMilestone
+                        ? "—"
+                        : `${row.durationHours ?? (row.durationDays != null ? row.durationDays * 8 : 0)}h`}
                     </td>
                   ) : null}
                   <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
@@ -393,9 +479,11 @@ export function ProjectActivityTable({
                   </td>
                   {!hideDurations ? (
                     <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
-                      {row.actualDurationDays != null
-                        ? `${row.actualDurationDays}d`
-                        : "—"}
+                      {row.actualDurationHours != null
+                        ? `${row.actualDurationHours}h`
+                        : row.actualDurationDays != null
+                          ? `${row.actualDurationDays * 8}h`
+                          : "—"}
                     </td>
                   ) : null}
                   <td className="px-3 py-2 align-top">
@@ -447,19 +535,30 @@ export function ProjectActivityTable({
                         >
                           <Pencil className="size-3.5" />
                         </button>
+                        {phase ? (
                         <button
                           type="button"
                           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                           onClick={() => onAddChild(row)}
-                          title="Adicionar sub-atividade"
+                          title="Adicionar atividade"
                         >
                           <Plus className="size-3.5" />
                         </button>
+                        ) : onLogTime ? (
+                        <button
+                          type="button"
+                          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                          onClick={() => onLogTime(row)}
+                          title="Apontar tempo"
+                        >
+                          <Clock className="size-3.5" />
+                        </button>
+                        ) : null}
                         <button
                           type="button"
                           className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-500"
                           onClick={() => onDelete(row)}
-                          title="Excluir"
+                          title={phase ? "Excluir fase" : "Excluir"}
                         >
                           <Trash2 className="size-3.5" />
                         </button>

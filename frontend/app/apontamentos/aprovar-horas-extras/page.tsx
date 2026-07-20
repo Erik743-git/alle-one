@@ -15,7 +15,7 @@ import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { monthRangeFor } from "@/lib/date-ranges";
+import { payrollPeriodRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -57,7 +57,7 @@ export default function AprovarHorasExtrasPage() {
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
 
-  const defaultRange = useMemo(() => monthRangeFor(new Date()), []);
+  const defaultRange = useMemo(() => payrollPeriodRangeFor(new Date()), []);
 
   const [start, setStart] = useState(defaultRange.start);
   const [end, setEnd] = useState(defaultRange.end);

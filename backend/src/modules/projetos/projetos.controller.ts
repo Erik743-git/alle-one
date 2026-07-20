@@ -33,9 +33,13 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import {
   ApproveProjectCompletionDto,
+  CompleteProjectActivityDto,
   CreateProjectActivityDto,
   CreateProjectDto,
+  CreateProjectPhaseDto,
   ExportProjectQueryDto,
+  LinkProjectActivityAppointmentDto,
+  ProjetosAppointmentLinkIdParamDto,
   ProjetosActivityIdParamDto,
   ProjetosCompanyIdParamDto,
   ProjetosDocumentIdParamDto,
@@ -200,6 +204,75 @@ export class ProjetosController {
     );
   }
 
+  @Get('projects/:projectId/ticket-appointments')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.PROJECTS, 'canView')
+  listProjectTicketAppointments(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosProjectIdParamDto,
+  ) {
+    return this.projetos.listProjectTicketAppointments(user, params.projectId);
+  }
+
+  @Post('activities/:activityId/appointments/link')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
+  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'activityId' })
+  linkActivityAppointment(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosActivityIdParamDto,
+    @Body() body: LinkProjectActivityAppointmentDto,
+  ) {
+    return this.projetos.linkActivityAppointment(
+      user,
+      params.activityId,
+      body.portalAppointmentId,
+    );
+  }
+
+  @Delete('appointments/links/:linkId')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
+  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'linkId' })
+  unlinkActivityAppointment(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosAppointmentLinkIdParamDto,
+  ) {
+    return this.projetos.unlinkActivityAppointment(user, params.linkId);
+  }
+
+  @Post('projects/:projectId/phases')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
+  @AuditMeta({ entity: 'ProjectActivity', action: 'CREATE', entityIdParam: 'projectId' })
+  createPhase(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosProjectIdParamDto,
+    @Body() body: CreateProjectPhaseDto,
+  ) {
+    return this.projetos.createPhase(user, params.projectId, body);
+  }
+
+  @Get('projects/:projectId/history')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.PROJECTS, 'canView')
+  getProjectHistory(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosProjectIdParamDto,
+  ) {
+    return this.projetos.getProjectHistory(user, params.projectId);
+  }
+
+  @Post('projects/:projectId/reopen')
+  @Roles('ADMIN')
+  @AuditMeta({ entity: 'Project', action: 'UPDATE', entityIdParam: 'projectId' })
+  reopenProject(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosProjectIdParamDto,
+  ) {
+    return this.projetos.reopenProject(user, params.projectId);
+  }
+
   @Post('projects/:projectId/activities')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
@@ -210,6 +283,18 @@ export class ProjetosController {
     @Body() body: CreateProjectActivityDto,
   ) {
     return this.projetos.createActivity(user, params.projectId, body);
+  }
+
+  @Post('activities/:activityId/complete')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
+  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'activityId' })
+  completeActivity(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param() params: ProjetosActivityIdParamDto,
+    @Body() body: CompleteProjectActivityDto,
+  ) {
+    return this.projetos.completeActivity(user, params.activityId, body.completed);
   }
 
   @Patch('activities/:activityId')

@@ -126,10 +126,19 @@ export class ApproveProjectCompletionDto {
   note?: string;
 }
 
-export class CreateProjectActivityDto {
+export class CreateProjectPhaseDto {
+  @IsString()
+  @MinLength(1)
+  name!: string;
+
   @IsOptional()
+  @IsString()
+  notes?: string;
+}
+
+export class CreateProjectActivityDto {
   @IsUUID()
-  parentId?: string;
+  parentId!: string;
 
   @IsString()
   @MinLength(1)
@@ -140,6 +149,12 @@ export class CreateProjectActivityDto {
   @IsInt()
   @Min(0)
   durationDays?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  durationHours?: number;
 
   @IsOptional()
   @IsDateString()
@@ -154,6 +169,12 @@ export class CreateProjectActivityDto {
   @IsInt()
   @Min(0)
   actualDurationDays?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  actualDurationHours?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -196,6 +217,12 @@ export class UpdateProjectActivityDto {
   durationDays?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  durationHours?: number;
+
+  @IsOptional()
   @IsDateString()
   startDate?: string;
 
@@ -208,6 +235,12 @@ export class UpdateProjectActivityDto {
   @IsInt()
   @Min(0)
   actualDurationDays?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  actualDurationHours?: number;
 
   @IsOptional()
   @Type(() => Number)
@@ -242,4 +275,19 @@ export class ExportProjectQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   template?: 'true' | 'false';
+}
+
+export class CompleteProjectActivityDto {
+  @IsBoolean()
+  completed!: boolean;
+}
+
+export class LinkProjectActivityAppointmentDto {
+  @IsUUID()
+  portalAppointmentId!: string;
+}
+
+export class ProjetosAppointmentLinkIdParamDto {
+  @IsUUID()
+  linkId!: string;
 }

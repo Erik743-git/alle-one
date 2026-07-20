@@ -130,6 +130,7 @@ model User {
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
   projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
+  projectHistoryActs                ProjectHistory[]                 @relation("ProjectHistoryActor")
 
   @@index([companyId])
   @@map("users")
@@ -887,6 +888,33 @@ enum ProjectCompletionApprovalStatus {
   REJECTED
 }
 
+enum ProjectActivityKind {
+  PHASE
+  TASK
+  MILESTONE
+}
+
+enum ProjectActivityStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ProjectHistoryEventType {
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_REOPENED
+  PROJECT_CLOSED
+  PHASE_CREATED
+  PHASE_UPDATED
+  PHASE_DELETED
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_COMPLETED
+  TASK_DELETED
+  APPOINTMENT_LINKED
+}
+
 model Project {
   id          String        @id @default(uuid())
   code        Int           @unique @default(autoincrement())
@@ -913,6 +941,7 @@ model Project {
   completionApprover User?     @relation("ProjectCompletionApprover", fields: [completionApprovedBy], references: [id])
   activities ProjectActivity[]
   documents  ProjectDocument[]
+  history    ProjectHistory[]
 
   @@index([companyId])
   @@index([status])
@@ -922,22 +951,27 @@ model Project {
 }
 
 model ProjectActivity {
-  id                 String    @id @default(uuid())
-  projectId          String    @map("project_id")
-  parentId           String?   @map("parent_id")
-  wbsCode            String    @map("wbs_code")
-  name               String
-  level              Int       @default(1)
-  sortOrder          Int       @default(0) @map("sort_order")
-  durationDays       Int       @default(1) @map("duration_days")
-  startDate          DateTime? @map("start_date") @db.Date
-  endDate            DateTime? @map("end_date") @db.Date
-  actualDurationDays Int?      @map("actual_duration_days")
-  progressPercent    Int       @default(0) @map("progress_percent")
-  assigneeUserId     String?   @map("assignee_user_id")
-  assigneeName       String?   @map("assignee_name")
-  isMilestone        Boolean   @default(false) @map("is_milestone")
-  notes              String?
+  id                   String                @id @default(uuid())
+  projectId            String                @map("project_id")
+  parentId             String?               @map("parent_id")
+  wbsCode              String                @map("wbs_code")
+  name                 String
+  kind                 ProjectActivityKind   @default(TASK)
+  level                Int                   @default(1)
+  sortOrder            Int                   @default(0) @map("sort_order")
+  durationDays         Int                   @default(1) @map("duration_days")
+  durationHours        Int?                  @map("duration_hours")
+  startDate            DateTime?             @map("start_date") @db.Date
+  endDate              DateTime?             @map("end_date") @db.Date
+  actualDurationDays   Int?                  @map("actual_duration_days")
+  actualDurationHours  Int?                  @map("actual_duration_hours")
+  progressPercent      Int                   @default(0) @map("progress_percent")
+  activityStatus       ProjectActivityStatus @default(NOT_STARTED) @map("activity_status")
+  completedAt          DateTime?             @map("completed_at")
+  assigneeUserId       String?               @map("assignee_user_id")
+  assigneeName         String?               @map("assignee_name")
+  isMilestone          Boolean               @default(false) @map("is_milestone")
+  notes                String?
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   deletedAt          DateTime? @map("deleted_at")
@@ -954,7 +988,27 @@ model ProjectActivity {
   @@index([projectId])
   @@index([parentId])
   @@index([assigneeUserId])
+  @@index([kind])
+  @@index([activityStatus])
   @@map("project_activities")
+}
+
+model ProjectHistory {
+  id          String                  @id @default(uuid())
+  projectId   String                  @map("project_id")
+  eventType   ProjectHistoryEventType @map("event_type")
+  entityType  String?                 @map("entity_type")
+  entityId    String?                 @map("entity_id")
+  summary     String
+  payload     Json?
+  actorUserId String?                 @map("actor_user_id")
+  createdAt   DateTime                @default(now()) @map("created_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   User?   @relation("ProjectHistoryActor", fields: [actorUserId], references: [id])
+
+  @@index([projectId, createdAt])
+  @@map("project_history")
 }
 
 model ProjectActivityPredecessor {
