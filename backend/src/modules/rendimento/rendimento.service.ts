@@ -1584,6 +1584,7 @@ export class RendimentoService {
       );
   }
 
+  /** HE aprovada que consome o saldo (plantão aprovado não debita saldo de HE). */
   private async getProtectedOvertimeMinutes(
     userId: string,
     periodStart: Date,
@@ -1596,7 +1597,7 @@ export class RendimentoService {
         FROM rendimento_day_events
         WHERE user_id = $1
           AND date_ref BETWEEN $2::date AND $3::date
-          AND event_type IN ('OVERTIME', 'PLANTAO')
+          AND event_type = 'OVERTIME'
           AND status = 'APPROVED'
           AND debit_protected = true
           AND deleted_at IS NULL
@@ -1631,6 +1632,12 @@ export class RendimentoService {
     return Number(rows[0]?.total) || 0;
   }
 
+  /**
+   * Saldo de HE do período folha (26→25).
+   * Crédito: apontamentos HORA EXTRA (TiFlux).
+   * Débito: HE aprovada + justificativas aprovadas com debit_overtime.
+   * Plantão aprovado não entra no débito.
+   */
   private getNetOvertimeBalanceMinutes(
     periodOvertimeMinutes: number,
     protectedMinutes: number,

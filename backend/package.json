@@ -24,7 +24,9 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "zabbix:suggest-groups": "node scripts/suggest-zabbix-group-matches.mjs",
-    "zabbix:apply-groups": "node scripts/suggest-zabbix-group-matches.mjs --apply"
+    "zabbix:apply-groups": "node scripts/suggest-zabbix-group-matches.mjs --apply",
+    "rendimento:recompute-balances": "ts-node prisma/scripts/recompute-overtime-balances.ts",
+    "rendimento:recompute-balances:apply": "ts-node prisma/scripts/recompute-overtime-balances.ts --apply"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
