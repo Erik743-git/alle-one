@@ -109,7 +109,7 @@ export default function RendimentoAgendaPage() {
   const [justEditingId, setJustEditingId] = useState<string | null>(null);
   const authUserResolved = authUser ?? getStoredUser();
   const isPjUser = isPjRole(authUserResolved?.role);
-  const canApprove = authUserResolved?.role === "ADMIN";
+  const isAdmin = authUserResolved?.role === "ADMIN";
   const canVoluntaryJustification =
     !isPjUser && canCreateVoluntaryRendimentoJustification();
   const canDeleteOwnJustification =
@@ -389,7 +389,7 @@ export default function RendimentoAgendaPage() {
                 isPjUser ? APONTAMENTOS_PJ_SUBTITLE : APONTAMENTOS_AGENDA_SUBTITLE
               }`}
               backHref={!isPjUser ? "/apontamentos" : undefined}
-              backLabel="Voltar à lista"
+              backLabel={isAdmin ? "Voltar à lista" : null}
             />
 
             <RendimentoCalendar
@@ -399,7 +399,7 @@ export default function RendimentoAgendaPage() {
               loading={loading}
               refreshing={refreshing}
               pjSimplifiedView={isPjUser}
-              canApproveJustification={canApprove}
+              canApproveJustification={isAdmin}
               canDeleteOwnJustification={canDeleteOwnJustification}
               onOpenAlertJustification={
                 canAlertJustification ? openAlertJustification : undefined
@@ -412,7 +412,7 @@ export default function RendimentoAgendaPage() {
               onDeleteJustification={(id) => void deleteJustification(id)}
               onEditJustification={(params) => openEditJustification(params)}
               canEditJustification={
-                canAlertJustification || canDeleteOwnJustification || canApprove
+                canAlertJustification || canDeleteOwnJustification || isAdmin
               }
               onApproveDayEvent={(id) => void decideDayEvent(id, "APPROVED")}
               onRejectDayEvent={(id) => void decideDayEvent(id, "REJECTED")}

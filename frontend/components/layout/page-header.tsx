@@ -11,7 +11,7 @@ type PageHeaderProps = {
   title: string;
   description?: string;
   backHref?: string;
-  backLabel?: string;
+  backLabel?: string | null;
   actions?: React.ReactNode;
   className?: string;
 };
@@ -27,7 +27,7 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div className={cn("space-y-4", className)}>
-      {backHref ? (
+      {backHref && backLabel ? (
         <Button asChild variant="outline" size="sm" className="w-fit">
           <Link href={backHref}>
             <ArrowLeft className="mr-2 size-4" />
