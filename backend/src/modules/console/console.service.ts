@@ -250,6 +250,11 @@ export class ConsoleService {
     await this.zabbix.acknowledgeEvents(
       [eventid],
       body.message ?? `Reconhecido por ${user.email}`,
+      {
+        close: Boolean(body.close),
+        suppress: Boolean(body.suppress),
+        severity: body.severity,
+      },
     );
 
     return { ok: true, eventId: eventid };

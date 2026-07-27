@@ -9,6 +9,9 @@ export const TICKETS_NEW_SUBTITLE =
 export const TICKETS_LIST_SUBTITLE =
   "Por padrão, são exibidos os chamados em que você é o responsável.";
 
+export const TICKETS_CLIENT_LIST_SUBTITLE =
+  "Chamados da sua empresa. A abertura de novos chamados é feita pela equipe Alle.";
+
 export const TICKETS_CREATE_RESTRICTED =
   "A abertura de novos chamados é feita pela equipe administrativa. Você pode consultar os chamados existentes.";
 

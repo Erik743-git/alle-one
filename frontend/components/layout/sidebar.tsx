@@ -37,6 +37,7 @@ import {
   canAccessTickets,
 } from "@/lib/access-control";
 import { MailboxUnreadBadge } from "@/components/layout/mailbox-unread-badge";
+import { SyncStaleBadge } from "@/components/layout/sync-stale-badge";
 import ThemeToggle from "@/components/theme/theme-toggle";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -336,6 +337,9 @@ const SidebarBrand = memo(function SidebarBrand({
         <p className="text-center text-[11px] font-extrabold tracking-[0.18em] text-sidebar-foreground/80">
           ALLE ONE
         </p>
+        <div className="flex justify-center pt-1">
+          <SyncStaleBadge />
+        </div>
       </div>
     </div>
   );

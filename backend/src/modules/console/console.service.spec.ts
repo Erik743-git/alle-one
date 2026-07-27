@@ -16,7 +16,13 @@ describe('ConsoleService', () => {
     assertZabbixGroupAccess: jest.fn(),
   } as unknown as TenantScopeService;
 
-  const service = new ConsoleService(zabbix, tenantScope);
+  const prisma = {
+    company: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+  } as unknown as import('../../prisma/prisma.service').PrismaService;
+
+  const service = new ConsoleService(zabbix, tenantScope, prisma);
 
   const adminUser: AuthenticatedRequestUser = {
     userId: 'admin-1',
@@ -95,7 +101,10 @@ describe('ConsoleService', () => {
     );
 
     await expect(service.listGroups(clientUser)).resolves.toEqual({
-      groups: [{ name: 'Grupo A' }, { name: 'Grupo B' }],
+      groups: [
+        { name: 'Grupo A', companyName: null, isPriority: false },
+        { name: 'Grupo B', companyName: null, isPriority: false },
+      ],
     });
     expect(zabbix.getGroups).not.toHaveBeenCalled();
   });
@@ -107,7 +116,14 @@ describe('ConsoleService', () => {
     ]);
 
     await expect(service.listGroups(adminUser)).resolves.toEqual({
-      groups: [{ name: 'Grupo X', groupid: '1' }],
+      groups: [
+        {
+          name: 'Grupo X',
+          groupid: '1',
+          companyName: null,
+          isPriority: false,
+        },
+      ],
     });
   });
 
@@ -115,15 +131,26 @@ describe('ConsoleService', () => {
     (tenantScope.resolveZabbixGroupForList as jest.Mock).mockResolvedValue(
       'Grupo A',
     );
+    (tenantScope.assertZabbixGroupAccess as jest.Mock).mockResolvedValue(
+      'Grupo A',
+    );
+    (zabbix.getConsoleAlertsForGroup as jest.Mock).mockResolvedValue({
+      alerts: [{ eventId: '99', name: 'Problema' }],
+    });
     (zabbix.acknowledgeEvents as jest.Mock).mockResolvedValue({ eventids: ['99'] });
 
     await expect(
-      service.acknowledgeAlert(clientUser, '99', { message: 'OK' }),
+      service.acknowledgeAlert(clientUser, '99', {
+        message: 'OK',
+        group: 'Grupo A',
+        close: true,
+      }),
     ).resolves.toEqual({ ok: true, eventId: '99' });
 
     expect(zabbix.acknowledgeEvents).toHaveBeenCalledWith(
       ['99'],
       'OK',
+      expect.objectContaining({ close: true, suppress: false }),
     );
   });
 });

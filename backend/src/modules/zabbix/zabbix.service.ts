@@ -1441,14 +1441,42 @@ export class ZabbixService {
     };
   }
 
-  async acknowledgeEvents(eventIds: string[], message: string) {
+  async acknowledgeEvents(
+    eventIds: string[],
+    message: string,
+    options?: {
+      close?: boolean;
+      suppress?: boolean;
+      severity?: number;
+    },
+  ) {
     if (!eventIds.length) {
       throw new BadGatewayException('Nenhum evento informado para reconhecer.');
     }
-    return this.request<{ eventids?: string[] }>('event.acknowledge', {
+
+    // Bitmask Zabbix event.acknowledge:
+    // 1 close | 2 ack | 4 message | 8 severity | 32 suppress
+    let action = 2 | 4; // ack + message
+    if (options?.close) action |= 1;
+    if (options?.suppress) action |= 32;
+    if (
+      options?.severity != null &&
+      Number.isFinite(options.severity) &&
+      options.severity >= 0 &&
+      options.severity <= 5
+    ) {
+      action |= 8;
+    }
+
+    const params: Record<string, unknown> = {
       eventids: eventIds,
-      action: 6,
+      action,
       message: message.trim() || 'Reconhecido via Portal AlleOne',
-    });
+    };
+    if ((action & 8) !== 0) {
+      params.severity = options!.severity;
+    }
+
+    return this.request<{ eventids?: string[] }>('event.acknowledge', params);
   }
 }

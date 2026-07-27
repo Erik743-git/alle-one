@@ -12,7 +12,8 @@ export type MailboxNotificationKind =
   | "TICKET_NO_APPOINTMENT_24H"
   | "TICKET_STALLED_48H"
   | "TICKET_STALLED_7D"
-  | "INVENTORY_EXPIRY";
+  | "INVENTORY_EXPIRY"
+  | "TIFLUX_SYNC_STALE";
 
 export type MailboxNotification = {
   id: string;
@@ -37,6 +38,7 @@ const KIND_LABELS: Record<MailboxNotificationKind, string> = {
   TICKET_STALLED_48H: "Chamado",
   TICKET_STALLED_7D: "Chamado",
   INVENTORY_EXPIRY: "Inventário",
+  TIFLUX_SYNC_STALE: "Integrações",
 };
 
 export const MAILBOX_KIND_OPTIONS: {
