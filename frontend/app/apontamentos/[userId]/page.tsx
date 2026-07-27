@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CalendarDays } from "lucide-react";
 
@@ -70,11 +70,13 @@ function minutesBetweenTimes(from: string, to: string): number {
 }
 
 export default function RendimentoAgendaPage() {
-  const params = useParams<{ userId: string }>();
+  const routeParams = useParams<{ userId: string }>();
   const router = useRouter();
   const { user: authUser } = useAuth();
   const confirm = useConfirm();
-  const userId = isValidUuid(params.userId) ? params.userId : null;
+  const userId = isValidUuid(routeParams.userId)
+    ? routeParams.userId
+    : null;
 
   useEffect(() => {
     if (!authUser) return;
@@ -117,36 +119,28 @@ export default function RendimentoAgendaPage() {
   const canAlertJustification =
     !isPjUser && canCreateAlertRendimentoJustification();
 
-  const justGapMinutes = useMemo(
-    () => minutesBetweenTimes(justFrom, justTo),
-    [justFrom, justTo],
-  );
-  const invalidTimeRange = useMemo(
-    () => isInvalidSameTimePeriod(justFrom, justTo),
-    [justFrom, justTo],
-  );
+  const justGapMinutes = minutesBetweenTimes(justFrom, justTo);
+
+  const invalidTimeRange = isInvalidSameTimePeriod(justFrom, justTo);
+
   const lunchTooLong =
     justMode === "ALERT" &&
     defineLunch &&
     justGapMinutes > RENDIMENTO_LUNCH_MAX_MINUTES;
-  const alertPeriodOutOfBounds = useMemo(() => {
-    if (justMode !== "ALERT" || !justAlertFrom || !justAlertTo) return false;
-    if (!justFrom.trim() || !justTo.trim()) return false;
-    return !isPeriodWithinAlertBounds({
+
+  const alertPeriodOutOfBounds =
+    justMode === "ALERT" &&
+    Boolean(justAlertFrom) &&
+    Boolean(justAlertTo) &&
+    Boolean(justFrom.trim()) &&
+    Boolean(justTo.trim()) &&
+    !isPeriodWithinAlertBounds({
       from: justFrom,
       to: justTo,
       alertFrom: justAlertFrom,
       alertTo: justAlertTo,
       alertGapMinutes: justAlertGapMinutes,
     });
-  }, [
-    justAlertFrom,
-    justAlertGapMinutes,
-    justAlertTo,
-    justFrom,
-    justMode,
-    justTo,
-  ]);
 
   const loadTimesheet = useCallback(async () => {
     if (!userId) return;
@@ -236,18 +230,25 @@ export default function RendimentoAgendaPage() {
     alertFromTime?: string;
     alertToTime?: string;
   }) {
+    const alertFrom = params.alertFromTime?.slice(0, 5) ?? "";
+    const alertTo = params.alertToTime?.slice(0, 5) ?? "";
+
     setJustEditingId(params.id);
     setJustMode(params.kind);
     setJustDate(params.date.slice(0, 10));
     setJustFrom(params.fromTime.slice(0, 5));
     setJustTo(params.toTime.slice(0, 5));
-    setJustAlertFrom(params.alertFromTime?.slice(0, 5) ?? "");
-    setJustAlertTo(params.alertToTime?.slice(0, 5) ?? "");
+    setJustAlertFrom(alertFrom);
+    setJustAlertTo(alertTo);
+    setJustAlertGapMinutes(
+      alertFrom && alertTo ? minutesBetweenTimes(alertFrom, alertTo) : 0,
+    );
     setDefineLunch(params.gapType === "lunch");
     setJustReason(params.reason);
     setDebitOvertime(params.debitOvertime);
     setJustModalOpen(true);
   }
+
 
   async function submitJustification() {
     if (!userId) return;
@@ -405,10 +406,16 @@ export default function RendimentoAgendaPage() {
                 canAlertJustification ? openAlertJustification : undefined
               }
               onOpenVoluntaryJustification={
-                canVoluntaryJustification ? openVoluntaryJustification : undefined
+                canVoluntaryJustification
+                  ? openVoluntaryJustification
+                  : undefined
               }
-              onApproveJustification={(id) => void decideJustification(id, "APPROVED")}
-              onRejectJustification={(id) => void decideJustification(id, "REJECTED")}
+              onApproveJustification={(id) =>
+                void decideJustification(id, "APPROVED")
+              }
+              onRejectJustification={(id) =>
+                void decideJustification(id, "REJECTED")
+              }
               onDeleteJustification={(id) => void deleteJustification(id)}
               onEditJustification={(params) => openEditJustification(params)}
               canEditJustification={
@@ -480,7 +487,7 @@ export default function RendimentoAgendaPage() {
                       </p>
                     ) : null}
                   </div>
-                    {alertPeriodOutOfBounds ? (
+                  {alertPeriodOutOfBounds ? (
                     <p className="text-xs font-medium text-rose-500">
                       O período deve estar dentro do alerta (
                       {justAlertFrom} – {justAlertTo}
@@ -564,7 +571,12 @@ export default function RendimentoAgendaPage() {
                     </Button>
                     <Button
                       type="button"
-                      disabled={saving || invalidTimeRange || lunchTooLong || alertPeriodOutOfBounds}
+                      disabled={
+                        saving ||
+                        invalidTimeRange ||
+                        lunchTooLong ||
+                        alertPeriodOutOfBounds
+                      }
                       onClick={() => void submitJustification()}
                     >
                       {saving
@@ -577,7 +589,6 @@ export default function RendimentoAgendaPage() {
                 </div>
               </DialogContent>
             </Dialog>
-
           </div>
         </AppShell>
       </PermissionGate>
