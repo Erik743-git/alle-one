@@ -11,7 +11,7 @@ import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { StreamableFile } from '@nestjs/common';
 import {
-  assertAllowedUploadMime,
+  assertAllowedUpload,
   UPLOAD_MAX_BYTES,
 } from '../../common/upload.config';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -256,7 +256,7 @@ export class InventarioService {
     if (file.size > UPLOAD_MAX_BYTES) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
-    assertAllowedUploadMime(file.mimetype);
+    assertAllowedUpload(file);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'inventory');
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');

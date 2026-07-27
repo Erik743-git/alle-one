@@ -1,7 +1,13 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  ServiceUnavailableException,
+  UseGuards,
+} from '@nestjs/common';
 import { Public } from './common/decorators/public.decorator';
 import { AppService } from './app.service';
 import { PrismaService } from './prisma/prisma.service';
+import { HealthIntegrationsAccessGuard } from './modules/auth/guards/health-integrations-access.guard';
 
 @Controller()
 export class AppController {
@@ -42,7 +48,9 @@ export class AppController {
     return { ok: true, service: 'alle-one-api', database };
   }
 
+  /** Público no JWT global; acesso real via token interno ou ADMIN. */
   @Public()
+  @UseGuards(HealthIntegrationsAccessGuard)
   @Get('health/integrations')
   async healthIntegrations() {
     return this.appService.getIntegrationsHealth();

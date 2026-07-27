@@ -36,7 +36,10 @@ import {
 } from './tickets-create.dto';
 import { TicketsListQueryDto, UpdateTicketStageDto } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
+import { TicketsAppointmentsService } from './tickets-appointments.service';
 import { TicketsReconcileService } from './tickets-reconcile.service';
+import { TicketsCatalogsService } from './tickets-catalogs.service';
+import { TicketsQueryService } from './tickets-query.service';
 import { TicketsService } from './tickets.service';
 
 @ApiTags('Tickets')
@@ -46,30 +49,36 @@ import { TicketsService } from './tickets.service';
 export class TicketsController {
   constructor(
     private readonly ticketsService: TicketsService,
+    private readonly ticketsQueryService: TicketsQueryService,
+    private readonly catalogsService: TicketsCatalogsService,
+    private readonly appointmentsService: TicketsAppointmentsService,
     private readonly reconcileService: TicketsReconcileService,
   ) {}
 
   @Get()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   list(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Query() query: TicketsListQueryDto,
   ) {
-    return this.ticketsService.listGrouped(actor, query);
+    return this.ticketsQueryService.listGrouped(actor, query);
   }
 
   @Get('catalogs/filters')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
-  filterCatalogs() {
-    return this.ticketsService.getFilterCatalogs();
+  filterCatalogs(@CurrentUser() actor: AuthenticatedRequestUser) {
+    return this.catalogsService.getFilterCatalogs(actor);
   }
 
   @Get('catalogs/create')
   @Roles('ADMIN')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  createCatalogs(@Query('deskId') deskIdRaw?: string, @Query('clientId') clientIdRaw?: string) {
+  createCatalogs(
+    @Query('deskId') deskIdRaw?: string,
+    @Query('clientId') clientIdRaw?: string,
+  ) {
     const deskId =
       deskIdRaw != null && deskIdRaw.trim() !== ''
         ? Number(deskIdRaw)
@@ -78,24 +87,25 @@ export class TicketsController {
       clientIdRaw != null && clientIdRaw.trim() !== ''
         ? Number(clientIdRaw)
         : undefined;
-    return this.ticketsService.getCreateCatalogs(
+    return this.catalogsService.getCreateCatalogs(
       deskId != null && Number.isFinite(deskId) ? deskId : undefined,
       clientId != null && Number.isFinite(clientId) ? clientId : undefined,
     );
   }
 
   @Get('attachments/:fileId')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   async downloadAttachment(
     @Param('fileId') fileId: string,
     @Query('inline') inline?: string,
     @Res({ passthrough: true }) res?: Response,
   ) {
-    const { stream, meta } = await this.ticketsService.downloadPortalAttachment(
-      fileId,
-      inline === 'true',
-    );
+    const { stream, meta } =
+      await this.appointmentsService.downloadPortalAttachment(
+        fileId,
+        inline === 'true',
+      );
     res?.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
     res?.setHeader(
       'Content-Disposition',
@@ -149,15 +159,17 @@ export class TicketsController {
   @Get(':ticketNumber/catalogs/appointment')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  appointmentCatalogs(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
-    return this.ticketsService.getAppointmentCatalogs(ticketNumber);
+  appointmentCatalogs(
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+  ) {
+    return this.appointmentsService.getAppointmentCatalogs(ticketNumber);
   }
 
   @Get(':ticketNumber/stages')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   listStages(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
-    return this.ticketsService.listTicketStages(ticketNumber);
+    return this.ticketsQueryService.listTicketStages(ticketNumber);
   }
 
   @Patch(':ticketNumber/stage')
@@ -168,7 +180,7 @@ export class TicketsController {
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Body() body: UpdateTicketStageDto,
   ) {
-    return this.ticketsService.updateTicketStage(
+    return this.ticketsQueryService.updateTicketStage(
       actor,
       ticketNumber,
       body.stageId,
@@ -176,17 +188,23 @@ export class TicketsController {
   }
 
   @Get(':ticketNumber/history')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
-  history(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
-    return this.ticketsService.getTicketHistory(ticketNumber);
+  history(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+  ) {
+    return this.ticketsQueryService.getTicketHistory(actor, ticketNumber);
   }
 
   @Get(':ticketNumber')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
-  detail(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
-    return this.ticketsService.getDetail(ticketNumber);
+  detail(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+  ) {
+    return this.ticketsQueryService.getDetail(actor, ticketNumber);
   }
 
   @Patch(':ticketNumber/gmud')
@@ -230,11 +248,12 @@ export class TicketsController {
     if (errors.length > 0) {
       const first = errors[0];
       const msg =
-        Object.values(first.constraints ?? {})[0] ?? 'Dados do apontamento inválidos.';
+        Object.values(first.constraints ?? {})[0] ??
+        'Dados do apontamento inválidos.';
       throw new BadRequestException(msg);
     }
 
-    return this.ticketsService.createAppointment(
+    return this.appointmentsService.createAppointment(
       actor,
       ticketNumber,
       dto,
@@ -249,7 +268,7 @@ export class TicketsController {
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
   ) {
-    return this.ticketsService.getPortalAppointmentEditContext(
+    return this.appointmentsService.getPortalAppointmentEditContext(
       ticketNumber,
       portalAppointmentId,
     );
@@ -262,7 +281,7 @@ export class TicketsController {
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
   ) {
-    return this.ticketsService.pausePortalAppointmentSync(
+    return this.appointmentsService.pausePortalAppointmentSync(
       ticketNumber,
       portalAppointmentId,
     );
@@ -275,7 +294,7 @@ export class TicketsController {
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
   ) {
-    return this.ticketsService.resumePortalAppointmentSync(
+    return this.appointmentsService.resumePortalAppointmentSync(
       ticketNumber,
       portalAppointmentId,
     );
@@ -313,7 +332,7 @@ export class TicketsController {
       throw new BadRequestException(msg);
     }
 
-    return this.ticketsService.updatePortalAppointment(
+    return this.appointmentsService.updatePortalAppointment(
       actor,
       ticketNumber,
       portalAppointmentId,
@@ -328,7 +347,7 @@ export class TicketsController {
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
   ) {
-    return this.ticketsService.deletePortalAppointment(
+    return this.appointmentsService.deletePortalAppointment(
       ticketNumber,
       portalAppointmentId,
     );

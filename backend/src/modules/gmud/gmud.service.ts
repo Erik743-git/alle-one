@@ -21,7 +21,7 @@ import {
   userParticipatesInGmud,
 } from './gmud-access';
 import {
-  assertAllowedUploadMime,
+  assertAllowedUpload,
   UPLOAD_MAX_BYTES,
 } from '../../common/upload.config';
 import { GmudMailService } from './mail/gmud-mail.service';
@@ -876,7 +876,7 @@ export class GmudService {
     if (file.size > UPLOAD_MAX_BYTES) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
-    assertAllowedUploadMime(file.mimetype);
+    assertAllowedUpload(file);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'gmud', gmud.id);
 

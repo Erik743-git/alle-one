@@ -41,7 +41,7 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const actor = req.user ?? null;
-    if (!actor || actor.role !== 'ADMIN') {
+    if (!actor) {
       return next.handle();
     }
 
@@ -50,6 +50,12 @@ export class AuditInterceptor implements NestInterceptor {
         context.getHandler(),
         context.getClass(),
       ]) ?? null;
+
+    // Com @AuditMeta: audita qualquer role autenticada (GMUD approve, ack, import…).
+    // Sem meta: mantém o comportamento amplo só para ADMIN.
+    if (!meta && actor.role !== 'ADMIN') {
+      return next.handle();
+    }
 
     const controllerPath =
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment

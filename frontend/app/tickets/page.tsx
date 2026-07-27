@@ -18,9 +18,10 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicket,
+  isClient,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
-import { TICKETS_LIST_SUBTITLE } from "@/lib/module-copy";
+import { TICKETS_LIST_SUBTITLE, TICKETS_CLIENT_LIST_SUBTITLE } from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -49,7 +50,9 @@ export default function TicketsPage() {
   const [data, setData] = useState<TicketListResponse | null>(null);
   const [catalogs, setCatalogs] = useState<TicketFilterCatalogs | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [includeAllResponsibles, setIncludeAllResponsibles] = useState(false);
+  const [includeAllResponsibles, setIncludeAllResponsibles] = useState(
+    () => isClient(),
+  );
 
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
@@ -177,9 +180,11 @@ export default function TicketsPage() {
               icon={<Ticket size={24} />}
               title="Chamados"
               description={
-                canCreateTicket()
-                  ? TICKETS_LIST_SUBTITLE
-                  : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
+                isClient()
+                  ? TICKETS_CLIENT_LIST_SUBTITLE
+                  : canCreateTicket()
+                    ? TICKETS_LIST_SUBTITLE
+                    : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
               }
               actions={
                 <>
@@ -209,9 +214,11 @@ export default function TicketsPage() {
             <Card className="overflow-visible">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-lg">
-                  {mineOnly
-                    ? "Meus chamados"
-                    : "Busca ampliada"}
+                  {isClient()
+                    ? "Chamados da empresa"
+                    : mineOnly
+                      ? "Meus chamados"
+                      : "Busca ampliada"}
                 </CardTitle>
                 <Button
                   type="button"
@@ -241,17 +248,19 @@ export default function TicketsPage() {
 
                 {showAdvanced ? (
                   <div className="space-y-4">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                      <FlipCheckbox
-                        checked={includeAllResponsibles}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setIncludeAllResponsibles(checked);
-                          if (!checked) setResponsibleExternalId("");
-                        }}
-                      />
-                      Incluir chamados de outros responsáveis
-                    </label>
+                    {!isClient() ? (
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                        <FlipCheckbox
+                          checked={includeAllResponsibles}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setIncludeAllResponsibles(checked);
+                            if (!checked) setResponsibleExternalId("");
+                          }}
+                        />
+                        Incluir chamados de outros responsáveis
+                      </label>
+                    ) : null}
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">

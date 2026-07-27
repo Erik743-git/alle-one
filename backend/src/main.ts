@@ -93,6 +93,12 @@ async function bootstrap() {
     SwaggerModule.setup('docs', app, document);
   }
 
+  if (isProd && process.env.TIFLUX_UNSAFE_ENDPOINTS === 'true') {
+    throw new Error(
+      'TIFLUX_UNSAFE_ENDPOINTS=true é proibido em produção. Remova ou defina false.',
+    );
+  }
+
   const basePort = Number(process.env.PORT) || 3003;
   const maxAttempts = Number(process.env.PORT_FALLBACK_ATTEMPTS) || 25;
   const port = await listenWithFallback(app, basePort, maxAttempts);

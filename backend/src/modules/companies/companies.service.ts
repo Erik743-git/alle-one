@@ -30,7 +30,7 @@ import {
   serializeZabbixGroupNames,
 } from './zabbix-groups.util';
 import type { ApplyZabbixGroupSuggestionItemDto } from './dto/zabbix-group-suggest.dto';
-import { assertAllowedUploadMime } from '../../common/upload.config';
+import { assertAllowedUpload } from '../../common/upload.config';
 
 const contractRelationsInclude = {
   contractFiles: {
@@ -647,7 +647,7 @@ export class CompaniesService {
     if (!file) {
       throw new BadRequestException('Arquivo não enviado');
     }
-    assertAllowedUploadMime(file.mimetype);
+    assertAllowedUpload(file);
 
     const company = await this.findOne(companyId);
     const contract = await this.prisma.contract.findFirst({
@@ -719,6 +719,7 @@ export class CompaniesService {
     if (!mime.startsWith('image/')) {
       throw new BadRequestException('Logo deve ser uma imagem (PNG, JPG, etc.).');
     }
+    assertAllowedUpload(file);
     const company = await this.findOne(companyId);
 
     const maxBytes = 5 * 1024 * 1024;

@@ -73,7 +73,7 @@ describe('ModulePermissionGuard', () => {
     expect(() => guard.canActivate(ctx as never)).toThrow(ForbiddenException);
   });
 
-  it('bloqueia criação de tickets para não-admin', () => {
+  it('permite apontamento (TICKETS canCreate) para colaborador com permissão', () => {
     const user: AuthenticatedRequestUser = {
       userId: '4',
       email: 'g@h.com',
@@ -84,6 +84,30 @@ describe('ModulePermissionGuard', () => {
           module: PermissionModule.TICKETS,
           canView: true,
           canCreate: true,
+          canEdit: false,
+          canDelete: false,
+          canApprove: false,
+        },
+      ],
+    };
+    const { guard, ctx } = buildContext(user, {
+      module: PermissionModule.TICKETS,
+      flag: 'canCreate',
+    });
+    expect(guard.canActivate(ctx as never)).toBe(true);
+  });
+
+  it('bloqueia TICKETS canCreate sem permissão na matriz', () => {
+    const user: AuthenticatedRequestUser = {
+      userId: '5',
+      email: 'x@y.com',
+      role: 'COLLABORATOR',
+      companyId: null,
+      permissions: [
+        {
+          module: PermissionModule.TICKETS,
+          canView: true,
+          canCreate: false,
           canEdit: false,
           canDelete: false,
           canApprove: false,

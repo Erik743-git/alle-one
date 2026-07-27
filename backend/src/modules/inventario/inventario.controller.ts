@@ -12,11 +12,10 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
-  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { multerMemoryLimits } from '../../common/upload.config';
+import { multerMemoryLimits, assertInventoryImportUpload } from '../../common/upload.config';
 import { AuditMeta } from '../audit/audit.decorator';
 import { PermissionModule } from '@prisma/client';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -140,7 +139,7 @@ export class InventarioController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @AuditMeta({
     entity: 'InventoryAsset',
-    action: 'CREATE',
+    action: 'IMPORT',
     entityIdParam: 'companyId',
   })
   @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
@@ -149,13 +148,11 @@ export class InventarioController {
     @Param() params: InventarioCompanyIdParamDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (!file?.buffer?.length) {
-      throw new BadRequestException('Envie um arquivo Excel (.xlsx).');
-    }
+    assertInventoryImportUpload(file ?? {});
     return this.inventarioImport.importFromBuffer({
       user,
       companyId: params.companyId,
-      buffer: file.buffer,
+      buffer: file!.buffer,
     });
   }
 

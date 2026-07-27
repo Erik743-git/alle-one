@@ -16,10 +16,13 @@ import {
 /**
  * Regras de produto (sobrescrevem a matriz `permissions` do banco):
  * - REPORTS: somente ADMIN
- * - TICKETS canCreate: somente ADMIN
+ * - TICKETS: criar ticket só ADMIN via `@Roles` em POST /tickets;
+ *   apontamentos usam canCreate + `@Roles` (ADMIN/COLLABORATOR/PJ)
  * - DASHBOARD canView: liberado para autenticados (escopo por empresa no service)
  * - CORREIO canView: não-CLIENT
  * - INVENTARIO/FINANCIAL/RENDIMENTO: defaults por role documentados abaixo
+ *
+ * Ver também: docs/PERMISSIONS_MATRIX.md
  */
 @Injectable()
 export class ModulePermissionGuard implements CanActivate {
@@ -45,15 +48,6 @@ export class ModulePermissionGuard implements CanActivate {
 
     if (user.role === 'ADMIN') {
       return true;
-    }
-
-    if (
-      meta.module === ('TICKETS' as PermissionModule) &&
-      meta.flag === 'canCreate'
-    ) {
-      throw new ForbiddenException(
-        'Criação de tickets e apontamentos disponível apenas para administradores.',
-      );
     }
 
     if (meta.module === ('REPORTS' as PermissionModule)) {
