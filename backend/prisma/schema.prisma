@@ -121,6 +121,7 @@ model User {
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
   portalTicketGmudLinks PortalTicketGmudLink[]
   portalTicketDescriptions PortalTicketDescription[] @relation("PortalTicketDescriptionCreator")
+  portalTickets            PortalTicket[]            @relation("PortalTicketCreator")
   appointmentQuestionsAsked RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAskedBy")
   appointmentQuestionsAnswered RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAnsweredBy")
   rendimentoDayEvents          RendimentoDayEvent[]           @relation("RendimentoDayEvents")
@@ -671,6 +672,45 @@ enum PortalTicketAppointmentSyncStatus {
   PENDING_TIFLUX
   SYNCED
   PORTAL_ONLY
+}
+
+enum PortalTicketOrigin {
+  TIFLUX
+  PORTAL
+}
+
+/// Ticket canônico do portal (cutover TiFlux). Ver docs/CUTOVER_TIFLUX.md.
+model PortalTicket {
+  id                      String             @id @default(uuid())
+  ticketNumber            Int                @unique @map("ticket_number")
+  title                   String?
+  clientName              String?            @map("client_name")
+  clientExternalId        Int?               @map("client_external_id")
+  createdByWayOf          String?            @map("created_by_way_of") @db.VarChar(120)
+  priorityName            String?            @map("priority_name")
+  statusName              String?            @map("status_name")
+  stageName               String?            @map("stage_name")
+  responsibleExternalId   Int?               @map("responsible_external_id")
+  responsibleName         String?            @map("responsible_name")
+  deskName                String?            @map("desk_name")
+  deskExternalId          Int?               @map("desk_external_id")
+  requestorName           String?            @map("requestor_name")
+  requestorEmail          String?            @map("requestor_email")
+  requestorTelephone      String?            @map("requestor_telephone")
+  isClosed                Boolean            @default(false) @map("is_closed")
+  origin                  PortalTicketOrigin @default(TIFLUX)
+  createdAtSource         DateTime?          @map("created_at_source")
+  updatedAtSource         DateTime?          @map("updated_at_source")
+  createdBy               String?            @map("created_by")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+
+  creator User? @relation("PortalTicketCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([clientExternalId])
+  @@index([isClosed, updatedAtSource])
+  @@index([responsibleExternalId])
+  @@map("portal_tickets")
 }
 
 /// Apontamento criado pelo portal (campos completos). TiFlux recebe só data/hora/descrição quando a API permitir.
