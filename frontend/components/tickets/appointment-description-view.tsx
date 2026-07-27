@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   appointmentDescriptionToPlainText,
@@ -122,26 +122,26 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
   const text = description?.trim();
   const [expanded, setExpanded] = useState(false);
 
-  const plainText = useMemo(() => {
-    if (!text) return "";
+  let plainText = "";
+  if (text) {
     if (isAppointmentDoc(text)) {
       const doc = parseAppointmentDoc(text);
       if (doc) {
-        return doc.blocks
+        plainText = doc.blocks
           .filter((block) => block.type === "text")
           .map((block) => block.content)
           .join("\n")
           .replace(/\n{3,}/g, "\n\n")
           .trim();
+      } else {
+        plainText = appointmentDescriptionToPlainText(text);
       }
+    } else {
+      plainText = appointmentDescriptionToPlainText(text);
     }
-    return appointmentDescriptionToPlainText(text);
-  }, [text]);
+  }
 
-  const imagePreviews = useMemo(
-    () => (text ? collectImagePreviews(text, attachments) : []),
-    [text, attachments],
-  );
+  const imagePreviews = text ? collectImagePreviews(text, attachments) : [];
 
   const hasLongText = Boolean(plainText && isLongText(plainText));
   const showCollapsed = hasLongText && !expanded;
