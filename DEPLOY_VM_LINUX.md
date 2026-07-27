@@ -137,7 +137,7 @@ Crie `.env.production` (ou exporte antes do build):
 
 ```bash
 cat > .env.production << 'EOF'
-NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com
+NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com/api
 EOF
 ```
 
@@ -207,7 +207,7 @@ AUTH_COOKIE_SECURE=false
 **Frontend** `frontend/.env.production`:
 
 ```env
-NEXT_PUBLIC_API_URL=http://alleone.alletecnologia.com
+NEXT_PUBLIC_API_URL=http://alleone.alletecnologia.com/api
 ```
 
 ```bash
@@ -243,7 +243,7 @@ TRUST_PROXY=1
 # Remova AUTH_COOKIE_SECURE=false (em HTTPS o cookie Secure é o padrão)
 
 # frontend/.env.production
-NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com
+NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com/api
 ```
 
 ```bash
