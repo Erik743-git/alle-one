@@ -1,0 +1,436 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { TenantScopeService } from '../../common/security/tenant-scope.service';
+import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { TifluxService } from '../tiflux/tiflux.service';
+import { normalizeDeskName } from './tiflux-portal-desk.config';
+import { resolveClientListFilter } from './tickets-client-scope';
+
+@Injectable()
+export class TicketsCatalogsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly tiflux: TifluxService,
+    private readonly tenantScope: TenantScopeService,
+  ) {}
+
+  async listTifluxResponsiblesForTicketCreate(): Promise<
+    Array<{ id: number; name: string; email: string | null }>
+  > {
+    const [attendants, admins] = await Promise.all([
+      this.tiflux.getUsersAll({
+        active: true,
+        type: 'attendant',
+        limitPerPage: 100,
+        maxPages: 20,
+      }),
+      this.tiflux.getUsersAll({
+        active: true,
+        type: 'admin',
+        limitPerPage: 100,
+        maxPages: 10,
+      }),
+    ]);
+
+    const byId = new Map<
+      number,
+      { id: number; name: string; email: string | null }
+    >();
+    for (const user of [...attendants, ...admins]) {
+      const id = Number(user.id);
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const name = String(user.name ?? '').trim();
+      if (!name) continue;
+      byId.set(id, {
+        id,
+        name,
+        email: user.email != null ? String(user.email).trim() : null,
+      });
+    }
+
+    return [...byId.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'pt-BR'),
+    );
+  }
+
+  private buildClassificationTree(
+    rows: Array<{
+      id: string;
+      name: string;
+      level: number;
+      active: boolean;
+      sortOrder: number;
+      parentId: string | null;
+    }>,
+  ) {
+    type Node = {
+      id: string;
+      name: string;
+      level: number;
+      active: boolean;
+      sortOrder: number;
+      parentId: string | null;
+      children: Node[];
+    };
+
+    const byParent = new Map<string | null, typeof rows>();
+    for (const row of rows) {
+      const bucket = byParent.get(row.parentId);
+      if (bucket) bucket.push(row);
+      else byParent.set(row.parentId, [row]);
+    }
+
+    const sortRows = (list: typeof rows) =>
+      [...list].sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'),
+      );
+
+    const toNode = (row: (typeof rows)[number]): Node => ({
+      ...row,
+      children:
+        row.level < 3
+          ? sortRows(byParent.get(row.id) ?? []).map(toNode)
+          : [],
+    });
+
+    return sortRows(byParent.get(null) ?? []).map(toNode);
+  }
+
+  private async findPortalDeskForTifluxDesk(
+    tifluxDeskId: number,
+    tifluxDeskName?: string | null,
+  ) {
+    const candidates: Array<{ id: string; name: string }> = [];
+
+    const byExternalId = await this.prisma.serviceDesk.findFirst({
+      where: { externalId: tifluxDeskId, deletedAt: null, active: true },
+      select: { id: true, name: true },
+    });
+    if (byExternalId) candidates.push(byExternalId);
+
+    const normalizedTarget = normalizeDeskName(tifluxDeskName);
+    if (normalizedTarget) {
+      const portalDesks = await this.prisma.serviceDesk.findMany({
+        where: { deletedAt: null, active: true },
+        select: { id: true, name: true },
+      });
+      const byName = portalDesks.find(
+        (desk) => normalizeDeskName(desk.name) === normalizedTarget,
+      );
+      if (byName && !candidates.some((desk) => desk.id === byName.id)) {
+        candidates.push(byName);
+      }
+    }
+
+    if (candidates.length === 0) return null;
+
+    const withCounts = await Promise.all(
+      candidates.map(async (desk) => ({
+        desk,
+        count: await this.prisma.serviceDeskClassification.count({
+          where: { serviceDeskId: desk.id, active: true },
+        }),
+      })),
+    );
+
+    const withClassifications = withCounts.filter((row) => row.count > 0);
+    if (withClassifications.length > 0) {
+      return withClassifications[0].desk;
+    }
+
+    return candidates[0];
+  }
+
+  private async loadClassificationBundle(
+    tifluxDeskId: number,
+    tifluxDeskName?: string | null,
+  ) {
+    const portalDesk = await this.findPortalDeskForTifluxDesk(
+      tifluxDeskId,
+      tifluxDeskName,
+    );
+    if (!portalDesk) {
+      return { portalServiceDesk: null, classification: null };
+    }
+
+    const rows = await this.prisma.serviceDeskClassification.findMany({
+      where: { serviceDeskId: portalDesk.id, active: true },
+      orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        level: true,
+        active: true,
+        sortOrder: true,
+        parentId: true,
+      },
+    });
+
+    return {
+      portalServiceDesk: portalDesk,
+      classification: {
+        levelLabels: [
+          { level: 1, label: 'Categoria' },
+          { level: 2, label: 'Subcategoria' },
+          { level: 3, label: 'Produto/solução' },
+        ],
+        tree: this.buildClassificationTree(rows),
+      },
+    };
+  }
+
+  async resolveClassificationPathLabel(
+    classificationId: string,
+  ): Promise<string | null> {
+    const row = await this.prisma.serviceDeskClassification.findFirst({
+      where: { id: classificationId, active: true },
+      select: { id: true, name: true, parentId: true, level: true },
+    });
+    if (!row) return null;
+
+    const names: string[] = [row.name];
+    let parentId = row.parentId;
+    while (parentId) {
+      const parent = await this.prisma.serviceDeskClassification.findUnique({
+        where: { id: parentId },
+        select: { name: true, parentId: true },
+      });
+      if (!parent) break;
+      names.unshift(parent.name);
+      parentId = parent.parentId;
+    }
+
+    const desk = await this.prisma.serviceDeskClassification.findUnique({
+      where: { id: row.id },
+      select: {
+        serviceDesk: { select: { name: true } },
+      },
+    });
+
+    if (desk?.serviceDesk?.name) {
+      names.unshift(desk.serviceDesk.name);
+    }
+
+    return names.join(' → ');
+  }
+
+  async assertValidClassificationForDesk(
+    tifluxDeskId: number,
+    classificationId?: string | null,
+    tifluxDeskName?: string | null,
+  ) {
+    const bundle = await this.loadClassificationBundle(
+      tifluxDeskId,
+      tifluxDeskName,
+    );
+    const tree = bundle.classification?.tree ?? [];
+    if (tree.length === 0) {
+      return;
+    }
+
+    if (!classificationId?.trim()) {
+      throw new BadRequestException(
+        'Selecione a classificação cadastrada para esta mesa.',
+      );
+    }
+
+    const node = await this.prisma.serviceDeskClassification.findFirst({
+      where: {
+        id: classificationId,
+        active: true,
+        serviceDeskId: bundle.portalServiceDesk?.id,
+      },
+      select: { id: true, level: true },
+    });
+    if (!node) {
+      throw new BadRequestException('Classificação inválida para esta mesa.');
+    }
+
+    const hasChildren = await this.prisma.serviceDeskClassification.count({
+      where: { parentId: node.id, active: true },
+    });
+    if (hasChildren > 0) {
+      throw new BadRequestException(
+        'Selecione o nível mais específico da classificação.',
+      );
+    }
+  }
+
+  async getFilterCatalogs(actor: AuthenticatedRequestUser) {
+    const clientScope = await resolveClientListFilter(
+      this.tenantScope,
+      actor,
+      null,
+    );
+    const clientFilter = clientScope.clientExternalId;
+
+    const [stages, clients, responsibles, desks, statuses] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ stage_name: string }>>`
+        SELECT DISTINCT trim(t.stage_name) AS stage_name
+        FROM tiflux.tickets t
+        WHERE t.stage_name IS NOT NULL AND trim(t.stage_name) <> ''
+          AND COALESCE(t.is_closed, false) = false
+          AND (${clientFilter ?? null}::int IS NULL OR t.client_external_id = ${clientFilter ?? null})
+        ORDER BY stage_name ASC
+        LIMIT 80
+      `,
+      this.prisma.$queryRaw<
+        Array<{ client_external_id: number; client_name: string }>
+      >`
+        SELECT DISTINCT t.client_external_id, t.client_name
+        FROM tiflux.tickets t
+        WHERE t.client_external_id IS NOT NULL AND t.client_name IS NOT NULL
+          AND COALESCE(t.is_closed, false) = false
+          AND (${clientFilter ?? null}::int IS NULL OR t.client_external_id = ${clientFilter ?? null})
+        ORDER BY t.client_name ASC
+        LIMIT 200
+      `,
+      this.prisma.$queryRaw<
+        Array<{ external_id: number; name: string; email: string | null }>
+      >`
+        SELECT tu.external_id, tu.name, tu.email
+        FROM tiflux.users tu
+        WHERE COALESCE(tu.active, true) = true
+          AND tu.type IN ('attendant', 'admin')
+        ORDER BY tu.name ASC
+        LIMIT 300
+      `,
+      this.prisma.$queryRaw<Array<{ desk_name: string }>>`
+        SELECT DISTINCT trim(t.desk_name) AS desk_name
+        FROM tiflux.tickets t
+        WHERE t.desk_name IS NOT NULL AND trim(t.desk_name) <> ''
+          AND COALESCE(t.is_closed, false) = false
+          AND (${clientFilter ?? null}::int IS NULL OR t.client_external_id = ${clientFilter ?? null})
+        ORDER BY desk_name ASC
+        LIMIT 50
+      `,
+      this.prisma.$queryRaw<Array<{ status_name: string }>>`
+        SELECT DISTINCT trim(t.status_name) AS status_name
+        FROM tiflux.tickets t
+        WHERE t.status_name IS NOT NULL AND trim(t.status_name) <> ''
+          AND COALESCE(t.is_closed, false) = false
+          AND (${clientFilter ?? null}::int IS NULL OR t.client_external_id = ${clientFilter ?? null})
+        ORDER BY status_name ASC
+        LIMIT 30
+      `,
+    ]);
+
+    return {
+      stages: stages.map((s) => s.stage_name),
+      clients: clients.map((c) => ({
+        externalId: Number(c.client_external_id),
+        name: c.client_name,
+      })),
+      responsibles:
+        actor.role === 'CLIENT'
+          ? []
+          : responsibles.map((r) => ({
+              externalId: Number(r.external_id),
+              name: r.name,
+              email: r.email,
+            })),
+      desks: desks.map((d) => d.desk_name),
+      statuses: statuses.map((s) => s.status_name),
+    };
+  }
+
+  private mapCatalogItem(row: Record<string, unknown>) {
+    const id = Number(row.id);
+    const name = String(row.name ?? row.display_name ?? '').trim();
+    const catalog = row.catalog as { name?: string } | null | undefined;
+    const area = row.area as { name?: string } | null | undefined;
+    const parts = [catalog?.name, area?.name, name]
+      .map((part) => String(part ?? '').trim())
+      .filter(Boolean);
+    return { id, name: parts.join(' → ') || name || `Item ${id}` };
+  }
+
+  async getCreateCatalogs(deskId?: number, clientId?: number) {
+    const [clientsRaw, desksRaw, responsibles] = await Promise.all([
+      this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
+      this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
+      this.listTifluxResponsiblesForTicketCreate(),
+    ]);
+
+    let requestors: Array<{
+      id: number;
+      name: string;
+      email: string | null;
+      telephone: string | null;
+    }> = [];
+    if (clientId != null && Number.isFinite(clientId)) {
+      requestors = await this.tiflux.getClientRequestors(clientId);
+    }
+
+    let desk: Record<string, unknown> | null = null;
+    let priorities: Array<{ id: number; name: string }> = [];
+    let catalogItems: Array<{ id: number; name: string }> = [];
+    let portalServiceDesk: { id: string; name: string } | null = null;
+    let classification: {
+      levelLabels: Array<{ level: number; label: string }>;
+      tree: Array<{
+        id: string;
+        name: string;
+        level: number;
+        active: boolean;
+        sortOrder: number;
+        parentId: string | null;
+        children: unknown[];
+      }>;
+    } | null = null;
+
+    if (deskId != null && Number.isFinite(deskId)) {
+      desk = await this.tiflux.getDesk(deskId);
+      const tifluxDeskName = String(desk.display_name ?? desk.name ?? '');
+      const bundle = await this.loadClassificationBundle(deskId, tifluxDeskName);
+      portalServiceDesk = bundle.portalServiceDesk;
+      classification = bundle.classification;
+
+      const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
+
+      if (requiresCatalog) {
+        const items = await this.tiflux.getDeskServicesCatalogItems(deskId);
+        catalogItems = items.map((row) => this.mapCatalogItem(row));
+      } else {
+        const rows = await this.tiflux.getDeskPriorities(deskId);
+        priorities = rows.map((row) => this.mapCatalogItem(row));
+      }
+    }
+
+    return {
+      clients: clientsRaw
+        .map((c) => ({
+          id: Number(c.id),
+          name: String(c.name ?? c.social_name ?? `Cliente ${c.id}`),
+        }))
+        .filter((c) => Number.isFinite(c.id)),
+      desks: desksRaw
+        .map((d) => ({
+          id: Number(d.id),
+          name: String(d.display_name ?? d.name ?? `Mesa ${d.id}`),
+          appointmentType: String(d.appointment_type ?? ''),
+          requireServiceCatalog: Boolean(d.require_service_catalog_open_ticket),
+        }))
+        .filter((d) => Number.isFinite(d.id)),
+      responsibles,
+      requestors,
+      portalServiceDesk,
+      classification,
+      desk: desk
+        ? {
+            id: Number(desk.id),
+            name: String(desk.display_name ?? desk.name ?? ''),
+            appointmentType: String(desk.appointment_type ?? ''),
+            requireServiceCatalog: Boolean(
+              desk.require_service_catalog_open_ticket,
+            ),
+            requiredFields:
+              (desk.required_fields as Record<string, boolean> | null) ?? {},
+          }
+        : null,
+      priorities,
+      catalogItems,
+    };
+  }
+}

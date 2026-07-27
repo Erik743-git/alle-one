@@ -37,6 +37,7 @@ import {
   RendimentoStoreService,
   type GapJustificationRow,
 } from './rendimento-store.service';
+import { RendimentoOvertimeBalanceService } from './rendimento-overtime-balance.service';
 
 export type { RendimentoDayInsightsDto, RendimentoGapDto };
 
@@ -174,6 +175,7 @@ export class RendimentoService {
     private readonly tifluxService: TifluxService,
     private readonly audit: AuditService,
     private readonly rendimentoStore: RendimentoStoreService,
+    private readonly overtimeBalance: RendimentoOvertimeBalanceService,
   ) {}
 
   formatMinutes(totalMinutes: number): string {
@@ -458,11 +460,7 @@ export class RendimentoService {
   }
 
   private async getOvertimeBalanceMinutes(userId: string): Promise<number> {
-    const row = await this.prisma.rendimentoOvertimeBalance.findUnique({
-      where: { userId },
-      select: { minutes: true },
-    });
-    return row?.minutes ?? 0;
+    return this.overtimeBalance.getBalanceMinutes(userId);
   }
 
   private async listJustifications(params: {
@@ -1584,119 +1582,16 @@ export class RendimentoService {
       );
   }
 
-  /** HE aprovada que consome o saldo (plantão aprovado não debita saldo de HE). */
-  private async getProtectedOvertimeMinutes(
-    userId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<number> {
-    const rows =
-      (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
-        `
-        SELECT COALESCE(SUM(minutes), 0)::int AS total
-        FROM rendimento_day_events
-        WHERE user_id = $1
-          AND date_ref BETWEEN $2::date AND $3::date
-          AND event_type = 'OVERTIME'
-          AND status = 'APPROVED'
-          AND debit_protected = true
-          AND deleted_at IS NULL
-      `,
-        userId,
-        this.toDateOnlyString(periodStart),
-        this.toDateOnlyString(periodEnd),
-      )) ?? [];
-    return Number(rows[0]?.total) || 0;
-  }
-
-  private async getDebitedOvertimeMinutes(
-    userId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<number> {
-    const rows =
-      (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
-        `
-        SELECT COALESCE(SUM(overtime_minutes), 0)::int AS total
-        FROM rendimento_gap_justifications
-        WHERE user_id = $1
-          AND date_ref BETWEEN $2::date AND $3::date
-          AND status = 'APPROVED'
-          AND debit_overtime = true
-          AND deleted_at IS NULL
-      `,
-        userId,
-        this.toDateOnlyString(periodStart),
-        this.toDateOnlyString(periodEnd),
-      )) ?? [];
-    return Number(rows[0]?.total) || 0;
-  }
-
-  /**
-   * Saldo de HE do período folha (26→25).
-   * Crédito: apontamentos HORA EXTRA (TiFlux).
-   * Débito: HE aprovada + justificativas aprovadas com debit_overtime.
-   * Plantão aprovado não entra no débito.
-   */
-  private getNetOvertimeBalanceMinutes(
-    periodOvertimeMinutes: number,
-    protectedMinutes: number,
-    debitedMinutes: number,
-  ): number {
-    return (
-      Math.trunc(periodOvertimeMinutes) -
-      Math.trunc(protectedMinutes) -
-      Math.trunc(debitedMinutes)
-    );
-  }
-
-  private getDebitableOvertimeMinutes(
-    periodOvertimeMinutes: number,
-    protectedMinutes: number,
-    debitedMinutes: number,
-  ): number {
-    return Math.max(
-      0,
-      this.getNetOvertimeBalanceMinutes(
-        periodOvertimeMinutes,
-        protectedMinutes,
-        debitedMinutes,
-      ),
-    );
-  }
-
   private async refreshOvertimeBalance(
     userId: string,
     periodOvertimeMinutes: number,
     referenceDate: Date,
   ): Promise<number> {
-    const payroll = resolvePayrollPeriodRange(referenceDate);
-    const protectedMinutes = await this.getProtectedOvertimeMinutes(
+    return this.overtimeBalance.refreshBalance(
       userId,
-      payroll.start,
-      payroll.end,
-    );
-    const debitedMinutes = await this.getDebitedOvertimeMinutes(
-      userId,
-      payroll.start,
-      payroll.end,
-    );
-    const available = this.getNetOvertimeBalanceMinutes(
       periodOvertimeMinutes,
-      protectedMinutes,
-      debitedMinutes,
+      referenceDate,
     );
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO rendimento_overtime_balances (user_id, minutes, updated_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (user_id)
-      DO UPDATE SET minutes = $2, updated_at = NOW()
-    `,
-      userId,
-      available,
-    );
-    return available;
   }
 
   private async upsertDayEvent(input: UpsertDayEventInput): Promise<string> {

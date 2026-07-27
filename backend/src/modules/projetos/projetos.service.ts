@@ -3,7 +3,6 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-  StreamableFile,
 } from '@nestjs/common';
 import {
   ProjectActivityKind,
@@ -16,11 +15,9 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import ExcelJS from 'exceljs';
-import { join } from 'path';
-import { FileStorageService } from '../../common/storage/file-storage.service';
-import { assertAllowedUploadMime, UPLOAD_MAX_BYTES } from '../../common/upload.config';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { ProjetosDocumentsService } from './projetos-documents.service';
 import { ProjetosHistoryPdfService } from './projetos-history-pdf.service';
 import type {
   CreateProjectActivityDto,
@@ -32,11 +29,6 @@ import type {
 } from './projetos.dto';
 
 const HOURS_PER_WORK_DAY = 8;
-const PROJECT_DOC_MIMES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-] as const;
 
 export type ProjectDocumentDto = {
   id: string;
@@ -834,7 +826,7 @@ export class ProjetosService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly excel: ProjetosExcelService,
-    private readonly fileStorage: FileStorageService,
+    private readonly documents: ProjetosDocumentsService,
     private readonly historyPdf: ProjetosHistoryPdfService,
   ) {}
 
@@ -1539,17 +1531,6 @@ export class ProjetosService {
     return mapped;
   }
 
-  private assertProjectDocumentMime(mimeType: string | undefined | null) {
-    assertAllowedUploadMime(mimeType);
-    const mime = (mimeType || '').toLowerCase();
-    const ok = PROJECT_DOC_MIMES.some((allowed) => mime === allowed || mime.startsWith(allowed));
-    if (!ok) {
-      throw new BadRequestException(
-        'Documentação do projeto: use PDF ou Word (.pdf, .doc, .docx).',
-      );
-    }
-  }
-
   private computeBudgetMetrics(activities: ActivityRow[]) {
     let consumedDays = 0;
     for (const row of activities) {
@@ -1608,28 +1589,7 @@ export class ProjetosService {
   }
 
   private async loadProjectDocuments(projectId: string): Promise<ProjectDocumentDto[]> {
-    const rows = await this.prisma.projectDocument.findMany({
-      where: { projectId },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        file: {
-          select: {
-            id: true,
-            originalName: true,
-            mimeType: true,
-            size: true,
-          },
-        },
-      },
-    });
-    return rows.map((row) => ({
-      id: row.id,
-      fileId: row.file.id,
-      originalName: row.file.originalName,
-      mimeType: row.file.mimeType,
-      size: row.file.size,
-      createdAt: row.createdAt.toISOString(),
-    }));
+    return this.documents.list(projectId);
   }
 
   private async saveProjectDocuments(
@@ -1637,30 +1597,7 @@ export class ProjetosService {
     projectId: string,
     files: Express.Multer.File[],
   ) {
-    for (const file of files) {
-      this.assertProjectDocumentMime(file.mimetype);
-      if (file.size > UPLOAD_MAX_BYTES) {
-        throw new BadRequestException(
-          `Arquivo "${file.originalname}" excede o limite de 10MB.`,
-        );
-      }
-      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const targetName = `${Date.now()}-${randomUUID()}-${safeName}`;
-      const relativeKey = join('projetos', projectId, targetName);
-      const stored = await this.fileStorage.saveBuffer(relativeKey, file.buffer);
-      const createdFile = await this.prisma.file.create({
-        data: {
-          originalName: file.originalname,
-          mimeType: file.mimetype || 'application/octet-stream',
-          path: stored.storagePath,
-          size: file.size,
-          uploadedBy: user.userId,
-        },
-      });
-      await this.prisma.projectDocument.create({
-        data: { projectId, fileId: createdFile.id },
-      });
-    }
+    await this.documents.save(user, projectId, files);
   }
 
   private async assertCanCompleteProject(
@@ -2056,19 +1993,7 @@ export class ProjetosService {
     documentId: string,
   ) {
     await this.resolveProjectInScope(user, projectId);
-    const doc = await this.prisma.projectDocument.findFirst({
-      where: { id: documentId, projectId },
-      include: { file: true },
-    });
-    if (!doc?.file || doc.file.deletedAt) {
-      throw new NotFoundException('Documento não encontrado.');
-    }
-    const buffer = await this.fileStorage.readBuffer(doc.file.path);
-    return {
-      stream: new StreamableFile(buffer),
-      originalName: doc.file.originalName,
-      mimeType: doc.file.mimeType,
-    };
+    return this.documents.download(projectId, documentId);
   }
 
   async approveProjectCompletion(

@@ -29,16 +29,14 @@ import {
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
 import {
-  buildInventarioReportCsv,
-  buildInventarioReportXlsx,
-  type InventarioReportRow,
-} from './reports-inventario';
+  ALL_COMPANIES_REPORT_ID,
+  ReportsInventarioService,
+} from './reports-inventario.service';
 import { toDateOnlyISO, parseDateInput } from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5']);
-const ALL_COMPANIES_REPORT_ID = '__all__';
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
   '1': 'Rendimento',
@@ -101,6 +99,7 @@ export class ReportsService {
     private readonly tiflux: TifluxService,
     private readonly dashboard: DashboardService,
     private readonly rendimento: RendimentoService,
+    private readonly inventario: ReportsInventarioService,
   ) {}
 
   private async fetchChartPng(params: {
@@ -2494,168 +2493,6 @@ export class ReportsService {
     return workbook.xlsx.writeBuffer();
   }
 
-  private startOfDay(date = new Date()) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
-  private async loadInventarioReportRows(
-    companyIds: string[],
-  ): Promise<InventarioReportRow[]> {
-    const today = this.startOfDay();
-    const multiCompany = companyIds.length > 1;
-    const rows = await this.prisma.inventoryAsset.findMany({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-      include: {
-        assetType: { select: { name: true } },
-        company: { select: { name: true } },
-      },
-      orderBy: multiCompany
-        ? [
-            { company: { name: 'asc' } },
-            { assetType: { name: 'asc' } },
-            { brand: 'asc' },
-            { name: 'asc' },
-          ]
-        : [
-            { assetType: { name: 'asc' } },
-            { brand: 'asc' },
-            { name: 'asc' },
-          ],
-    });
-
-    return rows.map((row) => {
-      const dueDate = row.dueDate
-        ? row.dueDate.toISOString().slice(0, 10)
-        : null;
-      const overdue = row.dueDate
-        ? this.startOfDay(row.dueDate).getTime() < today.getTime()
-        : false;
-
-      return {
-        ...(multiCompany ? { companyName: row.company.name } : {}),
-        assetTypeName: row.assetType.name,
-        brand: row.brand,
-        quantity: row.quantity,
-        supplier: row.supplier,
-        supplierThirdParty: row.supplierThirdParty,
-        description: row.description,
-        dueDate,
-        reminderDaysBefore: row.reminderDaysBefore,
-        overdue,
-      };
-    });
-  }
-
-  private async resolveInventarioReportScope(
-    user: AuthenticatedRequestUser,
-    payload: { companyId?: string; companyIds?: string[] },
-  ) {
-    const scope = await this.getAccessibleCompanyIds(user);
-    const companyId = payload.companyId?.trim() || '';
-
-    if (companyId === ALL_COMPANIES_REPORT_ID) {
-      const companies = await this.prisma.company.findMany({
-        where: { id: { in: scope }, deletedAt: null },
-        select: { id: true, name: true },
-        orderBy: { name: 'asc' },
-      });
-      return {
-        companyIds: companies.map((c) => c.id),
-        scopeLabel: 'Todas as empresas',
-        allCompanies: true,
-        representativeCompanyId: companies[0]?.id ?? '',
-        logoCompanyId: companies.find((c) =>
-          c.name.trim().toLowerCase().includes('alle'),
-        )?.id,
-      };
-    }
-
-    const rawIds =
-      payload.companyIds?.length && payload.companyIds.length > 0
-        ? payload.companyIds
-        : companyId
-          ? [companyId]
-          : [];
-
-    const unique = [...new Set(rawIds.map((id) => id.trim()).filter(Boolean))];
-    if (!unique.length) {
-      throw new BadRequestException('Selecione ao menos uma empresa.');
-    }
-
-    for (const id of unique) {
-      this.ensureCompanyInScope(id, scope);
-    }
-
-    const companies = await this.prisma.company.findMany({
-      where: { id: { in: unique }, deletedAt: null },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    if (companies.length !== unique.length) {
-      throw new BadRequestException('Empresa inválida.');
-    }
-
-    const scopeLabel =
-      companies.length === 1
-        ? companies[0].name
-        : `${companies.length} empresas selecionadas`;
-
-    return {
-      companyIds: companies.map((c) => c.id),
-      scopeLabel,
-      allCompanies: companies.length === scope.length,
-      representativeCompanyId: companies[0].id,
-      logoCompanyId: companies.length === 1 ? companies[0].id : undefined,
-    };
-  }
-
-  private async generateInventarioCsv(params: {
-    companyIds: string[];
-    scopeLabel: string;
-    generatedAt: Date;
-    logoCompanyId?: string;
-  }) {
-    const rows = await this.loadInventarioReportRows(params.companyIds);
-    return buildInventarioReportCsv({
-      scopeLabel: params.scopeLabel,
-      generatedAt: params.generatedAt,
-      rows,
-      multiCompany: params.companyIds.length > 1,
-    });
-  }
-
-  private async generateInventarioXlsx(params: {
-    companyIds: string[];
-    scopeLabel: string;
-    generatedAt: Date;
-    logoCompanyId?: string;
-  }) {
-    let logoPath: string | null = null;
-    let logoMimeType: string | null = null;
-    if (params.logoCompanyId) {
-      const company = await this.prisma.company.findFirst({
-        where: { id: params.logoCompanyId, deletedAt: null },
-        select: {
-          logoFile: { select: { path: true, mimeType: true } },
-        },
-      });
-      logoPath = company?.logoFile?.path ?? null;
-      logoMimeType = company?.logoFile?.mimeType ?? null;
-    }
-
-    const rows = await this.loadInventarioReportRows(params.companyIds);
-    return buildInventarioReportXlsx({
-      scopeLabel: params.scopeLabel,
-      generatedAt: params.generatedAt,
-      rows,
-      multiCompany: params.companyIds.length > 1,
-      logoPath,
-      logoMimeType,
-    });
-  }
-
   async listReports(
     user: AuthenticatedRequestUser,
     query: {
@@ -2782,9 +2619,10 @@ export class ReportsService {
       );
     }
 
+    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     const isInventario = type === '5';
     const inventarioScope = isInventario
-      ? await this.resolveInventarioReportScope(user, {
+      ? await this.inventario.resolveScope(scopeCompanyIds, {
           companyId,
           companyIds: payload.companyIds,
         })
@@ -2804,7 +2642,6 @@ export class ReportsService {
         ? await this.resolveRendimentoCompanyScope(user, companyId)
         : null;
 
-    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     if (type === '4') {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
@@ -2837,7 +2674,7 @@ export class ReportsService {
 
     const generatedAt = new Date();
     const range = isInventario
-      ? { start: this.startOfDay(generatedAt), end: generatedAt }
+      ? { start: this.inventario.startOfDay(generatedAt), end: generatedAt }
       : normalizeRange(
           parseDateOrThrow(payload.start ?? '', 'Data inicial'),
           parseDateOrThrow(payload.end ?? '', 'Data final'),
@@ -2877,7 +2714,7 @@ export class ReportsService {
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             buffer:
               type === '5'
-                ? await this.generateInventarioXlsx({
+                ? await this.inventario.generateXlsx({
                     companyIds: inventarioScope!.companyIds,
                     scopeLabel: inventarioScope!.scopeLabel,
                     generatedAt,
@@ -2906,7 +2743,7 @@ export class ReportsService {
               filename: `${baseName}.csv`,
               mimeType: 'text/csv; charset=utf-8',
               buffer: Buffer.from(
-                await this.generateInventarioCsv({
+                await this.inventario.generateCsv({
                   companyIds: inventarioScope!.companyIds,
                   scopeLabel: inventarioScope!.scopeLabel,
                   generatedAt,
