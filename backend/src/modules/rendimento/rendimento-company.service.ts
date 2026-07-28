@@ -4,11 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, RendimentoAppointmentQuestionStatus } from '@prisma/client';
+import { RendimentoAppointmentQuestionStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { summarizeCompanyAppointmentDescription } from './company-description.util';
 import { RendimentoMailService } from './rendimento-mail.service';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 
 export type CompanySummaryDto = {
   id: string;
@@ -198,6 +199,25 @@ export class RendimentoCompanyService {
     clientId: number,
     range: { start: string; end: string },
   ): Promise<number> {
+    if (isTicketsPortalCanonical()) {
+      const portalRows =
+        (await this.prisma.$queryRaw<
+          Array<{ init_time: string | null; end_time: string | null }>
+        >`
+          SELECT a.init_time, a.end_time
+          FROM portal_ticket_appointments a
+          INNER JOIN portal_tickets t ON t.ticket_number = a.ticket_number
+          WHERE t.client_external_id = ${clientId}
+            AND a.appointment_date >= ${range.start}::date
+            AND a.appointment_date <= ${range.end}::date
+        `) ?? [];
+      let total = 0;
+      for (const row of portalRows) {
+        total += this.minutesFromTimes(row.init_time, row.end_time);
+      }
+      return total;
+    }
+
     const tifluxRows =
       (await this.prisma.$queryRaw<
         Array<{ init_time: Date | null; end_time: Date | null }>
@@ -225,6 +245,7 @@ export class RendimentoCompanyService {
           lte: new Date(`${range.end}T12:00:00.000Z`),
         },
         syncStatus: { in: ['PORTAL_ONLY', 'PENDING_TIFLUX', 'SYNCED'] },
+        tifluxAppointmentExternalId: null,
       },
       select: { ticketNumber: true, initTime: true, endTime: true },
     });
@@ -233,19 +254,13 @@ export class RendimentoCompanyService {
       const ticketNumbers = [...new Set(portalRows.map((r) => r.ticketNumber))];
       const portalTickets =
         ticketNumbers.length > 0
-          ? await this.prisma.$queryRaw<
-              Array<{ ticket_number: number; client_external_id: number | null }>
-            >`
-              SELECT t.ticket_number, t.client_external_id
-              FROM tiflux.tickets t
-              WHERE t.ticket_number IN (${Prisma.join(ticketNumbers)})
-            `
+          ? await this.prisma.portalTicket.findMany({
+              where: { ticketNumber: { in: ticketNumbers } },
+              select: { ticketNumber: true, clientExternalId: true },
+            })
           : [];
       const ticketClientMap = new Map(
-        portalTickets.map((t) => [
-          Number(t.ticket_number),
-          t.client_external_id != null ? Number(t.client_external_id) : null,
-        ]),
+        portalTickets.map((t) => [t.ticketNumber, t.clientExternalId]),
       );
       for (const row of portalRows) {
         if (ticketClientMap.get(row.ticketNumber) !== clientId) continue;
@@ -421,67 +436,246 @@ export class RendimentoCompanyService {
 
     const clientId = company.tifluxClientId;
 
-    const tifluxRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          external_id: number;
-          ticket_number: number;
-          appointment_date: Date | null;
-          init_time: Date | null;
-          end_time: Date | null;
-          user_name: string | null;
-          description: string | null;
-          valorization_raw: unknown;
-        }>
-      >`
-        SELECT
-          a.external_id,
-          a.ticket_number,
-          a.appointment_date,
-          a.init_time,
-          a.end_time,
-          a.user_name,
-          a.description,
-          a.valorization_raw
-        FROM tiflux.ticket_appointments a
-        INNER JOIN tiflux.tickets t ON t.ticket_number = a.ticket_number
-        WHERE t.client_external_id = ${clientId}
-          AND a.appointment_date >= ${range.start}::date
-          AND a.appointment_date <= ${range.end}::date
-        ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
-      `) ?? [];
+    const valorLabel = (raw: unknown): string | null => {
+      if (!raw || typeof raw !== 'object') return null;
+      const v = raw as Record<string, unknown>;
+      const loose = (v.loose_service as { name?: string } | undefined)?.name;
+      const contract = (v.contract as { name?: string } | undefined)?.name;
+      const name = typeof v.name === 'string' ? v.name : null;
+      return loose?.trim() || contract?.trim() || name?.trim() || null;
+    };
 
-    const portalRows = await this.prisma.portalTicketAppointment.findMany({
-      where: {
-        appointmentDate: {
-          gte: new Date(`${range.start}T12:00:00.000Z`),
-          lte: new Date(`${range.end}T12:00:00.000Z`),
+    const entries: CompanyAppointmentEntryDto[] = [];
+
+    if (isTicketsPortalCanonical()) {
+      const portalOnly =
+        (await this.prisma.$queryRaw<
+          Array<{
+            id: string;
+            ticket_number: number;
+            appointment_date: Date;
+            init_time: string | null;
+            end_time: string | null;
+            user_name: string | null;
+            description: string | null;
+            service_name: string | null;
+          }>
+        >`
+          SELECT
+            a.id,
+            a.ticket_number,
+            a.appointment_date,
+            a.init_time,
+            a.end_time,
+            u.name as user_name,
+            a.description,
+            a.service_name
+          FROM portal_ticket_appointments a
+          INNER JOIN portal_tickets t ON t.ticket_number = a.ticket_number
+          LEFT JOIN users u ON u.id = a.created_by
+          WHERE t.client_external_id = ${clientId}
+            AND a.appointment_date >= ${range.start}::date
+            AND a.appointment_date <= ${range.end}::date
+          ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
+        `) ?? [];
+
+      const questions = await this.prisma.rendimentoAppointmentQuestion.findMany({
+        where: {
+          companyId: params.companyId,
+          appointmentDate: {
+            gte: new Date(`${range.start}T12:00:00.000Z`),
+            lte: new Date(`${range.end}T12:00:00.000Z`),
+          },
         },
-        syncStatus: { in: ['PORTAL_ONLY', 'PENDING_TIFLUX', 'SYNCED'] },
-      },
-      include: { creator: { select: { name: true } } },
-      orderBy: [{ appointmentDate: 'desc' }, { initTime: 'desc' }],
-    });
+      });
+      const questionByRef = new Map(
+        questions.map((q) => [
+          `${q.appointmentSource}:${q.appointmentRef}`,
+          q,
+        ]),
+      );
 
-    const portalTicketNumbers = [
-      ...new Set(portalRows.map((r) => r.ticketNumber)),
-    ];
-    const portalTickets =
-      portalTicketNumbers.length > 0
-        ? await this.prisma.$queryRaw<
-            Array<{ ticket_number: number; client_external_id: number | null }>
-          >`
-            SELECT t.ticket_number, t.client_external_id
-            FROM tiflux.tickets t
-            WHERE t.ticket_number IN (${Prisma.join(portalTicketNumbers)})
-          `
-        : [];
-    const ticketClientMap = new Map(
-      portalTickets.map((t) => [
-        Number(t.ticket_number),
-        t.client_external_id != null ? Number(t.client_external_id) : null,
-      ]),
-    );
+      for (const row of portalOnly) {
+        const date = this.formatDateOnly(row.appointment_date);
+        if (!date) continue;
+        const ref = row.id;
+        const q =
+          questionByRef.get(`portal:${ref}`) ??
+          questionByRef.get(`tiflux:${ref}`);
+        const minutes = this.minutesFromTimes(row.init_time, row.end_time);
+        const desc = this.mapDescription(row.description);
+        entries.push({
+          source: 'portal',
+          ref,
+          ticketNumber: Number(row.ticket_number),
+          date,
+          initTime: row.init_time,
+          endTime: row.end_time,
+          minutes,
+          hoursFormatted: this.formatMinutes(minutes),
+          userName: row.user_name,
+          ...desc,
+          serviceName: row.service_name,
+          question: q
+            ? {
+                id: q.id,
+                status: q.status,
+                message: q.message,
+                adminResponse: q.adminResponse,
+                adminResponseCode: q.adminResponseCode,
+                abonado: q.abonado,
+                createdAt: q.createdAt.toISOString(),
+                respondedAt: q.respondedAt?.toISOString() ?? null,
+              }
+            : null,
+        });
+      }
+    } else {
+      const tifluxRows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            external_id: number;
+            ticket_number: number;
+            appointment_date: Date | null;
+            init_time: Date | null;
+            end_time: Date | null;
+            user_name: string | null;
+            description: string | null;
+            valorization_raw: unknown;
+          }>
+        >`
+          SELECT
+            a.external_id,
+            a.ticket_number,
+            a.appointment_date,
+            a.init_time,
+            a.end_time,
+            a.user_name,
+            a.description,
+            a.valorization_raw
+          FROM tiflux.ticket_appointments a
+          INNER JOIN tiflux.tickets t ON t.ticket_number = a.ticket_number
+          WHERE t.client_external_id = ${clientId}
+            AND a.appointment_date >= ${range.start}::date
+            AND a.appointment_date <= ${range.end}::date
+          ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
+        `) ?? [];
+
+      const portalRows = await this.prisma.portalTicketAppointment.findMany({
+        where: {
+          appointmentDate: {
+            gte: new Date(`${range.start}T12:00:00.000Z`),
+            lte: new Date(`${range.end}T12:00:00.000Z`),
+          },
+          syncStatus: { in: ['PORTAL_ONLY', 'PENDING_TIFLUX', 'SYNCED'] },
+          tifluxAppointmentExternalId: null,
+        },
+        include: { creator: { select: { name: true } } },
+        orderBy: [{ appointmentDate: 'desc' }, { initTime: 'desc' }],
+      });
+
+      const portalTicketNumbers = [
+        ...new Set(portalRows.map((r) => r.ticketNumber)),
+      ];
+      const portalTickets =
+        portalTicketNumbers.length > 0
+          ? await this.prisma.portalTicket.findMany({
+              where: { ticketNumber: { in: portalTicketNumbers } },
+              select: { ticketNumber: true, clientExternalId: true },
+            })
+          : [];
+      const ticketClientMap = new Map(
+        portalTickets.map((t) => [t.ticketNumber, t.clientExternalId]),
+      );
+
+      const questions = await this.prisma.rendimentoAppointmentQuestion.findMany({
+        where: {
+          companyId: params.companyId,
+          appointmentDate: {
+            gte: new Date(`${range.start}T12:00:00.000Z`),
+            lte: new Date(`${range.end}T12:00:00.000Z`),
+          },
+        },
+      });
+      const questionByRef = new Map(
+        questions.map((q) => [
+          `${q.appointmentSource}:${q.appointmentRef}`,
+          q,
+        ]),
+      );
+
+      for (const row of tifluxRows) {
+        const date = this.formatDateOnly(row.appointment_date);
+        if (!date) continue;
+        const ref = String(row.external_id);
+        const q = questionByRef.get(`tiflux:${ref}`);
+        const minutes = this.minutesFromTimes(
+          this.formatTime(row.init_time),
+          this.formatTime(row.end_time),
+        );
+        const desc = this.mapDescription(row.description);
+        entries.push({
+          source: 'tiflux',
+          ref,
+          ticketNumber: Number(row.ticket_number),
+          date,
+          initTime: this.formatTime(row.init_time),
+          endTime: this.formatTime(row.end_time),
+          minutes,
+          hoursFormatted: this.formatMinutes(minutes),
+          userName: row.user_name,
+          ...desc,
+          serviceName: valorLabel(row.valorization_raw),
+          question: q
+            ? {
+                id: q.id,
+                status: q.status,
+                message: q.message,
+                adminResponse: q.adminResponse,
+                adminResponseCode: q.adminResponseCode,
+                abonado: q.abonado,
+                createdAt: q.createdAt.toISOString(),
+                respondedAt: q.respondedAt?.toISOString() ?? null,
+              }
+            : null,
+        });
+      }
+
+      for (const row of portalRows) {
+        if (ticketClientMap.get(row.ticketNumber) !== clientId) continue;
+        const date = this.formatDateOnly(row.appointmentDate);
+        if (!date) continue;
+        const ref = row.id;
+        const q = questionByRef.get(`portal:${ref}`);
+        const minutes = this.minutesFromTimes(row.initTime, row.endTime);
+        const desc = this.mapDescription(row.description);
+        entries.push({
+          source: 'portal',
+          ref,
+          ticketNumber: row.ticketNumber,
+          date,
+          initTime: row.initTime,
+          endTime: row.endTime,
+          minutes,
+          hoursFormatted: this.formatMinutes(minutes),
+          userName: row.creator.name,
+          ...desc,
+          serviceName: row.serviceName,
+          question: q
+            ? {
+                id: q.id,
+                status: q.status,
+                message: q.message,
+                adminResponse: q.adminResponse,
+                adminResponseCode: q.adminResponseCode,
+                abonado: q.abonado,
+                createdAt: q.createdAt.toISOString(),
+                respondedAt: q.respondedAt?.toISOString() ?? null,
+              }
+            : null,
+        });
+      }
+    }
 
     const questions = await this.prisma.rendimentoAppointmentQuestion.findMany({
       where: {
@@ -492,94 +686,6 @@ export class RendimentoCompanyService {
         },
       },
     });
-    const questionByRef = new Map(
-      questions.map((q) => [
-        `${q.appointmentSource}:${q.appointmentRef}`,
-        q,
-      ]),
-    );
-
-    const valorLabel = (raw: unknown): string | null => {
-      if (!raw || typeof raw !== 'object') return null;
-      const v = raw as Record<string, unknown>;
-      const loose = (v.loose_service as { name?: string } | undefined)?.name;
-      const contract = (v.contract as { name?: string } | undefined)?.name;
-      return loose?.trim() || contract?.trim() || null;
-    };
-
-    const entries: CompanyAppointmentEntryDto[] = [];
-
-    for (const row of tifluxRows) {
-      const date = this.formatDateOnly(row.appointment_date);
-      if (!date) continue;
-      const ref = String(row.external_id);
-      const q = questionByRef.get(`tiflux:${ref}`);
-      const minutes = this.minutesFromTimes(
-        this.formatTime(row.init_time),
-        this.formatTime(row.end_time),
-      );
-      const desc = this.mapDescription(row.description);
-      entries.push({
-        source: 'tiflux',
-        ref,
-        ticketNumber: Number(row.ticket_number),
-        date,
-        initTime: this.formatTime(row.init_time),
-        endTime: this.formatTime(row.end_time),
-        minutes,
-        hoursFormatted: this.formatMinutes(minutes),
-        userName: row.user_name,
-        ...desc,
-        serviceName: valorLabel(row.valorization_raw),
-        question: q
-          ? {
-              id: q.id,
-              status: q.status,
-              message: q.message,
-              adminResponse: q.adminResponse,
-              adminResponseCode: q.adminResponseCode,
-              abonado: q.abonado,
-              createdAt: q.createdAt.toISOString(),
-              respondedAt: q.respondedAt?.toISOString() ?? null,
-            }
-          : null,
-      });
-    }
-
-    for (const row of portalRows) {
-      if (ticketClientMap.get(row.ticketNumber) !== clientId) continue;
-      const date = this.formatDateOnly(row.appointmentDate);
-      if (!date) continue;
-      const ref = row.id;
-      const q = questionByRef.get(`portal:${ref}`);
-      const minutes = this.minutesFromTimes(row.initTime, row.endTime);
-      const desc = this.mapDescription(row.description);
-      entries.push({
-        source: 'portal',
-        ref,
-        ticketNumber: row.ticketNumber,
-        date,
-        initTime: row.initTime,
-        endTime: row.endTime,
-        minutes,
-        hoursFormatted: this.formatMinutes(minutes),
-        userName: row.creator.name,
-        ...desc,
-        serviceName: row.serviceName,
-        question: q
-          ? {
-              id: q.id,
-              status: q.status,
-              message: q.message,
-              adminResponse: q.adminResponse,
-              adminResponseCode: q.adminResponseCode,
-              abonado: q.abonado,
-              createdAt: q.createdAt.toISOString(),
-              respondedAt: q.respondedAt?.toISOString() ?? null,
-            }
-          : null,
-      });
-    }
 
     const pendingByDate = new Map<string, number>();
     for (const q of questions) {

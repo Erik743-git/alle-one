@@ -16,6 +16,7 @@ import {
   CONTRACT_USAGE_HIGH_PCT,
   CONTRACT_USAGE_LOW_PCT,
 } from './mailbox.types';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 
 type TifluxUserMap = Map<string, { id: number; userId: string }>;
 
@@ -482,29 +483,37 @@ export class MailboxService {
   ): Promise<MailboxDraft[]> {
     const drafts: MailboxDraft[] = [];
     const isAdmin = user.role === UserRole.ADMIN;
+    const ticketsTable = isTicketsPortalCanonical()
+      ? 'portal_tickets'
+      : 'tiflux.tickets';
+    const appointmentsTable = isTicketsPortalCanonical()
+      ? 'portal_ticket_appointments'
+      : 'tiflux.ticket_appointments';
 
     const noApptRows =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           ticket_number: number;
           title: string | null;
           responsible_external_id: number | null;
           created_at_source: Date | null;
         }>
-      >`
+      >(
+        `
         SELECT t.ticket_number, t.title, t.responsible_external_id, t.created_at_source
-        FROM tiflux.tickets t
+        FROM ${ticketsTable} t
         WHERE COALESCE(t.is_closed, false) = false
           AND t.responsible_external_id IS NOT NULL
           AND t.created_at_source IS NOT NULL
           AND t.created_at_source < NOW() - INTERVAL '24 hours'
           AND NOT EXISTS (
-            SELECT 1 FROM tiflux.ticket_appointments a
+            SELECT 1 FROM ${appointmentsTable} a
             WHERE a.ticket_number = t.ticket_number
           )
         ORDER BY t.created_at_source ASC
         LIMIT 100
-      `) ?? [];
+      `,
+      )) ?? [];
 
     for (const row of noApptRows) {
       const portalUserId = this.portalUserIdForTiflux(
@@ -525,22 +534,24 @@ export class MailboxService {
 
     if (isAdmin) {
       const stalled48 =
-        (await this.prisma.$queryRaw<
+        (await this.prisma.$queryRawUnsafe<
           Array<{
             ticket_number: number;
             title: string | null;
             updated_at_source: Date | null;
           }>
-        >`
+        >(
+          `
           SELECT t.ticket_number, t.title, t.updated_at_source
-          FROM tiflux.tickets t
+          FROM ${ticketsTable} t
           WHERE COALESCE(t.is_closed, false) = false
             AND t.updated_at_source IS NOT NULL
             AND t.updated_at_source < NOW() - INTERVAL '48 hours'
             AND t.updated_at_source >= NOW() - INTERVAL '7 days'
           ORDER BY t.updated_at_source ASC
           LIMIT 80
-        `) ?? [];
+        `,
+        )) ?? [];
 
       for (const row of stalled48) {
         drafts.push({
@@ -554,21 +565,23 @@ export class MailboxService {
       }
 
       const stalled7d =
-        (await this.prisma.$queryRaw<
+        (await this.prisma.$queryRawUnsafe<
           Array<{
             ticket_number: number;
             title: string | null;
             updated_at_source: Date | null;
           }>
-        >`
+        >(
+          `
           SELECT t.ticket_number, t.title, t.updated_at_source
-          FROM tiflux.tickets t
+          FROM ${ticketsTable} t
           WHERE COALESCE(t.is_closed, false) = false
             AND t.updated_at_source IS NOT NULL
             AND t.updated_at_source < NOW() - INTERVAL '7 days'
           ORDER BY t.updated_at_source ASC
           LIMIT 80
-        `) ?? [];
+        `,
+        )) ?? [];
 
       for (const row of stalled7d) {
         drafts.push({

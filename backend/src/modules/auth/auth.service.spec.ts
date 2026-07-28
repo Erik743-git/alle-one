@@ -21,11 +21,21 @@ describe('AuthService.login', () => {
     }),
   };
 
+  const presence = {
+    touch: jest.fn(),
+  };
+
+  const totp = {
+    assertValidCode: jest.fn(),
+  };
+
   const service = new AuthService(
     prisma as never,
     jwtService as never,
     {} as never,
     permissionsService as never,
+    presence as never,
+    totp as never,
   );
 
   beforeEach(() => {
@@ -45,6 +55,7 @@ describe('AuthService.login', () => {
       passwordHash: hash,
       deletedAt: null,
       status: UserStatus.ACTIVE,
+      totpEnabledAt: null,
       company: { name: 'Empresa' },
     });
 

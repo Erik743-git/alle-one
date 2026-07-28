@@ -21,6 +21,7 @@ import {
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import {
   buildDayTimeline,
@@ -35,6 +36,7 @@ import {
   RendimentoOvertimeBadge,
   RendimentoOvertimeServiceLine,
 } from "@/components/rendimento/rendimento-overtime-badge";
+import { RendimentoEntryMedia, rendimentoEntryPlainText } from "@/components/rendimento/rendimento-entry-media";
 import { Button } from "@/components/ui/button";
 import {
   rendimentoOvertimeCardClass,
@@ -116,6 +118,7 @@ export function RendimentoCalendar({
   onViewChange,
   onReferenceDateChange,
 }: RendimentoCalendarProps) {
+  const router = useRouter();
   const daysByDate = React.useMemo(() => dayMap(timesheet), [timesheet]);
 
   function navigate(delta: -1 | 1) {
@@ -535,8 +538,10 @@ export function RendimentoCalendar({
                 ) : (
                   <li
                     key={item.entry.id}
+                    role="link"
+                    tabIndex={0}
                     className={cn(
-                      "flex flex-col gap-1 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between",
+                      "flex cursor-pointer flex-col gap-1 rounded-xl border px-4 py-3 transition-colors hover:bg-muted/35 sm:flex-row sm:items-center sm:justify-between",
                       (() => {
                         const overtime = resolveRendimentoOvertimeDisplay(item.entry);
                         return overtime.kind
@@ -544,23 +549,41 @@ export function RendimentoCalendar({
                           : "border-border bg-muted/20";
                       })(),
                     )}
+                    onClick={() =>
+                      router.push(`/tickets/${item.entry.ticketNumber}`)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        router.push(`/tickets/${item.entry.ticketNumber}`);
+                      }
+                    }}
                   >
                     <div>
-                      <p className="font-semibold text-foreground">
-                        {item.entry.initTime?.slice(0, 5) ?? "—"} –{" "}
-                        {item.entry.endTime?.slice(0, 5) ?? "—"}
-                        <span className="ml-2">
-                          <RendimentoOvertimeBadge entry={item.entry} />
+                      <p className="flex items-center gap-2 font-semibold text-foreground">
+                        <span className="min-w-0">
+                          {item.entry.initTime?.slice(0, 5) ?? "—"} –{" "}
+                          {item.entry.endTime?.slice(0, 5) ?? "—"}
+                          <span className="ml-2">
+                            <RendimentoOvertimeBadge entry={item.entry} />
+                          </span>
                         </span>
+                        <RendimentoEntryMedia
+                          iconOnly
+                          ticketNumber={item.entry.ticketNumber}
+                          description={item.entry.description}
+                          hasMedia={item.entry.hasMedia}
+                          portalAppointmentId={item.entry.portalAppointmentId}
+                        />
                       </p>
                       <p className="text-sm text-muted-foreground">
                         Ticket #{item.entry.ticketNumber}
                         {item.entry.clientName ? ` · ${item.entry.clientName}` : ""}
                       </p>
                       <RendimentoOvertimeServiceLine entry={item.entry} />
-                      {item.entry.description ? (
-                        <p className="mt-1 text-sm text-foreground/80">
-                          {item.entry.description}
+                      {rendimentoEntryPlainText(item.entry.description) ? (
+                        <p className="mt-1 text-sm text-foreground/80 line-clamp-2">
+                          {rendimentoEntryPlainText(item.entry.description)}
                         </p>
                       ) : null}
                       {item.entry.debitProtected ? (
@@ -572,12 +595,18 @@ export function RendimentoCalendar({
                       item.entry.dayEventId &&
                       item.entry.dayEventStatus === "PENDING" &&
                       resolveRendimentoOvertimeDisplay(item.entry).kind ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
+                        <div
+                          className="mt-2 flex flex-wrap gap-1"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           {onApproveDayEvent ? (
                             <button
                               type="button"
                               className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-emerald-500"
-                              onClick={() => onApproveDayEvent(item.entry.dayEventId!)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onApproveDayEvent(item.entry.dayEventId!);
+                              }}
                             >
                               Aprovar {resolveRendimentoOvertimeDisplay(item.entry).kind === "PLANTAO" ? "plantão" : "HE"}
                             </button>
@@ -586,7 +615,10 @@ export function RendimentoCalendar({
                             <button
                               type="button"
                               className="rounded bg-rose-600 px-2 py-0.5 text-[11px] font-bold text-white hover:bg-rose-500"
-                              onClick={() => onRejectDayEvent(item.entry.dayEventId!)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onRejectDayEvent(item.entry.dayEventId!);
+                              }}
                             >
                               Não aprovar
                             </button>

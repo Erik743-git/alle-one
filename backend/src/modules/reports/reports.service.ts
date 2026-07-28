@@ -28,6 +28,7 @@ import {
 } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 import {
   ALL_COMPANIES_REPORT_ID,
   ReportsInventarioService,
@@ -617,33 +618,44 @@ export class ReportsService {
       updatedAtSource: string | null;
     }>;
   }> {
+    const ticketsTable = isTicketsPortalCanonical()
+      ? 'portal_tickets'
+      : 'tiflux.tickets';
+    const startIso = params.start.toISOString();
+    const endIso = params.end.toISOString();
+
     const [summary] =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           opened_in_period: number;
           closed_in_period: number;
           open_now_total: number;
           tickets_base_total: number;
         }>
-      >`
+      >(
+        `
       select
         count(*) filter (
           where t.created_at_source is not null
-            and t.created_at_source between ${params.start.toISOString()}::timestamptz and ${params.end.toISOString()}::timestamptz
+            and t.created_at_source between $2::timestamptz and $3::timestamptz
         )::int as opened_in_period,
         count(*) filter (
           where coalesce(t.is_closed, false) = true
             and t.updated_at_source is not null
-            and t.updated_at_source between ${params.start.toISOString()}::timestamptz and ${params.end.toISOString()}::timestamptz
+            and t.updated_at_source between $2::timestamptz and $3::timestamptz
         )::int as closed_in_period,
         count(*) filter (where coalesce(t.is_closed, false) = false)::int as open_now_total,
         count(*)::int as tickets_base_total
-      from tiflux.tickets t
-      where t.client_external_id = ${params.tifluxClientId}
-    `) ?? [];
+      from ${ticketsTable} t
+      where t.client_external_id = $1
+    `,
+        params.tifluxClientId,
+        startIso,
+        endIso,
+      )) ?? [];
 
     const openRows =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           ticket_number: number;
           title: string | null;
@@ -652,7 +664,8 @@ export class ReportsService {
           status_name: string | null;
           updated_at_source: string | null;
         }>
-      >`
+      >(
+        `
       select
         t.ticket_number,
         t.title,
@@ -660,11 +673,13 @@ export class ReportsService {
         t.desk_name,
         t.status_name,
         t.updated_at_source::text as updated_at_source
-      from tiflux.tickets t
-      where t.client_external_id = ${params.tifluxClientId}
+      from ${ticketsTable} t
+      where t.client_external_id = $1
         and coalesce(t.is_closed, false) = false
       order by t.updated_at_source desc nulls last, t.ticket_number asc
-    `) ?? [];
+    `,
+        params.tifluxClientId,
+      )) ?? [];
 
     return {
       openedInPeriod: Number(summary?.opened_in_period) || 0,
@@ -1696,21 +1711,59 @@ export class ReportsService {
     const endDateOnly = toDateOnlyISO(params.end);
     const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
 
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          user_name: string | null;
-          ticket_number: number | null;
-          title: string | null;
-          description: string | null;
-          appointment_date: string;
-          init_time: string | null;
-          end_time: string | null;
-          client_name: string | null;
-          valorization_raw: unknown | null;
-          created_by_way_of: string | null;
-        }>
-      >`
+    const rows = isTicketsPortalCanonical()
+      ? ((await this.prisma.$queryRaw<
+          Array<{
+            user_name: string | null;
+            ticket_number: number | null;
+            title: string | null;
+            description: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            client_name: string | null;
+            valorization_raw: unknown | null;
+            created_by_way_of: string | null;
+          }>
+        >`
+        select
+          u.name as user_name,
+          a.ticket_number,
+          coalesce(t.title, a.description, '') as title,
+          coalesce(a.description, '') as description,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          t.client_name,
+          jsonb_build_object('name', a.service_name) as valorization_raw,
+          t.created_by_way_of
+        from portal_ticket_appointments a
+        inner join portal_tickets t on t.ticket_number = a.ticket_number
+        left join users u on u.id = a.created_by
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+          and u.name is not null
+          and trim(u.name) <> ''
+          and (
+            ${collaboratorFilter.portalUserId}::text is null
+            or a.created_by = ${collaboratorFilter.portalUserId}::text
+          )
+        order by a.appointment_date asc, u.name asc, a.ticket_number asc, a.id asc
+      `) ?? [])
+      : ((await this.prisma.$queryRaw<
+          Array<{
+            user_name: string | null;
+            ticket_number: number | null;
+            title: string | null;
+            description: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            client_name: string | null;
+            valorization_raw: unknown | null;
+            created_by_way_of: string | null;
+          }>
+        >`
         select
           a.user_name,
           a.ticket_number,
@@ -1742,7 +1795,7 @@ export class ReportsService {
             )
           )
         order by a.appointment_date::date asc, a.user_name asc, a.ticket_number asc, a.external_id asc
-      `) ?? [];
+      `) ?? []);
 
     const users = await this.prisma.user.findMany({
       where: { deletedAt: null },
@@ -1814,15 +1867,46 @@ export class ReportsService {
     );
 
     // 1) Tentativa 100% banco (rápida)
-    const dbRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          day: string;
-          user_name: string | null;
-          minutes: number;
-          client_external_id: number;
-        }>
-      >`
+    const dbRows = isTicketsPortalCanonical()
+      ? ((await this.prisma.$queryRaw<
+          Array<{
+            day: string;
+            user_name: string | null;
+            minutes: number;
+            client_external_id: number;
+          }>
+        >`
+        select
+          a.appointment_date::date::text as day,
+          u.name as user_name,
+          t.client_external_id,
+          sum(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from (a.end_time::time + interval '24 hours' - a.init_time::time)) / 60
+            end
+          )::int as minutes
+        from portal_ticket_appointments a
+        inner join portal_tickets t on t.ticket_number = a.ticket_number
+        left join users u on u.id = a.created_by
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+          and (
+            ${collaboratorFilter.portalUserId}::text is null
+            or a.created_by = ${collaboratorFilter.portalUserId}::text
+          )
+        group by a.appointment_date::date, u.name, t.client_external_id
+        order by a.appointment_date::date asc, u.name asc
+      `) ?? [])
+      : ((await this.prisma.$queryRaw<
+          Array<{
+            day: string;
+            user_name: string | null;
+            minutes: number;
+            client_external_id: number;
+          }>
+        >`
         select
           a.appointment_date::date::text as day,
           a.user_name,
@@ -1853,7 +1937,7 @@ export class ReportsService {
           )
         group by a.appointment_date::date, a.user_name, t.client_external_id
         order by a.appointment_date::date asc, a.user_name asc
-      `) ?? [];
+      `) ?? []);
 
     if (dbRows.length) {
       return dbRows.map((r) => ({
@@ -1863,6 +1947,11 @@ export class ReportsService {
         company:
           companyNameByTifluxId.get(Number(r.client_external_id)) ?? 'Empresa',
       }));
+    }
+
+    // Canonical: sem fallback API TiFlux
+    if (isTicketsPortalCanonical()) {
+      return [];
     }
 
     // 2) Fallback: chama API TiFlux e agrega em memória (e as chamadas ficam cacheadas em `external_api_cache`).
@@ -1996,12 +2085,17 @@ export class ReportsService {
   }
 
   private async resolveCollaboratorAppointmentFilter(userId?: string | null): Promise<{
+    portalUserId: string | null;
     tifluxUserExternalId: number | null;
     attendantName: string | null;
   }> {
     const id = userId?.trim();
     if (!id) {
-      return { tifluxUserExternalId: null, attendantName: null };
+      return {
+        portalUserId: null,
+        tifluxUserExternalId: null,
+        attendantName: null,
+      };
     }
 
     const collaborators = await this.rendimento.listCollaboratorsForSelect({
@@ -2016,13 +2110,21 @@ export class ReportsService {
     const attendantName =
       match.tifluxUserName?.trim() || match.name?.trim() || null;
 
-    if (!tifluxUserExternalId && !attendantName) {
+    if (
+      !isTicketsPortalCanonical() &&
+      !tifluxUserExternalId &&
+      !attendantName
+    ) {
       throw new BadRequestException(
         `Colaborador "${match.name}" sem vínculo com TiFlux para filtrar apontamentos.`,
       );
     }
 
-    return { tifluxUserExternalId, attendantName };
+    return {
+      portalUserId: match.id,
+      tifluxUserExternalId,
+      attendantName,
+    };
   }
 
   private async getRendimentoAttendantSummaries(params: {
@@ -2047,18 +2149,57 @@ export class ReportsService {
     const endDateOnly = toDateOnlyISO(params.end);
     const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
 
-    const rawRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          appointment_id: number;
-          user_name: string | null;
-          appointment_date: string;
-          init_time: string | null;
-          end_time: string | null;
-          minutes: number;
-          valorization_raw: unknown | null;
-        }>
-      >`
+    const rawRows = isTicketsPortalCanonical()
+      ? ((await this.prisma.$queryRaw<
+          Array<{
+            appointment_id: number;
+            user_name: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            minutes: number;
+            valorization_raw: unknown | null;
+          }>
+        >`
+        select
+          coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
+          u.name as user_name,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          jsonb_build_object('name', a.service_name) as valorization_raw,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from portal_ticket_appointments a
+        inner join portal_tickets t on t.ticket_number = a.ticket_number
+        left join users u on u.id = a.created_by
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+          and u.name is not null
+          and trim(u.name) <> ''
+          and (
+            ${collaboratorFilter.portalUserId}::text is null
+            or a.created_by = ${collaboratorFilter.portalUserId}::text
+          )
+      `) ?? [])
+      : ((await this.prisma.$queryRaw<
+          Array<{
+            appointment_id: number;
+            user_name: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            minutes: number;
+            valorization_raw: unknown | null;
+          }>
+        >`
         select
           a.external_id as appointment_id,
           a.user_name,
@@ -2094,7 +2235,7 @@ export class ReportsService {
               and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
             )
           )
-      `) ?? [];
+      `) ?? []);
 
     const byAttendant = new Map<
       string,

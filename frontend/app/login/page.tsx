@@ -7,11 +7,13 @@ import { useSearchParams } from "next/navigation";
 import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   ArrowUpRight,
   Clock,
   Eye,
   EyeOff,
   Loader2,
+  Lock,
   Mail,
   MapPin,
   Phone,
@@ -31,6 +33,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { setSession, type AuthUser } from "@/lib/session";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
@@ -81,6 +84,11 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
     "Não foi possível obter o e-mail da conta Microsoft. Tente outra conta ou use senha.",
 };
 
+const SESSION_REASON_MESSAGES: Record<string, string> = {
+  expired: "Sessão expirada. Faça login novamente.",
+  idle: "Sessão encerrada por inatividade. Faça login novamente.",
+};
+
 function buildOAuthUrl(provider: "google" | "microsoft") {
   const base = getBrowserApiBase();
   const root = base || (typeof window !== "undefined" ? window.location.origin : API_URL.replace(/\/$/, ""));
@@ -104,6 +112,10 @@ function LoginPageContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [requires2fa, setRequires2fa] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(false);
+  const [trustDays, setTrustDays] = useState(14);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [supportForm, setSupportForm] = useState({
@@ -125,11 +137,18 @@ function LoginPageContent() {
 
   useEffect(() => {
     const oauthError = searchParams.get("error");
-    if (!oauthError) return;
-    setErro(
-      OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.oauth_failed,
-    );
-    router.replace("/login", { scroll: false });
+    const sessionReason = searchParams.get("reason");
+    if (oauthError) {
+      setErro(
+        OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.oauth_failed,
+      );
+      router.replace("/login", { scroll: false });
+      return;
+    }
+    if (sessionReason && SESSION_REASON_MESSAGES[sessionReason]) {
+      setErro(SESSION_REASON_MESSAGES[sessionReason]);
+      router.replace("/login", { scroll: false });
+    }
   }, [searchParams, router]);
 
   useEffect(() => {
@@ -207,6 +226,11 @@ function LoginPageContent() {
       return;
     }
 
+    if (requires2fa && !totpCode.trim()) {
+      setErro("Informe o código 2FA do aplicativo.");
+      return;
+    }
+
     try {
       setCarregando(true);
 
@@ -219,14 +243,30 @@ function LoginPageContent() {
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password: senha,
+          ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
+          ...(requires2fa && rememberDevice ? { rememberDevice: true } : {}),
         }),
       });
 
-      const data = (await response.json()) as LoginResponse | ErrorResponse;
+      const data = (await response.json()) as LoginResponse | ErrorResponse & {
+        requires2fa?: boolean;
+        trustDays?: number;
+      };
 
       if (!response.ok) {
         const mensagem =
           Array.isArray(data.message) ? data.message[0] : data.message;
+        if (
+          mensagem === "2FA_REQUIRED" ||
+          (data as { requires2fa?: boolean }).requires2fa
+        ) {
+          setRequires2fa(true);
+          setTotpCode("");
+          const days = (data as { trustDays?: number }).trustDays;
+          if (typeof days === "number" && days > 0) setTrustDays(days);
+          setErro("");
+          return;
+        }
 
         setErro(mensagem || "Não foi possível realizar o login.");
         return;
@@ -260,6 +300,13 @@ function LoginPageContent() {
     } finally {
       setCarregando(false);
     }
+  }
+
+  function backToCredentials() {
+    setRequires2fa(false);
+    setTotpCode("");
+    setRememberDevice(false);
+    setErro("");
   }
 
   function handleSupportSubmit(e: FormEvent<HTMLFormElement>) {
@@ -312,158 +359,243 @@ function LoginPageContent() {
               <AlleOneTitle />
 
               <p className="font-sans text-sm font-medium text-slate-300 sm:text-[15px]">
-                Acesse o portal da sua empresa
+                {requires2fa
+                  ? "Confirme o código do autenticador"
+                  : "Acesse o portal da sua empresa"}
               </p>
             </div>
           </CardHeader>
 
           <CardContent className="px-5 pb-5 pt-1 sm:px-7 sm:pb-7">
             <form onSubmit={handleLogin} className="space-y-4 sm:space-y-5">
-              <div className="space-y-2">
-                <label className="font-sans text-sm font-bold text-slate-200">
-                  E-mail
-                </label>
+              {requires2fa ? (
+                <>
+                  <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#020b1b]/70 px-3 py-2.5">
+                    <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#12b5d9]/15 text-[#12b5d9]">
+                      <Lock size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white">
+                        {email.trim().toLowerCase()}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        Senha validada · falta o 2FA
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={backToCredentials}
+                      disabled={carregando}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+                    >
+                      <ArrowLeft size={12} />
+                      Voltar
+                    </button>
+                  </div>
 
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="seu.email@empresa.com"
-                  disabled={carregando}
-                  className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:h-12 sm:text-[15px]"
-                />
-              </div>
+                  <div className="space-y-2">
+                    <label className="font-sans text-sm font-bold text-slate-200">
+                      Código 2FA
+                    </label>
+                    <Input
+                      value={totpCode}
+                      onChange={(e) => setTotpCode(e.target.value)}
+                      placeholder="000000"
+                      disabled={carregando}
+                      autoFocus
+                      autoComplete="one-time-code"
+                      inputMode="numeric"
+                      maxLength={8}
+                      className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-center text-lg tracking-[0.35em] text-white placeholder:tracking-[0.35em] placeholder:text-slate-500 sm:h-12"
+                    />
+                    <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-[#020b1b]/60 px-3.5 py-2.5 transition hover:border-[#12b5d9]/40 hover:bg-[#020b1b]/80">
+                      <FlipCheckbox
+                        checked={rememberDevice}
+                        onChange={(e) => setRememberDevice(e.target.checked)}
+                        disabled={carregando}
+                        aria-label={`Não pedir código neste dispositivo por ${trustDays} dias`}
+                        className="
+                          [&_[data-face]]:border-white/30
+                          [&_[data-face]]:bg-[#061525]
+                          [&_[data-face]]:shadow-none
+                          [&_[data-empty]]:bg-[#061525]
+                          [&_[data-empty]]:shadow-none
+                          [&_[data-check]]:border-transparent
+                          [&_[data-check]]:bg-[#12b5d9]
+                          [&_[data-check]]:text-[#04101f]
+                          [&_[data-check]]:shadow-none
+                          [&:has(input:checked)_[data-face]]:border-[#12b5d9]
+                        "
+                      />
+                      <span className="font-sans text-xs leading-snug text-slate-300 sm:text-[13px]">
+                        Não pedir código neste dispositivo por {trustDays} dias
+                      </span>
+                    </label>
+                  </div>
 
-              <div className="space-y-2">
-                <label className="font-sans text-sm font-bold text-slate-200">
-                  Senha
-                </label>
+                  {erro ? (
+                    <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">
+                      {erro}
+                    </div>
+                  ) : null}
 
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    placeholder="Digite sua senha"
+                  <Button
+                    type="submit"
                     disabled={carregando}
-                    className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-sm text-white placeholder:text-slate-500 sm:h-12 sm:text-[15px]"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={carregando}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-white"
+                    className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
+                    {carregando ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Verificando...
+                      </>
+                    ) : (
+                      "Confirmar e entrar"
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="font-sans text-sm font-bold text-slate-200">
+                      E-mail
+                    </label>
 
-              {erro ? (
-                <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">
-                  {erro}
-                </div>
-              ) : null}
-
-              <div className="flex items-center justify-between gap-3 text-xs sm:text-sm">
-                <Link
-                  href="/primeiro-acesso"
-                  className="font-sans font-semibold text-[#12b5d9] transition hover:text-[#5fd5ee]"
-                >
-                  Primeiro acesso
-                </Link>
-
-                <Link
-                  href="/esqueci-senha"
-                  className="font-sans font-semibold text-slate-300 transition hover:text-white"
-                >
-                  Esqueci minha senha
-                </Link>
-              </div>
-
-              <Button
-                type="submit"
-                disabled={carregando}
-                className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
-              >
-                {carregando ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Entrando...
-                  </>
-                ) : (
-                  "Entrar"
-                )}
-              </Button>
-
-              {oauthProvidersLoading ? (
-                <div
-                  className="space-y-3 pt-1"
-                  aria-hidden
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-white/10" />
-                    <span className="text-xs font-medium text-slate-500">
-                      Carregando login social…
-                    </span>
-                    <div className="h-px flex-1 bg-white/10" />
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
-                    <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
-                  </div>
-                </div>
-              ) : null}
-
-              {!oauthProvidersLoading &&
-              (oauthProviders.google || oauthProviders.microsoft) ? (
-                <div className="space-y-3 pt-1">
-                  <div className="flex items-center gap-3">
-                    <div className="h-px flex-1 bg-white/10" />
-                    <span className="text-xs font-medium text-slate-400">
-                      ou continue com
-                    </span>
-                    <div className="h-px flex-1 bg-white/10" />
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="seu.email@empresa.com"
+                      disabled={carregando}
+                      className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:h-12 sm:text-[15px]"
+                    />
                   </div>
 
-                  <p className="text-center text-xs text-slate-400">
-                    Google e Microsoft são independentes do login com senha. Só
-                    entram contas já cadastradas no portal.
-                  </p>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {oauthProviders.google ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={carregando}
-                        onClick={() => {
-                          startOAuth("google");
-                        }}
-                        className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="font-sans text-sm font-bold text-slate-200">
+                        Senha
+                      </label>
+                      <Link
+                        href="/esqueci-senha"
+                        className="font-sans text-xs font-semibold text-slate-400 transition hover:text-white"
                       >
-                        <GoogleIcon className="h-5 w-5 shrink-0" />
-                        Google
-                      </Button>
-                    ) : null}
-                    {oauthProviders.microsoft ? (
-                      <Button
-                        type="button"
-                        variant="outline"
+                        Esqueci a senha
+                      </Link>
+                    </div>
+
+                    <div className="relative">
+                      <Input
+                        type={showPassword ? "text" : "password"}
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                        placeholder="Digite sua senha"
                         disabled={carregando}
-                        onClick={() => {
-                          startOAuth("microsoft");
-                        }}
-                        className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-sm text-white placeholder:text-slate-500 sm:h-12 sm:text-[15px]"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={carregando}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-white"
                       >
-                        <MicrosoftIcon className="h-5 w-5 shrink-0" />
-                        Microsoft
-                      </Button>
-                    ) : null}
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ) : null}
+
+                  {erro ? (
+                    <div className="alle-alert-error rounded-xl px-3 py-2 text-sm">
+                      {erro}
+                    </div>
+                  ) : null}
+
+                  <Button
+                    type="submit"
+                    disabled={carregando}
+                    className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
+                  >
+                    {carregando ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Entrando...
+                      </>
+                    ) : (
+                      "Entrar"
+                    )}
+                  </Button>
+
+                  <div className="text-center text-xs sm:text-sm">
+                    <Link
+                      href="/primeiro-acesso"
+                      className="font-sans font-semibold text-[#12b5d9] transition hover:text-[#5fd5ee]"
+                    >
+                      Primeiro acesso
+                    </Link>
+                  </div>
+
+                  {oauthProvidersLoading ? (
+                    <div className="space-y-3 pt-1" aria-hidden>
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-white/10" />
+                        <span className="text-xs font-medium text-slate-500">
+                          Carregando…
+                        </span>
+                        <div className="h-px flex-1 bg-white/10" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
+                        <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {!oauthProvidersLoading &&
+                  (oauthProviders.google || oauthProviders.microsoft) ? (
+                    <div className="space-y-2.5 pt-1">
+                      <div className="flex items-center gap-3">
+                        <div className="h-px flex-1 bg-white/10" />
+                        <span className="text-xs font-medium text-slate-400">
+                          ou
+                        </span>
+                        <div className="h-px flex-1 bg-white/10" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {oauthProviders.google ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={carregando}
+                            onClick={() => {
+                              startOAuth("google");
+                            }}
+                            className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                          >
+                            <GoogleIcon className="h-5 w-5 shrink-0" />
+                            Google
+                          </Button>
+                        ) : null}
+                        {oauthProviders.microsoft ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={carregando}
+                            onClick={() => {
+                              startOAuth("microsoft");
+                            }}
+                            className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                          >
+                            <MicrosoftIcon className="h-5 w-5 shrink-0" />
+                            Microsoft
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              )}
             </form>
 
             <Dialog>

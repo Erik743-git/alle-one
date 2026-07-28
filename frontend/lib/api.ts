@@ -1,5 +1,5 @@
 import { API_URL } from "@/lib/env";
-import { clearSession } from "@/lib/session";
+import { endSession } from "@/lib/session";
 
 export { API_URL };
 
@@ -74,10 +74,7 @@ export async function apiRequest<T>(
   });
 
   if (response.status === 401) {
-    clearSession();
-    if (typeof window !== "undefined") {
-      window.location.replace("/login");
-    }
+    void endSession("expired");
     throw new Error("Sessão expirada. Faça login novamente.");
   }
 

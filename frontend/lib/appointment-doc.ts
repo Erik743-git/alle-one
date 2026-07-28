@@ -49,3 +49,46 @@ export function appointmentDescriptionToPlainText(description: string): string {
   const doc = parseAppointmentDoc(description);
   return doc ? appointmentDocToPlainText(doc) : description;
 }
+
+export function looksLikeHtml(value: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(value);
+}
+
+/** Remove tags HTML (e-mail Outlook, etc.) para texto editável. */
+export function stripHtmlToPlain(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Texto seguro para o modal de edição (sem HTML cru / doc Alle One).
+ * Imagens embutidas viram marcador curto.
+ */
+export function normalizeTicketDescriptionForEdit(
+  description: string | null | undefined,
+): string {
+  const raw = description?.trim() ?? "";
+  if (!raw) return "";
+  if (isAppointmentDoc(raw)) {
+    return appointmentDescriptionToPlainText(raw);
+  }
+  if (looksLikeHtml(raw)) {
+    const plain = stripHtmlToPlain(raw);
+    // data: URLs gigantes às vezes sobram como lixo após strip parcial
+    return plain
+      .replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, "[imagem]")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+  return raw;
+}

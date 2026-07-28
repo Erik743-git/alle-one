@@ -7,6 +7,8 @@ export type DetectedUploadKind =
   | 'gif'
   | 'webp'
   | 'zip'
+  | 'rar'
+  | '7z'
   | 'ole'
   | 'text'
   | 'unknown';
@@ -52,6 +54,14 @@ export function detectUploadKind(buffer: Buffer | undefined | null): DetectedUpl
   // ZIP / OOXML (docx, xlsx, …)
   if (startsWithBytes(buffer, [0x50, 0x4b, 0x03, 0x04]) || startsWithBytes(buffer, [0x50, 0x4b, 0x05, 0x06])) {
     return 'zip';
+  }
+  // RAR 1.5+ / RAR5 ("Rar!")
+  if (startsWithBytes(buffer, [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07])) {
+    return 'rar';
+  }
+  // 7z
+  if (startsWithBytes(buffer, [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c])) {
+    return '7z';
   }
   // OLE Compound File (.doc, .xls legado)
   if (startsWithBytes(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
@@ -106,6 +116,18 @@ const MIME_TO_KINDS: Array<{ match: (mime: string) => boolean; kinds: DetectedUp
       m === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
       m.startsWith('application/vnd.openxmlformats-officedocument'),
     kinds: ['zip'],
+  },
+  {
+    match: (m) =>
+      m === 'application/vnd.rar' ||
+      m === 'application/x-rar-compressed' ||
+      m === 'application/x-rar',
+    kinds: ['rar'],
+  },
+  {
+    match: (m) =>
+      m === 'application/x-7z-compressed' || m === 'application/7z',
+    kinds: ['7z'],
   },
   {
     match: (m) =>

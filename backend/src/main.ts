@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { initSentry } from './common/sentry/sentry';
 
 async function listenWithFallback(
   app: { listen: (port: number) => Promise<unknown> },
@@ -34,6 +35,7 @@ async function listenWithFallback(
 }
 
 async function bootstrap() {
+  initSentry();
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';
 

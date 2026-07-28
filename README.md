@@ -41,6 +41,9 @@ Versões publicadas com tags anotadas `v0.x.y`. Ao enviar uma tag, o workflow [`
 
 | Versão | Destaques |
 |--------|-----------|
+| **v0.6.0** | Pré-tickets (Graph), 2FA TOTP, cutover portal, rendimento com anexos |
+| **v0.5.0** | GMUD PDF, GMUD no ticket, apontamentos com imagem, outbox TiFlux |
+| **v0.4.0** | V2 Tickets + Apontamentos empresarial |
 | **v0.3.0** | UX modo claro, GMUD data/hora, mesa Consult, selects Zabbix/TiFlux com busca |
 | **v0.2.0** | Dashboard Zabbix, relatório Tipo 4, date picker |
 | **v0.1.0** | Monorepo inicial, módulos base, CI |

@@ -79,6 +79,13 @@ export default function AdminPage() {
       href: "/admin/ticket",
     },
     {
+      name: "E-mail",
+      description:
+        "Caixa Microsoft Graph, direcionamentos e abertura de pré-tickets por e-mail.",
+      icon: FileText,
+      href: "/admin/email",
+    },
+    {
       name: "Auditoria",
       description:
         "Pesquise ações administrativas: criação, edição, exclusão e aprovações.",

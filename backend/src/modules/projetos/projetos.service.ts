@@ -1112,16 +1112,40 @@ export class ProjetosService {
       throw new NotFoundException('Empresa não encontrada.');
     }
 
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{ ticket_number: number; client_external_id: number | null }>
-      >`
-        SELECT t.ticket_number, t.client_external_id
-        FROM tiflux.tickets t
-        WHERE t.ticket_number = ${ticketNumber}
-        LIMIT 1
-      `) ?? [];
-    const ticket = rows[0];
+    let ticket: {
+      ticket_number: number;
+      client_external_id: number | null;
+    } | null = null;
+
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+      select: { ticketNumber: true, clientExternalId: true },
+    });
+    if (portal) {
+      ticket = {
+        ticket_number: portal.ticketNumber,
+        client_external_id: portal.clientExternalId,
+      };
+    } else {
+      try {
+        const rows =
+          (await this.prisma.$queryRaw<
+            Array<{
+              ticket_number: number;
+              client_external_id: number | null;
+            }>
+          >`
+            SELECT t.ticket_number, t.client_external_id
+            FROM tiflux.tickets t
+            WHERE t.ticket_number = ${ticketNumber}
+            LIMIT 1
+          `) ?? [];
+        ticket = rows[0] ?? null;
+      } catch {
+        ticket = null;
+      }
+    }
+
     if (!ticket) {
       throw new BadRequestException(`Ticket #${ticketNumber} não encontrado.`);
     }

@@ -33,8 +33,12 @@ Ver matriz completa: [PERMISSIONS_MATRIX.md](./PERMISSIONS_MATRIX.md).
 | Colaborador/PJ apontar com permissão | ✅ |
 | CLIENT listar/detalhar tickets da empresa | ✅ |
 | UI `frontend/app/tickets/` | ✅ |
+| Pré-tickets (Graph) + abrir ticket | ✅ |
+| Edição ticket + anexos (remover/HTML e-mail) | ✅ |
+| Linha clicável na lista de tickets | ✅ |
 | `portal_tickets` + dual-write/dual-read (flags) | ✅ |
 | ETL `tiflux.tickets` → `portal_tickets` | ✅ |
+| Onda 1: create/list/appoint portal-only (`TICKETS_TIFLUX_WRITE=false` + `TICKETS_PORTAL_CANONICAL=true`) | ✅ |
 
 ---
 

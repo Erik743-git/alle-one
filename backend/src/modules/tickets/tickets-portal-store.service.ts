@@ -29,12 +29,48 @@ export type UpsertPortalTicketInput = {
 export class TicketsPortalStoreService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Próximo número para tickets criados só no portal. */
+  /**
+   * Próximo número = MAX(ticket_number)+1 entre tickets “normais” (< 1e9),
+   * para continuar a sequência após o último chamado (TiFlux/portal).
+   * A faixa ≥ 1000000000 era legado do cutover e não deve pular a sequência.
+   */
   async allocatePortalTicketNumber(): Promise<number> {
     const rows = await this.prisma.$queryRaw<Array<{ n: bigint | number }>>`
-      SELECT nextval('portal_ticket_number_seq') AS n
+      SELECT COALESCE(
+        (
+          SELECT MAX(ticket_number)
+          FROM portal_tickets
+          WHERE ticket_number < 1000000000
+        ),
+        0
+      ) + 1 AS n
     `;
-    return Number(rows[0]?.n);
+    let next = Number(rows[0]?.n);
+    if (!Number.isFinite(next) || next < 1) {
+      next = 1;
+    }
+
+    // Evita colisão se o número já existir (ex.: sync paralelo).
+    for (let i = 0; i < 20; i++) {
+      const exists = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber: next },
+        select: { ticketNumber: true },
+      });
+      if (!exists) break;
+      next += 1;
+    }
+
+    await this.prisma.$executeRaw`
+      SELECT setval(
+        'portal_ticket_number_seq',
+        GREATEST(
+          ${next},
+          COALESCE((SELECT MAX(ticket_number) FROM portal_tickets), 0)
+        )
+      )
+    `;
+
+    return next;
   }
 
   async upsertByTicketNumber(input: UpsertPortalTicketInput) {

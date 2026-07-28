@@ -23,6 +23,12 @@ import {
   hashPasswordResetCode,
   normalizeResetTokenInput,
 } from './password-reset.helper';
+import { TotpService } from './totp.service';
+import {
+  createTotpTrustToken,
+  totpTrustDays,
+  verifyTotpTrustToken,
+} from './totp-trust-cookie.helper';
 
 const RESET_REQUESTS_PER_HOUR = 3;
 
@@ -42,9 +48,13 @@ export class AuthService {
     private readonly authMail: AuthMailService,
     private readonly permissionsService: PermissionsService,
     private readonly presence: PresenceService,
+    private readonly totp: TotpService,
   ) {}
 
-  async login(data: LoginDto) {
+  async login(
+    data: LoginDto,
+    opts?: { trustCookie?: string },
+  ) {
     const user = await this.prisma.user.findFirst({
       where: {
         email: { equals: data.email, mode: 'insensitive' },
@@ -76,7 +86,37 @@ export class AuthService {
       throw new UnauthorizedException('Usuário ou senha inválidos');
     }
 
-    return this.createSessionForUser(user);
+    let totpTrustToken: string | undefined;
+
+    if (user.totpEnabledAt) {
+      const trusted = verifyTotpTrustToken(
+        opts?.trustCookie,
+        user.id,
+        user.totpEnabledAt,
+      );
+
+      if (!trusted) {
+        if (!data.totpCode?.trim()) {
+          throw new UnauthorizedException({
+            statusCode: 401,
+            message: '2FA_REQUIRED',
+            error: 'Unauthorized',
+            requires2fa: true,
+            trustDays: totpTrustDays(),
+          });
+        }
+        await this.totp.assertValidCode(user.id, data.totpCode);
+        if (data.rememberDevice) {
+          totpTrustToken = createTotpTrustToken(user.id, user.totpEnabledAt);
+        }
+      } else {
+        // Renova a janela de confiança neste dispositivo
+        totpTrustToken = createTotpTrustToken(user.id, user.totpEnabledAt);
+      }
+    }
+
+    const session = await this.createSessionForUser(user);
+    return { ...session, totpTrustToken };
   }
 
   async loginWithOAuth(params: {
@@ -140,6 +180,7 @@ export class AuthService {
     companyId: string | null;
     firstAccess: boolean;
     tokenVersion?: number;
+    totpEnabledAt?: Date | null;
     company?: { name: string } | null;
   }) {
     const tokenVersion = user.tokenVersion ?? 0;
@@ -170,6 +211,7 @@ export class AuthService {
         companyName: user.company?.name ?? null,
         firstAccess: user.firstAccess,
         permissions: requestUser.permissions,
+        totpEnabled: Boolean(user.totpEnabledAt),
       },
     };
   }
@@ -195,8 +237,22 @@ export class AuthService {
         companyName: user.company?.name ?? null,
         firstAccess: user.firstAccess,
         permissions: this.permissionsService.computeEffective(user),
+        totpEnabled: Boolean(user.totpEnabledAt),
+        totpAdminMustEnable: this.totp.adminMustEnable(user),
       },
     };
+  }
+
+  beginTotpSetup(userId: string) {
+    return this.totp.beginSetup(userId);
+  }
+
+  confirmTotpSetup(userId: string, code: string) {
+    return this.totp.confirmSetup(userId, code);
+  }
+
+  disableTotp(userId: string, code: string, password: string) {
+    return this.totp.disable(userId, code, password);
   }
 
   async firstAccess(data: FirstAccessDto) {

@@ -12,6 +12,8 @@ export type AuthUser = {
   firstAccess: boolean;
   /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */
   permissions?: ModulePermission[];
+  totpEnabled?: boolean;
+  totpAdminMustEnable?: boolean;
 };
 
 /** @deprecated Sessão usa apenas cookie httpOnly — chave mantida para limpeza de legado. */
@@ -103,7 +105,21 @@ export function clearSessionSync() {
   purgeInvalidPersistedCompanyIds();
 }
 
-/** Encerra sessão na API e limpa dados locais. */
+export type SessionEndReason = "expired" | "idle";
+
+/** Redireciona ao login com motivo (toast/alerta na página). */
+export function redirectToLogin(reason?: SessionEndReason) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (window.location.pathname.startsWith("/login")) {
+    return;
+  }
+  const q = reason ? `?reason=${reason}` : "";
+  window.location.replace(`/login${q}`);
+}
+
+/** Encerra sessão na API e limpa dados locais (preserva cookie de trust 2FA no backend). */
 export async function logoutSession(): Promise<void> {
   clearSessionSync();
   if (typeof window === "undefined") {
@@ -119,6 +135,13 @@ export async function logoutSession(): Promise<void> {
   }
 }
 
+/** Encerra sessão e vai ao login com motivo (401 / idle). */
+export async function endSession(reason?: SessionEndReason): Promise<void> {
+  await logoutSession();
+  redirectToLogin(reason);
+}
+
+/** Limpa sessão local + cookie de acesso (sem forçar redirect). */
 export function clearSession() {
   void logoutSession();
 }

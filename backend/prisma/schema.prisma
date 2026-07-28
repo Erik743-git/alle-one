@@ -98,11 +98,17 @@ model User {
   rendimentoCustomSchedule    Boolean              @default(false) @map("rendimento_custom_schedule")
   rendimentoDailyWorkMinutes  Int?                 @map("rendimento_daily_work_minutes")
   rendimentoLunchMinutes      Int?                 @map("rendimento_lunch_minutes")
+  totpSecretEncrypted String?              @map("totp_secret_encrypted") @db.Text
+  totpEnabledAt       DateTime?            @map("totp_enabled_at")
+  totpBackupCodesHash String?              @map("totp_backup_codes_hash") @db.Text
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   deletedAt           DateTime?            @map("deleted_at")
 
   company             Company?             @relation(fields: [companyId], references: [id])
+  preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
+  preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
+  emailInboundRoutesCreated EmailInboundRoute[] @relation("EmailInboundRouteCreator")
   permissions         Permission[]
   passwordResetTokens PasswordResetToken[]
   uploadedFiles       File[]               @relation("UserUploadedFiles")
@@ -183,6 +189,8 @@ model Company {
   reports              Report[]
   billingEntries       BillingEntry[]
   zabbixHosts          IntegrationZabbixHost[]
+  preTickets           PreTicket[]
+  emailInboundRoutes   EmailInboundRoute[]
   tifluxAccounts       IntegrationTiFluxAccount[]
   usageAlertRules      UsageAlertRule[]
   inventoryAssets      InventoryAsset[]
@@ -247,6 +255,8 @@ model ServiceDesk {
 
   userLinks         UserServiceDesk[]
   classifications ServiceDeskClassification[]
+  emailInboundRoutes EmailInboundRoute[]
+  preTickets         PreTicket[]
 
   @@map("service_desks")
 }
@@ -361,6 +371,7 @@ model File {
   inventoryAssets    InventoryAsset[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
   projectDocuments   ProjectDocument[]
+  preTicketAttachments PreTicketAttachment[]
 
   @@index([uploadedBy])
   @@map("files")
@@ -1109,4 +1120,108 @@ model ProjectDocument {
   @@index([projectId])
   @@index([fileId])
   @@map("project_documents")
+}
+
+enum PreTicketStatus {
+  PENDING
+  OPENED
+  DELETED
+  IGNORED
+}
+
+/// Pré-ticket gerado por e-mail (Microsoft Graph) antes de virar portal_tickets.
+model PreTicket {
+  id                String          @id @default(uuid())
+  status            PreTicketStatus @default(PENDING)
+  title             String
+  descriptionHtml   String?         @map("description_html") @db.Text
+  descriptionText   String?         @map("description_text") @db.Text
+  fromName          String?         @map("from_name")
+  fromEmail         String          @map("from_email")
+  toEmails          String[]        @map("to_emails")
+  channel           String          @default("E-mail") @db.VarChar(40)
+  mailboxAddress    String          @map("mailbox_address")
+  messageId         String          @unique @map("message_id")
+  graphMessageId    String?         @map("graph_message_id")
+  companyId         String?         @map("company_id")
+  requestorUserId   String?         @map("requestor_user_id")
+  deskId            String?         @map("desk_id")
+  priorityName      String?         @map("priority_name") @db.VarChar(80)
+  attachmentCount   Int             @default(0) @map("attachment_count")
+  ticketNumber      Int?            @map("ticket_number")
+  openedByUserId    String?         @map("opened_by_user_id")
+  openedAt          DateTime?       @map("opened_at")
+  deletedAt         DateTime?       @map("deleted_at")
+  receivedAt        DateTime        @map("received_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  company       Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  requestorUser User?        @relation("PreTicketRequestor", fields: [requestorUserId], references: [id], onDelete: SetNull)
+  openedByUser  User?        @relation("PreTicketOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  desk          ServiceDesk? @relation(fields: [deskId], references: [id], onDelete: SetNull)
+  attachments   PreTicketAttachment[]
+
+  @@index([status, receivedAt])
+  @@index([fromEmail])
+  @@index([mailboxAddress])
+  @@map("pre_tickets")
+}
+
+model PreTicketAttachment {
+  id          String   @id @default(uuid())
+  preTicketId String   @map("pre_ticket_id")
+  fileId      String   @map("file_id")
+  fileName    String   @map("file_name")
+  contentType String?  @map("content_type")
+  sizeBytes   Int?     @map("size_bytes")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  preTicket PreTicket @relation(fields: [preTicketId], references: [id], onDelete: Cascade)
+  file      File      @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([preTicketId])
+  @@map("pre_ticket_attachments")
+}
+
+/// Direcionamento de e-mail inbound (estilo TiFlux Recebimento).
+model EmailInboundRoute {
+  id            String   @id @default(uuid())
+  matchEmail    String   @map("match_email")
+  deskId        String?  @map("desk_id")
+  companyId     String?  @map("company_id")
+  priorityName  String?  @map("priority_name") @db.VarChar(80)
+  verified      Boolean  @default(false)
+  active        Boolean  @default(true)
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  desk      ServiceDesk? @relation(fields: [deskId], references: [id], onDelete: SetNull)
+  company   Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  creator   User?        @relation("EmailInboundRouteCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([matchEmail])
+  @@index([active])
+  @@map("email_inbound_routes")
+}
+
+/// Config singleton da caixa Microsoft Graph (id fixo "default").
+model EmailInboundSettings {
+  id                    String   @id @default("default")
+  sharedMailboxAddress  String?  @map("shared_mailbox_address")
+  useAsRequester        String   @default("Remetente") @map("use_as_requester") @db.VarChar(40)
+  graphTenantId         String?  @map("graph_tenant_id")
+  graphClientId         String?  @map("graph_client_id")
+  /// Secret fica preferencialmente em env GRAPH_CLIENT_SECRET; campo opcional criptografado.
+  graphClientSecretEnc  String?  @map("graph_client_secret_enc") @db.Text
+  deltaLink             String?  @map("delta_link") @db.Text
+  lastPolledAt          DateTime? @map("last_polled_at")
+  enabled               Boolean  @default(false)
+  /// Remetentes/domínios que não viram pré-ticket (um por linha: email@x.com ou *@dominio.com).
+  blockedSenders        String?  @map("blocked_senders") @db.Text
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("email_inbound_settings")
 }

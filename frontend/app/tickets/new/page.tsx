@@ -150,6 +150,10 @@ export default function NewTicketPage() {
       catalogs?.desk?.requiredFields?.requestor_email,
   );
 
+  const hasRequestorInfo = Boolean(
+    requestorName.trim() || requestorEmail.trim(),
+  );
+
   const catalogBlocked =
     requiresCatalog && deskId !== "" && catalogItemOptions.length === 0;
 
@@ -157,14 +161,7 @@ export default function NewTicketPage() {
     !loading &&
     !saving &&
     !catalogBlocked &&
-    !(requiresRequestor && clientId && !requestorId);
-
-  const selectedRequestor = useMemo(
-    () =>
-      (catalogs?.requestors ?? []).find((r) => String(r.id) === requestorId) ??
-      null,
-    [catalogs, requestorId],
-  );
+    !(requiresRequestor && !hasRequestorInfo);
 
   const prevDeskIdRef = useRef("");
 
@@ -216,20 +213,20 @@ export default function NewTicketPage() {
 
   function handleClientChange(nextClientId: string) {
     setClientId(nextClientId);
+    // Solicitante é independente do cliente — não limpa ao trocar a empresa.
     setRequestorId("");
-    setRequestorName("");
-    setRequestorEmail("");
-    setRequestorTelephone("");
   }
 
-  function handleRequestorChange(nextRequestorId: string) {
+  function handleRequestorSuggestion(nextRequestorId: string) {
     setRequestorId(nextRequestorId);
+    if (!nextRequestorId) return;
     const selected = (catalogs?.requestors ?? []).find(
       (row) => String(row.id) === nextRequestorId,
     );
-    setRequestorName(selected?.name ?? "");
-    setRequestorEmail(selected?.email ?? "");
-    setRequestorTelephone(selected?.telephone ?? "");
+    if (!selected) return;
+    setRequestorName(selected.name ?? "");
+    setRequestorEmail(selected.email ?? "");
+    setRequestorTelephone(selected.telephone ?? "");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -268,9 +265,10 @@ export default function NewTicketPage() {
     const requiredFields = catalogs?.desk?.requiredFields ?? {};
     if (
       (requiredFields.requestor_name || requiredFields.requestor_email) &&
-      !requestorId
+      !requestorName.trim() &&
+      !requestorEmail.trim()
     ) {
-      notifyError("Selecione o solicitante vinculado ao cliente.");
+      notifyError("Informe o solicitante (nome ou e-mail).");
       return;
     }
 
@@ -353,8 +351,8 @@ export default function NewTicketPage() {
                       disabled={saving}
                       labelClassName="text-xs font-semibold text-muted-foreground"
                       placeholder="Detalhe o que precisa ser atendido"
-                      hintText="Escreva, cole print (Ctrl+V) ou anexe imagens na descrição"
-                      appendButtonLabel="Anexar imagem na descrição"
+                      hintText="Escreva e cole prints na descrição (Ctrl+V). ZIP/PDF e outros arquivos em Anexos."
+                      appendButtonLabel="Anexar arquivo"
                     />
                   </CardContent>
                 </Card>
@@ -472,38 +470,74 @@ export default function NewTicketPage() {
                         placeholder="Selecione o responsável"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Solicitante
-                      </Label>
-                      <SearchableSelectField
-                        value={requestorId}
-                        onChange={handleRequestorChange}
-                        options={requestorOptions}
-                        loading={loading}
-                        disabled={!clientId}
-                        emptyLabel={
-                          !clientId
-                            ? "Selecione o cliente primeiro"
-                            : requestorOptions.length === 0
-                              ? "Nenhum solicitante cadastrado para este cliente"
-                              : "Selecione o solicitante"
-                        }
-                        placeholder="Selecione o solicitante"
-                      />
-                      {selectedRequestor ? (
-                        <p className="text-xs text-muted-foreground">
-                          {selectedRequestor.email ?? "Sem e-mail"}
-                          {selectedRequestor.telephone
-                            ? ` · ${selectedRequestor.telephone}`
-                            : ""}
-                        </p>
-                      ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Solicitantes vêm do cadastro do cliente no TiFlux — não
-                          são as empresas em si.
-                        </p>
-                      )}
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Solicitante
+                        </Label>
+                        <Input
+                          value={requestorName}
+                          onChange={(e) => {
+                            setRequestorName(e.target.value);
+                            setRequestorId("");
+                          }}
+                          placeholder="Nome de quem está solicitando"
+                          className="h-11"
+                          disabled={saving}
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            E-mail do solicitante
+                          </Label>
+                          <Input
+                            type="email"
+                            value={requestorEmail}
+                            onChange={(e) => {
+                              setRequestorEmail(e.target.value);
+                              setRequestorId("");
+                            }}
+                            placeholder="email@empresa.com"
+                            className="h-11"
+                            disabled={saving}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Telefone (opcional)
+                          </Label>
+                          <Input
+                            value={requestorTelephone}
+                            onChange={(e) => {
+                              setRequestorTelephone(e.target.value);
+                              setRequestorId("");
+                            }}
+                            placeholder="(00) 00000-0000"
+                            className="h-11"
+                            disabled={saving}
+                          />
+                        </div>
+                      </div>
+                      {requestorOptions.length > 0 ? (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Preencher do cadastro do cliente (opcional)
+                          </Label>
+                          <SearchableSelectField
+                            value={requestorId}
+                            onChange={handleRequestorSuggestion}
+                            options={requestorOptions}
+                            loading={loading}
+                            emptyLabel="Escolher contato do cliente"
+                            placeholder="Escolher contato do cliente"
+                          />
+                        </div>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        Pode ser de outra empresa — o solicitante não precisa
+                        ser do cliente do chamado.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-muted-foreground">

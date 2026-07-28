@@ -17,6 +17,8 @@ import {
   toDateOrNull,
 } from './dashboard-date.utils';
 import { DashboardIntegrationsService } from './dashboard-integrations.service';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
+import { serviceNameToValorizationRaw } from '../tickets/portal-appointment.helper';
 import type {
   AppointmentLike,
   DashboardFilters,
@@ -1165,6 +1167,10 @@ export class DashboardHoursService {
     const startDateOnly = params.startDate.toISOString().slice(0, 10);
     const endDateOnly = params.endDate.toISOString().slice(0, 10);
 
+    if (isTicketsPortalCanonical()) {
+      return this.getAppointmentsByClientFromPortal(params, startDateOnly, endDateOnly);
+    }
+
     const cacheRangeRows =
       (await this.prisma.$queryRaw<Array<{ max_date: Date | null }>>`
       select max(a.appointment_date)::date as max_date
@@ -1225,6 +1231,127 @@ export class DashboardHoursService {
       order by a.ticket_number asc, a.appointment_date asc, a.external_id asc
     `) ?? [];
 
+    return this.mapAppointmentRowsToByTicket(
+      rows,
+      cacheMaxAppointmentDate,
+      coversRequestedEndDate,
+    );
+  }
+
+  private async getAppointmentsByClientFromPortal(
+    params: { tifluxClientId: number; endDate: Date },
+    startDateOnly: string,
+    endDateOnly: string,
+  ): Promise<{
+    tickets: Array<{ ticket_number: number } & Record<string, unknown>>;
+    appointmentsByTicket: Array<{
+      ticket: Record<string, unknown>;
+      appointments: AppointmentLike[];
+    }>;
+    cacheMaxAppointmentDate: Date | null;
+    coversRequestedEndDate: boolean;
+  }> {
+    const cacheRangeRows =
+      (await this.prisma.$queryRaw<Array<{ max_date: Date | null }>>`
+      select max(a.appointment_date)::date as max_date
+      from portal_ticket_appointments a
+      inner join portal_tickets t on t.ticket_number = a.ticket_number
+      where t.client_external_id = ${params.tifluxClientId}
+    `) ?? [];
+
+    const cacheMaxAppointmentDate = cacheRangeRows[0]?.max_date ?? null;
+    const requestedEndDateOnly = new Date(params.endDate);
+    requestedEndDateOnly.setHours(0, 0, 0, 0);
+    const cacheMaxDateOnly = cacheMaxAppointmentDate
+      ? new Date(cacheMaxAppointmentDate)
+      : null;
+    cacheMaxDateOnly?.setHours(0, 0, 0, 0);
+    const coversRequestedEndDate = Boolean(
+      cacheMaxDateOnly && cacheMaxDateOnly >= requestedEndDateOnly,
+    );
+
+    const rows =
+      (await this.prisma.$queryRaw<
+        Array<{
+          ticket_number: number;
+          title: string | null;
+          desk_external_id: number | null;
+          desk_name: string | null;
+          appointment_id: number;
+          appointment_date: string | null;
+          init_time: string | null;
+          end_time: string | null;
+          description: string | null;
+          client_external_id: number | null;
+          client_name: string | null;
+          user_external_id: number | null;
+          user_name: string | null;
+          service_name: string | null;
+        }>
+      >`
+      select
+        a.ticket_number,
+        t.title,
+        t.desk_external_id,
+        t.desk_name,
+        coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
+        a.appointment_date::text as appointment_date,
+        a.init_time as init_time,
+        a.end_time as end_time,
+        a.description,
+        t.client_external_id,
+        t.client_name,
+        null::int as user_external_id,
+        u.name as user_name,
+        a.service_name
+      from portal_ticket_appointments a
+      inner join portal_tickets t on t.ticket_number = a.ticket_number
+      left join users u on u.id = a.created_by
+      where t.client_external_id = ${params.tifluxClientId}
+        and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+      order by a.ticket_number asc, a.appointment_date asc, a.id asc
+    `) ?? [];
+
+    const mapped = rows.map((r) => ({
+      ...r,
+      valorization_raw: serviceNameToValorizationRaw(r.service_name),
+    }));
+
+    return this.mapAppointmentRowsToByTicket(
+      mapped,
+      cacheMaxAppointmentDate,
+      coversRequestedEndDate,
+    );
+  }
+
+  private mapAppointmentRowsToByTicket(
+    rows: Array<{
+      ticket_number: number;
+      title: string | null;
+      desk_external_id: number | null;
+      desk_name: string | null;
+      appointment_id: number;
+      appointment_date: string | null;
+      init_time: string | null;
+      end_time: string | null;
+      description: string | null;
+      client_external_id: number | null;
+      client_name: string | null;
+      user_external_id: number | null;
+      user_name: string | null;
+      valorization_raw: unknown | null;
+    }>,
+    cacheMaxAppointmentDate: Date | null,
+    coversRequestedEndDate: boolean,
+  ): {
+    tickets: Array<{ ticket_number: number } & Record<string, unknown>>;
+    appointmentsByTicket: Array<{
+      ticket: Record<string, unknown>;
+      appointments: AppointmentLike[];
+    }>;
+    cacheMaxAppointmentDate: Date | null;
+    coversRequestedEndDate: boolean;
+  } {
     const map = new Map<
       number,
       {

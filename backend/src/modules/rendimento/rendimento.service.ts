@@ -38,6 +38,12 @@ import {
   type GapJustificationRow,
 } from './rendimento-store.service';
 import { RendimentoOvertimeBalanceService } from './rendimento-overtime-balance.service';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
+import { serviceNameToValorizationRaw } from '../tickets/portal-appointment.helper';
+import {
+  appointmentDescriptionHasMedia,
+  appointmentDescriptionToPlainText,
+} from '../tickets/appointment-doc.util';
 
 export type { RendimentoDayInsightsDto, RendimentoGapDto };
 
@@ -51,6 +57,9 @@ export type RendimentoEntryDto = {
   ticketNumber: number;
   clientName: string | null;
   description: string | null;
+  /** Há imagem/anexo para abrir no detalhe (evita enviar base64 na listagem). */
+  hasMedia?: boolean;
+  portalAppointmentId?: string | null;
   isOvertime: boolean;
   overtimeKind?: 'EXTRA' | 'PLANTAO' | null;
   valorizationServiceName?: string | null;
@@ -145,6 +154,8 @@ type AppointmentRow = {
   description: string | null;
   minutes: number;
   valorization_raw: unknown | null;
+  portal_appointment_id?: string | null;
+  attachment_count?: number;
 };
 
 type TifluxUserLink = { id: number; name: string };
@@ -423,12 +434,80 @@ export class RendimentoService {
   }
 
   private async fetchAppointments(params: {
-    tifluxUserId: number;
+    portalUserId: string;
+    tifluxUserId: number | null;
     start: Date;
     end: Date;
   }): Promise<AppointmentRow[]> {
     const startDate = this.toDateOnlyString(params.start);
     const endDate = this.toDateOnlyString(params.end);
+
+    if (isTicketsPortalCanonical()) {
+      const portalRows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            appointment_id: number;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            ticket_number: number;
+            client_name: string | null;
+            description: string | null;
+            service_name: string | null;
+            minutes: number;
+            portal_appointment_id: string;
+            attachment_count: number;
+          }>
+        >`
+        select
+          coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
+          a.appointment_date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          a.ticket_number,
+          t.client_name,
+          a.description,
+          a.service_name,
+          a.id as portal_appointment_id,
+          (
+            select count(*)::int
+            from portal_ticket_appointment_attachments att
+            where att.portal_appointment_id = a.id
+          ) as attachment_count,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from portal_ticket_appointments a
+        left join portal_tickets t on t.ticket_number = a.ticket_number
+        where a.created_by = ${params.portalUserId}
+          and a.appointment_date between ${startDate}::date and ${endDate}::date
+        order by a.appointment_date asc, a.init_time asc nulls last, a.id asc
+      `) ?? [];
+
+      return portalRows.map((row) => ({
+        appointment_id: Number(row.appointment_id),
+        appointment_date: row.appointment_date,
+        init_time: row.init_time,
+        end_time: row.end_time,
+        ticket_number: Number(row.ticket_number),
+        client_name: row.client_name,
+        description: row.description,
+        valorization_raw: serviceNameToValorizationRaw(row.service_name),
+        minutes: Number(row.minutes) || 0,
+        portal_appointment_id: row.portal_appointment_id,
+        attachment_count: Number(row.attachment_count) || 0,
+      }));
+    }
+
+    if (params.tifluxUserId == null) {
+      return [];
+    }
 
     const rows =
       (await this.prisma.$queryRaw<AppointmentRow[]>`
@@ -1092,9 +1171,10 @@ export class RendimentoService {
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const tifluxUser = this.lookupTifluxUser(params.user.email, tifluxUserByEmail);
 
-    if (tifluxUser != null) {
+    if (tifluxUser != null || isTicketsPortalCanonical()) {
       const rows = await this.fetchAppointments({
-        tifluxUserId: tifluxUser.id,
+        portalUserId: params.userId,
+        tifluxUserId: tifluxUser?.id ?? null,
         start: dayDate,
         end: dayDate,
       });
@@ -1427,20 +1507,32 @@ export class RendimentoService {
   }
 
   private mapEntries(rows: AppointmentRow[]): RendimentoEntryDto[] {
-    return rows.map((row) => ({
-      id: Number(row.appointment_id),
-      date: row.appointment_date,
-      initTime: row.init_time,
-      endTime: row.end_time,
-      minutes: Number(row.minutes) || 0,
-      hoursFormatted: this.formatMinutes(Number(row.minutes) || 0),
-      ticketNumber: Number(row.ticket_number),
-      clientName: row.client_name,
-      description: row.description,
-      isOvertime: false,
-      overtimeKind: null,
-      valorizationServiceName: null,
-    }));
+    return rows.map((row) => {
+      const rawDescription = row.description?.trim() || null;
+      const plain = rawDescription
+        ? appointmentDescriptionToPlainText(rawDescription).trim() || null
+        : null;
+      const hasMedia =
+        appointmentDescriptionHasMedia(rawDescription) ||
+        (Number(row.attachment_count) || 0) > 0;
+
+      return {
+        id: Number(row.appointment_id),
+        date: row.appointment_date,
+        initTime: row.init_time,
+        endTime: row.end_time,
+        minutes: Number(row.minutes) || 0,
+        hoursFormatted: this.formatMinutes(Number(row.minutes) || 0),
+        ticketNumber: Number(row.ticket_number),
+        clientName: row.client_name,
+        description: plain,
+        hasMedia,
+        portalAppointmentId: row.portal_appointment_id ?? null,
+        isOvertime: false,
+        overtimeKind: null,
+        valorizationServiceName: null,
+      };
+    });
   }
 
   private toRendimentoDaySchedule(user: {
@@ -1997,7 +2089,9 @@ export class RendimentoService {
     const collaborators = await this.listCollaboratorsForSelect();
     const targets = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
-      : collaborators.filter((c) => c.tifluxUserId != null);
+      : isTicketsPortalCanonical()
+        ? collaborators
+        : collaborators.filter((c) => c.tifluxUserId != null);
 
     if (params.userId && targets.length === 0) {
       throw new NotFoundException(
@@ -2019,7 +2113,7 @@ export class RendimentoService {
           collaborator.email,
           tifluxUserByEmail,
         );
-        if (!tifluxUser) continue;
+        if (!tifluxUser && !isTicketsPortalCanonical()) continue;
 
         eventsPurged += await this.purgeAutoGapEventsInRange(
           collaborator.id,
@@ -2028,7 +2122,8 @@ export class RendimentoService {
         );
 
         const rows = await this.fetchAppointments({
-          tifluxUserId: tifluxUser.id,
+          portalUserId: collaborator.id,
+          tifluxUserId: tifluxUser?.id ?? null,
           start,
           end,
         });
@@ -2213,8 +2308,8 @@ export class RendimentoService {
 
   private async computeOvertimeMinutesForUser(
     userId: string,
-    start: Date,
-    end: Date,
+    _start: Date,
+    _end: Date,
   ): Promise<number> {
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
@@ -2224,11 +2319,12 @@ export class RendimentoService {
 
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
-    if (tifluxUser == null) return 0;
+    if (tifluxUser == null && !isTicketsPortalCanonical()) return 0;
 
     const payroll = resolvePayrollPeriodRange(new Date());
     const rows = await this.fetchAppointments({
-      tifluxUserId: tifluxUser.id,
+      portalUserId: userId,
+      tifluxUserId: tifluxUser?.id ?? null,
       start: payroll.start,
       end: payroll.end,
     });
@@ -2301,9 +2397,10 @@ export class RendimentoService {
       const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
       let monthTotalMinutes = 0;
 
-      if (tifluxUser != null) {
+      if (tifluxUser != null || isTicketsPortalCanonical()) {
         const monthRows = await this.fetchAppointments({
-          tifluxUserId: tifluxUser.id,
+          portalUserId: user.id,
+          tifluxUserId: tifluxUser?.id ?? null,
           start,
           end,
         });
@@ -2403,7 +2500,7 @@ export class RendimentoService {
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
 
-    if (tifluxUser == null) {
+    if (tifluxUser == null && !isTicketsPortalCanonical()) {
       const overtimeBalanceMinutes = await this.getOvertimeBalanceMinutes(user.id);
       return {
         userId: user.id,
@@ -2432,7 +2529,8 @@ export class RendimentoService {
     const payrollPeriod = resolvePayrollPeriodRange(reference);
 
     const rows = await this.fetchAppointments({
-      tifluxUserId: tifluxUser.id,
+      portalUserId: user.id,
+      tifluxUserId: tifluxUser?.id ?? null,
       start,
       end,
     });
@@ -2481,7 +2579,8 @@ export class RendimentoService {
     this.attachDayEventsToDays(days, dayEvents);
 
     const payrollRows = await this.fetchAppointments({
-      tifluxUserId: tifluxUser.id,
+      portalUserId: user.id,
+      tifluxUserId: tifluxUser?.id ?? null,
       start: payrollPeriod.start,
       end: payrollPeriod.end,
     });
@@ -3165,7 +3264,9 @@ export class RendimentoService {
     const collaborators = await this.listCollaboratorsForSelect();
     const targets = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
-      : collaborators.filter((c) => c.tifluxUserId != null);
+      : isTicketsPortalCanonical()
+        ? collaborators
+        : collaborators.filter((c) => c.tifluxUserId != null);
 
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
 
@@ -3175,7 +3276,7 @@ export class RendimentoService {
           collaborator.email,
           tifluxUserByEmail,
         );
-        if (!tifluxUser) continue;
+        if (!tifluxUser && !isTicketsPortalCanonical()) continue;
 
         const user = await this.prisma.user.findFirst({
           where: { id: collaborator.id, deletedAt: null },
@@ -3188,7 +3289,8 @@ export class RendimentoService {
         if (!user) continue;
 
         const rows = await this.fetchAppointments({
-          tifluxUserId: tifluxUser.id,
+          portalUserId: collaborator.id,
+          tifluxUserId: tifluxUser?.id ?? null,
           start,
           end,
         });
@@ -3426,8 +3528,8 @@ export class RendimentoService {
           e.label,
           e.description,
           e.appointment_external_id,
-          ta.ticket_number,
-          COALESCE(co_ticket.name, ta.client_name, co_user.name) AS company_name,
+          COALESCE(pa.ticket_number, ta.ticket_number) AS ticket_number,
+          COALESCE(co_ticket.name, ptk.client_name, ta.client_name, co_user.name) AS company_name,
           e.status,
           approver.name AS approved_by_name,
           e.approved_at::text AS approved_at
@@ -3435,11 +3537,18 @@ export class RendimentoService {
         INNER JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
         LEFT JOIN companies co_user ON co_user.id = u.company_id
         LEFT JOIN users approver ON approver.id = e.approved_by
+        LEFT JOIN portal_ticket_appointments pa
+          ON pa.tiflux_appointment_external_id = e.appointment_external_id
+        LEFT JOIN portal_tickets ptk ON ptk.ticket_number = pa.ticket_number
         LEFT JOIN tiflux.ticket_appointments ta
           ON ta.external_id = e.appointment_external_id
         LEFT JOIN tiflux.tickets tk ON tk.ticket_number = ta.ticket_number
         LEFT JOIN companies co_ticket
-          ON co_ticket.tiflux_client_id = COALESCE(tk.client_external_id, ta.client_external_id)
+          ON co_ticket.tiflux_client_id = COALESCE(
+            ptk.client_external_id,
+            tk.client_external_id,
+            ta.client_external_id
+          )
         WHERE e.deleted_at IS NULL
           AND e.event_type IN ('OVERTIME', 'PLANTAO')
           AND e.date_ref >= $1::date

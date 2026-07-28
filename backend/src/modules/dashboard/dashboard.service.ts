@@ -26,6 +26,7 @@ import {
 import { DashboardChartsService } from './dashboard-charts.service';
 import { DashboardIntegrationsService } from './dashboard-integrations.service';
 import { DashboardHoursService } from './dashboard-hours.service';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 import type {
   DashboardFilters,
   DashboardHoursResponse,
@@ -260,7 +261,7 @@ export class DashboardService {
   }
 
   /**
-   * Resumo de tickets do dashboard a partir do sync em `tiflux.tickets` (sem chamar a API TiFlux).
+   * Resumo de tickets do dashboard a partir do espelho (tiflux ou portal canônico).
    * Alinhado ao filtro date_type=created_at + intervalo ISO usado no `buildTifluxDateRange`.
    */
   private async getDashboardTifluxSummaryFromDb(params: {
@@ -275,27 +276,36 @@ export class DashboardService {
     totalTickets: number;
     totalOpenTickets: number;
   }> {
+    const ticketsTable = isTicketsPortalCanonical()
+      ? 'portal_tickets'
+      : 'tiflux.tickets';
+
     const countRows =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{ total_all: number; total_open: number }>
-      >`
+      >(
+        `
         select
           count(*)::int as total_all,
           count(*) filter (
             where t.is_closed is null or t.is_closed = false
           )::int as total_open
-        from tiflux.tickets t
-        where t.client_external_id = ${params.tifluxClientId}
+        from ${ticketsTable} t
+        where t.client_external_id = $1
           and t.created_at_source is not null
-          and t.created_at_source >= ${params.startISO}::timestamptz
-          and t.created_at_source <= ${params.endISO}::timestamptz
-      `) ?? [];
+          and t.created_at_source >= $2::timestamptz
+          and t.created_at_source <= $3::timestamptz
+      `,
+        params.tifluxClientId,
+        params.startISO,
+        params.endISO,
+      )) ?? [];
 
     const totalTickets = countRows[0]?.total_all ?? 0;
     const totalOpenTickets = countRows[0]?.total_open ?? 0;
 
     const listRows =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           ticket_number: number;
           title: string | null;
@@ -305,7 +315,8 @@ export class DashboardService {
           desk_external_id: number | null;
           desk_name: string | null;
         }>
-      >`
+      >(
+        `
       select
         t.ticket_number,
         t.title,
@@ -314,13 +325,17 @@ export class DashboardService {
         t.client_name,
         t.desk_external_id,
         t.desk_name
-      from tiflux.tickets t
-      where t.client_external_id = ${params.tifluxClientId}
+      from ${ticketsTable} t
+      where t.client_external_id = $1
         and t.created_at_source is not null
-        and t.created_at_source >= ${params.startISO}::timestamptz
-        and t.created_at_source <= ${params.endISO}::timestamptz
+        and t.created_at_source >= $2::timestamptz
+        and t.created_at_source <= $3::timestamptz
       order by t.created_at_source desc
-    `) ?? [];
+    `,
+        params.tifluxClientId,
+        params.startISO,
+        params.endISO,
+      )) ?? [];
 
     const ticketsForAggregation = listRows.map((r) =>
       this.mapDbTicketRowToChartShape(r),

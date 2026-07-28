@@ -5,6 +5,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { AuthOAuthService } from './auth-oauth.service';
 import { AuthService } from './auth.service';
+import { TotpService } from './totp.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthMailService } from './mail/auth-mail.service';
 import { PermissionsModule } from '../permissions/permissions.module';
@@ -34,6 +35,7 @@ import { MailModule } from '../mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthOAuthService, JwtStrategy, AuthMailService],
+  providers: [AuthService, AuthOAuthService, JwtStrategy, AuthMailService, TotpService],
+  exports: [TotpService],
 })
 export class AuthModule {}

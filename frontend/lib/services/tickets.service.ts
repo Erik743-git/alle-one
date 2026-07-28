@@ -241,6 +241,7 @@ export type CreateAppointmentPayload = {
   serviceName: string;
   attendance: "Remote" | "External" | "Internal";
   projectActivityId?: string;
+  removeAttachmentFileIds?: string[];
 };
 
 export type CreateTicketResult = {
@@ -268,7 +269,7 @@ export type TicketStageOption = {
 };
 
 export type TicketStagesResponse = {
-  deskExternalId: number;
+  deskExternalId: number | null;
   deskName: string | null;
   currentStageId: number | null;
   currentStageName: string | null;
@@ -284,6 +285,23 @@ export type UpdateTicketStageResult = {
   message: string;
 };
 
+export type UpdateTicketPayload = {
+  title?: string;
+  description?: string;
+  responsibleId?: number | null;
+  responsibleName?: string | null;
+  stageName?: string;
+  statusName?: string;
+  isClosed?: boolean;
+  removeAttachmentFileIds?: string[];
+};
+
+export type UpdateTicketResult = {
+  ok: boolean;
+  ticketNumber: number;
+  message: string;
+};
+
 export type PortalAppointmentEditContext = {
   portalAppointmentId: string;
   ticketNumber: number;
@@ -294,6 +312,14 @@ export type PortalAppointmentEditContext = {
   attendance: string;
   description: string;
   descriptionPlain: string;
+  attachments?: Array<{
+    id: string;
+    fileId: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    previewDataUrl: string | null;
+  }>;
   syncStatus: "PENDING_TIFLUX" | "SYNCED" | "PORTAL_ONLY";
   syncPaused: boolean;
   existsInTiflux: boolean;
@@ -354,6 +380,22 @@ export const ticketsService = {
     });
   },
 
+  updateTicket(
+    ticketNumber: number,
+    payload: UpdateTicketPayload,
+    files: File[] = [],
+  ) {
+    const body = new FormData();
+    body.append("payload", JSON.stringify(payload));
+    for (const file of files) {
+      body.append("files", file);
+    }
+    return apiRequest<UpdateTicketResult>(`/tickets/${ticketNumber}`, {
+      method: "PATCH",
+      body,
+    });
+  },
+
   linkGmud(ticketNumber: number, externalGmudRef: string | null) {
     return apiRequest<{ ok: boolean; externalGmudRef: string | null }>(
       `/tickets/${ticketNumber}/gmud`,
@@ -407,9 +449,13 @@ export const ticketsService = {
     ticketNumber: number,
     portalAppointmentId: string,
     payload: CreateAppointmentPayload,
+    files: File[] = [],
   ) {
     const body = new FormData();
     body.append("payload", JSON.stringify(payload));
+    for (const file of files) {
+      body.append("files", file);
+    }
     return apiRequest<{ ok: boolean; message: string }>(
       `/tickets/${ticketNumber}/appointments/${portalAppointmentId}`,
       { method: "PATCH", body },

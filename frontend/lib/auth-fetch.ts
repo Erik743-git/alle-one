@@ -1,10 +1,7 @@
-import { clearSession } from "@/lib/session";
+import { endSession } from "@/lib/session";
 
 function handleUnauthorized(): void {
-  clearSession();
-  if (typeof window !== "undefined") {
-    window.location.replace("/login");
-  }
+  void endSession("expired");
 }
 
 /** fetch autenticado via cookie httpOnly (sem Bearer legado). */

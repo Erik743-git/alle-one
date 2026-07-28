@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service';
+import { isTicketsPortalCanonical } from './modules/tickets/tickets-portal.config';
 
 export type IntegrationsHealth = {
   tifluxSync: {
@@ -7,6 +8,7 @@ export type IntegrationsHealth = {
     lastTicketUpdate: string | null;
     staleAfterHours: number;
     message?: string;
+    source?: 'portal_tickets' | 'tiflux.tickets';
   };
   outbox: {
     pending: number;
@@ -38,6 +40,10 @@ export class AppService {
   private async checkTifluxSync(
     staleAfterHours: number,
   ): Promise<IntegrationsHealth['tifluxSync']> {
+    if (isTicketsPortalCanonical()) {
+      return this.checkPortalTicketsFreshness(staleAfterHours);
+    }
+
     try {
       const rows = await this.prisma.$queryRaw<
         Array<{ max_updated: Date | null }>
@@ -52,27 +58,16 @@ export class AppService {
           lastTicketUpdate: null,
           staleAfterHours,
           message: 'Nenhum ticket em tiflux.tickets.',
+          source: 'tiflux.tickets',
         };
       }
 
-      const ageMs = Date.now() - new Date(maxUpdated).getTime();
-      const staleMs = staleAfterHours * 60 * 60 * 1000;
-      const iso = new Date(maxUpdated).toISOString();
-
-      if (ageMs > staleMs) {
-        return {
-          status: 'stale',
-          lastTicketUpdate: iso,
-          staleAfterHours,
-          message: `Sync TiFlux possivelmente parado (última atualização há mais de ${staleAfterHours}h).`,
-        };
-      }
-
-      return {
-        status: 'ok',
-        lastTicketUpdate: iso,
+      return this.evaluateFreshness(
+        maxUpdated,
         staleAfterHours,
-      };
+        'tiflux.tickets',
+        `Sync TiFlux possivelmente parado (última atualização há mais de ${staleAfterHours}h).`,
+      );
     } catch (err) {
       this.logger.warn(
         `health/integrations tiflux: ${err instanceof Error ? err.message : String(err)}`,
@@ -82,8 +77,76 @@ export class AppService {
         lastTicketUpdate: null,
         staleAfterHours,
         message: 'Schema tiflux.* indisponível ou sync nunca rodou.',
+        source: 'tiflux.tickets',
       };
     }
+  }
+
+  private async checkPortalTicketsFreshness(
+    staleAfterHours: number,
+  ): Promise<IntegrationsHealth['tifluxSync']> {
+    try {
+      const agg = await this.prisma.portalTicket.aggregate({
+        _max: { updatedAt: true, updatedAtSource: true },
+      });
+      const maxUpdated =
+        agg._max.updatedAtSource ?? agg._max.updatedAt ?? null;
+      if (!maxUpdated) {
+        return {
+          status: 'unknown',
+          lastTicketUpdate: null,
+          staleAfterHours,
+          message: 'Nenhum ticket em portal_tickets.',
+          source: 'portal_tickets',
+        };
+      }
+
+      return this.evaluateFreshness(
+        maxUpdated,
+        staleAfterHours,
+        'portal_tickets',
+        `Tickets do portal sem atualização há mais de ${staleAfterHours}h.`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `health/integrations portal: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return {
+        status: 'unavailable',
+        lastTicketUpdate: null,
+        staleAfterHours,
+        message: 'portal_tickets indisponível.',
+        source: 'portal_tickets',
+      };
+    }
+  }
+
+  private evaluateFreshness(
+    maxUpdated: Date,
+    staleAfterHours: number,
+    source: 'portal_tickets' | 'tiflux.tickets',
+    staleMessage: string,
+  ): IntegrationsHealth['tifluxSync'] {
+    const ageMs = Date.now() - new Date(maxUpdated).getTime();
+    const staleMs = staleAfterHours * 60 * 60 * 1000;
+    const iso = new Date(maxUpdated).toISOString();
+
+    if (ageMs > staleMs) {
+      return {
+        status: 'stale',
+        lastTicketUpdate: iso,
+        staleAfterHours,
+        message: staleMessage,
+        source,
+      };
+    }
+
+    return {
+      status: 'ok',
+      lastTicketUpdate: iso,
+      staleAfterHours,
+      source,
+    };
   }
 
   private async countOutbox(): Promise<IntegrationsHealth['outbox']> {

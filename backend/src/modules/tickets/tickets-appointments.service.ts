@@ -28,7 +28,10 @@ import {
 } from './appointment-doc.util';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 import { isAlleOneTifluxDesk } from './tiflux-portal-desk.config';
-import type { CreateTicketAppointmentDto } from './tickets-create.dto';
+import type {
+  CreateTicketAppointmentDto,
+  UpdateTicketAppointmentDto,
+} from './tickets-create.dto';
 
 type AppointmentRow = {
   external_id: number;
@@ -75,6 +78,9 @@ const ATTENDANCE_LABELS: Record<string, string> = {
 
 @Injectable()
 export class TicketsAppointmentsService {
+  private readonly allowRuntimeTifluxApi =
+    process.env.TIFLUX_RUNTIME_API === 'true';
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tiflux: TifluxService,
@@ -202,6 +208,14 @@ export class TicketsAppointmentsService {
     } catch {
       return null;
     }
+  }
+
+  /** Exposto para reutilizar preview de anexos de pré-ticket no detalhe do chamado. */
+  buildPreviewDataUrlPublic(
+    previewDataBase64: string | null | undefined,
+    file: { mimeType: string; path: string },
+  ): string | null {
+    return this.buildPreviewDataUrl(previewDataBase64, file);
   }
 
   async loadAttachmentPreviewMap(
@@ -433,33 +447,56 @@ export class TicketsAppointmentsService {
   }
 
   private async getTicketContext(ticketNumber: number) {
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          ticket_number: number;
-          client_external_id: number | null;
-          client_name: string | null;
-          desk_external_id: number | null;
-          desk_name: string | null;
-          stage_name: string | null;
-          is_closed: boolean | null;
-        }>
-      >`
-        SELECT
-          t.ticket_number,
-          t.client_external_id,
-          t.client_name,
-          t.desk_external_id,
-          t.desk_name,
-          t.stage_name,
-          t.is_closed
-        FROM tiflux.tickets t
-        WHERE t.ticket_number = ${ticketNumber}
-        LIMIT 1
-      `) ?? [];
-    const row = rows[0] ?? null;
-    if (row) {
-      return row;
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+    });
+    if (portal) {
+      return {
+        ticket_number: portal.ticketNumber,
+        client_external_id: portal.clientExternalId,
+        client_name: portal.clientName,
+        desk_external_id: portal.deskExternalId,
+        desk_name: portal.deskName,
+        stage_name: portal.stageName,
+        is_closed: portal.isClosed,
+      };
+    }
+
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            ticket_number: number;
+            client_external_id: number | null;
+            client_name: string | null;
+            desk_external_id: number | null;
+            desk_name: string | null;
+            stage_name: string | null;
+            is_closed: boolean | null;
+          }>
+        >`
+          SELECT
+            t.ticket_number,
+            t.client_external_id,
+            t.client_name,
+            t.desk_external_id,
+            t.desk_name,
+            t.stage_name,
+            t.is_closed
+          FROM tiflux.tickets t
+          WHERE t.ticket_number = ${ticketNumber}
+          LIMIT 1
+        `) ?? [];
+      const row = rows[0] ?? null;
+      if (row) {
+        return row;
+      }
+    } catch {
+      // Schema tiflux.* pode estar ausente no cutover local.
+    }
+
+    if (!this.allowRuntimeTifluxApi) {
+      return null;
     }
 
     const apiTicket = await this.tiflux.getTicket(ticketNumber);
@@ -729,6 +766,16 @@ export class TicketsAppointmentsService {
       row.tifluxAppointmentExternalId,
     );
 
+    const attachmentRows =
+      await this.prisma.portalTicketAppointmentAttachment.findMany({
+        where: { portalAppointmentId: row.id },
+        include: { file: true },
+        orderBy: { createdAt: 'asc' },
+      });
+    const previewMap = await this.loadAttachmentPreviewMap(
+      attachmentRows.map((item) => item.id),
+    );
+
     return {
       portalAppointmentId: row.id,
       ticketNumber: row.ticketNumber,
@@ -739,6 +786,7 @@ export class TicketsAppointmentsService {
       attendance: row.attendance,
       description: row.description,
       descriptionPlain: appointmentDescriptionToPlainText(row.description),
+      attachments: this.mapPortalAttachments(attachmentRows, previewMap),
       syncStatus: row.syncStatus,
       syncPaused: Boolean(row.syncPausedAt),
       existsInTiflux,
@@ -839,7 +887,8 @@ export class TicketsAppointmentsService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
     portalAppointmentId: string,
-    dto: CreateTicketAppointmentDto,
+    dto: UpdateTicketAppointmentDto,
+    files: Express.Multer.File[] = [],
   ) {
     this.validateAppointmentDto(dto);
 
@@ -877,13 +926,52 @@ export class TicketsAppointmentsService {
       });
     }
 
+    const removeIds = (dto.removeAttachmentFileIds ?? [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => Boolean(id));
+    if (removeIds.length > 0) {
+      await this.prisma.portalTicketAppointmentAttachment.deleteMany({
+        where: {
+          portalAppointmentId: row.id,
+          fileId: { in: removeIds },
+        },
+      });
+    }
+
+    const attachments = await this.saveAppointmentFiles(
+      actor,
+      ticketNumber,
+      files,
+      row.id,
+      outboxId,
+      row.tifluxAppointmentExternalId,
+    );
+
+    const savedImages: SavedAppointmentImage[] = attachments
+      .filter((item): item is typeof item & { base64: string } =>
+        Boolean(item.base64?.trim()),
+      )
+      .map((item) => ({
+        fileId: item.fileId,
+        mimeType: item.mimeType,
+        base64: item.base64,
+      }));
+
+    let description = descriptionRaw;
+    if (savedImages.length > 0) {
+      description = enrichAppointmentDescriptionWithImages(
+        descriptionRaw,
+        savedImages,
+      );
+    }
+
     await this.prisma.portalTicketAppointment.update({
       where: { id: row.id },
       data: {
         appointmentDate: new Date(`${dto.date}T12:00:00.000Z`),
         initTime: dto.initTime,
         endTime: dto.endTime,
-        description: descriptionRaw,
+        description,
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
         syncPausedAt: null,

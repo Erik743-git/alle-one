@@ -1,128 +1,162 @@
 /**
- * ETL idempotente: tiflux.tickets → portal_tickets
+ * ETL idempotente: tiflux.tickets → portal_tickets (bulk SQL).
  *
  * Uso:
  *   cd backend
  *   npx ts-node prisma/scripts/etl-tiflux-tickets-to-portal.ts
  *   npx ts-node prisma/scripts/etl-tiflux-tickets-to-portal.ts --limit=5000
+ *   npx ts-node prisma/scripts/etl-tiflux-tickets-to-portal.ts --dry-run
  *
- * Requer schema tiflux.* populado pelo alleone-tiflux-sync.
+ * Seguro com alleone-tiflux-sync ainda rodando: ON CONFLICT atualiza o espelho portal.
  */
 import 'dotenv/config';
-import { PrismaClient, PortalTicketOrigin } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 async function main() {
   const limitArg = process.argv.find((a) => a.startsWith('--limit='));
-  const limit = limitArg ? Number(limitArg.split('=')[1]) : 50_000;
-  const take = Number.isFinite(limit) && limit > 0 ? limit : 50_000;
+  const limit = limitArg ? Number(limitArg.split('=')[1]) : null;
+  const dryRun = process.argv.includes('--dry-run');
 
-  console.log(`ETL tiflux.tickets → portal_tickets (limit=${take})`);
-
-  type Row = {
-    ticket_number: number;
-    title: string | null;
-    client_name: string | null;
-    client_external_id: number | null;
-    created_by_way_of: string | null;
-    priority_name: string | null;
-    status_name: string | null;
-    stage_name: string | null;
-    responsible_external_id: number | null;
-    responsible_name: string | null;
-    desk_name: string | null;
-    desk_external_id: number | null;
-    requestor_name: string | null;
-    requestor_email: string | null;
-    requestor_telephone: string | null;
-    is_closed: boolean | null;
-    created_at_source: Date | null;
-    updated_at_source: Date | null;
-  };
-
-  const rows =
-    (await prisma.$queryRawUnsafe<Row[]>(
-      `
-      SELECT
-        ticket_number,
-        title,
-        client_name,
-        client_external_id,
-        created_by_way_of,
-        priority_name,
-        status_name,
-        stage_name,
-        responsible_external_id,
-        responsible_name,
-        desk_name,
-        desk_external_id,
-        requestor_name,
-        requestor_email,
-        requestor_telephone,
-        is_closed,
-        created_at_source,
-        updated_at_source
-      FROM tiflux.tickets
-      ORDER BY updated_at_source DESC NULLS LAST, ticket_number DESC
-      LIMIT $1
-    `,
-      take,
-    )) ?? [];
-
-  console.log(`Lidos ${rows.length} tickets de tiflux.tickets`);
-
-  let upserted = 0;
-  for (const row of rows) {
-    await prisma.portalTicket.upsert({
-      where: { ticketNumber: Number(row.ticket_number) },
-      create: {
-        ticketNumber: Number(row.ticket_number),
-        title: row.title,
-        clientName: row.client_name,
-        clientExternalId: row.client_external_id,
-        createdByWayOf: row.created_by_way_of,
-        priorityName: row.priority_name,
-        statusName: row.status_name,
-        stageName: row.stage_name,
-        responsibleExternalId: row.responsible_external_id,
-        responsibleName: row.responsible_name,
-        deskName: row.desk_name,
-        deskExternalId: row.desk_external_id,
-        requestorName: row.requestor_name,
-        requestorEmail: row.requestor_email,
-        requestorTelephone: row.requestor_telephone,
-        isClosed: Boolean(row.is_closed),
-        origin: PortalTicketOrigin.TIFLUX,
-        createdAtSource: row.created_at_source,
-        updatedAtSource: row.updated_at_source,
-      },
-      update: {
-        title: row.title,
-        clientName: row.client_name,
-        clientExternalId: row.client_external_id,
-        createdByWayOf: row.created_by_way_of,
-        priorityName: row.priority_name,
-        statusName: row.status_name,
-        stageName: row.stage_name,
-        responsibleExternalId: row.responsible_external_id,
-        responsibleName: row.responsible_name,
-        deskName: row.desk_name,
-        deskExternalId: row.desk_external_id,
-        requestorName: row.requestor_name,
-        requestorEmail: row.requestor_email,
-        requestorTelephone: row.requestor_telephone,
-        isClosed: Boolean(row.is_closed),
-        updatedAtSource: row.updated_at_source,
-      },
-    });
-    upserted += 1;
-    if (upserted % 500 === 0) {
-      console.log(`… ${upserted}/${rows.length}`);
-    }
+  const before = await prisma.portalTicket.count();
+  let sourceCount = 0;
+  try {
+    const rows = await prisma.$queryRawUnsafe<Array<{ c: number }>>(
+      'SELECT count(*)::int AS c FROM tiflux.tickets',
+    );
+    sourceCount = rows[0]?.c ?? 0;
+  } catch (e) {
+    throw new Error(
+      `Schema tiflux.tickets indisponível: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 
-  console.log(`OK: ${upserted} tickets em portal_tickets`);
+  console.log(
+    `ETL tiflux.tickets → portal_tickets (source=${sourceCount}, portal_antes=${before}${limit ? `, limit=${limit}` : ''}${dryRun ? ', dry-run' : ''})`,
+  );
+
+  if (dryRun) {
+    console.log('Dry-run: nenhum write.');
+    return;
+  }
+
+  const sql = limit
+    ? `
+      INSERT INTO portal_tickets (
+        id, ticket_number, title, client_name, client_external_id, created_by_way_of,
+        priority_name, status_name, stage_name, responsible_external_id, responsible_name,
+        desk_name, desk_external_id, requestor_name, requestor_email, requestor_telephone,
+        is_closed, origin, created_at_source, updated_at_source, created_at, updated_at
+      )
+      SELECT
+        gen_random_uuid()::text,
+        t.ticket_number,
+        t.title,
+        t.client_name,
+        t.client_external_id,
+        t.created_by_way_of,
+        t.priority_name,
+        t.status_name,
+        t.stage_name,
+        t.responsible_external_id,
+        t.responsible_name,
+        t.desk_name,
+        t.desk_external_id,
+        t.requestor_name,
+        t.requestor_email,
+        t.requestor_telephone,
+        COALESCE(t.is_closed, false),
+        'TIFLUX'::"PortalTicketOrigin",
+        t.created_at_source,
+        t.updated_at_source,
+        NOW(),
+        NOW()
+      FROM (
+        SELECT *
+        FROM tiflux.tickets
+        ORDER BY updated_at_source DESC NULLS LAST, ticket_number DESC
+        LIMIT $1
+      ) t
+      ON CONFLICT (ticket_number) DO UPDATE SET
+        title = EXCLUDED.title,
+        client_name = EXCLUDED.client_name,
+        client_external_id = EXCLUDED.client_external_id,
+        created_by_way_of = EXCLUDED.created_by_way_of,
+        priority_name = EXCLUDED.priority_name,
+        status_name = EXCLUDED.status_name,
+        stage_name = EXCLUDED.stage_name,
+        responsible_external_id = EXCLUDED.responsible_external_id,
+        responsible_name = EXCLUDED.responsible_name,
+        desk_name = EXCLUDED.desk_name,
+        desk_external_id = EXCLUDED.desk_external_id,
+        requestor_name = EXCLUDED.requestor_name,
+        requestor_email = EXCLUDED.requestor_email,
+        requestor_telephone = EXCLUDED.requestor_telephone,
+        is_closed = EXCLUDED.is_closed,
+        updated_at_source = EXCLUDED.updated_at_source,
+        updated_at = NOW()
+    `
+    : `
+      INSERT INTO portal_tickets (
+        id, ticket_number, title, client_name, client_external_id, created_by_way_of,
+        priority_name, status_name, stage_name, responsible_external_id, responsible_name,
+        desk_name, desk_external_id, requestor_name, requestor_email, requestor_telephone,
+        is_closed, origin, created_at_source, updated_at_source, created_at, updated_at
+      )
+      SELECT
+        gen_random_uuid()::text,
+        t.ticket_number,
+        t.title,
+        t.client_name,
+        t.client_external_id,
+        t.created_by_way_of,
+        t.priority_name,
+        t.status_name,
+        t.stage_name,
+        t.responsible_external_id,
+        t.responsible_name,
+        t.desk_name,
+        t.desk_external_id,
+        t.requestor_name,
+        t.requestor_email,
+        t.requestor_telephone,
+        COALESCE(t.is_closed, false),
+        'TIFLUX'::"PortalTicketOrigin",
+        t.created_at_source,
+        t.updated_at_source,
+        NOW(),
+        NOW()
+      FROM tiflux.tickets t
+      ON CONFLICT (ticket_number) DO UPDATE SET
+        title = EXCLUDED.title,
+        client_name = EXCLUDED.client_name,
+        client_external_id = EXCLUDED.client_external_id,
+        created_by_way_of = EXCLUDED.created_by_way_of,
+        priority_name = EXCLUDED.priority_name,
+        status_name = EXCLUDED.status_name,
+        stage_name = EXCLUDED.stage_name,
+        responsible_external_id = EXCLUDED.responsible_external_id,
+        responsible_name = EXCLUDED.responsible_name,
+        desk_name = EXCLUDED.desk_name,
+        desk_external_id = EXCLUDED.desk_external_id,
+        requestor_name = EXCLUDED.requestor_name,
+        requestor_email = EXCLUDED.requestor_email,
+        requestor_telephone = EXCLUDED.requestor_telephone,
+        is_closed = EXCLUDED.is_closed,
+        updated_at_source = EXCLUDED.updated_at_source,
+        updated_at = NOW()
+    `;
+
+  if (limit) {
+    await prisma.$executeRawUnsafe(sql, limit);
+  } else {
+    await prisma.$executeRawUnsafe(sql);
+  }
+
+  const after = await prisma.portalTicket.count();
+  const open = await prisma.portalTicket.count({ where: { isClosed: false } });
+  console.log(`Concluído: portal_tickets=${after} (abertos=${open})`);
 }
 
 main()

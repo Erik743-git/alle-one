@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -9,6 +11,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateTicketDto {
@@ -110,4 +113,56 @@ export class CreateTicketAppointmentDto {
   attendance!: 'Remote' | 'External' | 'Internal';
 }
 
-export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {}
+export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  removeAttachmentFileIds?: string[];
+}
+
+/** Edição de campos do ticket no portal (e opcionalmente TiFlux). */
+export class UpdateTicketDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(500)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50_000)
+  description?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Type(() => Number)
+  responsibleId?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(255)
+  responsibleName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  stageName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  statusName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isClosed?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  removeAttachmentFileIds?: string[];
+}

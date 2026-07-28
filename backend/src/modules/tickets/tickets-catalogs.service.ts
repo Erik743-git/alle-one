@@ -5,6 +5,52 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { normalizeDeskName } from './tiflux-portal-desk.config';
 import { resolveClientListFilter } from './tickets-client-scope';
+import {
+  isTicketsPortalCanonical,
+  isTicketsTifluxWriteEnabled,
+} from './tickets-portal.config';
+
+export type TicketClassificationNode = {
+  id: string;
+  name: string;
+  level: number;
+  active: boolean;
+  sortOrder: number;
+  parentId: string | null;
+  children: TicketClassificationNode[];
+};
+
+export type TicketCreateCatalogs = {
+  clients: Array<{ id: number; name: string }>;
+  desks: Array<{
+    id: number;
+    name: string;
+    appointmentType: string;
+    requireServiceCatalog: boolean;
+  }>;
+  responsibles: Array<{ id: number; name: string; email: string | null }>;
+  requestors: Array<{
+    id: number;
+    name: string;
+    email: string | null;
+    telephone: string | null;
+  }>;
+  portalServiceDesk: { id: string; name: string } | null;
+  classification: {
+    levelLabels: Array<{ level: number; label: string }>;
+    tree: TicketClassificationNode[];
+  } | null;
+  desk: {
+    id: number;
+    name: string;
+    appointmentType: string;
+    requireServiceCatalog: boolean;
+    requiredFields: Record<string, boolean>;
+  } | null;
+  priorities: Array<{ id: number; name: string }>;
+  catalogItems: Array<{ id: number; name: string }>;
+  source?: 'portal' | 'tiflux';
+};
 
 @Injectable()
 export class TicketsCatalogsService {
@@ -53,6 +99,34 @@ export class TicketsCatalogsService {
     );
   }
 
+  /** Responsáveis a partir do mirror `tiflux.users` (sem API). */
+  async listResponsiblesFromMirror(): Promise<
+    Array<{ id: number; name: string; email: string | null }>
+  > {
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; name: string; email: string | null }>
+        >`
+          SELECT tu.external_id, tu.name, tu.email
+          FROM tiflux.users tu
+          WHERE COALESCE(tu.active, true) = true
+            AND tu.type IN ('attendant', 'admin')
+          ORDER BY tu.name ASC
+          LIMIT 300
+        `) ?? [];
+      return rows
+        .map((r) => ({
+          id: Number(r.external_id),
+          name: String(r.name ?? '').trim(),
+          email: r.email != null ? String(r.email).trim() : null,
+        }))
+        .filter((r) => Number.isFinite(r.id) && r.id > 0 && r.name);
+    } catch {
+      return [];
+    }
+  }
+
   private buildClassificationTree(
     rows: Array<{
       id: string;
@@ -62,17 +136,7 @@ export class TicketsCatalogsService {
       sortOrder: number;
       parentId: string | null;
     }>,
-  ) {
-    type Node = {
-      id: string;
-      name: string;
-      level: number;
-      active: boolean;
-      sortOrder: number;
-      parentId: string | null;
-      children: Node[];
-    };
-
+  ): TicketClassificationNode[] {
     const byParent = new Map<string | null, typeof rows>();
     for (const row of rows) {
       const bucket = byParent.get(row.parentId);
@@ -86,7 +150,7 @@ export class TicketsCatalogsService {
           a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'),
       );
 
-    const toNode = (row: (typeof rows)[number]): Node => ({
+    const toNode = (row: (typeof rows)[number]): TicketClassificationNode => ({
       ...row,
       children:
         row.level < 3
@@ -265,6 +329,10 @@ export class TicketsCatalogsService {
     );
     const clientFilter = clientScope.clientExternalId;
 
+    if (isTicketsPortalCanonical()) {
+      return this.getFilterCatalogsFromPortal(actor, clientFilter);
+    }
+
     const [stages, clients, responsibles, desks, statuses] = await Promise.all([
       this.prisma.$queryRaw<Array<{ stage_name: string }>>`
         SELECT DISTINCT trim(t.stage_name) AS stage_name
@@ -335,6 +403,102 @@ export class TicketsCatalogsService {
     };
   }
 
+  private async getFilterCatalogsFromPortal(
+    actor: AuthenticatedRequestUser,
+    clientFilter: number | null,
+  ) {
+    const whereOpen = {
+      isClosed: false,
+      ...(clientFilter != null ? { clientExternalId: clientFilter } : {}),
+    } as const;
+
+    const [tickets, responsibles] = await Promise.all([
+      this.prisma.portalTicket.findMany({
+        where: whereOpen,
+        select: {
+          stageName: true,
+          clientExternalId: true,
+          clientName: true,
+          deskName: true,
+          statusName: true,
+          responsibleExternalId: true,
+          responsibleName: true,
+        },
+        take: 2000,
+      }),
+      this.listResponsiblesFromMirror(),
+    ]);
+
+    const stages = [
+      ...new Set(
+        tickets
+          .map((t) => t.stageName?.trim())
+          .filter((v): v is string => Boolean(v)),
+      ),
+    ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    const clientMap = new Map<number, string>();
+    for (const t of tickets) {
+      if (t.clientExternalId == null || !t.clientName?.trim()) continue;
+      clientMap.set(t.clientExternalId, t.clientName.trim());
+    }
+
+    const desks = [
+      ...new Set(
+        tickets
+          .map((t) => t.deskName?.trim())
+          .filter((v): v is string => Boolean(v)),
+      ),
+    ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    const statuses = [
+      ...new Set(
+        tickets
+          .map((t) => t.statusName?.trim())
+          .filter((v): v is string => Boolean(v)),
+      ),
+    ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    const responsibleMap = new Map<
+      number,
+      { externalId: number; name: string; email: string | null }
+    >();
+    for (const r of responsibles) {
+      responsibleMap.set(r.id, {
+        externalId: r.id,
+        name: r.name,
+        email: r.email,
+      });
+    }
+    for (const t of tickets) {
+      if (t.responsibleExternalId == null || !t.responsibleName?.trim()) {
+        continue;
+      }
+      if (!responsibleMap.has(t.responsibleExternalId)) {
+        responsibleMap.set(t.responsibleExternalId, {
+          externalId: t.responsibleExternalId,
+          name: t.responsibleName.trim(),
+          email: null,
+        });
+      }
+    }
+
+    return {
+      stages,
+      clients: [...clientMap.entries()]
+        .map(([externalId, name]) => ({ externalId, name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+      responsibles:
+        actor.role === 'CLIENT'
+          ? []
+          : [...responsibleMap.values()].sort((a, b) =>
+              a.name.localeCompare(b.name, 'pt-BR'),
+            ),
+      desks,
+      statuses,
+    };
+  }
+
   private mapCatalogItem(row: Record<string, unknown>) {
     const id = Number(row.id);
     const name = String(row.name ?? row.display_name ?? '').trim();
@@ -346,7 +510,14 @@ export class TicketsCatalogsService {
     return { id, name: parts.join(' → ') || name || `Item ${id}` };
   }
 
-  async getCreateCatalogs(deskId?: number, clientId?: number) {
+  async getCreateCatalogs(
+    deskId?: number,
+    clientId?: number,
+  ): Promise<TicketCreateCatalogs> {
+    if (!isTicketsTifluxWriteEnabled()) {
+      return this.getCreateCatalogsFromPortal(deskId, clientId);
+    }
+
     const [clientsRaw, desksRaw, responsibles] = await Promise.all([
       this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
       this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
@@ -367,18 +538,7 @@ export class TicketsCatalogsService {
     let priorities: Array<{ id: number; name: string }> = [];
     let catalogItems: Array<{ id: number; name: string }> = [];
     let portalServiceDesk: { id: string; name: string } | null = null;
-    let classification: {
-      levelLabels: Array<{ level: number; label: string }>;
-      tree: Array<{
-        id: string;
-        name: string;
-        level: number;
-        active: boolean;
-        sortOrder: number;
-        parentId: string | null;
-        children: unknown[];
-      }>;
-    } | null = null;
+    let classification: TicketCreateCatalogs['classification'] = null;
 
     if (deskId != null && Number.isFinite(deskId)) {
       desk = await this.tiflux.getDesk(deskId);
@@ -431,6 +591,84 @@ export class TicketsCatalogsService {
         : null,
       priorities,
       catalogItems,
+      source: 'tiflux' as const,
+    };
+  }
+
+  /** Catálogos de criação sem API TiFlux (Company + service_desks + mirror users). */
+  private async getCreateCatalogsFromPortal(
+    deskId?: number,
+    _clientId?: number,
+  ): Promise<TicketCreateCatalogs> {
+    const [companies, desks, responsibles] = await Promise.all([
+      this.prisma.company.findMany({
+        where: {
+          deletedAt: null,
+          status: true,
+          tifluxClientId: { not: null },
+        },
+        select: {
+          tifluxClientId: true,
+          tifluxClientName: true,
+          name: true,
+        },
+        orderBy: { name: 'asc' },
+        take: 500,
+      }),
+      this.prisma.serviceDesk.findMany({
+        where: { deletedAt: null, active: true, externalId: { not: null } },
+        select: { id: true, externalId: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.listResponsiblesFromMirror(),
+    ]);
+
+    const clients = companies
+      .map((c) => ({
+        id: Number(c.tifluxClientId),
+        name: (c.tifluxClientName?.trim() || c.name).trim(),
+      }))
+      .filter((c) => Number.isFinite(c.id));
+
+    const deskOptions = desks
+      .map((d) => ({
+        id: Number(d.externalId),
+        name: d.name,
+        appointmentType: '',
+        requireServiceCatalog: false,
+      }))
+      .filter((d) => Number.isFinite(d.id));
+
+    let portalServiceDesk: { id: string; name: string } | null = null;
+    let classification: TicketCreateCatalogs['classification'] = null;
+    let deskMeta: TicketCreateCatalogs['desk'] = null;
+
+    if (deskId != null && Number.isFinite(deskId)) {
+      const matched = desks.find((d) => Number(d.externalId) === deskId);
+      const deskName = matched?.name ?? `Mesa ${deskId}`;
+      const bundle = await this.loadClassificationBundle(deskId, deskName);
+      portalServiceDesk = bundle.portalServiceDesk;
+      classification = bundle.classification;
+      deskMeta = {
+        id: deskId,
+        name: deskName,
+        appointmentType: '',
+        requireServiceCatalog: false,
+        requiredFields: {},
+      };
+    }
+
+    return {
+      clients,
+      desks: deskOptions,
+      responsibles,
+      requestors: [],
+      portalServiceDesk,
+      classification,
+      desk: deskMeta,
+      priorities: [],
+      catalogItems: [],
+      source: 'portal',
     };
   }
 }

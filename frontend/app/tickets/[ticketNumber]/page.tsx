@@ -5,13 +5,17 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
+  ChevronDown,
   Clock,
   Download,
   History,
   Link2,
   Loader2,
+  MoreVertical,
+  Pencil,
   Paperclip,
   Ticket,
+  Trash2,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -19,6 +23,12 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import { TicketHistoryPanel } from "@/components/tickets/ticket-history-panel";
@@ -382,6 +392,14 @@ export default function TicketDetailPage() {
                   Apontar
                 </Button>
               ) : null}
+              {ticket && canChangeTicketStage() ? (
+                <Button type="button" variant="outline" size="sm" asChild>
+                  <Link href={`/tickets/${ticket.ticketNumber}/edit`}>
+                    <Pencil className="mr-2 size-4" />
+                    Editar
+                  </Link>
+                </Button>
+              ) : null}
             </div>
 
             {loading ? (
@@ -452,11 +470,68 @@ export default function TicketDetailPage() {
                       <CardHeader>
                         <CardTitle className="text-base">Descrição do chamado</CardTitle>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="space-y-4">
                         <AppointmentDescriptionView
                           description={data.portalDescription.description}
                           attachments={data.portalDescription.attachments ?? []}
                         />
+                        {(data.portalDescription.attachments ?? []).some(
+                          (a) => !(a.mimeType || "").startsWith("image/"),
+                        ) ? (
+                          <div className="space-y-2 border-t border-border pt-4">
+                            <p className="text-sm font-medium">Anexos</p>
+                            <ul className="space-y-1.5">
+                              {(data.portalDescription.attachments ?? [])
+                                .filter(
+                                  (a) =>
+                                    !(a.mimeType || "").startsWith("image/"),
+                                )
+                                .map((attachment) => (
+                                  <li
+                                    key={attachment.fileId}
+                                    className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                                  >
+                                    <span className="min-w-0 flex-1 truncate">
+                                      {attachment.originalName}
+                                      <span className="text-muted-foreground">
+                                        {` · ${attachment.mimeType || "arquivo"}`}
+                                        {attachment.size != null
+                                          ? ` · ${
+                                              attachment.size < 1024
+                                                ? `${attachment.size} B`
+                                                : attachment.size < 1024 * 1024
+                                                  ? `${Math.round(attachment.size / 1024)} KB`
+                                                  : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
+                                            }`
+                                          : ""}
+                                      </span>
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8"
+                                      onClick={() =>
+                                        void openPortalAttachment(
+                                          attachment,
+                                          false,
+                                        ).catch((err) =>
+                                          notifyError(
+                                            err instanceof Error
+                                              ? err.message
+                                              : "Não foi possível baixar o anexo.",
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      <Download className="mr-1.5 size-3.5" />
+                                      Baixar
+                                    </Button>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </CardContent>
                     </Card>
                   ) : null}
@@ -498,7 +573,7 @@ export default function TicketDetailPage() {
                       {canChangeTicketStage() && (stagesLoading || stagesData) ? (
                         <div className="space-y-2 border-t border-border pt-3">
                           <Label className="text-xs font-semibold text-muted-foreground">
-                            Estágio no TiFlux
+                            Estágio
                           </Label>
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                             <div className="flex-1">
@@ -537,7 +612,7 @@ export default function TicketDetailPage() {
                           <p className="text-xs text-muted-foreground">
                             {stagesData?.isClosed
                               ? "Ticket fechado — o estágio não pode ser alterado."
-                              : "Avance o estágio para permitir apontamentos no TiFlux (a etapa inicial geralmente não aceita horas)."}
+                              : "Altere o estágio do chamado conforme o andamento do atendimento."}
                           </p>
                         </div>
                       ) : null}
@@ -736,34 +811,46 @@ export default function TicketDetailPage() {
                               {canCreateTicketAppointment() ? (
                                 <td className="px-4 py-2">
                                   {row.portalAppointmentId ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs"
-                                        onClick={() =>
-                                          void handleEditAppointment(
-                                            row.portalAppointmentId!,
-                                          )
-                                        }
+                                    <DropdownMenu modal={false}>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="size-8"
+                                          aria-label="Ações do apontamento"
+                                        >
+                                          <MoreVertical className="size-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent
+                                        align="end"
+                                        sideOffset={6}
+                                        className="min-w-[9.5rem] w-auto"
                                       >
-                                        Editar
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs text-rose-600 hover:text-rose-600"
-                                        onClick={() =>
-                                          void handleDeleteAppointment(
-                                            row.portalAppointmentId!,
-                                          )
-                                        }
-                                      >
-                                        Excluir
-                                      </Button>
-                                    </div>
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            void handleEditAppointment(
+                                              row.portalAppointmentId!,
+                                            )
+                                          }
+                                        >
+                                          <Pencil className="mr-2 size-4" />
+                                          Editar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          variant="destructive"
+                                          onClick={() =>
+                                            void handleDeleteAppointment(
+                                              row.portalAppointmentId!,
+                                            )
+                                          }
+                                        >
+                                          <Trash2 className="mr-2 size-4" />
+                                          Excluir
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   ) : (
                                     <span className="text-xs text-muted-foreground">—</span>
                                   )}

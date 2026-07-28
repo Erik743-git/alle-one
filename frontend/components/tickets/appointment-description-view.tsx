@@ -5,7 +5,9 @@ import { useMemo, useState } from "react";
 import {
   appointmentDescriptionToPlainText,
   isAppointmentDoc,
+  looksLikeHtml,
   parseAppointmentDoc,
+  stripHtmlToPlain,
 } from "@/lib/appointment-doc";
 import { AppointmentImageChip } from "@/components/tickets/appointment-image-chip";
 import { cn } from "@/lib/utils";
@@ -79,6 +81,15 @@ function collectImagePreviews(
     }
   }
 
+  // HTML de e-mail já renderiza <img> no corpo — não repetir nos chips.
+  if (
+    looksLikeHtml(description) &&
+    (/<img[\s\S]*src\s*=/i.test(description) ||
+      description.includes("data:image/"))
+  ) {
+    return [];
+  }
+
   return attachments
     .filter((item) => item.mimeType.startsWith("image/"))
     .map((item) => ({
@@ -95,27 +106,35 @@ function isLongText(text: string) {
 }
 
 function FullDescriptionBody({ description }: { description: string }) {
-  if (!isAppointmentDoc(description)) {
-    return <p className="whitespace-pre-wrap text-foreground/90">{description}</p>;
+  if (isAppointmentDoc(description)) {
+    const doc = parseAppointmentDoc(description);
+    if (!doc) {
+      return <p className="whitespace-pre-wrap text-foreground/90">{description}</p>;
+    }
+    return (
+      <div className="space-y-2">
+        {doc.blocks.map((block, index) => {
+          if (block.type !== "text") return null;
+          return (
+            <p key={`text-${index}`} className="whitespace-pre-wrap text-foreground/90">
+              {block.content}
+            </p>
+          );
+        })}
+      </div>
+    );
   }
 
-  const doc = parseAppointmentDoc(description);
-  if (!doc) {
-    return <p className="whitespace-pre-wrap text-foreground/90">{description}</p>;
+  if (looksLikeHtml(description)) {
+    return (
+      <div
+        className="prose prose-sm dark:prose-invert max-w-none text-foreground [&_*]:!text-inherit [&_a]:!text-primary [&_img]:max-h-[480px] [&_img]:rounded-md"
+        dangerouslySetInnerHTML={{ __html: description }}
+      />
+    );
   }
 
-  return (
-    <div className="space-y-2">
-      {doc.blocks.map((block, index) => {
-        if (block.type !== "text") return null;
-        return (
-          <p key={`text-${index}`} className="whitespace-pre-wrap text-foreground/90">
-            {block.content}
-          </p>
-        );
-      })}
-    </div>
-  );
+  return <p className="whitespace-pre-wrap text-foreground/90">{description}</p>;
 }
 
 export function AppointmentDescriptionView({ description, attachments }: Props) {
@@ -135,6 +154,9 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
           .trim();
       }
     }
+    if (looksLikeHtml(text)) {
+      return stripHtmlToPlain(text);
+    }
     return appointmentDescriptionToPlainText(text);
   }, [text]);
 
@@ -143,16 +165,23 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
     [text, attachments],
   );
 
+  const isHtml = Boolean(text && looksLikeHtml(text));
+  const hasHtmlImages =
+    isHtml &&
+    (/<img[\s\S]*src\s*=/i.test(text!) || text!.includes("data:image/"));
   const hasLongText = Boolean(plainText && isLongText(plainText));
-  const showCollapsed = hasLongText && !expanded;
+  // HTML só com print (assinatura etc.): sempre mostra o corpo, não some por falta de texto.
+  const showCollapsed = hasLongText && !expanded && !hasHtmlImages;
 
   if (!text) {
     return <span className="text-muted-foreground">—</span>;
   }
 
+  const showDescriptionBody = Boolean(plainText) || isHtml || isAppointmentDoc(text);
+
   return (
     <div className="space-y-2 text-sm leading-relaxed">
-      {plainText ? (
+      {showDescriptionBody ? (
         <div>
           {showCollapsed ? (
             <p className="line-clamp-3 whitespace-pre-wrap text-foreground/90">
@@ -161,7 +190,7 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
           ) : (
             <FullDescriptionBody description={text} />
           )}
-          {hasLongText ? (
+          {hasLongText && !hasHtmlImages ? (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}

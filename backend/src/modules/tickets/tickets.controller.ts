@@ -33,6 +33,7 @@ import {
   CreateTicketAppointmentDto,
   CreateTicketDto,
   UpdateTicketAppointmentDto,
+  UpdateTicketDto,
 } from './tickets-create.dto';
 import { TicketsListQueryDto, UpdateTicketStageDto } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
@@ -187,6 +188,45 @@ export class TicketsController {
     );
   }
 
+  @Patch(':ticketNumber')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  async updateTicket(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Body('payload') payloadRaw: string,
+    @UploadedFiles() files?: Express.Multer.File[],
+  ) {
+    if (!payloadRaw?.trim()) {
+      throw new BadRequestException('Campo payload é obrigatório.');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payloadRaw);
+    } catch {
+      throw new BadRequestException('Payload JSON inválido.');
+    }
+
+    const dto = plainToInstance(UpdateTicketDto, parsed);
+    const errors = await validate(dto);
+    if (errors.length > 0) {
+      const first = errors[0];
+      const msg =
+        Object.values(first.constraints ?? {})[0] ??
+        'Dados do ticket inválidos.';
+      throw new BadRequestException(msg);
+    }
+
+    return this.ticketsService.updateTicket(
+      actor,
+      ticketNumber,
+      dto,
+      files ?? [],
+    );
+  }
+
   @Get(':ticketNumber/history')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
@@ -337,6 +377,7 @@ export class TicketsController {
       ticketNumber,
       portalAppointmentId,
       dto,
+      files ?? [],
     );
   }
 

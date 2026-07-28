@@ -15,13 +15,17 @@ import { FileText, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import {
+  isAppointmentDoc,
+  parseAppointmentDoc,
   serializeAppointmentDoc,
   type StoredBlock,
 } from "@/lib/appointment-doc";
 import { cn } from "@/lib/utils";
 
 const MAX_ATTACHMENTS = 10;
-const DEFAULT_IMAGE_WIDTH = 420;
+/** Largura padrão dos prints no editor (cabem bem na tela). */
+const DEFAULT_IMAGE_WIDTH = 280;
+const MAX_IMAGE_WIDTH = 360;
 
 type AttachmentItem = {
   id: string;
@@ -33,6 +37,7 @@ export type AppointmentBlockComposerHandle = {
     description: string;
     files: File[];
     isValid: boolean;
+    removeAttachmentFileIds: string[];
   };
 };
 
@@ -42,6 +47,16 @@ type Props = {
   placeholder?: string;
   hintText?: string;
   appendButtonLabel?: string;
+  /** Descrição já salva (texto, HTML de e-mail ou doc Alle One) para pré-carregar o editor. */
+  initialDescription?: string | null;
+  /** Anexos existentes do ticket (imagens reidratam na descrição; outros aparecem em Anexos). */
+  initialAttachments?: Array<{
+    fileId: string;
+    originalName: string;
+    mimeType: string;
+    previewDataUrl?: string | null;
+    size?: number;
+  }>;
 };
 
 function newId() {
@@ -93,6 +108,99 @@ function formatFileSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+async function dataUrlOrBlobUrlToFile(
+  src: string,
+  fileName: string,
+  mimeHint?: string,
+): Promise<File | null> {
+  try {
+    if (src.startsWith("data:")) {
+      const match = /^data:([^;]+);base64,([\s\S]+)$/i.exec(src);
+      if (match) {
+        const mime = match[1] || mimeHint || "image/png";
+        const binary = atob(match[2].replace(/\s/g, ""));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const extension = (mime.split("/")[1] || "png").replace("jpeg", "jpg");
+        const safeName =
+          fileName?.trim() && fileName !== "blob"
+            ? fileName
+            : `imagem-${Date.now()}.${extension}`;
+        return new File([bytes], safeName, { type: mime });
+      }
+    }
+
+    const response = await fetch(src);
+    const blob = await response.blob();
+    const type = blob.type || mimeHint || "image/png";
+    const extension = (type.split("/")[1] || "png").replace("jpeg", "jpg");
+    const safeName =
+      fileName?.trim() && fileName !== "blob"
+        ? fileName
+        : `imagem-${Date.now()}.${extension}`;
+    return new File([blob], safeName, { type });
+  } catch {
+    return null;
+  }
+}
+
+function looksLikeHtml(value: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(value);
+}
+
+function cleanEditorText(text: string): string {
+  return text
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[^\S\n]+/g, " ")
+    .trim();
+}
+
+/** Extrai imagens e devolve HTML sanitizado (estrutura do e-mail) para o editor. */
+function prepareEmailHtmlForEditor(html: string): {
+  bodyHtml: string;
+  images: Array<{ src: string; alt: string }>;
+} {
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+
+  const images = Array.from(temp.querySelectorAll("img[src]")).map((img) => ({
+    src: img.getAttribute("src")?.trim() ?? "",
+    alt: img.getAttribute("alt")?.trim() || "imagem",
+  }));
+
+  temp
+    .querySelectorAll(
+      "img, script, style, noscript, head, link, meta, iframe, object, embed",
+    )
+    .forEach((el) => el.remove());
+
+  temp.querySelectorAll("*").forEach((node) => {
+    const el = node as HTMLElement;
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (
+        name.startsWith("on") ||
+        name === "style" ||
+        name === "class" ||
+        name === "id" ||
+        name.startsWith("data-")
+      ) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
+
+  return {
+    bodyHtml: temp.innerHTML.trim(),
+    images: images.filter((item) => item.src && !item.src.startsWith("cid:")),
+  };
+}
+
 export const AppointmentDescriptionComposer = forwardRef<
   AppointmentBlockComposerHandle,
   Props
@@ -103,12 +211,16 @@ export const AppointmentDescriptionComposer = forwardRef<
     placeholder = "Descreva o que foi feito neste trecho…",
     hintText =
       "Escreva normalmente e cole imagens com Ctrl+V na posição do cursor",
-    appendButtonLabel = "Anexar arquivos",
+    appendButtonLabel = "Anexar arquivo",
+    initialDescription = null,
+    initialAttachments = [],
   },
   ref,
 ) {
   const editorRef = useRef<HTMLDivElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const hydratingRef = useRef(false);
+  const [editorReady, setEditorReady] = useState(false);
 
   const inlineFilesRef = useRef<Map<string, File>>(new Map());
   const previewUrlsRef = useRef<Map<string, string>>(new Map());
@@ -116,6 +228,18 @@ export const AppointmentDescriptionComposer = forwardRef<
 
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [removedExistingIds, setRemovedExistingIds] = useState<string[]>([]);
+
+  const existingFileAttachments = initialAttachments.filter(
+    (item) =>
+      !(item.mimeType || "").startsWith("image/") &&
+      !removedExistingIds.includes(item.fileId),
+  );
+
+  const setEditorNode = useCallback((node: HTMLDivElement | null) => {
+    editorRef.current = node;
+    setEditorReady(Boolean(node));
+  }, []);
 
   const saveSelection = useCallback(() => {
     const editor = editorRef.current;
@@ -169,6 +293,7 @@ export const AppointmentDescriptionComposer = forwardRef<
   }, [focusEditorAtEnd]);
 
   const syncInlineImagesWithDom = useCallback(() => {
+    if (hydratingRef.current) return;
     const editor = editorRef.current;
     if (!editor) return;
 
@@ -252,8 +377,8 @@ export const AppointmentDescriptionComposer = forwardRef<
       wrapper.className =
         "group relative my-3 inline-block max-w-full align-top";
       wrapper.style.width = `${DEFAULT_IMAGE_WIDTH}px`;
-      wrapper.style.minWidth = "120px";
-      wrapper.style.maxWidth = "100%";
+      wrapper.style.minWidth = "96px";
+      wrapper.style.maxWidth = `min(100%, ${MAX_IMAGE_WIDTH}px)`;
       wrapper.style.lineHeight = "0";
 
       const image = document.createElement("img");
@@ -261,9 +386,11 @@ export const AppointmentDescriptionComposer = forwardRef<
       image.src = previewUrl;
       image.alt = file.name || "Imagem colada";
       image.draggable = false;
-      image.className = "block h-auto max-w-full select-none";
+      image.className = "block h-auto max-w-full select-none rounded-md border border-border/50";
       image.style.width = "100%";
       image.style.height = "auto";
+      image.style.maxHeight = "280px";
+      image.style.objectFit = "contain";
 
       const removeButton = document.createElement("button");
 
@@ -295,6 +422,158 @@ export const AppointmentDescriptionComposer = forwardRef<
     },
     [],
   );
+
+  useEffect(() => {
+    if (!editorReady) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const raw = initialDescription?.trim() ?? "";
+    const imageAttachments = initialAttachments.filter(
+      (a) =>
+        (a.mimeType || "").startsWith("image/") &&
+        Boolean(a.previewDataUrl?.trim()),
+    );
+    if (!raw && imageAttachments.length === 0) return;
+
+    let cancelled = false;
+    hydratingRef.current = true;
+
+    async function hydrate() {
+      if (!editor || cancelled) return;
+      editor.replaceChildren();
+      inlineFilesRef.current.clear();
+      for (const url of previewUrlsRef.current.values()) {
+        URL.revokeObjectURL(url);
+      }
+      previewUrlsRef.current.clear();
+
+      const seenImageKeys = new Set<string>();
+
+      const appendText = (text: string) => {
+        const normalized = cleanEditorText(text);
+        if (!normalized) return;
+        for (const line of normalized.split("\n")) {
+          const div = document.createElement("div");
+          div.textContent = line || "\u00a0";
+          editor.appendChild(div);
+        }
+      };
+
+      const appendImageFile = (file: File) => {
+        const dedupeKey = `file:${file.type}:${file.size}:${file.name}`;
+        if (seenImageKeys.has(dedupeKey)) return;
+        seenImageKeys.add(dedupeKey);
+
+        const fileKey = newId();
+        const previewUrl = URL.createObjectURL(file);
+        inlineFilesRef.current.set(fileKey, file);
+        previewUrlsRef.current.set(fileKey, previewUrl);
+        editor.appendChild(createImageElement(fileKey, file, previewUrl));
+        const lineAfter = document.createElement("div");
+        lineAfter.appendChild(document.createElement("br"));
+        editor.appendChild(lineAfter);
+      };
+
+      const appendImageFromSrc = async (
+        src: string,
+        fileName: string,
+        mimeType?: string,
+      ) => {
+        const trimmed = src.trim();
+        if (!trimmed || trimmed.startsWith("cid:")) return;
+        // Mesmo print embutido 2x no HTML do e-mail → uma só entrada.
+        const fingerprint =
+          trimmed.length > 96
+            ? `${trimmed.slice(0, 48)}:${trimmed.length}:${trimmed.slice(-32)}`
+            : trimmed;
+        if (seenImageKeys.has(`src:${fingerprint}`)) return;
+
+        const file = await dataUrlOrBlobUrlToFile(
+          trimmed,
+          fileName,
+          mimeType,
+        );
+        if (!file || cancelled) return;
+        seenImageKeys.add(`src:${fingerprint}`);
+        appendImageFile(file);
+      };
+
+      if (raw && isAppointmentDoc(raw)) {
+        const doc = parseAppointmentDoc(raw);
+        if (doc) {
+          for (const block of doc.blocks) {
+            if (cancelled) return;
+            if (block.type === "text") {
+              appendText(block.content);
+              continue;
+            }
+            if (block.type !== "image") continue;
+
+            const attachment =
+              (block.fileId
+                ? imageAttachments.find((a) => a.fileId === block.fileId)
+                : undefined) ?? imageAttachments[block.fileIndex];
+
+            const src =
+              block.dataUrl?.trim() ||
+              attachment?.previewDataUrl?.trim() ||
+              "";
+            if (!src) continue;
+
+            await appendImageFromSrc(
+              src,
+              attachment?.originalName || `imagem-${block.fileIndex + 1}.png`,
+              attachment?.mimeType,
+            );
+          }
+        } else {
+          appendText(raw);
+        }
+        return;
+      }
+
+      if (raw && looksLikeHtml(raw)) {
+        const prepared = prepareEmailHtmlForEditor(raw);
+        if (prepared.bodyHtml) {
+          editor.innerHTML = prepared.bodyHtml;
+        } else {
+          appendText(raw.replace(/<[^>]+>/g, " "));
+        }
+
+        for (const [index, img] of prepared.images.entries()) {
+          if (cancelled) return;
+          await appendImageFromSrc(
+            img.src,
+            img.alt || `imagem-email-${index + 1}.png`,
+          );
+        }
+        return;
+      } else if (raw) {
+        appendText(raw);
+      }
+
+      for (const [index, attachment] of imageAttachments.entries()) {
+        if (cancelled) return;
+        const src = attachment.previewDataUrl?.trim();
+        if (!src) continue;
+        await appendImageFromSrc(
+          src,
+          attachment.originalName || `imagem-${index + 1}.png`,
+          attachment.mimeType,
+        );
+      }
+    }
+
+    void hydrate().finally(() => {
+      if (!cancelled) hydratingRef.current = false;
+    });
+
+    return () => {
+      cancelled = true;
+      hydratingRef.current = false;
+    };
+  }, [createImageElement, editorReady, initialAttachments, initialDescription]);
 
   const insertImageAtCaret = useCallback(
     (originalFile: File) => {
@@ -442,6 +721,9 @@ export const AppointmentDescriptionComposer = forwardRef<
   );
 
   const addAttachments = useCallback((files: File[]) => {
+    const nonImages = files.filter((file) => !file.type.startsWith("image/"));
+    if (nonImages.length === 0) return;
+
     setAttachments((current) => {
       const available = MAX_ATTACHMENTS - current.length;
 
@@ -456,7 +738,7 @@ export const AppointmentDescriptionComposer = forwardRef<
 
       const added: AttachmentItem[] = [];
 
-      for (const file of files) {
+      for (const file of nonImages) {
         if (added.length >= available) break;
 
         const signature = `${file.name}:${file.size}:${file.lastModified}`;
@@ -543,8 +825,11 @@ export const AppointmentDescriptionComposer = forwardRef<
       const startX = event.clientX;
       const startWidth = wrapper.getBoundingClientRect().width;
       const editorWidth = editor.getBoundingClientRect().width;
-      const minWidth = 120;
-      const maxWidth = Math.max(minWidth, editorWidth - 32);
+      const minWidth = 96;
+      const maxWidth = Math.min(
+        MAX_IMAGE_WIDTH,
+        Math.max(minWidth, editorWidth - 32),
+      );
 
       document.body.style.userSelect = "none";
       document.body.style.cursor = "nwse-resize";
@@ -620,7 +905,9 @@ export const AppointmentDescriptionComposer = forwardRef<
           return {
             description: "",
             files: attachments.map(({ file }) => file),
-            isValid: attachments.length > 0,
+            isValid:
+              attachments.length > 0 || existingFileAttachments.length > 0,
+            removeAttachmentFileIds: removedExistingIds,
           };
         }
 
@@ -675,7 +962,7 @@ export const AppointmentDescriptionComposer = forwardRef<
             return;
           }
 
-          const block = isBlockElement(node);
+          const block = isBlockElement(node) || node.tagName === "TR";
 
           if (
             block &&
@@ -703,7 +990,9 @@ export const AppointmentDescriptionComposer = forwardRef<
         files.push(...attachments.map(({ file }) => file));
 
         const isValid =
-          storedBlocks.length > 0 || attachments.length > 0;
+          storedBlocks.length > 0 ||
+          attachments.length > 0 ||
+          existingFileAttachments.length > 0;
 
         return {
           description:
@@ -712,10 +1001,16 @@ export const AppointmentDescriptionComposer = forwardRef<
               : "",
           files,
           isValid,
+          removeAttachmentFileIds: removedExistingIds,
         };
       },
     }),
-    [attachments, syncInlineImagesWithDom],
+    [
+      attachments,
+      existingFileAttachments.length,
+      removedExistingIds,
+      syncInlineImagesWithDom,
+    ],
   );
 
   return (
@@ -738,7 +1033,7 @@ export const AppointmentDescriptionComposer = forwardRef<
           )}
         >
           <div
-            ref={editorRef}
+            ref={setEditorNode}
             contentEditable={!disabled}
             suppressContentEditableWarning
             role="textbox"
@@ -776,9 +1071,13 @@ export const AppointmentDescriptionComposer = forwardRef<
             }}
             onDrop={handleDrop}
             className={cn(
-              "min-h-[180px] w-full cursor-text overflow-x-hidden whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 outline-none",
+              "min-h-[180px] max-h-[420px] w-full cursor-text overflow-x-hidden overflow-y-auto break-words px-4 py-3 text-sm leading-6 outline-none",
+              "whitespace-pre-wrap text-foreground",
+              "[&_b]:font-semibold [&_strong]:font-semibold",
+              "[&_p]:my-1 [&_div]:my-0.5 [&_br]:leading-6",
+              "[&_table]:w-full [&_table]:border-collapse [&_td]:align-top [&_td]:py-0.5",
               "empty:before:pointer-events-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]",
-              "[&_[data-appointment-image]]:cursor-default",
+              "[&_[data-appointment-image]]:cursor-default [&_[data-appointment-image]]:max-w-full",
               disabled && "cursor-not-allowed opacity-60",
             )}
           />
@@ -786,10 +1085,23 @@ export const AppointmentDescriptionComposer = forwardRef<
         </div>
       </div>
 
-      <div className="space-y-2 rounded-xl border bg-muted/10 p-3">
+      <div
+        className="space-y-2 rounded-xl border bg-muted/10 p-3"
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          if (disabled) return;
+          addAttachments(Array.from(event.dataTransfer.files));
+        }}
+      >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="text-sm font-medium">Anexos</div>
+            <p className="text-xs text-muted-foreground">
+              Arquivos como ZIP, RAR, PDF, DOC (imagens vão na descrição com Ctrl+V)
+            </p>
           </div>
 
           <Button
@@ -809,6 +1121,7 @@ export const AppointmentDescriptionComposer = forwardRef<
             ref={attachmentInputRef}
             type="file"
             multiple
+            accept=".zip,.rar,.7z,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.xml,.log,.mp4,.mp3,.wav,.msg,.eml,application/*,text/*,audio/*,video/*"
             className="sr-only"
             disabled={disabled}
             onChange={(event) => {
@@ -821,8 +1134,41 @@ export const AppointmentDescriptionComposer = forwardRef<
           />
         </div>
 
-        {attachments.length > 0 ? (
+        {attachments.length > 0 || existingFileAttachments.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2">
+            {existingFileAttachments.map((item) => (
+              <div
+                key={`existing-${item.fileId}`}
+                className="flex min-w-0 items-center gap-3 rounded-lg border bg-background px-3 py-2"
+              >
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm">{item.originalName}</div>
+                  <div className="text-xs text-muted-foreground">
+                    Já anexado
+                    {item.size != null ? ` · ${formatFileSize(item.size)}` : ""}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 shrink-0"
+                  disabled={disabled}
+                  aria-label={`Remover ${item.originalName}`}
+                  title="Remover anexo"
+                  onClick={() =>
+                    setRemovedExistingIds((current) =>
+                      current.includes(item.fileId)
+                        ? current
+                        : [...current, item.fileId],
+                    )
+                  }
+                >
+                  <X className="size-4" />
+                </Button>
+              </div>
+            ))}
             {attachments.map(({ id, file }) => (
               <div
                 key={id}
@@ -860,7 +1206,8 @@ export const AppointmentDescriptionComposer = forwardRef<
         )}
 
         <div className="text-right text-[11px] text-muted-foreground">
-          {attachments.length}/{MAX_ATTACHMENTS} anexos
+          {attachments.length + existingFileAttachments.length}/{MAX_ATTACHMENTS}{" "}
+          anexos
         </div>
       </div>
     </div>

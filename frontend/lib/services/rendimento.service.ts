@@ -65,6 +65,8 @@ export type RendimentoEntry = {
   ticketNumber: number;
   clientName: string | null;
   description: string | null;
+  hasMedia?: boolean;
+  portalAppointmentId?: string | null;
   isOvertime: boolean;
   overtimeKind?: "EXTRA" | "PLANTAO" | null;
   valorizationServiceName?: string | null;

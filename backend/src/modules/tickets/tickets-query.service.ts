@@ -127,23 +127,27 @@ export class TicketsQueryService {
     email: string,
   ): Promise<{ externalId: number; name: string | null } | null> {
     const normalized = this.normalizeEmail(email);
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{ external_id: number; name: string | null }>
-      >`
-        SELECT tu.external_id, tu.name
-        FROM tiflux.users tu
-        WHERE lower(trim(tu.email)) = ${normalized}
-          AND COALESCE(tu.active, true) = true
-        ORDER BY tu.external_id ASC
-        LIMIT 1
-      `) ?? [];
-    const row = rows[0];
-    if (!row) return null;
-    return {
-      externalId: Number(row.external_id),
-      name: row.name,
-    };
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; name: string | null }>
+        >`
+          SELECT tu.external_id, tu.name
+          FROM tiflux.users tu
+          WHERE lower(trim(tu.email)) = ${normalized}
+            AND COALESCE(tu.active, true) = true
+          ORDER BY tu.external_id ASC
+          LIMIT 1
+        `) ?? [];
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        externalId: Number(row.external_id),
+        name: row.name,
+      };
+    } catch {
+      return null;
+    }
   }
 
   private mapListItem(row: TicketRow): TicketListItemDto {
@@ -168,7 +172,7 @@ export class TicketsQueryService {
     actor: AuthenticatedRequestUser,
     query: TicketsListQueryDto,
   ) {
-    const limit = Math.min(Math.max(query.limit ?? 300, 1), 500);
+    const limit = Math.min(Math.max(query.limit ?? 500, 1), 1000);
     const clientScope = await this.resolveClientListFilter(
       actor,
       query.clientExternalId,
@@ -180,24 +184,23 @@ export class TicketsQueryService {
 
     let responsibleFilter: number | null = null;
     let responsibleName: string | null = null;
+    let portalMineFallback: {
+      createdBy: string;
+      email: string;
+    } | null = null;
 
     if (mineOnly) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
-      if (!mine) {
-        return {
-          total: 0,
-          mineOnly: true,
-          responsibleExternalId: null,
-          responsibleName: null,
-          tifluxUserResolved: false,
-          message:
-            'Seu e-mail não está vinculado a um usuário TiFlux. Use a busca avançada para consultar outros tickets.',
-          groups: [],
-          source: 'portal_tickets',
+      if (mine) {
+        responsibleFilter = mine.externalId;
+        responsibleName = mine.name;
+      } else {
+        portalMineFallback = {
+          createdBy: actor.userId,
+          email: this.normalizeEmail(actor.email),
         };
+        responsibleName = actor.email;
       }
-      responsibleFilter = mine.externalId;
-      responsibleName = mine.name;
     } else {
       responsibleFilter = query.responsibleExternalId ?? null;
     }
@@ -213,6 +216,19 @@ export class TicketsQueryService {
         isClosed: false,
         ...(responsibleFilter != null
           ? { responsibleExternalId: responsibleFilter }
+          : {}),
+        ...(portalMineFallback
+          ? {
+              OR: [
+                { createdBy: portalMineFallback.createdBy },
+                {
+                  requestorEmail: {
+                    equals: portalMineFallback.email,
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            }
           : {}),
         ...(clientExternalIdFilter != null
           ? { clientExternalId: clientExternalIdFilter }
@@ -299,8 +315,10 @@ export class TicketsQueryService {
       mineOnly,
       responsibleExternalId: responsibleFilter,
       responsibleName,
-      tifluxUserResolved: true,
-      message: null,
+      tifluxUserResolved: responsibleFilter != null || !mineOnly,
+      message: portalMineFallback
+        ? 'Filtrando pelos seus tickets no portal (sem vínculo TiFlux).'
+        : null,
       groups,
       source: 'portal_tickets',
     };
@@ -406,7 +424,7 @@ export class TicketsQueryService {
       return this.listGroupedFromPortal(actor, query);
     }
 
-    const limit = Math.min(Math.max(query.limit ?? 300, 1), 500);
+    const limit = Math.min(Math.max(query.limit ?? 500, 1), 1000);
     const clientScope = await this.resolveClientListFilter(
       actor,
       query.clientExternalId,
@@ -574,60 +592,58 @@ export class TicketsQueryService {
   }
 
   async getDetail(actor: AuthenticatedRequestUser, ticketNumber: number) {
-    if (isTicketsPortalCanonical()) {
-      const portal = await this.prisma.portalTicket.findUnique({
-        where: { ticketNumber },
-      });
-      if (portal) {
-        await this.assertTicketClientScope(actor, portal.clientExternalId);
-        const [appointments, externalGmudRef, portalDescription] =
-          await Promise.all([
-            this.appointments.listMergedAppointments(ticketNumber),
-            this.loadExternalGmudRef(ticketNumber),
-            this.loadPortalTicketDescription(ticketNumber),
-          ]);
-        const row: TicketRow & {
-          requestor_name?: string | null;
-          requestor_email?: string | null;
-          requestor_telephone?: string | null;
-        } = {
-          ticket_number: portal.ticketNumber,
-          title: portal.title,
-          client_name: portal.clientName,
-          client_external_id: portal.clientExternalId,
-          created_by_way_of: portal.createdByWayOf,
-          priority_name: portal.priorityName,
-          status_name: portal.statusName,
-          stage_name: portal.stageName,
-          responsible_external_id: portal.responsibleExternalId,
-          responsible_name: portal.responsibleName,
-          desk_name: portal.deskName,
-          desk_external_id: portal.deskExternalId,
-          created_at_source: portal.createdAtSource,
-          updated_at_source: portal.updatedAtSource,
-          is_closed: portal.isClosed,
-          requestor_name: portal.requestorName,
-          requestor_email: portal.requestorEmail,
-          requestor_telephone: portal.requestorTelephone,
-        };
-        return {
-          ticket: {
-            ...this.mapListItem(row),
-            deskName: row.desk_name,
-            deskExternalId: row.desk_external_id ?? null,
-            clientExternalId: row.client_external_id ?? null,
-            isClosed: Boolean(row.is_closed),
-            requestorName: row.requestor_name ?? null,
-            requestorEmail: row.requestor_email ?? null,
-            requestorTelephone: row.requestor_telephone ?? null,
-          },
-          summary: this.buildDetailSummary(appointments),
-          appointments,
-          externalGmudRef,
-          portalDescription,
-          source: 'portal_tickets',
-        };
-      }
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+    });
+    if (portal) {
+      await this.assertTicketClientScope(actor, portal.clientExternalId);
+      const [appointments, externalGmudRef, portalDescription] =
+        await Promise.all([
+          this.appointments.listMergedAppointments(ticketNumber),
+          this.loadExternalGmudRef(ticketNumber),
+          this.loadPortalTicketDescription(ticketNumber),
+        ]);
+      const row: TicketRow & {
+        requestor_name?: string | null;
+        requestor_email?: string | null;
+        requestor_telephone?: string | null;
+      } = {
+        ticket_number: portal.ticketNumber,
+        title: portal.title,
+        client_name: portal.clientName,
+        client_external_id: portal.clientExternalId,
+        created_by_way_of: portal.createdByWayOf,
+        priority_name: portal.priorityName,
+        status_name: portal.statusName,
+        stage_name: portal.stageName,
+        responsible_external_id: portal.responsibleExternalId,
+        responsible_name: portal.responsibleName,
+        desk_name: portal.deskName,
+        desk_external_id: portal.deskExternalId,
+        created_at_source: portal.createdAtSource,
+        updated_at_source: portal.updatedAtSource,
+        is_closed: portal.isClosed,
+        requestor_name: portal.requestorName,
+        requestor_email: portal.requestorEmail,
+        requestor_telephone: portal.requestorTelephone,
+      };
+      return {
+        ticket: {
+          ...this.mapListItem(row),
+          deskName: row.desk_name,
+          deskExternalId: row.desk_external_id ?? null,
+          clientExternalId: row.client_external_id ?? null,
+          isClosed: Boolean(row.is_closed),
+          requestorName: row.requestor_name ?? null,
+          requestorEmail: row.requestor_email ?? null,
+          requestorTelephone: row.requestor_telephone ?? null,
+        },
+        summary: this.buildDetailSummary(appointments),
+        appointments,
+        externalGmudRef,
+        portalDescription,
+        source: 'portal_tickets',
+      };
     }
 
     const rows =
@@ -777,6 +793,39 @@ export class TicketsQueryService {
         createdAt: row.occurredAt.toISOString(),
         sortAt: row.occurredAt,
       });
+    }
+
+    // Tickets só-portal (pré-ticket/e-mail) sem linha em tiflux.tickets e sem evento de criação.
+    const hasCreatedEvent = events.some((e) => e.eventType === 'TICKET_CREATED');
+    if (!hasCreatedEvent) {
+      const portalMeta = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber },
+        include: { creator: { select: { name: true } } },
+      });
+      if (portalMeta) {
+        const when =
+          portalMeta.createdAtSource ?? portalMeta.createdAt ?? new Date();
+        const way = (portalMeta.createdByWayOf ?? '').trim().toLowerCase();
+        let summary = 'Ticket criado no portal';
+        if (way === 'e-mail' || way === 'email') {
+          const from = [portalMeta.requestorName, portalMeta.requestorEmail]
+            .filter(Boolean)
+            .join(' · ');
+          summary = from
+            ? `Ticket gerado a partir de e-mail (${from})`
+            : 'Ticket gerado a partir de e-mail';
+        } else if (portalMeta.createdByWayOf?.trim()) {
+          summary = `Ticket criado via ${portalMeta.createdByWayOf.trim()}`;
+        }
+        events.push({
+          id: `portal-created-${ticketNumber}`,
+          eventType: 'TICKET_CREATED',
+          summary,
+          actorName: portalMeta.creator?.name ?? null,
+          createdAt: when.toISOString(),
+          sortAt: when,
+        });
+      }
     }
 
     const portalAppointments =
@@ -1076,50 +1125,56 @@ export class TicketsQueryService {
   }
 
   private async getTicketContext(ticketNumber: number) {
-    if (isTicketsPortalCanonical()) {
-      const portal = await this.prisma.portalTicket.findUnique({
-        where: { ticketNumber },
-      });
-      if (portal) {
-        return {
-          ticket_number: portal.ticketNumber,
-          client_external_id: portal.clientExternalId,
-          client_name: portal.clientName,
-          desk_external_id: portal.deskExternalId,
-          desk_name: portal.deskName,
-          stage_name: portal.stageName,
-          is_closed: portal.isClosed,
-        };
-      }
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+    });
+    if (portal) {
+      return {
+        ticket_number: portal.ticketNumber,
+        client_external_id: portal.clientExternalId,
+        client_name: portal.clientName,
+        desk_external_id: portal.deskExternalId,
+        desk_name: portal.deskName,
+        stage_name: portal.stageName,
+        is_closed: portal.isClosed,
+      };
     }
 
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          ticket_number: number;
-          client_external_id: number | null;
-          client_name: string | null;
-          desk_external_id: number | null;
-          desk_name: string | null;
-          stage_name: string | null;
-          is_closed: boolean | null;
-        }>
-      >`
-        SELECT
-          t.ticket_number,
-          t.client_external_id,
-          t.client_name,
-          t.desk_external_id,
-          t.desk_name,
-          t.stage_name,
-          t.is_closed
-        FROM tiflux.tickets t
-        WHERE t.ticket_number = ${ticketNumber}
-        LIMIT 1
-      `) ?? [];
-    const row = rows[0] ?? null;
-    if (row) {
-      return row;
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            ticket_number: number;
+            client_external_id: number | null;
+            client_name: string | null;
+            desk_external_id: number | null;
+            desk_name: string | null;
+            stage_name: string | null;
+            is_closed: boolean | null;
+          }>
+        >`
+          SELECT
+            t.ticket_number,
+            t.client_external_id,
+            t.client_name,
+            t.desk_external_id,
+            t.desk_name,
+            t.stage_name,
+            t.is_closed
+          FROM tiflux.tickets t
+          WHERE t.ticket_number = ${ticketNumber}
+          LIMIT 1
+        `) ?? [];
+      const row = rows[0] ?? null;
+      if (row) {
+        return row;
+      }
+    } catch {
+      // Schema tiflux.* pode estar ausente no cutover local.
+    }
+
+    if (!this.allowRuntimeTifluxApi) {
+      return null;
     }
 
     const apiTicket = await this.tiflux.getTicket(ticketNumber);
@@ -1163,10 +1218,16 @@ export class TicketsQueryService {
     stageName: string | null;
     stages: Array<{ id: number; name: string }>;
   }): Promise<number | null> {
-    const apiTicket = await this.tiflux.getTicket(params.ticketNumber);
-    const fromApi = Number(apiTicket?.stage?.id);
-    if (Number.isFinite(fromApi) && fromApi > 0) {
-      return fromApi;
+    if (this.allowRuntimeTifluxApi || isTicketsTifluxWriteEnabled()) {
+      try {
+        const apiTicket = await this.tiflux.getTicket(params.ticketNumber);
+        const fromApi = Number(apiTicket?.stage?.id);
+        if (Number.isFinite(fromApi) && fromApi > 0) {
+          return fromApi;
+        }
+      } catch {
+        // segue para match por nome
+      }
     }
 
     const normalized = normalizeDeskName(params.stageName);
@@ -1197,24 +1258,64 @@ export class TicketsQueryService {
     }
 
     const deskExternalId = Number(ticket.desk_external_id);
-    if (!Number.isFinite(deskExternalId) || deskExternalId <= 0) {
-      throw new BadRequestException(
-        'Ticket sem mesa de serviço vinculada no TiFlux.',
-      );
+    const deskOk =
+      Number.isFinite(deskExternalId) && deskExternalId > 0
+        ? deskExternalId
+        : null;
+
+    let stages: Array<{
+      id: number;
+      name: string;
+      firstStage: boolean;
+      lastStage: boolean;
+    }> = [];
+
+    if (deskOk != null && isTicketsTifluxWriteEnabled()) {
+      try {
+        stages = this.mapDeskStageOptions(
+          await this.tiflux.getDeskStages(deskOk),
+        );
+      } catch {
+        stages = [];
+      }
     }
 
-    const stages = this.mapDeskStageOptions(
-      await this.tiflux.getDeskStages(deskExternalId),
-    );
-    const currentStageId = await this.resolveCurrentStageId({
-      ticketNumber,
-      deskExternalId,
-      stageName: ticket.stage_name,
-      stages,
-    });
+    if (stages.length === 0) {
+      const names = [
+        'Aberto',
+        'Em andamento',
+        'Aguardando',
+        'Resolvido',
+        'Fechado',
+      ];
+      const current = ticket.stage_name?.trim();
+      if (current && !names.some((n) => normalizeDeskName(n) === normalizeDeskName(current))) {
+        names.unshift(current);
+      }
+      stages = names.map((name, index) => ({
+        id: index + 1,
+        name,
+        firstStage: index === 0,
+        lastStage: index === names.length - 1,
+      }));
+    }
+
+    const currentStageId =
+      deskOk != null
+        ? await this.resolveCurrentStageId({
+            ticketNumber,
+            deskExternalId: deskOk,
+            stageName: ticket.stage_name,
+            stages,
+          })
+        : (stages.find(
+            (s) =>
+              normalizeDeskName(s.name) ===
+              normalizeDeskName(ticket.stage_name),
+          )?.id ?? null);
 
     return {
-      deskExternalId,
+      deskExternalId: deskOk,
       deskName: ticket.desk_name,
       currentStageId,
       currentStageName: ticket.stage_name,
@@ -1239,16 +1340,8 @@ export class TicketsQueryService {
       );
     }
 
-    const deskExternalId = Number(ticket.desk_external_id);
-    if (!Number.isFinite(deskExternalId) || deskExternalId <= 0) {
-      throw new BadRequestException(
-        'Ticket sem mesa de serviço vinculada no TiFlux.',
-      );
-    }
-
-    const stages = this.mapDeskStageOptions(
-      await this.tiflux.getDeskStages(deskExternalId),
-    );
+    const stagesResponse = await this.listTicketStages(ticketNumber);
+    const stages = stagesResponse.stages;
     const targetStage = stages.find((stage) => stage.id === stageId);
     if (!targetStage) {
       throw new BadRequestException(
@@ -1256,13 +1349,7 @@ export class TicketsQueryService {
       );
     }
 
-    const currentStageId = await this.resolveCurrentStageId({
-      ticketNumber,
-      deskExternalId,
-      stageName: ticket.stage_name,
-      stages,
-    });
-    if (currentStageId === stageId) {
+    if (stagesResponse.currentStageId === stageId) {
       return {
         ok: true,
         stageId: targetStage.id,
@@ -1274,15 +1361,32 @@ export class TicketsQueryService {
 
     let stageName = targetStage.name;
     let resolvedStageId = stageId;
-    if (isTicketsTifluxWriteEnabled()) {
-      const updated = await this.tiflux.updateTicket(ticketNumber, {
-        stage_id: stageId,
-      });
-      stageName = updated.stage?.name ?? targetStage.name;
-      resolvedStageId = updated.stage?.id ?? stageId;
+    const deskExternalId = Number(stagesResponse.deskExternalId);
+    if (
+      isTicketsTifluxWriteEnabled() &&
+      Number.isFinite(deskExternalId) &&
+      deskExternalId > 0
+    ) {
+      try {
+        const updated = await this.tiflux.updateTicket(ticketNumber, {
+          stage_id: stageId,
+        });
+        stageName = updated.stage?.name ?? targetStage.name;
+        resolvedStageId = updated.stage?.id ?? stageId;
+      } catch (error) {
+        throw new BadRequestException(
+          error instanceof Error
+            ? error.message
+            : 'Falha ao atualizar estágio no TiFlux.',
+        );
+      }
     }
 
-    await this.patchLocalTicketStage(ticketNumber, stageName);
+    try {
+      await this.patchLocalTicketStage(ticketNumber, stageName);
+    } catch {
+      // Mirror pode estar ausente.
+    }
     await this.portalStore.patchStage(ticketNumber, stageName);
 
     await this.audit.log({
@@ -1314,6 +1418,54 @@ export class TicketsQueryService {
       });
       if (!row) return null;
 
+      let description = row.description;
+
+      const pre = await this.prisma.preTicket.findFirst({
+        where: { ticketNumber },
+        include: {
+          attachments: { include: { file: true } },
+        },
+      });
+
+      // Recupera HTML com imagem do pré-ticket quando a descrição foi salva só como texto.
+      const hasImage =
+        /<img[\s\S]*src\s*=/i.test(description) ||
+        description.includes('data:image/');
+      if (!hasImage) {
+        const html = pre?.descriptionHtml?.trim() ?? '';
+        if (/<img[\s\S]*src\s*=/i.test(html) || html.includes('data:image/')) {
+          description = html;
+        }
+      }
+
+      // Tickets abertos de e-mail antes do vínculo: garante anexos (ZIP etc.) no portal.
+      const preFiles = (pre?.attachments ?? []).filter(
+        (a) => a.file && !a.file.deletedAt,
+      );
+      if (preFiles.length > 0) {
+        const already = await this.prisma.portalTicketAppointmentAttachment.findMany(
+          {
+            where: {
+              ticketNumber,
+              fileId: { in: preFiles.map((a) => a.fileId) },
+            },
+            select: { fileId: true },
+          },
+        );
+        const linked = new Set(already.map((a) => a.fileId));
+        for (const att of preFiles) {
+          if (linked.has(att.fileId)) continue;
+          await this.prisma.portalTicketAppointmentAttachment.create({
+            data: {
+              ticketNumber,
+              portalAppointmentId: null,
+              fileId: att.fileId,
+              createdBy: row.createdBy,
+            },
+          });
+        }
+      }
+
       const attachmentRows =
         await this.prisma.portalTicketAppointmentAttachment.findMany({
           where: {
@@ -1328,12 +1480,14 @@ export class TicketsQueryService {
         attachmentRows.map((item) => item.id),
       );
 
+      const portalAttachments = this.appointments.mapPortalAttachments(
+        attachmentRows,
+        previewMap,
+      );
+
       return {
-        description: row.description,
-        attachments: this.appointments.mapPortalAttachments(
-          attachmentRows,
-          previewMap,
-        ),
+        description,
+        attachments: portalAttachments,
       };
     } catch {
       return null;

@@ -21,7 +21,6 @@ import {
   type AppointmentBlockComposerHandle,
 } from "@/components/tickets/appointment-description-composer";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { Textarea } from "@/components/ui/textarea";
 import {
   ticketsService,
   type AppointmentCatalogs,
@@ -56,6 +55,22 @@ function nowTime() {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function addMinutesToTime(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(":").map((part) => Number(part));
+  const base =
+    (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  const total = ((base + minutes) % (24 * 60) + 24 * 60) % (24 * 60);
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map((part) => Number(part));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+  return h * 60 + m;
+}
+
 export function TicketAppointmentModal({
   ticketNumber,
   open,
@@ -70,15 +85,13 @@ export function TicketAppointmentModal({
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
   const [projectLink, setProjectLink] = useState<AppointmentCatalogs["projectLink"]>(null);
-  const [tifluxAppointmentSyncEnabled, setTifluxAppointmentSyncEnabled] = useState(false);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [initTime, setInitTime] = useState(nowTime);
-  const [endTime, setEndTime] = useState(nowTime);
+  const [endTime, setEndTime] = useState(() => addMinutesToTime(nowTime(), 15));
   const [serviceName, setServiceName] = useState("");
   const [attendance, setAttendance] = useState("Remote");
   const [projectActivityId, setProjectActivityId] = useState("");
-  const [descriptionPlain, setDescriptionPlain] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
 
@@ -98,7 +111,6 @@ export function TicketAppointmentModal({
       const data = await ticketsService.appointmentCatalogs(ticketNumber);
       setTicketMeta(data.ticket);
       setProjectLink(data.projectLink ?? null);
-      setTifluxAppointmentSyncEnabled(data.tifluxAppointmentSyncEnabled ?? false);
     } catch {
       setTicketMeta(null);
     } finally {
@@ -114,12 +126,11 @@ export function TicketAppointmentModal({
         setEndTime(editingAppointment.endTime);
         setServiceName(editingAppointment.serviceName);
         setAttendance(editingAppointment.attendance);
-        setDescriptionPlain(editingAppointment.descriptionPlain);
         setComposerKey((k) => k + 1);
       } else {
-        setInitTime(nowTime());
-        setEndTime(nowTime());
-        setDescriptionPlain("");
+        const start = nowTime();
+        setInitTime(start);
+        setEndTime(addMinutesToTime(start, 15));
         setProjectActivityId(fixedActivityId ?? "");
         setComposerKey((k) => k + 1);
       }
@@ -145,13 +156,11 @@ export function TicketAppointmentModal({
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
-    const exported = isEdit
-      ? {
-          isValid: descriptionPlain.trim().length >= 2,
-          description: descriptionPlain.trim(),
-          files: [] as File[],
-        }
-      : composerRef.current?.exportContent();
+    if (timeToMinutes(endTime) <= timeToMinutes(initTime)) {
+      notifyError("Horário final deve ser maior que o horário inicial.");
+      return;
+    }
+    const exported = composerRef.current?.exportContent();
     if (!exported?.isValid) {
       notifyError("Informe a descrição do apontamento (texto e/ou imagens).");
       return;
@@ -165,6 +174,9 @@ export function TicketAppointmentModal({
       serviceName: serviceName.trim(),
       attendance: attendance as CreateAppointmentPayload["attendance"],
       ...(projectActivityId ? { projectActivityId } : {}),
+      ...(isEdit
+        ? { removeAttachmentFileIds: exported.removeAttachmentFileIds }
+        : {}),
     };
 
     try {
@@ -174,6 +186,7 @@ export function TicketAppointmentModal({
             ticketNumber,
             editingAppointment!.portalAppointmentId,
             payload,
+            exported.files,
           )
         : await ticketsService.createAppointment(
             ticketNumber,
@@ -216,33 +229,6 @@ export function TicketAppointmentModal({
             </SheetDescription>
           ) : null}
 
-          {isEdit ? (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-              {editingAppointment?.existsInTiflux
-                ? "As alterações valem somente no portal. O apontamento no TiFlux não será modificado."
-                : editingAppointment?.canPauseSync
-                  ? "A sincronização com o TiFlux está pausada até você salvar, cancelar ou excluir."
-                  : "As alterações valem somente no portal."}
-            </p>
-          ) : null}
-
-          {tifluxAppointmentSyncEnabled &&
-          ticketMeta &&
-          !ticketMeta.tifluxSyncAvailable ? (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-              Este ticket não é da mesa AlleOne. O apontamento ficará salvo apenas
-              no portal, sem envio ao TiFlux.
-            </p>
-          ) : null}
-
-          {ticketMeta?.tifluxSyncAvailable ? (
-            <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90">
-              Mesa AlleOne: o tipo de atendimento (Hora normal, Extra, Plantão) fica
-              salvo só no portal. No TiFlux vão data, horário e descrição — sem
-              valorização.
-            </p>
-          ) : null}
-
           {user ? (
             <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -277,7 +263,13 @@ export function TicketAppointmentModal({
                 <Input
                   type="time"
                   value={initTime}
-                  onChange={(e) => setInitTime(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setInitTime(next);
+                    if (timeToMinutes(endTime) <= timeToMinutes(next)) {
+                      setEndTime(addMinutesToTime(next, 15));
+                    }
+                  }}
                   className={FIELD_INPUT}
                   required
                 />
@@ -346,25 +338,18 @@ export function TicketAppointmentModal({
               </div>
             ) : null}
 
-            {!isEdit ? (
-              <AppointmentDescriptionComposer
-                key={composerKey}
-                ref={composerRef}
-                disabled={saving}
-                labelClassName={FIELD_LABEL}
-              />
-            ) : (
-              <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Descrição *</Label>
-                <Textarea
-                  value={descriptionPlain}
-                  onChange={(e) => setDescriptionPlain(e.target.value)}
-                  disabled={saving}
-                  className="min-h-[160px]"
-                  placeholder="Descreva o apontamento"
-                />
-              </div>
-            )}
+            <AppointmentDescriptionComposer
+              key={composerKey}
+              ref={composerRef}
+              disabled={saving}
+              labelClassName={FIELD_LABEL}
+              initialDescription={
+                isEdit ? editingAppointment?.description ?? null : null
+              }
+              initialAttachments={
+                isEdit ? editingAppointment?.attachments ?? [] : []
+              }
+            />
           </div>
 
           <SheetFooter className="shrink-0 flex-row justify-end gap-2 border-t border-border px-6 py-4">

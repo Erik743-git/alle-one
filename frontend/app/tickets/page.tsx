@@ -6,6 +6,7 @@ import { Filter, Loader2, Plus, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { PreTicketsBadge, refreshPreTicketsBadge } from "@/components/layout/pre-tickets-badge";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicket,
+  isAdmin,
   isClient,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
@@ -30,6 +32,7 @@ import {
   type TicketListResponse,
   type TicketsListParams,
 } from "@/lib/services/tickets.service";
+import { useRouter } from "next/navigation";
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -45,13 +48,14 @@ function formatWhen(iso: string | null) {
 }
 
 export default function TicketsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<TicketListResponse | null>(null);
   const [catalogs, setCatalogs] = useState<TicketFilterCatalogs | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [includeAllResponsibles, setIncludeAllResponsibles] = useState(
-    () => isClient(),
+    () => isClient() || isAdmin(),
   );
 
   const mineOnly = !includeAllResponsibles;
@@ -111,6 +115,7 @@ export default function TicketsPage() {
       ]);
       setData(list);
       if (!catalogs) setCatalogs(cats);
+      refreshPreTicketsBadge();
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível carregar os tickets.",
@@ -196,6 +201,14 @@ export default function TicketsPage() {
                       </Link>
                     </Button>
                   ) : null}
+                  {!isClient() ? (
+                    <Button asChild variant="outline" className="relative">
+                      <Link href="/tickets/pre-tickets" className="inline-flex items-center">
+                        Pré-tickets
+                        <PreTicketsBadge />
+                      </Link>
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
@@ -213,13 +226,40 @@ export default function TicketsPage() {
 
             <Card className="overflow-visible">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="text-lg">
-                  {isClient()
-                    ? "Chamados da empresa"
-                    : mineOnly
-                      ? "Meus chamados"
-                      : "Busca ampliada"}
-                </CardTitle>
+                <div className="space-y-2">
+                  <CardTitle className="text-lg">
+                    {isClient()
+                      ? "Chamados da empresa"
+                      : mineOnly
+                        ? "Meus chamados"
+                        : "Todos os chamados abertos"}
+                  </CardTitle>
+                  {!isClient() ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={mineOnly ? "default" : "outline"}
+                        className="h-8"
+                        onClick={() => {
+                          setIncludeAllResponsibles(false);
+                          setResponsibleExternalId("");
+                        }}
+                      >
+                        Meus tickets
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={!mineOnly ? "default" : "outline"}
+                        className="h-8"
+                        onClick={() => setIncludeAllResponsibles(true)}
+                      >
+                        Todos os tickets
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
                 <Button
                   type="button"
                   size="sm"
@@ -424,15 +464,13 @@ export default function TicketsPage() {
                           {group.tickets.map((ticket) => (
                             <tr
                               key={`${group.key}-${ticket.ticketNumber}`}
-                              className="border-b border-border/60 hover:bg-muted/20"
+                              className="cursor-pointer border-b border-border/60 hover:bg-muted/20"
+                              onClick={() =>
+                                router.push(`/tickets/${ticket.ticketNumber}`)
+                              }
                             >
-                              <td className="px-4 py-2">
-                                <Link
-                                  href={`/tickets/${ticket.ticketNumber}`}
-                                  className="font-semibold text-primary hover:underline"
-                                >
-                                  #{ticket.ticketNumber}
-                                </Link>
+                              <td className="px-4 py-2 font-semibold text-primary">
+                                #{ticket.ticketNumber}
                               </td>
                               <td className="max-w-[280px] truncate px-4 py-2">
                                 {ticket.title ?? "—"}
