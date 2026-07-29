@@ -1251,11 +1251,16 @@ export class TicketsQueryService {
     );
   }
 
-  async listTicketStages(ticketNumber: number) {
+  async listTicketStages(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+  ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+
+    await this.assertTicketClientScope(actor, ticket.client_external_id);
 
     const deskExternalId = Number(ticket.desk_external_id);
     const deskOk =
@@ -1340,7 +1345,7 @@ export class TicketsQueryService {
       );
     }
 
-    const stagesResponse = await this.listTicketStages(ticketNumber);
+    const stagesResponse = await this.listTicketStages(actor, ticketNumber);
     const stages = stagesResponse.stages;
     const targetStage = stages.find((stage) => stage.id === stageId);
     if (!targetStage) {

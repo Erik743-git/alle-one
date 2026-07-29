@@ -45,3 +45,5 @@ A VM com PM2 continua usando Redis local/container separado — ver `DEPLOY_VM_L
 ## Desligar
 
 Remova ou comente `REDIS_URL` e reinicie — o sistema continua com poll in-process.
+
+Cache L2 do dashboard de horas (`DASHBOARD_HOURS_REDIS_CACHE`) também para — ver [PERFORMANCE.md](./PERFORMANCE.md).

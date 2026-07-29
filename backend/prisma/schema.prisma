@@ -721,6 +721,8 @@ model PortalTicket {
   @@index([clientExternalId])
   @@index([isClosed, updatedAtSource])
   @@index([responsibleExternalId])
+  @@index([isClosed, responsibleExternalId, updatedAtSource])
+  @@index([isClosed, clientExternalId, createdAtSource])
   @@map("portal_tickets")
 }
 

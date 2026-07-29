@@ -8,6 +8,8 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   Accordion,
@@ -280,7 +282,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Total</p>
-                  <p className="text-3xl font-bold">{totals.total}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.total}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <ClipboardList size={28} />
@@ -291,7 +295,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Abertas</p>
-                  <p className="text-3xl font-bold">{totals.open}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.open}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300">
                   <Building2 size={28} />
@@ -302,7 +308,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Aguardando aprovação</p>
-                  <p className="text-3xl font-bold">{totals.pending}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.pending}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/12 text-orange-300">
                   <ShieldCheck size={28} />
@@ -313,7 +321,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Em execução</p>
-                  <p className="text-3xl font-bold">{totals.executing}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.executing}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/12 text-blue-200">
                   <Play size={28} />
@@ -329,8 +339,10 @@ export default function GmudPage() {
           ) : null}
 
           {loading ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-              Carregando GMUDs...
+            <div className="space-y-4 rounded-xl border border-border bg-card p-6">
+              <Skeleton className="h-11 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[1.2fr_0.8fr]">
@@ -382,14 +394,36 @@ export default function GmudPage() {
 
                   {filteredGroups.length === 0 ? (
                     <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-                      Nenhuma GMUD encontrada com os filtros atuais.
-                      <div className="mt-4">
-                        <Link href="/gmud/new">
-                          <Button>
-                            Criar primeira GMUD
-                          </Button>
-                        </Link>
-                      </div>
+                      {gmuds.length === 0 ? (
+                        <>
+                          Nenhuma GMUD cadastrada ainda.
+                          <div className="mt-4">
+                            <Link href="/gmud/new">
+                              <Button>Criar primeira GMUD</Button>
+                            </Link>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          Nenhuma GMUD encontrada com os filtros atuais.
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setSearch("");
+                                setStatusFilter("OPEN");
+                                setSelectedCompanyId("ALL");
+                              }}
+                            >
+                              Limpar filtros
+                            </Button>
+                            <Link href="/gmud/new">
+                              <Button>Nova GMUD</Button>
+                            </Link>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="max-h-[62vh] overflow-y-auto pr-2">

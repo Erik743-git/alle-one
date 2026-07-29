@@ -37,6 +37,7 @@ export class DashboardController {
     @Query('end') end?: string,
     @Query('companyId') companyId?: string,
     @Query('includeHours') includeHours?: string,
+    @Query('includeCharts') includeCharts?: string,
   ) {
     if (!group?.trim()) {
       throw new BadRequestException('O parâmetro "group" é obrigatório.');
@@ -50,7 +51,10 @@ export class DashboardController {
         end,
         companyId,
       },
-      { includeHours: includeHours === 'true' },
+      {
+        includeHours: includeHours === 'true',
+        includeCharts: includeCharts !== 'false',
+      },
     );
   }
 

@@ -190,10 +190,16 @@ function buildDashboardSearch(params: DashboardRequestParams) {
   return search.toString();
 }
 
-export function getCompleteDashboard(params: DashboardRequestParams) {
+export function getCompleteDashboard(
+  params: DashboardRequestParams,
+  options?: { includeHours?: boolean; includeCharts?: boolean },
+) {
   const query = buildDashboardSearch(params);
-
-  return apiRequest<DashboardCompleteResponse>(`/dashboard/complete?${query}&includeHours=true`);
+  const includeHours = options?.includeHours !== false;
+  const includeCharts = options?.includeCharts !== false;
+  return apiRequest<DashboardCompleteResponse>(
+    `/dashboard/complete?${query}&includeHours=${includeHours ? "true" : "false"}&includeCharts=${includeCharts ? "true" : "false"}`,
+  );
 }
 
 export function getDashboardHours(params: DashboardRequestParams) {

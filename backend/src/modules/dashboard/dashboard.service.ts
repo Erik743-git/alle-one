@@ -27,6 +27,12 @@ import { DashboardChartsService } from './dashboard-charts.service';
 import { DashboardIntegrationsService } from './dashboard-integrations.service';
 import { DashboardHoursService } from './dashboard-hours.service';
 import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
+import { RedisService } from '../../common/redis/redis.service';
+import {
+  parseCacheMaxEntries,
+  parseCacheTtlMs,
+  TtlLruCache,
+} from '../../common/cache/ttl-lru-cache';
 import type {
   DashboardFilters,
   DashboardHoursResponse,
@@ -69,20 +75,22 @@ export class DashboardService {
   private readonly allowRuntimeTifluxApi =
     process.env.TIFLUX_RUNTIME_API === 'true';
   /** Cache do /dashboard/complete em memória (ms). Env: DASHBOARD_COMPLETE_CACHE_MS */
-  private readonly dashboardCacheTtlMs = (() => {
-    const n = Number(process.env.DASHBOARD_COMPLETE_CACHE_MS);
-    if (Number.isFinite(n) && n >= 5_000) {
-      return Math.min(Math.trunc(n), 300_000);
-    }
-    return 60_000;
-  })();
-  private readonly responseCache = new Map<
-    string,
-    {
-      expiresAt: number;
-      data: DashboardResponse;
-    }
-  >();
+  private readonly dashboardCacheTtlMs = parseCacheTtlMs(
+    process.env.DASHBOARD_COMPLETE_CACHE_MS,
+    60_000,
+    5_000,
+    300_000,
+  );
+  private readonly responseCache = new TtlLruCache<DashboardResponse>(
+    parseCacheMaxEntries(process.env.DASHBOARD_COMPLETE_CACHE_MAX, 40),
+    this.dashboardCacheTtlMs,
+  );
+  /**
+   * L2 Redis para /dashboard/complete. Opt-in:
+   * DASHBOARD_COMPLETE_REDIS_CACHE=true + REDIS_URL.
+   */
+  private readonly completeRedisCacheEnabled =
+    process.env.DASHBOARD_COMPLETE_REDIS_CACHE === 'true';
 
   private readonly inFlightRequests = new Map<
     string,
@@ -96,6 +104,7 @@ export class DashboardService {
     private readonly dashboardCharts: DashboardChartsService,
     private readonly integrations: DashboardIntegrationsService,
     private readonly dashboardHours: DashboardHoursService,
+    private readonly redis: RedisService,
   ) {}
 
   private buildCacheKey(params: DashboardFilters) {
@@ -107,43 +116,64 @@ export class DashboardService {
     });
   }
 
-  /** Chave do cache do /dashboard/complete — inclui includeHours para não misturar payload com/sem horas. */
+  /** Chave do cache do /dashboard/complete — inclui includeHours/includeCharts. */
   private buildCompleteResponseCacheKey(
     scoped: DashboardFilters,
     includeHours: boolean,
+    includeCharts: boolean,
   ) {
-    return `${this.buildCacheKey(scoped)}|ih:${includeHours ? '1' : '0'}`;
+    return `${this.buildCacheKey(scoped)}|ih:${includeHours ? '1' : '0'}|ic:${includeCharts ? '1' : '0'}`;
+  }
+
+  private redisCompleteKey(cacheKey: string) {
+    return `alleone:dashboard:complete:${cacheKey}`;
   }
 
   private getCachedResponse(cacheKey: string) {
-    const cached = this.responseCache.get(cacheKey);
+    return this.responseCache.get(cacheKey);
+  }
 
-    if (!cached) {
+  private async getCachedResponseAsync(cacheKey: string) {
+    const memory = this.getCachedResponse(cacheKey);
+    if (memory) return memory;
+    if (!this.completeRedisCacheEnabled || !this.redis.isEnabled()) {
       return null;
     }
-
-    if (cached.expiresAt <= Date.now()) {
-      this.responseCache.delete(cacheKey);
-      return null;
+    const fromRedis = await this.redis.getJson<DashboardResponse>(
+      this.redisCompleteKey(cacheKey),
+    );
+    if (fromRedis) {
+      this.responseCache.set(cacheKey, fromRedis);
     }
-
-    return cached.data;
+    return fromRedis;
   }
 
   private setCachedResponse(cacheKey: string, data: DashboardResponse) {
-    this.responseCache.set(cacheKey, {
-      data,
-      expiresAt: Date.now() + this.dashboardCacheTtlMs,
-    });
+    this.responseCache.set(cacheKey, data);
+    if (this.completeRedisCacheEnabled && this.redis.isEnabled()) {
+      const ttlSec = Math.max(1, Math.ceil(this.dashboardCacheTtlMs / 1000));
+      void this.redis.setJson(this.redisCompleteKey(cacheKey), data, ttlSec);
+    }
   }
 
   private invalidateCache(params: DashboardFilters) {
     const base = this.buildCacheKey(params);
-
-    this.responseCache.delete(`${base}|ih:0`);
-    this.responseCache.delete(`${base}|ih:1`);
-    this.inFlightRequests.delete(`${base}|ih:0`);
-    this.inFlightRequests.delete(`${base}|ih:1`);
+    const keys = [
+      `${base}|ih:0|ic:0`,
+      `${base}|ih:0|ic:1`,
+      `${base}|ih:1|ic:0`,
+      `${base}|ih:1|ic:1`,
+      // chaves legadas pré-includeCharts
+      `${base}|ih:0`,
+      `${base}|ih:1`,
+    ];
+    for (const key of keys) {
+      this.responseCache.delete(key);
+      this.inFlightRequests.delete(key);
+      if (this.completeRedisCacheEnabled) {
+        void this.redis.del(this.redisCompleteKey(key));
+      }
+    }
   }
 
   private mapDbTicketRowToChartShape(r: {
@@ -628,13 +658,18 @@ export class DashboardService {
   async getCompleteDashboard(
     user: AuthenticatedRequestUser,
     params: DashboardFilters,
-    options?: { includeHours?: boolean },
+    options?: { includeHours?: boolean; includeCharts?: boolean },
   ): Promise<DashboardResponse> {
     const scoped = await this.scopeDashboardFilters(user, params);
     const includeHours = options?.includeHours === true;
-    const cacheKey = this.buildCompleteResponseCacheKey(scoped, includeHours);
+    const includeCharts = options?.includeCharts !== false;
+    const cacheKey = this.buildCompleteResponseCacheKey(
+      scoped,
+      includeHours,
+      includeCharts,
+    );
 
-    const cached = this.getCachedResponse(cacheKey);
+    const cached = await this.getCachedResponseAsync(cacheKey);
     if (cached) {
       this.devDebug('getCompleteDashboard: retornando cache');
       return cached;
@@ -646,7 +681,10 @@ export class DashboardService {
       return existingInFlight;
     }
 
-    const promise = this.buildCompleteDashboard(scoped, { includeHours });
+    const promise = this.buildCompleteDashboard(scoped, {
+      includeHours,
+      includeCharts,
+    });
 
     this.inFlightRequests.set(cacheKey, promise);
 
@@ -868,16 +906,15 @@ export class DashboardService {
 
   private async buildCompleteDashboard(
     params: DashboardFilters,
-    options: { includeHours: boolean },
+    options: { includeHours: boolean; includeCharts: boolean },
   ): Promise<DashboardResponse> {
     const { startDate, endDate } = getRange(params.start, params.end);
     const days = countDaysInRange(startDate, endDate);
     const integrations = await this.integrations.resolveIntegrations(params);
     const { startISO, endISO } = buildTifluxDateRange(startDate, endDate);
-    const monthlyTrendsPromise = this.buildMonthlyTrends(
-      params,
-      integrations.zabbixGroupName,
-    );
+    const monthlyTrendsPromise = options.includeCharts
+      ? this.buildMonthlyTrends(params, integrations.zabbixGroupName)
+      : Promise.resolve(null);
 
     this.devDebug('==================================================');
     this.devDebug('buildCompleteDashboard INÍCIO');
@@ -1102,11 +1139,9 @@ export class DashboardService {
       endDate,
     );
 
-    const topHostsByMonth = this.buildTopHostsByMonth(
-      zabbixData.events,
-      startDate,
-      endDate,
-    );
+    const topHostsByMonth = options.includeCharts
+      ? this.buildTopHostsByMonth(zabbixData.events, startDate, endDate)
+      : [];
 
     const topTriggersPack = this.buildTopTriggers(
       zabbixData.events,
@@ -1114,7 +1149,7 @@ export class DashboardService {
       endDate,
       20,
     );
-    const topTriggers = topTriggersPack.items;
+    const topTriggers = options.includeCharts ? topTriggersPack.items : [];
 
     const emptyHoursRows = this.dashboardHours.getEmptyHoursRows(
       startDate,
@@ -1179,19 +1214,25 @@ export class DashboardService {
         hostsAtivos: zabbixData.overview.hostsAtivos,
         hostsInativos: zabbixData.overview.hostsInativos,
       },
-      chamadosPorMes: ticketRows,
-      chamadosPorMesa: this.buildDeskSummaryFromTickets(rowsForChamados),
+      chamadosPorMes: options.includeCharts ? ticketRows : [],
+      chamadosPorMesa: options.includeCharts
+        ? this.buildDeskSummaryFromTickets(rowsForChamados)
+        : [],
       horasPorMes: hoursRows,
       resumoHorasTrabalhadas,
-      alertasPorMes: alertRows,
-      alertasPorSemana: alertRowsByWeek,
-      principaisHostsPorMes: topHostsByMonth,
-      topTriggers,
-      allTriggersInPeriod: topTriggersPack.allItems,
-      hostsDetalhados: zabbixData.hosts,
-      templates: zabbixData.templates,
-      eventosRecentes: zabbixData.events.slice(0, 20),
-      monthlyTrends: await monthlyTrendsPromise,
+      alertasPorMes: options.includeCharts ? alertRows : [],
+      alertasPorSemana: options.includeCharts ? alertRowsByWeek : [],
+      principaisHostsPorMes: options.includeCharts ? topHostsByMonth : [],
+      topTriggers: options.includeCharts ? topTriggers : [],
+      allTriggersInPeriod: options.includeCharts ? topTriggersPack.allItems : [],
+      hostsDetalhados: options.includeCharts ? zabbixData.hosts : [],
+      templates: options.includeCharts ? zabbixData.templates : [],
+      eventosRecentes: options.includeCharts
+        ? zabbixData.events.slice(0, 20)
+        : [],
+      monthlyTrends: options.includeCharts
+        ? await monthlyTrendsPromise
+        : null,
     };
   }
 

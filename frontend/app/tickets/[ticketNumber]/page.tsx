@@ -44,7 +44,11 @@ import {
   SYNC_STATUS_PAUSED,
   SYNC_STATUS_PENDING,
   SYNC_STATUS_PORTAL_ONLY,
+  TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION,
+  TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE,
   TICKET_APPOINTMENT_TIFLUX_ONLY_HINT,
+  TICKET_DELETE_APPOINTMENT_CONFIRM,
+  TICKET_SYNC_PENDING_BANNER,
 } from "@/lib/module-copy";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -190,12 +194,8 @@ export default function TicketDetailPage() {
   }, [ticketNumber]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    void loadStages();
-  }, [loadStages]);
+    void Promise.all([load(), loadStages()]);
+  }, [load, loadStages]);
 
   useEffect(() => {
     setExternalGmudRefInput(data?.externalGmudRef ?? "");
@@ -319,7 +319,7 @@ export default function TicketDetailPage() {
       const ok = await confirm({
         title: "Excluir apontamento",
         description:
-          "O apontamento será removido do portal. Se já existir no TiFlux, o registro lá permanece inalterado.",
+          TICKET_DELETE_APPOINTMENT_CONFIRM,
         confirmText: "Excluir",
         variant: "error",
       });
@@ -413,8 +413,7 @@ export default function TicketDetailPage() {
               <>
                 {data?.syncPending ? (
                   <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
-                    Ticket recém-criado: ainda não aparece na listagem local, mas
-                    já está disponível no TiFlux.
+                    {TICKET_SYNC_PENDING_BANNER}
                   </p>
                 ) : null}
                 <div className="space-y-2">
@@ -858,10 +857,10 @@ export default function TicketDetailPage() {
                                       title={TICKET_APPOINTMENT_TIFLUX_ONLY_HINT}
                                     >
                                       <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-800 dark:text-sky-200">
-                                        TiFlux
+                                        {TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE}
                                       </span>
                                       <span className="leading-snug">
-                                        Edite no TiFlux
+                                        {TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION}
                                       </span>
                                     </span>
                                   )}

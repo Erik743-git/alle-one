@@ -67,4 +67,40 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       return 'down';
     }
   }
+
+  async getJson<T>(key: string): Promise<T | null> {
+    if (!this.isEnabled() || !this.client) return null;
+    try {
+      const raw = await this.client.get(key);
+      if (!raw) return null;
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
+  async setJson(
+    key: string,
+    value: unknown,
+    ttlSeconds: number,
+  ): Promise<void> {
+    if (!this.isEnabled() || !this.client) return;
+    const ttl = Math.max(1, Math.trunc(ttlSeconds));
+    try {
+      await this.client.set(key, JSON.stringify(value), 'EX', ttl);
+    } catch (err) {
+      this.logger.warn(
+        `Redis SET falhou (${key}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  async del(key: string): Promise<void> {
+    if (!this.isEnabled() || !this.client) return;
+    try {
+      await this.client.del(key);
+    } catch {
+      /* ignore */
+    }
+  }
 }

@@ -253,7 +253,7 @@ export default function NewTicketPage() {
     }
 
     if (requiresCatalog && !catalogItemId) {
-      notifyError("Selecione o serviço do catálogo TiFlux.");
+      notifyError("Selecione o serviço do catálogo.");
       return;
     }
 
@@ -404,7 +404,7 @@ export default function NewTicketPage() {
                     {deskId && requiresCatalog ? (
                       <div className="space-y-2 sm:col-span-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
-                          Serviço do catálogo (TiFlux)
+                          Serviço do catálogo
                         </Label>
                         <SearchableSelectField
                           value={catalogItemId}
@@ -413,16 +413,16 @@ export default function NewTicketPage() {
                           loading={loading}
                           emptyLabel={
                             catalogItemOptions.length === 0
-                              ? "Nenhum serviço cadastrado no catálogo TiFlux desta mesa"
+                              ? "Nenhum serviço cadastrado no catálogo desta mesa"
                               : "Selecione o serviço"
                           }
                         />
                         {catalogBlocked ? (
                           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-                            Esta mesa exige catálogo no TiFlux, mas não há serviços
-                            cadastrados. Cadastre itens no catálogo da mesa{" "}
+                            Esta mesa exige catálogo de serviços, mas não há itens
+                            cadastrados. Cadastre serviços na mesa{" "}
                             <strong>{catalogs?.desk?.name ?? "selecionada"}</strong>{" "}
-                            no TiFlux antes de abrir chamados.
+                            antes de abrir chamados.
                           </p>
                         ) : null}
                       </div>
@@ -455,7 +455,7 @@ export default function NewTicketPage() {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-muted-foreground">
-                        Responsável (TiFlux)
+                        Responsável
                       </Label>
                       <SearchableSelectField
                         value={responsibleId}
@@ -464,7 +464,7 @@ export default function NewTicketPage() {
                         loading={loading}
                         emptyLabel={
                           responsibleOptions.length === 0
-                            ? "Nenhum atendente encontrado no TiFlux"
+                            ? "Nenhum atendente encontrado"
                             : "Selecione o responsável"
                         }
                         placeholder="Selecione o responsável"

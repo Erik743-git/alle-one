@@ -424,7 +424,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [canSelectCompany, selectedCompanyId, user?.companyId, user?.id, user?.role]);
+  }, [canSelectCompany, user?.companyId, user?.id, user?.role]);
 
   const getEffectiveCompanyId = useCallback(() => {
     const id = canSelectCompany ? selectedCompanyId : user?.companyId ?? null;
@@ -439,7 +439,9 @@ export default function DashboardPage() {
         if (!canSelectCompany && user?.companyId) {
           return;
         }
-        if (canSelectCompany && companiesLoading) {
+        // Não bloqueia o boot se já houver empresa persistida; só espera lista
+        // quando ainda não há companyId efetivo.
+        if (canSelectCompany && companiesLoading && !selectedCompanyId) {
           return;
         }
         setError(
@@ -509,73 +511,90 @@ export default function DashboardPage() {
           return;
         }
 
-        const data =
-          mode === "manual"
-            ? await refreshCompleteDashboard(requestParams)
-            : await getCompleteDashboard(requestParams);
+        const applyNormalized = (data: Awaited<ReturnType<typeof getCompleteDashboard>>) => {
+          if (requestId !== completeRequestIdRef.current) {
+            return;
+          }
+          const normalized = normalizeDashboardResponse(data);
+          if (!normalized.horasPorMes.length) {
+            normalized.horasPorMes = buildEmptyHoursRows(
+              normalized.filters.start,
+              normalized.filters.end,
+            );
+          }
+          setDashboard((previous) => {
+            if (!previous) {
+              return normalized;
+            }
+            const sameCompany =
+              String(previous.filters.companyId ?? "") ===
+              String(normalized.filters.companyId ?? "");
+            const shouldPreserveHours =
+              sameCompany &&
+              Number(normalized.summary.totalHoras ?? 0) === 0 &&
+              Number(previous.summary.totalHoras ?? 0) > 0;
+            const prevResumo = previous.resumoHorasTrabalhadas;
+            const normResumo = normalized.resumoHorasTrabalhadas;
+            const shouldPreserveResumo =
+              sameCompany &&
+              (!normResumo || normResumo.linhas.length === 0) &&
+              (prevResumo?.linhas?.length ?? 0) > 0;
+            if (!shouldPreserveHours && !shouldPreserveResumo) {
+              return normalized;
+            }
+            return {
+              ...normalized,
+              summary: {
+                ...normalized.summary,
+                totalHoras: shouldPreserveHours
+                  ? previous.summary.totalHoras
+                  : normalized.summary.totalHoras,
+                totalHorasFormatadas: shouldPreserveHours
+                  ? previous.summary.totalHorasFormatadas
+                  : normalized.summary.totalHorasFormatadas,
+              },
+              horasPorMes:
+                shouldPreserveHours &&
+                Array.isArray(previous.horasPorMes) &&
+                previous.horasPorMes.length
+                  ? previous.horasPorMes
+                  : normalized.horasPorMes,
+              resumoHorasTrabalhadas: shouldPreserveResumo
+                ? previous.resumoHorasTrabalhadas
+                : normalized.resumoHorasTrabalhadas,
+            };
+          });
+        };
+
+        if (mode === "manual") {
+          applyNormalized(await refreshCompleteDashboard(requestParams));
+        } else if (mode === "initial") {
+          // 1º paint: summary sem charts/horas; 2º: payload completo.
+          const summary = await getCompleteDashboard(requestParams, {
+            includeHours: false,
+            includeCharts: false,
+          });
+          applyNormalized(summary);
+          if (requestId === completeRequestIdRef.current) {
+            setInitialLoading(false);
+          }
+          const full = await getCompleteDashboard(requestParams, {
+            includeHours: true,
+            includeCharts: true,
+          });
+          applyNormalized(full);
+        } else {
+          applyNormalized(
+            await getCompleteDashboard(requestParams, {
+              includeHours: true,
+              includeCharts: true,
+            }),
+          );
+        }
 
         if (requestId !== completeRequestIdRef.current) {
           return;
         }
-
-        const normalized = normalizeDashboardResponse(data);
-
-        if (!normalized.horasPorMes.length) {
-          normalized.horasPorMes = buildEmptyHoursRows(
-            normalized.filters.start,
-            normalized.filters.end,
-          );
-        }
-
-        setDashboard((previous) => {
-          if (!previous) {
-            return normalized;
-          }
-
-          // Se o /complete falhar parcialmente nas horas (ex.: timeout) mas já tínhamos dados,
-          // mantém o último apontamento na mesma empresa para não regredir a UI no auto-refresh.
-          const sameCompany =
-            String(previous.filters.companyId ?? "") ===
-            String(normalized.filters.companyId ?? "");
-
-          const shouldPreserveHours =
-            sameCompany &&
-            Number(normalized.summary.totalHoras ?? 0) === 0 &&
-            Number(previous.summary.totalHoras ?? 0) > 0;
-
-          const prevResumo = previous.resumoHorasTrabalhadas;
-          const normResumo = normalized.resumoHorasTrabalhadas;
-          const shouldPreserveResumo =
-            sameCompany &&
-            (!normResumo || normResumo.linhas.length === 0) &&
-            (prevResumo?.linhas?.length ?? 0) > 0;
-
-          if (!shouldPreserveHours && !shouldPreserveResumo) {
-            return normalized;
-          }
-
-          return {
-            ...normalized,
-            summary: {
-              ...normalized.summary,
-              totalHoras: shouldPreserveHours
-                ? previous.summary.totalHoras
-                : normalized.summary.totalHoras,
-              totalHorasFormatadas: shouldPreserveHours
-                ? previous.summary.totalHorasFormatadas
-                : normalized.summary.totalHorasFormatadas,
-            },
-            horasPorMes:
-              shouldPreserveHours &&
-              Array.isArray(previous.horasPorMes) &&
-              previous.horasPorMes.length
-                ? previous.horasPorMes
-                : normalized.horasPorMes,
-            resumoHorasTrabalhadas: shouldPreserveResumo
-              ? previous.resumoHorasTrabalhadas
-              : normalized.resumoHorasTrabalhadas,
-          };
-        });
       } catch (err) {
         if (requestId !== completeRequestIdRef.current) {
           return;
@@ -599,7 +618,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, startDate, user?.companyId, user?.role],
+    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, selectedCompanyId, startDate, user?.companyId, user?.role],
   );
 
   useEffect(() => {

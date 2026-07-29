@@ -10,19 +10,11 @@ import { tap } from 'rxjs/operators';
 import { AuditService } from './audit.service';
 import { AUDIT_META_KEY, type AuditMetaOptions } from './audit.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { resolveAuditClientIp } from './audit-client-ip';
 
 type AuthedRequest = Request & { user?: AuthenticatedRequestUser };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-function getClientIp(req: Request): string | null {
-  const xff = (req.headers['x-forwarded-for'] as string | undefined)?.trim();
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  return (req.socket?.remoteAddress ?? null) as string | null;
-}
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -77,7 +69,7 @@ export class AuditInterceptor implements NestInterceptor {
     const requestMeta = {
       method,
       path: `${req.baseUrl || ''}${req.path || ''}` || req.originalUrl || '',
-      ip: getClientIp(req),
+      ip: resolveAuditClientIp(req),
       userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
       params: req.params ?? undefined,
       query: req.query ?? undefined,

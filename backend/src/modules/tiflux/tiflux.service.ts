@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { cleanupExpiredExternalApiCache } from '../../common/cache/external-api-cache.cleanup';
 import { mapTicket, type TifluxTicket as MappedTifluxTicket } from './mapper/tiflux.mapper';
 
 type TifluxApiError = {
@@ -189,6 +190,7 @@ export class TifluxService {
     const n = Number(process.env.EXTERNAL_API_CACHE_LONG_TTL_MS);
     return Number.isFinite(n) && n >= 5_000 ? Math.trunc(n) : 60 * 60 * 1000;
   })();
+  private cacheWriteCount = 0;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -262,6 +264,14 @@ export class TifluxService {
           fetched_at = excluded.fetched_at,
           expires_at = excluded.expires_at
       `;
+      this.cacheWriteCount += 1;
+      if (this.cacheWriteCount % 25 === 0) {
+        void cleanupExpiredExternalApiCache(this.prisma, 200).then((n) => {
+          if (n > 0) {
+            this.logger.debug(`external_api_cache: removidas ${n} entradas expiradas`);
+          }
+        });
+      }
     } catch (e) {
       // Não falha a operação por cache.
       this.logger.warn(

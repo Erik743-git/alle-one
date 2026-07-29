@@ -7,6 +7,7 @@
 | [V2-APONTAMENTOS.md](./V2-APONTAMENTOS.md) | V2 Apontamentos: visão empresarial, questionamentos, API |
 | [EMAIL_PRETICKET_GRAPH.md](./EMAIL_PRETICKET_GRAPH.md) | E-mail M365 → pré-tickets, Redis, Sentry, 2FA |
 | [REDIS.md](./REDIS.md) | Redis opcional + fila BullMQ e-mail |
+| [PERFORMANCE.md](./PERFORMANCE.md) | Caches dashboard (LRU/TTL), Redis L2 e external_api_cache |
 | [PR1_ALLE_TICKET_REVIEW.md](./PR1_ALLE_TICKET_REVIEW.md) | Revisão do PR #1 vs cutover v0.6.0 |
 | [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) | Cutover TiFlux → `portal_*` canônico |
 | [MAINTENANCE.md](./MAINTENANCE.md) | Correções, limitações, backup Postgres e convenções |

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../common/redis/redis.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import {
   categorizeTicketByDesk,
@@ -19,6 +20,11 @@ import {
 import { DashboardIntegrationsService } from './dashboard-integrations.service';
 import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 import { serviceNameToValorizationRaw } from '../tickets/portal-appointment.helper';
+import {
+  parseCacheMaxEntries,
+  parseCacheTtlMs,
+  TtlLruCache,
+} from '../../common/cache/ttl-lru-cache';
 import type {
   AppointmentLike,
   DashboardFilters,
@@ -36,7 +42,19 @@ export class DashboardHoursService {
   private readonly tifluxAppointmentsPauseMs = 800;
   private readonly allowRuntimeTifluxApi =
     process.env.TIFLUX_RUNTIME_API === 'true';
-  private readonly hoursCacheTtlMs = 10 * 60 * 1000;
+  /** Cache em memória das horas (ms). Env: DASHBOARD_HOURS_CACHE_MS */
+  private readonly hoursCacheTtlMs = parseCacheTtlMs(
+    process.env.DASHBOARD_HOURS_CACHE_MS,
+    10 * 60 * 1000,
+    5_000,
+    30 * 60_000,
+  );
+  /**
+   * Cache L2 no Redis (compartilhado entre instâncias). Opt-in:
+   * DASHBOARD_HOURS_REDIS_CACHE=true e REDIS_URL definido.
+   */
+  private readonly hoursRedisCacheEnabled =
+    process.env.DASHBOARD_HOURS_REDIS_CACHE === 'true';
   // Horas apontadas: respeitamos estritamente o intervalo start/end do front.
   /** Se true, tickets sem apontamento no período não entram em horasPorMes nem em totalTicketsConsiderados. */
   private readonly hoursDropTicketsWithoutAppointmentsInPeriod = true;
@@ -92,13 +110,10 @@ export class DashboardHoursService {
     }
     return 50_000;
   })();
-  private readonly hoursCache = new Map<
-    string,
-    {
-      expiresAt: number;
-      data: DashboardHoursResponse;
-    }
-  >();
+  private readonly hoursCache = new TtlLruCache<DashboardHoursResponse>(
+    parseCacheMaxEntries(process.env.DASHBOARD_HOURS_CACHE_MAX, 60),
+    this.hoursCacheTtlMs,
+  );
   private readonly inFlightHoursRequests = new Map<
     string,
     Promise<DashboardHoursResponse>
@@ -108,6 +123,7 @@ export class DashboardHoursService {
     private readonly tifluxService: TifluxService,
     private readonly prisma: PrismaService,
     private readonly integrations: DashboardIntegrationsService,
+    private readonly redis: RedisService,
   ) {}
 
   private buildCacheKey(params: DashboardFilters) {
@@ -123,10 +139,17 @@ export class DashboardHoursService {
     return `hours:${this.buildCacheKey(params)}|raw:${this.tifluxDashboardRawApi ? '1' : '0'}|rl:${this.workSummaryMaxLinhas}|lb:${this.hoursTicketLookbackDays}`;
   }
 
+  private redisHoursKey(cacheKey: string) {
+    return `alleone:dashboard:hours:${cacheKey}`;
+  }
+
   invalidateCache(params: DashboardFilters): void {
     const cacheKey = this.buildHoursCacheKey(params);
     this.hoursCache.delete(cacheKey);
     this.inFlightHoursRequests.delete(cacheKey);
+    if (this.hoursRedisCacheEnabled) {
+      void this.redis.del(this.redisHoursKey(cacheKey));
+    }
   }
 
   getEmptyHoursRows(startDate: Date, endDate: Date): MonthlyHoursRow[] {
@@ -140,25 +163,33 @@ export class DashboardHoursService {
   }
 
   private getCachedHoursResponse(cacheKey: string) {
-    const cached = this.hoursCache.get(cacheKey);
-    if (!cached) return null;
+    return this.hoursCache.get(cacheKey);
+  }
 
-    if (cached.expiresAt <= Date.now()) {
-      this.hoursCache.delete(cacheKey);
+  private async getCachedHoursResponseAsync(cacheKey: string) {
+    const memory = this.getCachedHoursResponse(cacheKey);
+    if (memory) return memory;
+    if (!this.hoursRedisCacheEnabled || !this.redis.isEnabled()) {
       return null;
     }
-
-    return cached.data;
+    const fromRedis = await this.redis.getJson<DashboardHoursResponse>(
+      this.redisHoursKey(cacheKey),
+    );
+    if (fromRedis) {
+      this.hoursCache.set(cacheKey, fromRedis);
+    }
+    return fromRedis;
   }
 
   private setCachedHoursResponse(
     cacheKey: string,
     data: DashboardHoursResponse,
   ): void {
-    this.hoursCache.set(cacheKey, {
-      data,
-      expiresAt: Date.now() + this.hoursCacheTtlMs,
-    });
+    this.hoursCache.set(cacheKey, data);
+    if (this.hoursRedisCacheEnabled && this.redis.isEnabled()) {
+      const ttlSec = Math.max(1, Math.ceil(this.hoursCacheTtlMs / 1000));
+      void this.redis.setJson(this.redisHoursKey(cacheKey), data, ttlSec);
+    }
   }
 
   private async sleep(ms: number): Promise<void> {
@@ -1705,7 +1736,7 @@ export class DashboardHoursService {
   ): Promise<DashboardHoursResponse> {
     const cacheKey = this.buildHoursCacheKey(scoped);
 
-    const cached = this.getCachedHoursResponse(cacheKey);
+    const cached = await this.getCachedHoursResponseAsync(cacheKey);
     if (cached) {
       this.devDebug('getDashboardHours: retornando cache');
       return cached;

@@ -171,8 +171,11 @@ export class TicketsController {
   @Get(':ticketNumber/stages')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
-  listStages(@Param('ticketNumber', ParseIntPipe) ticketNumber: number) {
-    return this.ticketsQueryService.listTicketStages(ticketNumber);
+  listStages(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+  ) {
+    return this.ticketsQueryService.listTicketStages(actor, ticketNumber);
   }
 
   @Patch(':ticketNumber/stage')

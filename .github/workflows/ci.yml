@@ -81,12 +81,12 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npx playwright install chromium --with-deps
-      - name: Build e smoke E2E (login + proteção de rota)
+      - name: Build e smoke E2E (login + rotas protegidas)
         run: |
           npm run build
           npm run start &
           sleep 10
-          npx playwright test e2e/login.spec.ts --grep "exibe formulário|redireciona dashboard"
+          npx playwright test e2e/login.spec.ts --grep "exibe formulário|redireciona"
         env:
           NEXT_PUBLIC_API_URL: http://localhost:3003
           PLAYWRIGHT_SKIP_WEBSERVER: "1"

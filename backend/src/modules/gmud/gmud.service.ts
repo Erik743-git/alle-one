@@ -658,6 +658,7 @@ export class GmudService {
     if (evidence.size > maxBytes) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
+    assertAllowedUpload(evidence);
 
     const uploadsDir = join(
       process.cwd(),

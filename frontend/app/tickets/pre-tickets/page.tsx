@@ -10,6 +10,7 @@ import {
 } from "@/components/layout/pre-tickets-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   emailInboundService,
   type PreTicketListItem,
@@ -35,6 +36,7 @@ export default function PreTicketsPage() {
   const [q, setQ] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -44,6 +46,8 @@ export default function PreTicketsPage() {
       refreshPreTicketsBadge();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao listar");
+    } finally {
+      setLoading(false);
     }
   }, [q]);
 
@@ -127,7 +131,34 @@ export default function PreTicketsPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((row) => (
+                {loading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`sk-${i}`} className="border-b">
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-4/5" />
+                        <Skeleton className="mt-2 h-3 w-1/2" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="mt-2 h-3 w-full" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-2/3" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-20" />
+                      </td>
+                      <td className="px-2 py-3">
+                        <Skeleton className="mx-auto h-4 w-6" />
+                      </td>
+                      <td className="px-2 py-3">
+                        <Skeleton className="ml-auto h-8 w-16" />
+                      </td>
+                    </tr>
+                  ))
+                ) : null}
+                {!loading
+                  ? items.map((row) => (
                   <tr
                     key={row.id}
                     className="cursor-pointer border-b align-top hover:bg-muted/25"
@@ -181,6 +212,7 @@ export default function PreTicketsPage() {
                           className="size-8"
                           disabled={busy}
                           title="Abrir ticket"
+                          aria-label={`Abrir ticket: ${row.title}`}
                           onClick={() => void openTicket(row.id)}
                         >
                           <Check className="size-4" />
@@ -191,6 +223,7 @@ export default function PreTicketsPage() {
                           className="size-8"
                           disabled={busy}
                           title="Remover"
+                          aria-label={`Remover pré-ticket: ${row.title}`}
                           onClick={() => void remove(row.id)}
                         >
                           <Trash2 className="size-4" />
@@ -198,16 +231,16 @@ export default function PreTicketsPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
-                {items.length === 0 ? (
+                ))
+                  : null}
+                {!loading && items.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="p-8 text-muted-foreground">
                       Nenhum pré-ticket pendente.
                     </td>
                   </tr>
                 ) : null}
-              </tbody>
-            </table>
+              </tbody>            </table>
           </div>
         </div>
       </AppShell>
