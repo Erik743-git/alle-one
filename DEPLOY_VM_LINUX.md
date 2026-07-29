@@ -1,5 +1,10 @@
 # Deploy Alle One — VM Linux (PM2 + Nginx)
 
+> **Dois caminhos de deploy:** nesta VM usa-se **PM2** (front `3000`, API `3002`) + Nginx.
+> O arquivo `docker-compose.prod.yml` na raiz é para **Coolify/Docker** (API no container em `3003`) — não misture as duas abordagens na mesma VM.
+>
+> Cookies de sessão: com Nginx na frente, mantenha `TRUST_PROXY=1` no `.env` da API (já no modelo abaixo).
+
 Guia para publicar em **Ubuntu** com Node **20** (nvm), PostgreSQL local e acesso público em  
 `http://alleone.alletecnologia.com:8000/`.
 
@@ -56,7 +61,7 @@ pm2 delete alleone-web alleone-api 2>/dev/null || true
 
 ## 3. Senha do banco na DATABASE_URL (importante)
 
-Senha exemplo: `All3@2026!@#`  
+Use a senha real do PostgreSQL da VM (não versionar senhas neste arquivo).  
 Caracteres especiais na URL:
 
 | Caractere | Encode |
@@ -65,10 +70,10 @@ Caracteres especiais na URL:
 | `!`       | `%21`  |
 | `#`       | `%23`  |
 
-Exemplo:
+Exemplo (substitua `SENHA_URL_ENCODED`):
 
 ```env
-DATABASE_URL="postgresql://uportal:All3%402026%21%40%23@127.0.0.1:5432/portal?schema=public"
+DATABASE_URL="postgresql://uportal:SENHA_URL_ENCODED@127.0.0.1:5432/portal?schema=public"
 ```
 
 ---

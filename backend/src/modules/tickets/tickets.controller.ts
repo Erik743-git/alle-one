@@ -98,12 +98,14 @@ export class TicketsController {
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   async downloadAttachment(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('fileId') fileId: string,
     @Query('inline') inline?: string,
     @Res({ passthrough: true }) res?: Response,
   ) {
     const { stream, meta } =
       await this.appointmentsService.downloadPortalAttachment(
+        actor,
         fileId,
         inline === 'true',
       );

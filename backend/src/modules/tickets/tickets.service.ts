@@ -460,7 +460,7 @@ export class TicketsService {
         fromMirror.find((r) => r.id === responsibleId)?.name ?? null;
     }
 
-    if (writeTiflux) {
+    if (writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL) {
       const payload: Record<string, unknown> = {};
       if (title) payload.title = title;
       if (descriptionRaw) {
@@ -555,9 +555,10 @@ export class TicketsService {
     return {
       ok: true,
       ticketNumber,
-      message: writeTiflux
-        ? 'Ticket atualizado.'
-        : 'Ticket atualizado no portal.',
+      message:
+        writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL
+          ? 'Ticket atualizado.'
+          : 'Ticket atualizado no portal.',
     };
   }
 

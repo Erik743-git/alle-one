@@ -79,14 +79,17 @@ Se qualquer credencial já tiver circulado fora do seu ambiente controlado, **ro
 
 ### 1) Banco (PostgreSQL)
 
-O backend traz um `docker-compose.yml` apenas para o Postgres:
+O backend traz um `docker-compose.yml` para Postgres **e Redis**:
 
 ```bash
 cd backend
 docker compose up -d
 ```
 
-Por padrão ele expõe `5432:5432` e cria o banco `alleone`.
+Por padrão ele expõe `5432:5432` (banco `alleone`) e Redis em `6379`.
+Para filas BullMQ (e-mail), defina `REDIS_URL=redis://127.0.0.1:6379` — ver `docs/REDIS.md`.
+
+> Deploy em VM com PM2: `DEPLOY_VM_LINUX.md` (API `3002`). Compose Coolify: `docker-compose.prod.yml` (API `3003` + Redis).
 
 ### 2) Backend (API)
 

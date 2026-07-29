@@ -30,11 +30,20 @@ import {
   clearTotpTrustCookie,
 } from './totp-trust-cookie.helper';
 import { Public } from '../../common/decorators/public.decorator';
-import { IsString } from 'class-validator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
 
 class TotpCodeDto {
   @IsString()
   code!: string;
+}
+
+class OAuthComplete2faDto {
+  @IsString()
+  code!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  rememberDevice?: boolean;
 }
 
 class DisableTotpDto {
@@ -101,6 +110,17 @@ export class AuthController {
     @Res() res: Response,
   ): Promise<void> {
     await this.authOAuth.handleMicrosoftCallback(req, res);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('oauth/complete-2fa')
+  async completeOAuth2fa(
+    @Body() body: OAuthComplete2faDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.authOAuth.completeOAuth2fa(req, res, body);
   }
 
   @Public()

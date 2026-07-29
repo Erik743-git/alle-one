@@ -8,17 +8,26 @@ import { UserStatus } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from './auth.service';
-import { attachAccessTokenCookie } from './auth-cookie.helper';
 import {
+  attachOAuth2faPendingCookie,
   attachOAuthStateCookie,
+  clearOAuth2faPendingCookie,
   clearOAuthStateCookie,
+  createOAuth2faPendingToken,
   createOAuthState,
   oauthCallbackUrl,
   oauthLoginRedirect,
+  OAUTH_2FA_PENDING_COOKIE,
   OAUTH_STATE_COOKIE,
+  parseOAuth2faPendingToken,
   parseOAuthState,
   type OAuthProvider,
 } from './auth-oauth.helper';
+import {
+  TOTP_TRUST_COOKIE,
+  attachTotpTrustCookie,
+} from './totp-trust-cookie.helper';
+import { attachAccessTokenCookie } from './auth-cookie.helper';
 import {
   microsoftEmailVerified,
   verifyMicrosoftIdToken,
@@ -188,15 +197,35 @@ export class AuthOAuthService {
         throw new UnauthorizedException('oauth_profile');
       }
 
-      const session = await this.authService.loginWithOAuth({
-        provider,
-        providerId: profile.providerId,
-        email: profile.email,
-        emailVerified: profile.emailVerified,
-      });
+      const trustCookie =
+        typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+          ? (req.cookies[TOTP_TRUST_COOKIE] as string)
+          : undefined;
 
-      attachAccessTokenCookie(res, session.accessToken);
-      res.redirect(oauthLoginRedirect(undefined, session.user.firstAccess));
+      const result = await this.authService.loginWithOAuth(
+        {
+          provider,
+          providerId: profile.providerId,
+          email: profile.email,
+          emailVerified: profile.emailVerified,
+        },
+        { trustCookie },
+      );
+
+      if (result.status === '2fa_required') {
+        attachOAuth2faPendingCookie(
+          res,
+          createOAuth2faPendingToken(result.userId),
+        );
+        res.redirect(oauthLoginRedirect('oauth_2fa_required'));
+        return;
+      }
+
+      attachAccessTokenCookie(res, result.accessToken);
+      if (result.totpTrustToken) {
+        attachTotpTrustCookie(res, result.totpTrustToken);
+      }
+      res.redirect(oauthLoginRedirect(undefined, result.user.firstAccess));
     } catch (err) {
       this.logger.warn(
         `OAuth ${provider} falhou: ${err instanceof Error ? err.message : String(err)}`,
@@ -210,12 +239,43 @@ export class AuthOAuthService {
     }
   }
 
+  async completeOAuth2fa(
+    req: Request,
+    res: Response,
+    body: { code: string; rememberDevice?: boolean },
+  ) {
+    const pendingRaw =
+      typeof req.cookies?.[OAUTH_2FA_PENDING_COOKIE] === 'string'
+        ? (req.cookies[OAUTH_2FA_PENDING_COOKIE] as string)
+        : undefined;
+    const pending = parseOAuth2faPendingToken(pendingRaw);
+    if (!pending) {
+      throw new UnauthorizedException('oauth_2fa_expired');
+    }
+
+    const result = await this.authService.completeOAuth2fa(
+      pending.userId,
+      body.code,
+      Boolean(body.rememberDevice),
+    );
+
+    clearOAuth2faPendingCookie(res);
+    attachAccessTokenCookie(res, result.accessToken);
+    if (result.totpTrustToken) {
+      attachTotpTrustCookie(res, result.totpTrustToken);
+    }
+
+    const { accessToken: _omit, totpTrustToken: _trust, ...safe } = result;
+    return safe;
+  }
+
   private mapOAuthError(message: string): string {
     if (message === 'oauth_not_registered') return 'oauth_not_registered';
     if (message === 'oauth_not_verified') return 'oauth_not_verified';
     if (message === 'oauth_inactive') return 'oauth_inactive';
     if (message === 'oauth_provider_mismatch') return 'oauth_provider_mismatch';
     if (message === 'oauth_profile') return 'oauth_microsoft_profile';
+    if (message === 'oauth_2fa_expired') return 'oauth_2fa_expired';
     return 'oauth_failed';
   }
 

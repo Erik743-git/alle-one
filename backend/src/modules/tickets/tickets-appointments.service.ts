@@ -13,6 +13,7 @@ import {
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
 import { FileStorageService } from '../../common/storage/file-storage.service';
+import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import {
   assertAllowedUpload,
   TICKET_APPOINTMENT_UPLOAD_MAX_BYTES,
@@ -21,6 +22,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { ProjetosService } from '../projetos/projetos.service';
 import { TifluxService } from '../tiflux/tiflux.service';
+import { assertTicketClientScope } from './tickets-client-scope';
 import {
   appointmentDescriptionToPlainText,
   enrichAppointmentDescriptionWithImages,
@@ -86,6 +88,7 @@ export class TicketsAppointmentsService {
     private readonly tiflux: TifluxService,
     private readonly fileStorage: FileStorageService,
     private readonly projetos: ProjetosService,
+    private readonly tenantScope: TenantScopeService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -156,39 +159,44 @@ export class TicketsAppointmentsService {
   async listAppointments(
     ticketNumber: number,
   ): Promise<TicketAppointmentDto[]> {
-    const rows =
-      (await this.prisma.$queryRaw<AppointmentRow[]>`
-        SELECT
-          a.external_id,
-          a.ticket_number,
-          a.appointment_date,
-          a.init_time,
-          a.end_time,
-          a.user_external_id,
-          a.user_name,
-          a.description,
-          a.valorization_raw
-        FROM tiflux.ticket_appointments a
-        WHERE a.ticket_number = ${ticketNumber}
-        ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
-      `) ?? [];
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<AppointmentRow[]>`
+          SELECT
+            a.external_id,
+            a.ticket_number,
+            a.appointment_date,
+            a.init_time,
+            a.end_time,
+            a.user_external_id,
+            a.user_name,
+            a.description,
+            a.valorization_raw
+          FROM tiflux.ticket_appointments a
+          WHERE a.ticket_number = ${ticketNumber}
+          ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
+        `) ?? [];
 
-    return rows.map((row) => ({
-      externalId: Number(row.external_id),
-      portalAppointmentId: null,
-      appointmentDate: this.formatDateOnly(row.appointment_date),
-      initTime: this.formatTime(row.init_time),
-      endTime: this.formatTime(row.end_time),
-      minutes: this.appointmentMinutes(row.init_time, row.end_time),
-      userName: row.user_name,
-      description: row.description,
-      valorizationLabel: this.valorizationLabel(row.valorization_raw),
-      attendance: null,
-      attendanceLabel: null,
-      syncStatus: 'SYNCED' as const,
-      attachmentCount: 0,
-      attachments: [],
-    }));
+      return rows.map((row) => ({
+        externalId: Number(row.external_id),
+        portalAppointmentId: null,
+        appointmentDate: this.formatDateOnly(row.appointment_date),
+        initTime: this.formatTime(row.init_time),
+        endTime: this.formatTime(row.end_time),
+        minutes: this.appointmentMinutes(row.init_time, row.end_time),
+        userName: row.user_name,
+        description: row.description,
+        valorizationLabel: this.valorizationLabel(row.valorization_raw),
+        attendance: null,
+        attendanceLabel: null,
+        syncStatus: 'SYNCED' as const,
+        attachmentCount: 0,
+        attachments: [],
+      }));
+    } catch {
+      // Schema tiflux.* ausente no cutover local / ambiente portal-only.
+      return [];
+    }
   }
 
   private buildPreviewDataUrl(
@@ -659,7 +667,11 @@ export class TicketsAppointmentsService {
     }));
   }
 
-  async downloadPortalAttachment(fileId: string, inline: boolean) {
+  async downloadPortalAttachment(
+    actor: AuthenticatedRequestUser,
+    fileId: string,
+    inline: boolean,
+  ) {
     const row = await this.prisma.portalTicketAppointmentAttachment.findFirst({
       where: { fileId },
       include: { file: true },
@@ -667,6 +679,29 @@ export class TicketsAppointmentsService {
     if (!row?.file || row.file.deletedAt) {
       throw new NotFoundException('Anexo não encontrado.');
     }
+
+    const portalTicket = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber: row.ticketNumber },
+      select: { clientExternalId: true },
+    });
+    let clientExternalId = portalTicket?.clientExternalId ?? null;
+    if (clientExternalId == null && actor.role === 'CLIENT') {
+      try {
+        const mirror =
+          (await this.prisma.$queryRaw<
+            Array<{ client_external_id: number | null }>
+          >`
+            SELECT t.client_external_id
+            FROM tiflux.tickets t
+            WHERE t.ticket_number = ${row.ticketNumber}
+            LIMIT 1
+          `) ?? [];
+        clientExternalId = mirror[0]?.client_external_id ?? null;
+      } catch {
+        // Schema tiflux.* ausente.
+      }
+    }
+    await assertTicketClientScope(this.tenantScope, actor, clientExternalId);
 
     if (!(await this.fileStorage.exists(row.file.path))) {
       throw new NotFoundException('Arquivo não encontrado no servidor.');

@@ -37,6 +37,11 @@ Reinicie a API. No log:
 3. `pm2 restart alleone-api` (ou `alleone-teste-api`).
 4. Conferir: `curl -sS https://SEU-DOMINIO/api/health` → `"redis":"up"`.
 
+### Coolify / `docker-compose.prod.yml`
+
+O compose de produção sobe Redis junto com a API (`REDIS_URL=redis://redis:6379` por padrão).
+A VM com PM2 continua usando Redis local/container separado — ver `DEPLOY_VM_LINUX.md`.
+
 ## Desligar
 
 Remova ou comente `REDIS_URL` e reinicie — o sistema continua com poll in-process.

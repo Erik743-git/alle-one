@@ -128,6 +128,20 @@ Com ETL + reassign + `TICKETS_PORTAL_CANONICAL=true`:
 - Onda 2 validada (checklist acima).
 - Rollback: voltar flags ao default (`canonical=false`, `write=true`).
 
+## Rota operacional (staging → prod)
+
+Ordem fixa — **não pule etapas**:
+
+1. Backup do banco alvo.
+2. `npx ts-node prisma/scripts/cutover-final-sync.ts` (ETL tickets + apontamentos).
+3. `POST /tickets/reconcile?retry=true` até divergência ≈ 0.
+4. Staging: `TICKETS_PORTAL_CANONICAL=true` (write ainda `true`).
+5. Validar checklist Onda 2 (lista, detalhe, horas, rendimento, reports, mailbox).
+6. Staging: `TICKETS_TIFLUX_WRITE=false` (portal-only write).
+7. Só então repetir 2–6 em produção e parar `alleone-tiflux-sync`.
+
+Com `TICKETS_TIFLUX_WRITE=false`, tickets `origin=PORTAL` (pré-ticket/e-mail) já não tentam API TiFlux em update/stage.
+
 ## Fora de escopo imediato
 
 Desligar sync em prod sem dual-read validado.

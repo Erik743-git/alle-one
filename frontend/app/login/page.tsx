@@ -78,6 +78,9 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_cancelled: "Login social cancelado.",
   oauth_invalid_state: "Sessão expirada. Tente entrar novamente.",
   oauth_failed: "Não foi possível concluir o login social. Tente novamente.",
+  oauth_2fa_required: "Confirme o código 2FA para concluir o login social.",
+  oauth_2fa_expired:
+    "Sessão do login social expirou. Entre novamente com Google ou Microsoft.",
   oauth_microsoft_secret:
     "Configuração Microsoft inválida. No Azure, copie o Valor do segredo do cliente (não o ID do segredo) para MICROSOFT_OAUTH_CLIENT_SECRET.",
   oauth_microsoft_profile:
@@ -114,6 +117,7 @@ function LoginPageContent() {
   const [senha, setSenha] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [requires2fa, setRequires2fa] = useState(false);
+  const [oauth2faPending, setOauth2faPending] = useState(false);
   const [rememberDevice, setRememberDevice] = useState(false);
   const [trustDays, setTrustDays] = useState(14);
   const [carregando, setCarregando] = useState(false);
@@ -138,6 +142,14 @@ function LoginPageContent() {
   useEffect(() => {
     const oauthError = searchParams.get("error");
     const sessionReason = searchParams.get("reason");
+    if (oauthError === "oauth_2fa_required") {
+      setOauth2faPending(true);
+      setRequires2fa(true);
+      setTotpCode("");
+      setErro("");
+      router.replace("/login", { scroll: false });
+      return;
+    }
     if (oauthError) {
       setErro(
         OAUTH_ERROR_MESSAGES[oauthError] ?? OAUTH_ERROR_MESSAGES.oauth_failed,
@@ -220,6 +232,68 @@ function LoginPageContent() {
   async function handleLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErro("");
+
+    if (oauth2faPending) {
+      if (!totpCode.trim()) {
+        setErro("Informe o código 2FA do aplicativo.");
+        return;
+      }
+      try {
+        setCarregando(true);
+        const response = await fetch(
+          `${getBrowserApiBase()}/auth/oauth/complete-2fa`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code: totpCode.trim(),
+              ...(rememberDevice ? { rememberDevice: true } : {}),
+            }),
+          },
+        );
+        const data = (await response.json()) as LoginResponse | ErrorResponse;
+        if (!response.ok) {
+          const mensagem = Array.isArray(data.message)
+            ? data.message[0]
+            : data.message;
+          setErro(
+            mensagem === "oauth_2fa_expired"
+              ? OAUTH_ERROR_MESSAGES.oauth_2fa_expired
+              : mensagem || "Código 2FA inválido.",
+          );
+          if (mensagem === "oauth_2fa_expired") {
+            setOauth2faPending(false);
+            setRequires2fa(false);
+          }
+          return;
+        }
+        const loginData = data as LoginResponse;
+        setSession(undefined, loginData.user);
+        establishSession(loginData.user);
+        let user: AuthUser = loginData.user;
+        try {
+          const meData = await authService.me();
+          if (meData?.user) {
+            user = meData.user;
+            establishSession(user);
+          }
+        } catch {
+          setErro(LOGIN_SESSION_ERROR);
+          return;
+        }
+        if (user.firstAccess) {
+          router.push("/primeiro-acesso");
+          return;
+        }
+        router.push("/dashboard");
+      } catch {
+        setErro(LOGIN_CONNECTION_ERROR);
+      } finally {
+        setCarregando(false);
+      }
+      return;
+    }
 
     if (!email.trim() || !senha.trim()) {
       setErro("Preencha e-mail e senha.");
@@ -304,6 +378,7 @@ function LoginPageContent() {
 
   function backToCredentials() {
     setRequires2fa(false);
+    setOauth2faPending(false);
     setTotpCode("");
     setRememberDevice(false);
     setErro("");
@@ -376,10 +451,14 @@ function LoginPageContent() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">
-                        {email.trim().toLowerCase()}
+                        {oauth2faPending
+                          ? "Login social"
+                          : email.trim().toLowerCase()}
                       </p>
                       <p className="text-[11px] text-slate-400">
-                        Senha validada · falta o 2FA
+                        {oauth2faPending
+                          ? "Identidade confirmada · falta o 2FA"
+                          : "Senha validada · falta o 2FA"}
                       </p>
                     </div>
                     <button

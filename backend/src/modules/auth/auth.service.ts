@@ -119,12 +119,34 @@ export class AuthService {
     return { ...session, totpTrustToken };
   }
 
-  async loginWithOAuth(params: {
-    provider: 'google' | 'microsoft';
-    providerId: string;
-    email: string;
-    emailVerified: boolean;
-  }) {
+  async loginWithOAuth(
+    params: {
+      provider: 'google' | 'microsoft';
+      providerId: string;
+      email: string;
+      emailVerified: boolean;
+    },
+    opts?: { trustCookie?: string },
+  ): Promise<
+    | {
+        status: 'authenticated';
+        message: string;
+        accessToken: string;
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          role: UserRole;
+          companyId: string | null;
+          companyName: string | null;
+          firstAccess: boolean;
+          permissions: unknown;
+          totpEnabled: boolean;
+        };
+        totpTrustToken?: string;
+      }
+    | { status: '2fa_required'; userId: string; trustDays: number }
+  > {
     if (!params.emailVerified) {
       throw new UnauthorizedException('oauth_not_verified');
     }
@@ -169,7 +191,47 @@ export class AuthService {
       }
     }
 
-    return this.createSessionForUser(user);
+    if (user.totpEnabledAt) {
+      const trusted = verifyTotpTrustToken(
+        opts?.trustCookie,
+        user.id,
+        user.totpEnabledAt,
+      );
+      if (!trusted) {
+        return {
+          status: '2fa_required',
+          userId: user.id,
+          trustDays: totpTrustDays(),
+        };
+      }
+    }
+
+    const session = await this.createSessionForUser(user);
+    let totpTrustToken: string | undefined;
+    if (user.totpEnabledAt) {
+      totpTrustToken = createTotpTrustToken(user.id, user.totpEnabledAt);
+    }
+    return { status: 'authenticated', ...session, totpTrustToken };
+  }
+
+  async completeOAuth2fa(
+    userId: string,
+    totpCode: string,
+    rememberDevice: boolean,
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      include: { company: true },
+    });
+    if (!user || user.status !== UserStatus.ACTIVE || !user.totpEnabledAt) {
+      throw new UnauthorizedException('oauth_2fa_expired');
+    }
+    await this.totp.assertValidCode(user.id, totpCode);
+    const session = await this.createSessionForUser(user);
+    const totpTrustToken = rememberDevice
+      ? createTotpTrustToken(user.id, user.totpEnabledAt)
+      : undefined;
+    return { ...session, totpTrustToken };
   }
 
   private async createSessionForUser(user: {

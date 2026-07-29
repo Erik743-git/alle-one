@@ -1362,8 +1362,14 @@ export class TicketsQueryService {
     let stageName = targetStage.name;
     let resolvedStageId = stageId;
     const deskExternalId = Number(stagesResponse.deskExternalId);
+    const portalOrigin = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+      select: { origin: true },
+    });
+    const skipTifluxWrite =
+      portalOrigin?.origin === 'PORTAL' || !isTicketsTifluxWriteEnabled();
     if (
-      isTicketsTifluxWriteEnabled() &&
+      !skipTifluxWrite &&
       Number.isFinite(deskExternalId) &&
       deskExternalId > 0
     ) {
@@ -1398,7 +1404,7 @@ export class TicketsQueryService {
         fromStageName: ticket.stage_name,
         toStageName: stageName,
         stageId,
-        tifluxWrite: isTicketsTifluxWriteEnabled(),
+        tifluxWrite: !skipTifluxWrite,
       },
     });
 
