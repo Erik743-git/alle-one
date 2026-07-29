@@ -73,6 +73,10 @@ export const SYNC_STATUS_PAUSED = "Sincronização pausada";
 export const TICKET_APPOINTMENT_TIFLUX_PORTAL_ONLY_WARNING =
   "Este apontamento já existe no TiFlux. O portal não possui permissão na API para alterar ou excluir apontamentos no TiFlux — faça isso diretamente no TiFlux, se necessário. Você pode continuar para alterar somente o registro no portal AlleOne.";
 
+/** Apontamento listado só pelo espelho TiFlux (sem portalAppointmentId). */
+export const TICKET_APPOINTMENT_TIFLUX_ONLY_HINT =
+  "Somente no TiFlux — edite ou exclua lá. Após o cutover para o portal, as ações aparecem aqui.";
+
 /** Correio / notificações */
 export const MAILBOX_RENDIMENTO_ALERT_BODY_ONE = (dateLabel: string, monthLabel: string) =>
   `Há um intervalo sem registro de horas em ${dateLabel} (${monthLabel}). Confira sua agenda.`;

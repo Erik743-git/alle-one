@@ -64,12 +64,11 @@ Versão do produto: **0.6.0** (estabilização + confiabilidade).
 
 ## Fase 3 — Escala (planejada)
 
-- [ ] Redis (cache + filas)
-- [ ] Sentry / OpenTelemetry
+- [x] Redis (fila BullMQ e-mail) — opcional; ver [`REDIS.md`](./REDIS.md); cache genérico ainda aberto
+- [x] Sentry básico (init API/Next + captureException 5xx) — OpenTelemetry completo ainda aberto
 - [ ] Secret manager
 - [ ] Coolify/K8s vs VM
-- [ ] **Projetos V2** — integração Ticket ↔ Apontamento ↔ Atividade (ver `docs/V2-PROJETOS.md`)
-
+- [x] **Projetos V2** — ticket ↔ apontamento ↔ atividade (ver `docs/V2-PROJETOS.md`; gaps: N:N / TiFlux-only)
 ## Fase Portal canônico (cutover TiFlux) — em andamento
 
 Ver [docs/CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md).

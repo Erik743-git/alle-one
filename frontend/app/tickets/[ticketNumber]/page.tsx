@@ -44,6 +44,7 @@ import {
   SYNC_STATUS_PAUSED,
   SYNC_STATUS_PENDING,
   SYNC_STATUS_PORTAL_ONLY,
+  TICKET_APPOINTMENT_TIFLUX_ONLY_HINT,
 } from "@/lib/module-copy";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -852,7 +853,17 @@ export default function TicketDetailPage() {
                                       </DropdownMenuContent>
                                     </DropdownMenu>
                                   ) : (
-                                    <span className="text-xs text-muted-foreground">—</span>
+                                    <span
+                                      className="inline-flex max-w-[9rem] flex-col gap-0.5 text-xs text-muted-foreground"
+                                      title={TICKET_APPOINTMENT_TIFLUX_ONLY_HINT}
+                                    >
+                                      <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-800 dark:text-sky-200">
+                                        TiFlux
+                                      </span>
+                                      <span className="leading-snug">
+                                        Edite no TiFlux
+                                      </span>
+                                    </span>
                                   )}
                                 </td>
                               ) : null}

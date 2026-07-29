@@ -8,6 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import {
+  classificationService,
+  type ServiceDeskOption,
+} from "@/lib/services/classification.service";
+import { companiesService, type Company } from "@/lib/services/companies.service";
 import {
   emailInboundService,
   type EmailInboundRoute,
@@ -21,19 +27,27 @@ export default function AdminEmailPage() {
   const [tab, setTab] = useState<Tab>("recebimento");
   const [settings, setSettings] = useState<EmailInboundSettings | null>(null);
   const [routes, setRoutes] = useState<EmailInboundRoute[]>([]);
+  const [desks, setDesks] = useState<ServiceDeskOption[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [matchEmail, setMatchEmail] = useState("");
   const [priorityName, setPriorityName] = useState("Baixa");
+  const [routeDeskId, setRouteDeskId] = useState("");
+  const [routeCompanyId, setRouteCompanyId] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, r] = await Promise.all([
+      const [s, r, deskList, companyList] = await Promise.all([
         emailInboundService.getSettings(),
         emailInboundService.listRoutes(),
+        classificationService.listDesks().catch(() => [] as ServiceDeskOption[]),
+        companiesService.list().catch(() => [] as Company[]),
       ]);
       setSettings(s);
       setRoutes(r);
+      setDesks(deskList);
+      setCompanies(companyList.filter((c) => c.status && !c.deletedAt));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao carregar");
@@ -76,9 +90,13 @@ export default function AdminEmailPage() {
       await emailInboundService.createRoute({
         matchEmail: matchEmail.trim(),
         priorityName: priorityName.trim() || undefined,
+        deskId: routeDeskId.trim() || undefined,
+        companyId: routeCompanyId.trim() || undefined,
         verified: true,
       });
       setMatchEmail("");
+      setRouteDeskId("");
+      setRouteCompanyId("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao criar");
@@ -328,7 +346,7 @@ export default function AdminEmailPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex flex-wrap gap-2 items-end">
-                      <div className="space-y-1">
+                      <div className="min-w-[12rem] flex-1 space-y-1">
                         <Label>E-mail (remetente ou *@dominio)</Label>
                         <Input
                           value={matchEmail}
@@ -336,7 +354,41 @@ export default function AdminEmailPage() {
                           placeholder="monitoramento@…"
                         />
                       </div>
-                      <div className="space-y-1">
+                      <div className="min-w-[10rem] space-y-1">
+                        <Label>Mesa</Label>
+                        <SearchableSelectField
+                          value={routeDeskId}
+                          onChange={setRouteDeskId}
+                          placeholder="Opcional"
+                          emptyLabel="Nenhuma mesa"
+                          options={[
+                            { value: "", label: "— (nenhuma)" },
+                            ...desks.map((d) => ({
+                              value: d.id,
+                              label: d.name,
+                            })),
+                          ]}
+                          preserveOrder
+                        />
+                      </div>
+                      <div className="min-w-[10rem] space-y-1">
+                        <Label>Cliente</Label>
+                        <SearchableSelectField
+                          value={routeCompanyId}
+                          onChange={setRouteCompanyId}
+                          placeholder="Opcional"
+                          emptyLabel="Nenhum cliente"
+                          options={[
+                            { value: "", label: "Todos" },
+                            ...companies.map((c) => ({
+                              value: c.id,
+                              label: c.name,
+                            })),
+                          ]}
+                          preserveOrder
+                        />
+                      </div>
+                      <div className="min-w-[8rem] space-y-1">
                         <Label>Prioridade</Label>
                         <Input
                           value={priorityName}

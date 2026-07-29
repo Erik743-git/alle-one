@@ -112,8 +112,13 @@ Sem Redis: o poller cron cria pré-tickets **in-process**.
 ```env
 SENTRY_DSN=https://...
 SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=0.05
 NEXT_PUBLIC_SENTRY_DSN=https://...
+NEXT_PUBLIC_SENTRY_ENVIRONMENT=production
 ```
+
+- API: `initSentry()` + `captureException` em erros 5xx / não tratados (`GlobalExceptionFilter`).
+- Next: `sentry.client.config.ts` / `sentry.server.config.ts` + `withSentryConfig` quando há DSN.
 
 ## 2FA TOTP
 
@@ -152,4 +157,30 @@ Migrations: `20260727180000_email_preticket_2fa`, `20260728180000_email_blocked_
 - Sem webhook Graph (só poll 1 min + fila se Redis up)
 - Aba Geral (logos/separador) stub
 - Envio continua SMTP legado
-- Anexos limitados a 20 por mensagem
+- Anexos limitados a **20 por mensagem** no ingest Graph; imagens embutidas até **~4 MB** (data-URL/CID)
+
+## Anexos e política Outlook (`.rar`)
+
+### No Alle One (portal)
+
+Uploads HTTP do portal (tickets, apontamentos, etc.) aceitam **RAR, 7z, ZIP**, Office e TXT, com validação MIME/magic-bytes em `backend/src/common/upload.config.ts`.
+
+Limites típicos (env):
+
+| Contexto | Variável / default |
+|----------|-------------------|
+| Upload geral | `UPLOAD_MAX_BYTES` (~10 MB) |
+| Apontamentos | até ~25 MB no multipart |
+
+### No Microsoft 365 / Outlook
+
+O **Outlook / Exchange Online** pode **bloquear `.rar` no e-mail** por política da Microsoft (não é regra do Alle One). Sintomas:
+
+- Remetente envia `.rar` e o anexo **não chega** na caixa compartilhada
+- Ou chega como `.txt` / removido pela proteção
+
+**O que fazer no time:**
+
+1. Preferir **ZIP** ou anexar pelo **portal** (upload no ticket/apontamento).
+2. Se precisar de RAR no e-mail: pedir ao admin M365 revisar políticas de anexos / Safe Attachments (isso é fora do Alle One).
+3. Pré-tickets só enxergam o que o Graph devolve na mensagem — se o Outlook removeu o `.rar`, o poll **não** cria esse anexo.
