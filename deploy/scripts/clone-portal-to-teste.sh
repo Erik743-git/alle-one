@@ -37,6 +37,40 @@ read_db_url() {
   grep -E '^DATABASE_URL=' "$file" | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'"
 }
 
+# Prisma usa ?schema=public; pg_dump/psql (libpq) rejeitam esse parâmetro.
+libpq_url() {
+  local url="$1"
+  if [[ "$url" != *"?"* ]]; then
+    printf '%s\n' "$url"
+    return
+  fi
+  local base="${url%%\?*}"
+  local qs="${url#*\?}"
+  local kept="" part
+  IFS='&' read -ra parts <<< "$qs"
+  for part in "${parts[@]}"; do
+    case "$part" in
+      schema=*|connection_limit=*|pool_timeout=*|connect_timeout=*|pgbouncer=*|socket_timeout=*)
+        continue
+        ;;
+      "")
+        continue
+        ;;
+      *)
+        if [[ -n "$kept" ]]; then
+          kept+="&"
+        fi
+        kept+="$part"
+        ;;
+    esac
+  done
+  if [[ -n "$kept" ]]; then
+    printf '%s?%s\n' "$base" "$kept"
+  else
+    printf '%s\n' "$base"
+  fi
+}
+
 echo "==> Fonte:  $SOURCE_DB (prod)"
 echo "==> Destino: $TARGET_DB (teste) — será recriado"
 echo "==> Dump:   $DUMP_FILE"
@@ -51,13 +85,18 @@ mkdir -p "$BACKUP_DIR"
 
 echo "==> Parando API de teste (se existir)"
 if command -v pm2 >/dev/null 2>&1; then
-  pm2 stop alleone-teste-api 2>/dev/null || true
+  # Preferir PM2 do usuário alleone (ecosystem de teste)
+  if id alleone >/dev/null 2>&1; then
+    sudo -u alleone -H pm2 stop alleone-teste-api 2>/dev/null || true
+  else
+    pm2 stop alleone-teste-api 2>/dev/null || true
+  fi
 fi
 
 echo "==> Dump de $SOURCE_DB"
 # Prefer DATABASE_URL de prod (senha já correta); fallback peer/local
 if [[ -f "$PROD_ENV" ]]; then
-  PROD_URL="$(read_db_url "$PROD_ENV")"
+  PROD_URL="$(libpq_url "$(read_db_url "$PROD_ENV")")"
   pg_dump "$PROD_URL" --no-owner --no-acl | gzip -9 > "$DUMP_FILE"
 else
   pg_dump -h "$PG_HOST" -U "$PG_USER" -d "$SOURCE_DB" --no-owner --no-acl | gzip -9 > "$DUMP_FILE"
@@ -76,7 +115,7 @@ fi
 
 echo "==> Restore em $TARGET_DB"
 if [[ -f "$TESTE_ENV" ]]; then
-  TESTE_URL="$(read_db_url "$TESTE_ENV")"
+  TESTE_URL="$(libpq_url "$(read_db_url "$TESTE_ENV")")"
   gunzip -c "$DUMP_FILE" | psql "$TESTE_URL" -v ON_ERROR_STOP=1
 else
   gunzip -c "$DUMP_FILE" | psql -h "$PG_HOST" -U "$PG_USER" -d "$TARGET_DB" -v ON_ERROR_STOP=1
@@ -89,11 +128,11 @@ DO \$\$
 DECLARE r record;
 BEGIN
   FOR r IN
-    SELECT format('ALTER TABLE %I.%I OWNER TO %I', schemaname, tablename, '$PG_USER')
+    SELECT format('ALTER TABLE %I.%I OWNER TO %I', schemaname, tablename, '$PG_USER') AS stmt
     FROM pg_tables
     WHERE schemaname IN ('public', 'tiflux')
   LOOP
-    EXECUTE r.format;
+    EXECUTE r.stmt;
   END LOOP;
 END
 \$\$;
@@ -104,13 +143,23 @@ if [[ -d /home/alleone/teste/backend ]]; then
   echo "==> prisma migrate deploy (código de teste)"
   (
     cd /home/alleone/teste/backend
-    npx prisma migrate deploy
+    if id alleone >/dev/null 2>&1; then
+      sudo -u alleone -H bash -lc 'cd /home/alleone/teste/backend && npx prisma migrate deploy'
+    else
+      npx prisma migrate deploy
+    fi
   ) || echo "AVISO: migrate deploy falhou — rode manualmente se o schema do teste diferir."
 fi
 
 echo "==> Subindo API de teste"
 if command -v pm2 >/dev/null 2>&1; then
-  pm2 start alleone-teste-api 2>/dev/null || pm2 restart alleone-teste-api 2>/dev/null || true
+  if id alleone >/dev/null 2>&1; then
+    sudo -u alleone -H pm2 start alleone-teste-api 2>/dev/null \
+      || sudo -u alleone -H pm2 restart alleone-teste-api 2>/dev/null \
+      || true
+  else
+    pm2 start alleone-teste-api 2>/dev/null || pm2 restart alleone-teste-api 2>/dev/null || true
+  fi
 fi
 
 echo ""
