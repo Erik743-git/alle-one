@@ -100,13 +100,14 @@ export function SessionIdleGuard() {
       return;
     }
 
+    // Sempre reinicia o relógio ao autenticar. Um lastActivity antigo no
+    // sessionStorage (sessão anterior) fazia logout idle imediato após o login.
     const now = Date.now();
-    if (!window.sessionStorage.getItem(STORAGE_KEY)) {
-      writeLastActivity(now);
-      lastActivityRef.current = now;
-    } else {
-      lastActivityRef.current = readLastActivity();
-    }
+    endingRef.current = false;
+    writeLastActivity(now);
+    lastActivityRef.current = now;
+    lastWriteRef.current = now;
+    setWarningOpen(false);
 
     const onActivity = () => bumpActivity();
     for (const evt of ACTIVITY_EVENTS) {
@@ -133,7 +134,6 @@ export function SessionIdleGuard() {
       }
     };
 
-    evaluate();
     const tick = window.setInterval(evaluate, TICK_MS);
 
     const onVisibility = () => {

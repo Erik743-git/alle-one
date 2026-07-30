@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UsersService } from '../users/users.service';
 import type {
   CreateDeskClassificationDto,
   CreateServiceDeskDto,
@@ -34,16 +33,17 @@ type ClassificationRow = {
 
 @Injectable()
 export class DeskClassificationService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly usersService: UsersService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async listDesks() {
-    const desks = await this.usersService.listServiceDesks();
+    const desks = await this.prisma.serviceDesk.findMany({
+      where: { deletedAt: null, active: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, externalId: true },
+    });
     return desks.map((desk) => ({
       ...desk,
-      source: desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+      source: 'portal' as const,
     }));
   }
 
@@ -99,7 +99,7 @@ export class DeskClassificationService {
 
     return {
       ...desk,
-      source: desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+      source: 'portal' as const,
     };
   }
 
@@ -145,8 +145,7 @@ export class DeskClassificationService {
     return {
       desk: {
         ...desk,
-        source:
-          desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+        source: 'portal' as const,
       },
       levelLabels: [
         { level: 1, label: 'Nível 1 — categoria' },

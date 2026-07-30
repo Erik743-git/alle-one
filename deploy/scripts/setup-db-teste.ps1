@@ -144,7 +144,7 @@ function Restore-FromDump {
 function Write-EnvTeste {
   Write-Step "Gerando backend/.env.teste"
   if (-not (Test-Path $EnvSource)) {
-    throw ".env nao encontrado em $EnvSource — copie de .env.example e preencha antes."
+    throw ".env nao encontrado em $EnvSource - copie de .env.example e preencha antes."
   }
 
   $lines = Get-Content $EnvSource -Encoding UTF8

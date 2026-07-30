@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { isPublicRoute } from "./auth";
 import {
   clearSessionSync,
-  getStoredUser,
   logoutSession,
   setStoredUser,
   type AuthUser,
@@ -14,11 +13,11 @@ import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
 
 function authMeUrl(): string {
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/me`;
   if (typeof window !== "undefined") {
     return `${window.location.origin}/auth/me`;
   }
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/me`;
   return `${API_URL.replace(/\/$/, "")}/auth/me`;
 }
 
@@ -58,7 +57,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [hydrated, setHydrated] = React.useState(false);
-  const [user, setUser] = React.useState<AuthUser | null>(() => getStoredUser());
+  // Só confiar no usuário após /auth/me (cookie). Storage é preenchido depois.
+  const [user, setUser] = React.useState<AuthUser | null>(null);
   const refreshInFlight = React.useRef<Promise<void> | null>(null);
 
   const establishSession = React.useCallback((nextUser: AuthUser) => {
@@ -85,12 +85,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const stored = getStoredUser();
-      if (stored) {
-        setUser(stored);
-        return;
-      }
-
+      // Cookie inválido/ausente: não confiar em sessionStorage antigo (gera loop
+      // dashboard → 401 → "Sessão expirada").
       clearSessionSync();
       setUser(null);
     })();

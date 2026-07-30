@@ -1057,7 +1057,7 @@ export default function DashboardPage() {
                   {dashboard.resumoHorasTrabalhadas.linhasTruncadas ? (
                     <p className="text-xs text-amber-500/90">
                       O resumo considerou no máximo {dashboard.resumoHorasTrabalhadas.limiteLinhas}{" "}
-                      apontamentos na soma. Ajuste TIFLUX_RESUMO_MAX_LINHAS no backend se precisar do
+                      apontamentos na soma. Ajuste o limite de linhas do resumo no backend se precisar do
                       total completo.
                     </p>
                   ) : null}

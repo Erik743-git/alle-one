@@ -11,6 +11,7 @@ import { AuditService } from '../audit/audit.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import type { TicketsListQueryDto } from './tickets.dto';
 import {
+  canonicalizeStageName,
   resolveTicketStageGroup,
   TICKET_STAGE_GROUPS,
   type TicketStageGroupKey,
@@ -27,6 +28,8 @@ import {
 import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
+  isTifluxDisconnected,
+  isTifluxRuntimeApiEnabled,
 } from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 
@@ -87,8 +90,6 @@ export type TicketHistoryDto = {
 @Injectable()
 export class TicketsQueryService {
   private readonly logger = new Logger(TicketsQueryService.name);
-  private readonly allowRuntimeTifluxApi =
-    process.env.TIFLUX_RUNTIME_API === 'true';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -98,6 +99,10 @@ export class TicketsQueryService {
     private readonly appointments: TicketsAppointmentsService,
     private readonly portalStore: TicketsPortalStoreService,
   ) {}
+
+  private get allowRuntimeTifluxApi(): boolean {
+    return isTifluxRuntimeApiEnabled();
+  }
 
   private formatTime(value: Date | null): string | null {
     if (!value) return null;
@@ -140,14 +145,40 @@ export class TicketsQueryService {
           LIMIT 1
         `) ?? [];
       const row = rows[0];
-      if (!row) return null;
-      return {
-        externalId: Number(row.external_id),
-        name: row.name,
-      };
+      if (row) {
+        return {
+          externalId: Number(row.external_id),
+          name: row.name,
+        };
+      }
     } catch {
-      return null;
+      /* schema tiflux.* ausente */
     }
+
+    // Fallback canônico: User portal → nome → responsible_external_id em portal_tickets
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalized, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: { name: true },
+    });
+    const name = user?.name?.trim();
+    if (!name) return null;
+
+    const ticket = await this.prisma.portalTicket.findFirst({
+      where: {
+        responsibleName: { equals: name, mode: 'insensitive' },
+        responsibleExternalId: { not: null },
+      },
+      select: { responsibleExternalId: true, responsibleName: true },
+      orderBy: { updatedAtSource: 'desc' },
+    });
+    if (ticket?.responsibleExternalId == null) return null;
+    return {
+      externalId: ticket.responsibleExternalId,
+      name: ticket.responsibleName,
+    };
   }
 
   private mapListItem(row: TicketRow): TicketListItemDto {
@@ -158,7 +189,7 @@ export class TicketsQueryService {
       origin: row.created_by_way_of,
       priorityName: row.priority_name,
       statusName: row.status_name,
-      stageName: row.stage_name,
+      stageName: canonicalizeStageName(row.stage_name) ?? row.stage_name,
       responsibleName: row.responsible_name,
       createdAt: this.toIso(row.created_at_source),
       updatedAt: this.toIso(row.updated_at_source),
@@ -721,47 +752,79 @@ export class TicketsQueryService {
     }
     await this.assertTicketClientScope(actor, ticket.client_external_id);
 
-    await this.syncTifluxTicketHistory(ticketNumber).catch((err) => {
-      this.logger.warn(
-        `Falha ao sincronizar histórico TiFlux do ticket ${ticketNumber}: ${
-          err instanceof Error ? err.message : err
-        }`,
-      );
-    });
+    if (!isTifluxDisconnected()) {
+      await this.syncTifluxTicketHistory(ticketNumber).catch((err) => {
+        this.logger.warn(
+          `Falha ao sincronizar histórico TiFlux do ticket ${ticketNumber}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      });
+    }
 
     type HistoryEvent = TicketHistoryDto & { sortAt: Date };
     const events: HistoryEvent[] = [];
 
-    const metaRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          created_at_source: Date | null;
-          updated_at_source: Date | null;
-          stage_name: string | null;
-        }>
-      >`
-        SELECT t.created_at_source, t.updated_at_source, t.stage_name
-        FROM tiflux.tickets t
-        WHERE t.ticket_number = ${ticketNumber}
-        LIMIT 1
-      `) ?? [];
-    const meta = metaRows[0];
-    const createdAtSource = meta?.created_at_source
-      ? new Date(meta.created_at_source)
-      : null;
+    let createdAtSource: Date | null = null;
+    let updatedAtSource: Date | null = null;
+    let stageNameMeta: string | null = null;
+
+    if (isTicketsPortalCanonical() || isTifluxDisconnected()) {
+      const portal = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber },
+        select: {
+          createdAtSource: true,
+          updatedAtSource: true,
+          stageName: true,
+        },
+      });
+      createdAtSource = portal?.createdAtSource
+        ? new Date(portal.createdAtSource)
+        : null;
+      updatedAtSource = portal?.updatedAtSource
+        ? new Date(portal.updatedAtSource)
+        : null;
+      stageNameMeta = portal?.stageName ?? null;
+    } else {
+      try {
+        const metaRows =
+          (await this.prisma.$queryRaw<
+            Array<{
+              created_at_source: Date | null;
+              updated_at_source: Date | null;
+              stage_name: string | null;
+            }>
+          >`
+            SELECT t.created_at_source, t.updated_at_source, t.stage_name
+            FROM tiflux.tickets t
+            WHERE t.ticket_number = ${ticketNumber}
+            LIMIT 1
+          `) ?? [];
+        const meta = metaRows[0];
+        createdAtSource = meta?.created_at_source
+          ? new Date(meta.created_at_source)
+          : null;
+        updatedAtSource = meta?.updated_at_source
+          ? new Date(meta.updated_at_source)
+          : null;
+        stageNameMeta = meta?.stage_name ?? null;
+      } catch {
+        /* schema ausente */
+      }
+    }
+
     if (createdAtSource && !Number.isNaN(createdAtSource.getTime())) {
       events.push({
         id: `ticket-created-${ticketNumber}`,
         eventType: 'TICKET_CREATED',
-        summary: 'Ticket registrado no TiFlux',
+        summary: isTifluxDisconnected()
+          ? 'Ticket registrado no portal'
+          : 'Ticket registrado no TiFlux',
         actorName: null,
         createdAt: createdAtSource.toISOString(),
         sortAt: createdAtSource,
       });
     }
-    const updatedAtSource = meta?.updated_at_source
-      ? new Date(meta.updated_at_source)
-      : null;
     if (
       updatedAtSource &&
       !Number.isNaN(updatedAtSource.getTime()) &&
@@ -771,8 +834,8 @@ export class TicketsQueryService {
       events.push({
         id: `ticket-updated-${ticketNumber}-${updatedAtSource.getTime()}`,
         eventType: 'TICKET_UPDATED',
-        summary: `Ticket atualizado no TiFlux${
-          meta?.stage_name ? ` · estágio: ${meta.stage_name}` : ''
+        summary: `Ticket atualizado${
+          stageNameMeta ? ` · estágio: ${stageNameMeta}` : ''
         }`,
         actorName: null,
         createdAt: updatedAtSource.toISOString(),
@@ -851,7 +914,9 @@ export class TicketsQueryService {
     }
 
     const tifluxApptRows =
-      (await this.prisma.$queryRaw<AppointmentRow[]>`
+      isTifluxDisconnected() || isTicketsPortalCanonical()
+        ? []
+        : ((await this.prisma.$queryRaw<AppointmentRow[]>`
         SELECT
           a.external_id,
           a.ticket_number,
@@ -865,7 +930,7 @@ export class TicketsQueryService {
         FROM tiflux.ticket_appointments a
         WHERE a.ticket_number = ${ticketNumber}
         ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
-      `) ?? [];
+      `) ?? []);
     for (const row of tifluxApptRows) {
       const externalId = Number(row.external_id);
       if (claimedTifluxExternalIds.has(externalId)) continue;

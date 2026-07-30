@@ -332,7 +332,7 @@ export default function FinanceiroPage() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Financeiro</h1>
               <p className="text-muted-foreground">
-                Resumo contratual (contratos manuais no portal + horas usadas do TiFlux).
+                Resumo contratual (contratos manuais no portal + horas usadas dos apontamentos).
               </p>
             </div>
 
@@ -673,7 +673,7 @@ export default function FinanceiroPage() {
                   <div className="text-sm font-semibold">Observações</div>
                   <div className="mt-1 text-sm text-muted-foreground">
                     - ADMIN/COLLABORATOR escolhem a empresa. CLIENT vê apenas a própria empresa.
-                    <br />- Valores do TiFlux podem aparecer como “--” conforme permissões do TiFlux.
+                    <br />- Alguns valores podem aparecer como “--” conforme permissões.
                   </div>
                 </div>
               </CardContent>

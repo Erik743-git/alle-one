@@ -130,7 +130,7 @@ export default function GeradorRelatoriosPage() {
       { value: "", label: "Todos os colaboradores" },
       ...collaborators.map((c) => ({
         value: c.id,
-        label: c.hasTifluxLink === false ? `${c.name} (sem TiFlux)` : c.name,
+        label: c.hasTifluxLink === false ? `${c.name} (sem vínculo)` : c.name,
       })),
     ],
     [collaborators],
@@ -627,7 +627,7 @@ export default function GeradorRelatoriosPage() {
                   Apontamentos: horas dos colaboradores nos tickets da empresa
                   selecionada no período; use &quot;Todas as empresas&quot; para
                   visão geral. Colaborador opcional. Estatística Geral: visão
-                  Zabbix/TiFlux de uma empresa (sem colaborador); CSV com as
+                  Zabbix/chamados de uma empresa (sem colaborador); CSV com as
                   mesmas tabelas do XLSX (gráficos só no XLSX). Inventário:
                   snapshot dos ativos das empresas selecionadas (sem período e
                   sem colaborador), em CSV ou XLSX — use &quot;Selecionar

@@ -31,11 +31,7 @@ import { useAuth } from "@/lib/use-auth";
 
 const SERVICE_TYPES = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
 
-const ATTENDANCE_OPTIONS = [
-  { value: "Remote", label: "Remoto" },
-  { value: "External", label: "Externo" },
-  { value: "Internal", label: "Interno" },
-] as const;
+const DEFAULT_ATTENDANCE = "Remote" as const;
 
 const FIELD_LABEL = "font-sans text-sm font-semibold text-foreground";
 const FIELD_INPUT = "font-sans h-11";
@@ -90,18 +86,12 @@ export function TicketAppointmentModal({
   const [initTime, setInitTime] = useState(nowTime);
   const [endTime, setEndTime] = useState(() => addMinutesToTime(nowTime(), 15));
   const [serviceName, setServiceName] = useState("");
-  const [attendance, setAttendance] = useState("Remote");
   const [projectActivityId, setProjectActivityId] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
 
   const serviceTypeOptions = useMemo(
     () => SERVICE_TYPES.map((s) => ({ value: s, label: s })),
-    [],
-  );
-
-  const attendanceOptions = useMemo(
-    () => ATTENDANCE_OPTIONS.map((a) => ({ value: a.value, label: a.label })),
     [],
   );
 
@@ -125,7 +115,6 @@ export function TicketAppointmentModal({
         setInitTime(editingAppointment.initTime);
         setEndTime(editingAppointment.endTime);
         setServiceName(editingAppointment.serviceName);
-        setAttendance(editingAppointment.attendance);
         setComposerKey((k) => k + 1);
       } else {
         const start = nowTime();
@@ -172,7 +161,7 @@ export function TicketAppointmentModal({
       endTime,
       description: exported.description,
       serviceName: serviceName.trim(),
-      attendance: attendance as CreateAppointmentPayload["attendance"],
+      attendance: DEFAULT_ATTENDANCE,
       ...(projectActivityId ? { projectActivityId } : {}),
       ...(isEdit
         ? { removeAttachmentFileIds: exported.removeAttachmentFileIds }
@@ -286,28 +275,16 @@ export function TicketAppointmentModal({
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Tipo de atendimento *</Label>
-                <SearchableSelectField
-                  value={serviceName}
-                  onChange={setServiceName}
-                  options={serviceTypeOptions}
-                  placeholder="Selecione"
-                  emptyLabel="Selecione"
-                  modal
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Atendimento *</Label>
-                <SearchableSelectField
-                  value={attendance}
-                  onChange={setAttendance}
-                  options={attendanceOptions}
-                  placeholder="Selecione"
-                  modal
-                />
-              </div>
+            <div className="space-y-2">
+              <Label className={FIELD_LABEL}>Tipo de atendimento *</Label>
+              <SearchableSelectField
+                value={serviceName}
+                onChange={setServiceName}
+                options={serviceTypeOptions}
+                placeholder="Selecione"
+                emptyLabel="Selecione"
+                modal
+              />
             </div>
 
             {!isEdit && fixedActivityId ? (
@@ -343,6 +320,7 @@ export function TicketAppointmentModal({
               ref={composerRef}
               disabled={saving}
               labelClassName={FIELD_LABEL}
+              hintText=""
               initialDescription={
                 isEdit ? editingAppointment?.description ?? null : null
               }

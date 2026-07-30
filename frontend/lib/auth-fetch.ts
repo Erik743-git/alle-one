@@ -1,6 +1,13 @@
+import { isPublicRoute } from "@/lib/auth";
 import { endSession } from "@/lib/session";
 
 function handleUnauthorized(): void {
+  if (
+    typeof window !== "undefined" &&
+    isPublicRoute(window.location.pathname)
+  ) {
+    return;
+  }
   void endSession("expired");
 }
 

@@ -21,11 +21,11 @@ export const TOKEN_KEY = "alleone.token";
 export const USER_KEY = "alleone.user";
 
 function authLogoutUrl(): string {
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/logout`;
   if (typeof window !== "undefined") {
     return `${window.location.origin}/auth/logout`;
   }
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/logout`;
   return `${API_URL.replace(/\/$/, "")}/auth/logout`;
 }
 
@@ -102,6 +102,11 @@ export function clearSessionSync() {
   window.sessionStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(TOKEN_KEY);
+  try {
+    window.sessionStorage.removeItem("alleone.lastActivityAt");
+  } catch {
+    /* ignore */
+  }
   purgeInvalidPersistedCompanyIds();
 }
 

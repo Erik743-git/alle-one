@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TicketsOutboxService } from './tickets-outbox.service';
+import { isTifluxDisconnected } from './tickets-portal.config';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class TicketsOutboxJob {
   private readonly logger = new Logger(TicketsOutboxJob.name);
   private readonly disabled =
     process.env.TIFLUX_OUTBOX_DISABLED === 'true' ||
+    isTifluxDisconnected() ||
     !isTifluxAppointmentSyncEnabled();
   private running = false;
 

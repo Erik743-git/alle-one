@@ -58,7 +58,15 @@ async function main() {
         t.created_by_way_of,
         t.priority_name,
         t.status_name,
-        t.stage_name,
+        CASE
+          WHEN lower(trim(t.stage_name)) = 'pending'
+            OR lower(trim(t.stage_name)) LIKE '%pendente%' THEN 'Pendente'
+          WHEN lower(trim(t.stage_name)) LIKE '%aguardando%'
+            OR lower(trim(t.stage_name)) LIKE '%waiting%' THEN 'Aguardando usuário'
+          WHEN lower(trim(t.stage_name)) LIKE '%execu%'
+            OR lower(trim(t.stage_name)) LIKE '%in progress%' THEN 'Em execução'
+          ELSE nullif(trim(t.stage_name), '')
+        END,
         t.responsible_external_id,
         t.responsible_name,
         t.desk_name,
@@ -113,7 +121,15 @@ async function main() {
         t.created_by_way_of,
         t.priority_name,
         t.status_name,
-        t.stage_name,
+        CASE
+          WHEN lower(trim(t.stage_name)) = 'pending'
+            OR lower(trim(t.stage_name)) LIKE '%pendente%' THEN 'Pendente'
+          WHEN lower(trim(t.stage_name)) LIKE '%aguardando%'
+            OR lower(trim(t.stage_name)) LIKE '%waiting%' THEN 'Aguardando usuário'
+          WHEN lower(trim(t.stage_name)) LIKE '%execu%'
+            OR lower(trim(t.stage_name)) LIKE '%in progress%' THEN 'Em execução'
+          ELSE nullif(trim(t.stage_name), '')
+        END,
         t.responsible_external_id,
         t.responsible_name,
         t.desk_name,
@@ -153,6 +169,19 @@ async function main() {
   } else {
     await prisma.$executeRawUnsafe(sql);
   }
+
+  // Unifica labels já gravados (Pending / Em Execução / …)
+  await prisma.$executeRawUnsafe(`
+    UPDATE portal_tickets SET stage_name = 'Pendente', updated_at = NOW()
+    WHERE lower(trim(stage_name)) = 'pending'
+       OR (lower(trim(stage_name)) LIKE '%pendente%' AND stage_name IS DISTINCT FROM 'Pendente');
+    UPDATE portal_tickets SET stage_name = 'Aguardando usuário', updated_at = NOW()
+    WHERE lower(trim(stage_name)) LIKE '%aguardando%'
+      AND stage_name IS DISTINCT FROM 'Aguardando usuário';
+    UPDATE portal_tickets SET stage_name = 'Em execução', updated_at = NOW()
+    WHERE (lower(trim(stage_name)) LIKE '%execu%' OR lower(trim(stage_name)) LIKE '%in progress%')
+      AND stage_name IS DISTINCT FROM 'Em execução';
+  `);
 
   const after = await prisma.portalTicket.count();
   const open = await prisma.portalTicket.count({ where: { isClosed: false } });

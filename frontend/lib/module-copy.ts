@@ -71,20 +71,20 @@ export const SYNC_STATUS_PENDING = "Em sincronização";
 export const SYNC_STATUS_PAUSED = "Sincronização pausada";
 
 export const TICKET_APPOINTMENT_TIFLUX_PORTAL_ONLY_WARNING =
-  "Este apontamento já existe na origem externa. O portal não altera nem exclui o registro externo — faça isso na origem, se necessário. Você pode continuar para alterar somente o registro no Alle One.";
+  "Este apontamento fica só no portal AlleOne.";
 
 /** Apontamento listado só pelo espelho externo (sem portalAppointmentId). */
 export const TICKET_APPOINTMENT_TIFLUX_ONLY_HINT =
-  "Somente na origem externa — edite ou exclua lá. Após o cutover completo, as ações aparecem aqui.";
+  "Registro histórico migrado — edite no portal quando disponível.";
 
-export const TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE = "Externo";
-export const TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION = "Edite na origem";
+export const TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE = "Histórico";
+export const TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION = "Só leitura";
 
 export const TICKET_SYNC_PENDING_BANNER =
-  "Ticket recém-criado: ainda não aparece na listagem local, mas já está registrado na origem externa.";
+  "Ticket recém-criado: ainda pode demorar um instante para aparecer na listagem.";
 
 export const TICKET_DELETE_APPOINTMENT_CONFIRM =
-  "O apontamento será removido do portal. Se já existir na origem externa, o registro de lá permanece inalterado.";
+  "O apontamento será removido do portal.";
 
 /** Correio / notificações */
 export const MAILBOX_RENDIMENTO_ALERT_BODY_ONE = (dateLabel: string, monthLabel: string) =>

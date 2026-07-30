@@ -1,4 +1,5 @@
 import { API_URL } from "@/lib/env";
+import { isPublicRoute } from "@/lib/auth";
 import { endSession } from "@/lib/session";
 
 export { API_URL };
@@ -9,6 +10,8 @@ type RequestOptions = {
   method?: HttpMethod;
   body?: unknown;
   auth?: boolean;
+  /** Se true, 401 não encerra a sessão (ex.: validação pós-login). */
+  skipSessionEnd?: boolean;
 };
 
 function resolveApiErrorMessage(
@@ -46,7 +49,7 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, auth = true } = options;
+  const { method = "GET", body, auth = true, skipSessionEnd = false } = options;
 
   const isFormData =
     typeof FormData !== "undefined" && body instanceof FormData;
@@ -74,7 +77,12 @@ export async function apiRequest<T>(
   });
 
   if (response.status === 401) {
-    void endSession("expired");
+    const onPublic =
+      typeof window !== "undefined" &&
+      isPublicRoute(window.location.pathname);
+    if (!skipSessionEnd && !onPublic) {
+      void endSession("expired");
+    }
     throw new Error("Sessão expirada. Faça login novamente.");
   }
 

@@ -13,18 +13,55 @@ export const TICKET_STAGE_GROUPS: TicketStageGroupDef[] = [
   { key: 'outros', label: 'Outros estágios', order: 4 },
 ];
 
-export function resolveTicketStageGroup(
-  stageName: string | null | undefined,
-): TicketStageGroupKey {
-  const normalized = String(stageName ?? '')
+/** Normaliza texto para comparação (caixa, acentos, espaços). */
+export function normalizeStageKey(stageName: string | null | undefined): string {
+  return String(stageName ?? '')
     .trim()
     .toLowerCase()
     .normalize('NFD')
-    .replace(/\p{M}/gu, '');
+    .replace(/\p{M}/gu, '')
+    .replace(/\s+/g, ' ');
+}
+
+/**
+ * Label canônico para persistência/UI (unifica casing e aliases EN/PT).
+ * Ex.: "Em Execução" → "Em execução"; "Pending" → "Pendente".
+ */
+export function canonicalizeStageName(
+  stageName: string | null | undefined,
+): string | null {
+  if (stageName == null) return null;
+  const trimmed = String(stageName).trim();
+  if (!trimmed) return null;
+
+  const key = resolveTicketStageGroup(trimmed);
+  if (key === 'pendente') return 'Pendente';
+  if (key === 'aguardando') return 'Aguardando usuário';
+  if (key === 'execucao') return 'Em execução';
+  return trimmed;
+}
+
+export function resolveTicketStageGroup(
+  stageName: string | null | undefined,
+): TicketStageGroupKey {
+  const normalized = normalizeStageKey(stageName);
 
   if (!normalized) return 'outros';
-  if (normalized.includes('pendente')) return 'pendente';
-  if (normalized.includes('aguardando')) return 'aguardando';
-  if (normalized.includes('execuc')) return 'execucao';
+  // EN + PT: Pending / Pendente
+  if (normalized.includes('pendente') || normalized === 'pending') {
+    return 'pendente';
+  }
+  if (normalized.includes('aguardando') || normalized.includes('waiting')) {
+    return 'aguardando';
+  }
+  // Em execução / Em Execução / In progress
+  if (
+    normalized.includes('execuc') ||
+    normalized.includes('execut') ||
+    normalized.includes('in progress') ||
+    normalized === 'progress'
+  ) {
+    return 'execucao';
+  }
   return 'outros';
 }

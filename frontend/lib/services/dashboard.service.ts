@@ -138,7 +138,7 @@ export type DashboardCompleteResponse = {
   hostsDetalhados: unknown[];
   templates: unknown[];
   eventosRecentes: unknown[];
-  /** Resumo estilo TiFlux (apontamentos no período). */
+  /** Resumo de horas trabalhadas (apontamentos no período). */
   resumoHorasTrabalhadas?: WorkHoursTifluxSummary | null;
   monthlyTrends?: DashboardMonthlyTrends | null;
 };

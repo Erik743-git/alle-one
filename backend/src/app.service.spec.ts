@@ -15,10 +15,14 @@ describe('AppService.getIntegrationsHealth', () => {
   };
 
   const prevCanonical = process.env.TICKETS_PORTAL_CANONICAL;
+  const prevDisconnected = process.env.TIFLUX_DISCONNECTED;
+  const prevWrite = process.env.TICKETS_TIFLUX_WRITE;
 
   beforeEach(async () => {
     jest.clearAllMocks();
     process.env.TICKETS_PORTAL_CANONICAL = 'false';
+    delete process.env.TIFLUX_DISCONNECTED;
+    delete process.env.TICKETS_TIFLUX_WRITE;
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AppService,
@@ -33,6 +37,16 @@ describe('AppService.getIntegrationsHealth', () => {
       delete process.env.TICKETS_PORTAL_CANONICAL;
     } else {
       process.env.TICKETS_PORTAL_CANONICAL = prevCanonical;
+    }
+    if (prevDisconnected === undefined) {
+      delete process.env.TIFLUX_DISCONNECTED;
+    } else {
+      process.env.TIFLUX_DISCONNECTED = prevDisconnected;
+    }
+    if (prevWrite === undefined) {
+      delete process.env.TICKETS_TIFLUX_WRITE;
+    } else {
+      process.env.TICKETS_TIFLUX_WRITE = prevWrite;
     }
   });
 
@@ -61,6 +75,8 @@ describe('AppService.getIntegrationsHealth', () => {
 
   it('usa frescor de portal_tickets quando canonical', async () => {
     process.env.TICKETS_PORTAL_CANONICAL = 'true';
+    process.env.TICKETS_TIFLUX_WRITE = 'true';
+    process.env.TIFLUX_DISCONNECTED = 'false';
     prisma.portalTicket.aggregate.mockResolvedValue({
       _max: {
         updatedAt: new Date(Date.now() - 60_000),
@@ -74,5 +90,16 @@ describe('AppService.getIntegrationsHealth', () => {
     const health = await service.getIntegrationsHealth();
     expect(health.tifluxSync.status).toBe('ok');
     expect(health.tifluxSync.source).toBe('portal_tickets');
+  });
+
+  it('reporta disconnected quando TIFLUX_DISCONNECTED', async () => {
+    process.env.TIFLUX_DISCONNECTED = 'true';
+    prisma.portalTifluxOutbox.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+
+    const health = await service.getIntegrationsHealth();
+    expect(health.tifluxSync.status).toBe('disconnected');
+    expect(health.tifluxDisconnected).toBe(true);
   });
 });

@@ -23,6 +23,7 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { ProjetosService } from '../projetos/projetos.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { assertTicketClientScope } from './tickets-client-scope';
+import { isTicketsPortalCanonical, isTifluxRuntimeApiEnabled } from './tickets-portal.config';
 import {
   appointmentDescriptionToPlainText,
   enrichAppointmentDescriptionWithImages,
@@ -80,8 +81,9 @@ const ATTENDANCE_LABELS: Record<string, string> = {
 
 @Injectable()
 export class TicketsAppointmentsService {
-  private readonly allowRuntimeTifluxApi =
-    process.env.TIFLUX_RUNTIME_API === 'true';
+  private get allowRuntimeTifluxApi(): boolean {
+    return isTifluxRuntimeApiEnabled();
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -278,7 +280,10 @@ export class TicketsAppointmentsService {
   async listMergedAppointments(
     ticketNumber: number,
   ): Promise<TicketAppointmentDto[]> {
-    const syncRows = await this.listAppointments(ticketNumber);
+    // Cutover canônico: não mescla espelho tiflux.* (ETL já populou portal_*).
+    const syncRows = isTicketsPortalCanonical()
+      ? []
+      : await this.listAppointments(ticketNumber);
 
     let portalRows: Array<{
       id: string;

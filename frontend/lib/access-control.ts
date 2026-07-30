@@ -180,7 +180,7 @@ export function canCreateTicketAppointment() {
   return false;
 }
 
-/** Alterar estágio do ticket no TiFlux (mesma permissão de apontamento). */
+/** Alterar estágio do ticket (mesma permissão de apontamento). */
 export function canChangeTicketStage() {
   return canCreateTicketAppointment();
 }

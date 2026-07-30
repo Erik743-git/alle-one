@@ -26,7 +26,10 @@ import {
 import { DashboardChartsService } from './dashboard-charts.service';
 import { DashboardIntegrationsService } from './dashboard-integrations.service';
 import { DashboardHoursService } from './dashboard-hours.service';
-import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
+import {
+  isTicketsPortalCanonical,
+  isTifluxRuntimeApiEnabled,
+} from '../tickets/tickets-portal.config';
 import { RedisService } from '../../common/redis/redis.service';
 import {
   parseCacheMaxEntries,
@@ -71,9 +74,11 @@ export class DashboardService {
    * Segurança/performance: por padrão o portal NÃO consulta a API TiFlux em runtime.
    * Toda leitura deve vir do banco local sincronizado.
    * Para habilitar fallback temporário de API: TIFLUX_RUNTIME_API=true
+   * (ignorado se TIFLUX_DISCONNECTED).
    */
-  private readonly allowRuntimeTifluxApi =
-    process.env.TIFLUX_RUNTIME_API === 'true';
+  private get allowRuntimeTifluxApi(): boolean {
+    return isTifluxRuntimeApiEnabled();
+  }
   /** Cache do /dashboard/complete em memória (ms). Env: DASHBOARD_COMPLETE_CACHE_MS */
   private readonly dashboardCacheTtlMs = parseCacheTtlMs(
     process.env.DASHBOARD_COMPLETE_CACHE_MS,

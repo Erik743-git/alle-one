@@ -41,9 +41,6 @@ import {
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import {
-  SYNC_STATUS_PAUSED,
-  SYNC_STATUS_PENDING,
-  SYNC_STATUS_PORTAL_ONLY,
   TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION,
   TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE,
   TICKET_APPOINTMENT_TIFLUX_ONLY_HINT,
@@ -81,15 +78,6 @@ function appointmentRowKey(row: {
     (row.externalId != null ? `tiflux-${row.externalId}` : null) ??
     `${row.appointmentDate}-${row.initTime}`
   );
-}
-
-function syncStatusLabel(row: TicketAppointment) {
-  if (row.syncPaused && row.syncStatus === "PENDING_TIFLUX") {
-    return SYNC_STATUS_PAUSED;
-  }
-  if (row.syncStatus === "PORTAL_ONLY") return SYNC_STATUS_PORTAL_ONLY;
-  if (row.syncStatus === "PENDING_TIFLUX") return SYNC_STATUS_PENDING;
-  return null;
 }
 
 function formatFileSize(bytes: number) {
@@ -719,7 +707,6 @@ export default function TicketDetailPage() {
                           <th className="px-4 py-2">Horário</th>
                           <th className="px-4 py-2">Duração</th>
                           <th className="px-4 py-2">Tipo</th>
-                          <th className="px-4 py-2">Atendimento</th>
                           <th className="px-4 py-2">Descrição</th>
                           {canCreateTicketAppointment() ? (
                             <th className="px-4 py-2">Ações</th>
@@ -730,7 +717,7 @@ export default function TicketDetailPage() {
                         {(data?.appointments ?? []).length === 0 ? (
                           <tr>
                             <td
-                              colSpan={canCreateTicketAppointment() ? 8 : 7}
+                              colSpan={canCreateTicketAppointment() ? 7 : 6}
                               className="px-4 py-8 text-center text-muted-foreground"
                             >
                               Nenhum apontamento neste ticket.
@@ -738,7 +725,6 @@ export default function TicketDetailPage() {
                           </tr>
                         ) : (
                           data?.appointments.map((row) => {
-                            const status = syncStatusLabel(row);
                             return (
                             <tr
                               key={appointmentRowKey(row)}
@@ -746,13 +732,8 @@ export default function TicketDetailPage() {
                             >
                               <td className="px-4 py-2">
                                 <div>{row.userName ?? "—"}</div>
-                                {status ? (
-                                  <span className="alle-badge-overtime mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium">
-                                    {status}
-                                  </span>
-                                ) : null}
                                 {row.attachmentCount > 0 ? (
-                                  <span className="mt-1 ml-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                  <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                                     {row.attachmentCount} anexo(s)
                                   </span>
                                 ) : null}
@@ -763,7 +744,6 @@ export default function TicketDetailPage() {
                               </td>
                               <td className="px-4 py-2">{formatMinutes(row.minutes)}</td>
                               <td className="px-4 py-2">{row.valorizationLabel ?? "—"}</td>
-                              <td className="px-4 py-2">{row.attendanceLabel ?? "—"}</td>
                               <td className="max-w-[360px] px-4 py-2 text-muted-foreground">
                                 <AppointmentDescriptionView
                                   description={row.description}

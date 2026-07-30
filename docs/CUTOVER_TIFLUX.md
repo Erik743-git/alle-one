@@ -2,6 +2,16 @@
 
 Objetivo: o Alle One deixa de depender do schema `tiflux.*` e da API TiFlux como fonte de verdade. Tickets e apontamentos passam a viver em `public` (`portal_tickets`, `portal_ticket_appointments`).
 
+**Runbook operacional (sequência segura, riscos, remoções, checklist):** [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md).
+
+## Prontidão
+
+| Camada | Situação |
+|--------|----------|
+| Código (flags, dual-write/read, ETL, Onda 1/2) | Fundação pronta |
+| Staging validado ≥ 1 sprint | Pendente (ver runbook) |
+| Desligar sync / dropar deps `tiflux.*` | **Só após** ETL + canonical + write=false + harden |
+
 ## Estado atual
 
 | Camada | Default (prod) | Com `TICKETS_PORTAL_CANONICAL=true` |
@@ -21,11 +31,15 @@ Objetivo: o Alle One deixa de depender do schema `tiflux.*` e da API TiFlux como
 
 | Env | Default | Efeito |
 |-----|---------|--------|
-| `TICKETS_PORTAL_CANONICAL` | `false` | `true` = leituras canônicas em `portal_*` (tickets + Onda 2) |
+| `TICKETS_PORTAL_CANONICAL` | `false` | `true` = leituras canônicas em `portal_*` |
 | `TICKETS_TIFLUX_WRITE` | `true` | `false` = create sem API TiFlux |
-| `TIFLUX_APPOINTMENT_SYNC_ENABLED` | off | Apontamentos → outbox → TiFlux |
-| `TIFLUX_RUNTIME_API` | `false` | Fallback API em runtime |
-| `CUTOVER_ETL_CREATED_BY` | (primeiro ADMIN) | Fallback de `created_by` no ETL quando e-mail não casa |
+| `TIFLUX_DISCONNECTED` | (auto) | `true` = corta API/outbox/runtime; se omitido, ativa com CANONICAL+WRITE=false |
+| `TIFLUX_APPOINTMENT_SYNC_ENABLED` | off | Apontamentos → outbox → TiFlux (ignorado se disconnected) |
+| `TIFLUX_OUTBOX_DISABLED` | — | Força worker outbox off |
+| `TIFLUX_RUNTIME_API` | `false` | Fallback API em runtime (off se disconnected) |
+| `CUTOVER_ETL_CREATED_BY` | (primeiro ADMIN) | Fallback de `created_by` no ETL |
+
+**Local desvinculado:** `TIFLUX_DISCONNECTED=true` + `CANONICAL=true` + `WRITE=false` + `APPOINTMENT_SYNC=false` + `OUTBOX_DISABLED=true`.
 
 ## Sync final (obrigatório antes de desvincular)
 
@@ -145,3 +159,7 @@ Com `TICKETS_TIFLUX_WRITE=false`, tickets `origin=PORTAL` (pré-ticket/e-mail) j
 ## Fora de escopo imediato
 
 Desligar sync em prod sem dual-read validado.
+
+## Pós-desligamento (aposentar)
+
+Ver [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md) — parar sync, outbox, leituras `tiflux.users`, `TifluxModule`/contracts, limpar envs. Manter `tiflux.*` read-only 1–2 sprints.

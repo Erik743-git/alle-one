@@ -28,11 +28,6 @@ type PublicUser = Omit<
   isOnline: boolean;
 };
 
-type ServiceDeskSourceRow = {
-  desk_external_id: number | null;
-  desk_name: string | null;
-};
-
 @Injectable()
 export class UsersService {
   constructor(
@@ -74,40 +69,7 @@ export class UsersService {
     return ids;
   }
 
-  private async syncServiceDesksFromTifluxTickets() {
-    const rows =
-      (await this.prisma.$queryRaw<ServiceDeskSourceRow[]>`
-      select distinct
-        t.desk_external_id,
-        nullif(trim(t.desk_name), '') as desk_name
-      from tiflux.tickets t
-      where t.desk_name is not null
-    `) ?? [];
-
-    for (const row of rows) {
-      const name = row.desk_name?.trim();
-      if (!name) continue;
-      const externalId =
-        row.desk_external_id == null ? null : Number(row.desk_external_id);
-
-      if (externalId != null && !Number.isNaN(externalId)) {
-        await this.prisma.serviceDesk.upsert({
-          where: { externalId },
-          update: { name, active: true, deletedAt: null },
-          create: { externalId, name, active: true },
-        });
-      } else {
-        await this.prisma.serviceDesk.upsert({
-          where: { name },
-          update: { active: true, deletedAt: null },
-          create: { name, active: true },
-        });
-      }
-    }
-  }
-
   async listServiceDesks() {
-    await this.syncServiceDesksFromTifluxTickets();
     return this.prisma.serviceDesk.findMany({
       where: { deletedAt: null, active: true },
       orderBy: { name: 'asc' },

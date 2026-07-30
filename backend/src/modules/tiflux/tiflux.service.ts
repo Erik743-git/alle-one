@@ -3,11 +3,13 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { cleanupExpiredExternalApiCache } from '../../common/cache/external-api-cache.cleanup';
 import { mapTicket, type TifluxTicket as MappedTifluxTicket } from './mapper/tiflux.mapper';
+import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
 
 type TifluxApiError = {
   message?: string;
@@ -194,10 +196,19 @@ export class TifluxService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private assertApiAllowed(): void {
+    if (isTifluxDisconnected()) {
+      throw new ServiceUnavailableException(
+        'Integração TiFlux desvinculada (TIFLUX_DISCONNECTED / cutover portal-only).',
+      );
+    }
+  }
+
   private getHeaders(options?: {
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     hasBody?: boolean;
   }): Record<string, string> {
+    this.assertApiAllowed();
     if (!this.token) {
       throw new InternalServerErrorException(
         'TIFLUX_TOKEN não definido no .env',
@@ -514,6 +525,7 @@ export class TifluxService {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: Record<string, unknown> | FormData,
   ): Promise<T> {
+    this.assertApiAllowed();
     if (!this.baseUrl) {
       throw new InternalServerErrorException(
         'TIFLUX_API_URL não definida no .env',
@@ -633,6 +645,7 @@ export class TifluxService {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: Record<string, unknown>,
   ): Promise<{ data: T; headers: Headers }> {
+    this.assertApiAllowed();
     if (!this.baseUrl) {
       throw new InternalServerErrorException(
         'TIFLUX_API_URL não definida no .env',

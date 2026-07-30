@@ -127,6 +127,64 @@ export class TicketsCatalogsService {
     }
   }
 
+  /**
+   * Responsáveis sem depender de `tiflux.users`: DISTINCT em portal_tickets
+   * + e-mail do User portal quando o nome casa.
+   */
+  async listResponsiblesFromPortal(): Promise<
+    Array<{ id: number; name: string; email: string | null }>
+  > {
+    const tickets = await this.prisma.portalTicket.findMany({
+      where: {
+        isClosed: false,
+        responsibleExternalId: { not: null },
+        responsibleName: { not: null },
+      },
+      select: { responsibleExternalId: true, responsibleName: true },
+      take: 3000,
+    });
+
+    const byId = new Map<
+      number,
+      { id: number; name: string; email: string | null }
+    >();
+    for (const t of tickets) {
+      const id = t.responsibleExternalId;
+      const name = t.responsibleName?.trim();
+      if (id == null || !name) continue;
+      if (!byId.has(id)) {
+        byId.set(id, { id, name, email: null });
+      }
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { deletedAt: null, status: 'ACTIVE' },
+      select: { name: true, email: true },
+      take: 500,
+    });
+    const emailByName = new Map(
+      users.map((u) => [u.name.trim().toLowerCase(), u.email.trim()]),
+    );
+    for (const r of byId.values()) {
+      const email = emailByName.get(r.name.toLowerCase());
+      if (email) r.email = email;
+    }
+
+    return [...byId.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, 'pt-BR'),
+    );
+  }
+
+  async listResponsiblesForCatalogs(): Promise<
+    Array<{ id: number; name: string; email: string | null }>
+  > {
+    if (isTicketsPortalCanonical()) {
+      const fromPortal = await this.listResponsiblesFromPortal();
+      if (fromPortal.length) return fromPortal;
+    }
+    return this.listResponsiblesFromMirror();
+  }
+
   private buildClassificationTree(
     rows: Array<{
       id: string;
@@ -426,7 +484,7 @@ export class TicketsCatalogsService {
         },
         take: 2000,
       }),
-      this.listResponsiblesFromMirror(),
+      this.listResponsiblesForCatalogs(),
     ]);
 
     const stages = [
@@ -620,7 +678,7 @@ export class TicketsCatalogsService {
         select: { id: true, externalId: true, name: true },
         orderBy: { name: 'asc' },
       }),
-      this.listResponsiblesFromMirror(),
+      this.listResponsiblesForCatalogs(),
     ]);
 
     const clients = companies

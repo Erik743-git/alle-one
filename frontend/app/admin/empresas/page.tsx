@@ -332,7 +332,7 @@ function EditarEmpresaModal({
 
             <div className="space-y-2 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
-                Cliente TiFlux
+                Cliente vinculado
               </label>
 
               <TifluxClientSelectField
@@ -349,7 +349,7 @@ function EditarEmpresaModal({
 
             <div className="space-y-2 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
-                Nome salvo do cliente TiFlux
+                Nome salvo do cliente vinculado
               </label>
               <Input
                 value={form.tifluxClientName}
@@ -868,7 +868,7 @@ export default function AdminEmpresasPage() {
                             Grupos Zabbix
                           </th>
                           <th className="px-4 py-4 font-semibold">
-                            Cliente TiFlux
+                            Cliente vinculado
                           </th>
                           <th className="px-4 py-4 font-semibold">Contratos</th>
                           <th className="px-4 py-4 font-semibold">Status</th>

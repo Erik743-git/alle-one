@@ -1,19 +1,23 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service';
-import { isTicketsPortalCanonical } from './modules/tickets/tickets-portal.config';
+import {
+  isTicketsPortalCanonical,
+  isTifluxDisconnected,
+} from './modules/tickets/tickets-portal.config';
 
 export type IntegrationsHealth = {
   tifluxSync: {
-    status: 'ok' | 'stale' | 'unknown' | 'unavailable';
+    status: 'ok' | 'stale' | 'unknown' | 'unavailable' | 'disconnected';
     lastTicketUpdate: string | null;
     staleAfterHours: number;
     message?: string;
-    source?: 'portal_tickets' | 'tiflux.tickets';
+    source?: 'portal_tickets' | 'tiflux.tickets' | 'disconnected';
   };
   outbox: {
     pending: number;
     failed: number;
   };
+  tifluxDisconnected?: boolean;
 };
 
 @Injectable()
@@ -28,12 +32,23 @@ export class AppService {
 
   async getIntegrationsHealth(): Promise<IntegrationsHealth> {
     const staleAfterHours = Number(process.env.TIFLUX_SYNC_STALE_HOURS ?? 6);
-    const tifluxSync = await this.checkTifluxSync(staleAfterHours);
+    const disconnected = isTifluxDisconnected();
+    const tifluxSync = disconnected
+      ? {
+          status: 'disconnected' as const,
+          lastTicketUpdate: null,
+          staleAfterHours,
+          message:
+            'TiFlux desvinculado (TIFLUX_DISCONNECTED). Sync externo não é exigido.',
+          source: 'disconnected' as const,
+        }
+      : await this.checkTifluxSync(staleAfterHours);
     const outbox = await this.countOutbox();
 
     return {
       tifluxSync,
       outbox,
+      tifluxDisconnected: disconnected,
     };
   }
 

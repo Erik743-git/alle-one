@@ -209,8 +209,7 @@ export const AppointmentDescriptionComposer = forwardRef<
     disabled = false,
     labelClassName,
     placeholder = "Descreva o que foi feito neste trecho…",
-    hintText =
-      "Escreva normalmente e cole imagens com Ctrl+V na posição do cursor",
+    hintText = "",
     appendButtonLabel = "Anexar arquivo",
     initialDescription = null,
     initialAttachments = [],
@@ -1019,9 +1018,9 @@ export const AppointmentDescriptionComposer = forwardRef<
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Label className={labelClassName}>Descrição *</Label>
 
-          <span className="text-xs text-muted-foreground">
-            {hintText}
-          </span>
+          {hintText ? (
+            <span className="text-xs text-muted-foreground">{hintText}</span>
+          ) : null}
         </div>
 
         <div

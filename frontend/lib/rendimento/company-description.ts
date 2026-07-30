@@ -4,7 +4,7 @@ export type CompanyDescriptionView = {
   truncated: boolean;
 };
 
-/** Resume descrições gigantes (ex.: listagens coladas do TiFlux). */
+/** Resume descrições gigantes (ex.: listagens coladas de sistemas externos). */
 export function summarizeCompanyAppointmentDescription(
   raw: string | null | undefined,
 ): CompanyDescriptionView {

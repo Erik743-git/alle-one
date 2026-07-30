@@ -52,7 +52,13 @@ async function bootstrap() {
   }
 
   app.use(cookieParser());
-  app.use(helmet());
+  // CORP same-origin (default do helmet) bloqueia o front em outra origem/porta
+  // (ex.: localhost:3000 → API :3002) de ler a resposta no browser.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const corsOriginsRaw =

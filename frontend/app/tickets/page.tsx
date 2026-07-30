@@ -55,7 +55,7 @@ export default function TicketsPage() {
   const [catalogs, setCatalogs] = useState<TicketFilterCatalogs | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [includeAllResponsibles, setIncludeAllResponsibles] = useState(
-    () => isClient() || isAdmin(),
+    () => isClient(),
   );
 
   const mineOnly = !includeAllResponsibles;

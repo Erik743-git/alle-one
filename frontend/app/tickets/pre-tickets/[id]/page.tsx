@@ -11,6 +11,7 @@ import {
   emailInboundService,
   type PreTicketDetail,
 } from "@/lib/services/email-inbound.service";
+import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
 import { Download, Trash2 } from "lucide-react";
 
 export default function PreTicketDetailPage() {
@@ -87,7 +88,7 @@ export default function PreTicketDetailPage() {
   return (
     <ProtectedPage>
       <AppShell>
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Button variant="outline" asChild>
               <Link href="/tickets/pre-tickets">Voltar</Link>
@@ -128,14 +129,11 @@ export default function PreTicketDetailPage() {
                 <CardHeader>
                   <CardTitle>Descrição</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="min-w-0 overflow-hidden">
                   {item.descriptionHtml ? (
-                    <div
-                      className="prose prose-sm dark:prose-invert max-w-none overflow-x-auto text-foreground [&_*]:!text-inherit [&_a]:!text-primary [&_img]:max-h-[480px] [&_img]:rounded-md"
-                      dangerouslySetInnerHTML={{ __html: item.descriptionHtml }}
-                    />
+                    <EmailHtmlFrame html={item.descriptionHtml} />
                   ) : (
-                    <pre className="whitespace-pre-wrap text-sm text-foreground">
+                    <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap break-words text-sm text-foreground">
                       {item.descriptionText || "(sem descrição)"}
                     </pre>
                   )}

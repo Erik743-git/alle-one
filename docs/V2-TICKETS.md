@@ -2,7 +2,7 @@
 
 ## Decisão de arquitetura — **Opção A** (aprovada)
 
-**Cutover:** ver [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) — `portal_tickets` + flags `TICKETS_PORTAL_CANONICAL` / `TICKETS_TIFLUX_WRITE`.
+**Cutover:** ver [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) e [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md) — `portal_tickets` + flags `TICKETS_PORTAL_CANONICAL` / `TICKETS_TIFLUX_WRITE`.
 
 | Camada | Estratégia |
 |--------|------------|

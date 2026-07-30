@@ -10,6 +10,7 @@
 | [PERFORMANCE.md](./PERFORMANCE.md) | Caches dashboard (LRU/TTL), Redis L2 e external_api_cache |
 | [PR1_ALLE_TICKET_REVIEW.md](./PR1_ALLE_TICKET_REVIEW.md) | Revisão do PR #1 vs cutover v0.6.0 |
 | [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) | Cutover TiFlux → `portal_*` canônico |
+| [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md) | Runbook operacional (ETL, flags, riscos, remoções) |
 | [MAINTENANCE.md](./MAINTENANCE.md) | Correções, limitações, backup Postgres e convenções |
 | [SECURITY.md](./SECURITY.md) | Segredos, auth, uploads e checklist de produção |
 | [VERSIONING.md](./VERSIONING.md) | SemVer, tags Git, releases no GitHub, rollback de prod |

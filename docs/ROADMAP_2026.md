@@ -71,13 +71,15 @@ Versão do produto: **0.6.0** (estabilização + confiabilidade).
 - [x] **Projetos V2** — ticket ↔ apontamento ↔ atividade (ver `docs/V2-PROJETOS.md`; gaps: N:N / TiFlux-only)
 ## Fase Portal canônico (cutover TiFlux) — em andamento
 
-Ver [docs/CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md).
+Ver [docs/CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) e o runbook [docs/CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md).
 
 - [x] Tabela `portal_tickets` + migration
 - [x] Dual-write em `POST /tickets`
 - [x] Dual-read via `TICKETS_PORTAL_CANONICAL`
 - [x] Script ETL `prisma/scripts/etl-tiflux-tickets-to-portal.ts`
 - [x] Flags `TICKETS_PORTAL_CANONICAL` / `TICKETS_TIFLUX_WRITE`
+- [x] Runbook operacional + harden hot paths (canonical sem `tiflux.users`/merge)
+- [x] UNIQUE parcial `tiflux_appointment_external_id` + normalização de estágios
 - [ ] Validar dual-read em staging
 - [ ] Desligar `TICKETS_TIFLUX_WRITE` e sync externo em prod
 

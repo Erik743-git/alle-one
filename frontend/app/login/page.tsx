@@ -36,7 +36,6 @@ import {
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { setSession, type AuthUser } from "@/lib/session";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
-import { authService } from "@/lib/services/auth.service";
 import { useAuth } from "@/lib/use-auth";
 import {
   fetchOAuthProviders,
@@ -64,9 +63,6 @@ const SUPPORT_EMAIL = "contato@alletecnologia.com";
 const LOGIN_CONNECTION_ERROR =
   "Não foi possível conectar ao sistema. Tente novamente em instantes ou entre em contato com um administrador.";
 
-const LOGIN_SESSION_ERROR =
-  "Não foi possível concluir o login. Tente novamente ou entre em contato com um administrador.";
-
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_not_registered:
     "Este e-mail não está cadastrado no portal. Peça acesso a um administrador.",
@@ -93,8 +89,12 @@ const SESSION_REASON_MESSAGES: Record<string, string> = {
 };
 
 function buildOAuthUrl(provider: "google" | "microsoft") {
+  // Mesma origem (rewrite Next → API): cookie de state e callback ficam alinhados.
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/auth/${provider}`;
+  }
   const base = getBrowserApiBase();
-  const root = base || (typeof window !== "undefined" ? window.location.origin : API_URL.replace(/\/$/, ""));
+  const root = base || API_URL.replace(/\/$/, "");
   return `${root}/auth/${provider}`;
 }
 
@@ -102,13 +102,18 @@ function startOAuth(provider: "google" | "microsoft") {
   window.location.href = buildOAuthUrl(provider);
 }
 
-function authMeUrl(): string {
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/me`;
+function authApiUrl(path: string): string {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
   if (typeof window !== "undefined") {
-    return `${window.location.origin}/auth/me`;
+    // Rewrite Next `/auth/*` → API: cookie e origem alinhados no browser.
+    return `${window.location.origin}${normalized}`;
   }
-  return `${API_URL.replace(/\/$/, "")}/auth/me`;
+  const base = getBrowserApiBase() || API_URL.replace(/\/$/, "");
+  return `${base}${normalized}`;
+}
+
+function authMeUrl(): string {
+  return authApiUrl("/auth/me");
 }
 
 function LoginPageContent() {
@@ -132,12 +137,18 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { loading: authLoading, establishSession } = useAuth();
-  const [oauthProviders, setOauthProviders] = useState(() => {
-    return getCachedOAuthProviders() ?? { google: false, microsoft: false };
+  // Estado inicial idêntico no SSR e no cliente (sem sessionStorage no useState).
+  const [oauthProviders, setOauthProviders] = useState({
+    google: false,
+    microsoft: false,
   });
-  const [oauthProvidersLoading, setOauthProvidersLoading] = useState(
-    () => getCachedOAuthProviders() == null,
-  );
+  const [oauthProvidersLoading, setOauthProvidersLoading] = useState(true);
+  // Dialog Radix gera IDs diferentes no SSR vs cliente — monta só no client.
+  const [supportDialogReady, setSupportDialogReady] = useState(false);
+
+  useEffect(() => {
+    setSupportDialogReady(true);
+  }, []);
 
   useEffect(() => {
     const oauthError = searchParams.get("error");
@@ -167,15 +178,21 @@ function LoginPageContent() {
     let cancelled = false;
 
     async function loadOAuthProviders() {
+      const cached = getCachedOAuthProviders();
+      if (!cancelled && cached) {
+        setOauthProviders(cached);
+        setOauthProvidersLoading(false);
+      }
+
       try {
         const status = await fetchOAuthProviders({ retries: 4 });
         if (!cancelled) {
           setOauthProviders(status);
         }
       } catch {
-        const cached = getCachedOAuthProviders();
-        if (!cancelled && cached) {
-          setOauthProviders(cached);
+        const fallback = getCachedOAuthProviders();
+        if (!cancelled && fallback) {
+          setOauthProviders(fallback);
         }
       } finally {
         if (!cancelled) {
@@ -241,7 +258,7 @@ function LoginPageContent() {
       try {
         setCarregando(true);
         const response = await fetch(
-          `${getBrowserApiBase()}/auth/oauth/complete-2fa`,
+          authApiUrl("/auth/oauth/complete-2fa"),
           {
             method: "POST",
             credentials: "include",
@@ -273,14 +290,18 @@ function LoginPageContent() {
         establishSession(loginData.user);
         let user: AuthUser = loginData.user;
         try {
-          const meData = await authService.me();
-          if (meData?.user) {
-            user = meData.user;
-            establishSession(user);
+          const meRes = await fetch(authApiUrl("/auth/me"), {
+            credentials: "include",
+          });
+          if (meRes.ok) {
+            const meData = (await meRes.json()) as LoginResponse;
+            if (meData?.user) {
+              user = meData.user;
+              establishSession(user);
+            }
           }
         } catch {
-          setErro(LOGIN_SESSION_ERROR);
-          return;
+          /* perfil do login já basta para seguir */
         }
         if (user.firstAccess) {
           router.push("/primeiro-acesso");
@@ -308,7 +329,7 @@ function LoginPageContent() {
     try {
       setCarregando(true);
 
-      const response = await fetch(`${getBrowserApiBase()}/auth/login`, {
+      const response = await fetch(authApiUrl("/auth/login"), {
         method: "POST",
         credentials: "include",
         headers: {
@@ -353,14 +374,18 @@ function LoginPageContent() {
 
       let user: AuthUser = loginData.user;
       try {
-        const meData = await authService.me();
-        if (meData?.user) {
-          user = meData.user;
-          establishSession(user);
+        const meRes = await fetch(authApiUrl("/auth/me"), {
+          credentials: "include",
+        });
+        if (meRes.ok) {
+          const meData = (await meRes.json()) as LoginResponse;
+          if (meData?.user) {
+            user = meData.user;
+            establishSession(user);
+          }
         }
       } catch {
-        setErro(LOGIN_SESSION_ERROR);
-        return;
+        /* perfil do login já basta para seguir */
       }
 
       if (user.firstAccess) {
@@ -677,28 +702,29 @@ function LoginPageContent() {
               )}
             </form>
 
-            <Dialog>
-              <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
-                Precisa de ajuda?{" "}
-                <DialogTrigger asChild>
-                  <button
-                    type="button"
-                    className="font-bold text-[#12b5d9] transition hover:text-[#5fd5ee]"
-                  >
-                    Fale com o suporte
-                  </button>
-                </DialogTrigger>
-              </p>
+            {supportDialogReady ? (
+              <Dialog>
+                <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
+                  Precisa de ajuda?{" "}
+                  <DialogTrigger asChild>
+                    <button
+                      type="button"
+                      className="font-bold text-[#12b5d9] transition hover:text-[#5fd5ee]"
+                    >
+                      Fale com o suporte
+                    </button>
+                  </DialogTrigger>
+                </p>
 
-              <DialogContent
-                className="
+                <DialogContent
+                  className="
                   font-sans
                   max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] overflow-hidden
                   border border-white/10 bg-[#08182f] p-0 text-white
                   shadow-[0_24px_90px_rgba(0,0,0,0.48)]
                   sm:max-w-[920px]
                 "
-              >
+                >
                 <div className="border-b border-white/10 px-5 py-5 sm:px-6">
                   <DialogHeader className="space-y-3 text-left">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#12b5d9]/15 text-[#12b5d9]">
@@ -861,6 +887,14 @@ function LoginPageContent() {
                 </div>
               </DialogContent>
             </Dialog>
+            ) : (
+              <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
+                Precisa de ajuda?{" "}
+                <span className="font-bold text-[#12b5d9]">
+                  Fale com o suporte
+                </span>
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

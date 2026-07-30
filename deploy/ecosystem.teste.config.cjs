@@ -39,6 +39,9 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "3001",
+        // Rewrite /auth → API de teste (build tambem precisa de API_INTERNAL_URL)
+        API_INTERNAL_URL: "http://127.0.0.1:3004/api",
+        NEXT_PUBLIC_API_URL: "https://alleone-teste.alletecnologia.com/api",
       },
     },
   ],

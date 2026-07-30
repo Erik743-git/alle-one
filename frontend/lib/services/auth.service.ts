@@ -7,7 +7,9 @@ export type MeResponse = {
 };
 
 export const authService = {
-  async me() {
-    return apiRequest<MeResponse>("/auth/me");
+  async me(opts?: { skipSessionEnd?: boolean }) {
+    return apiRequest<MeResponse>("/auth/me", {
+      skipSessionEnd: opts?.skipSessionEnd,
+    });
   },
 };

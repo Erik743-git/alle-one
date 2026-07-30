@@ -4,6 +4,7 @@ import {
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isTifluxDisconnected } from './tickets-portal.config';
 import { TicketsOutboxService } from './tickets-outbox.service';
 
 export type TicketReconcileIssueKind =
@@ -118,6 +119,10 @@ export class TicketsReconcileService {
     });
 
     for (const row of pendingAppointments) {
+      if (isTifluxDisconnected()) {
+        // Portal-only: pending sync não é mais um problema operacional.
+        continue;
+      }
       issues.push({
         kind: 'APPOINTMENT_PENDING_SYNC',
         ticketNumber: row.ticketNumber,
@@ -142,7 +147,7 @@ export class TicketsReconcileService {
       },
     });
 
-    if (syncedWithId.length > 0) {
+    if (syncedWithId.length > 0 && !isTifluxDisconnected()) {
       const pairs = syncedWithId
         .map((row) => ({
           portalId: row.id,

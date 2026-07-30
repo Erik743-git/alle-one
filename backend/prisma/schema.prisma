@@ -751,6 +751,7 @@ model PortalTicketAppointment {
 
   @@index([ticketNumber])
   @@index([tifluxAppointmentExternalId])
+  /// UNIQUE parcial via migration SQL (WHERE NOT NULL) — Prisma não modela partial unique.
   @@map("portal_ticket_appointments")
 }
 

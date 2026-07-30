@@ -3,8 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ContractStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
+import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import type {
   ListContractsQueryDto,
@@ -67,6 +69,65 @@ export class ContractsService {
     return filtered.length ? (filtered as TifluxContractStatus[]) : undefined;
   }
 
+  /** Lista contratos do portal (tabela `contracts`) no formato legado da UI TiFlux. */
+  private async listFromPortal(
+    company: { id: string; name: string },
+    query: ListContractsQueryDto,
+  ) {
+    const offset = query.offset ?? 1;
+    const limit = query.limit ?? 20;
+    const statusList = this.parseStatusList(query.status);
+    const now = new Date();
+
+    const rows = await this.prisma.contract.findMany({
+      where: { companyId: company.id, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const mapped: TifluxContract[] = rows.map((c, idx) => {
+      const expired =
+        c.endDate != null && c.endDate.getTime() < now.getTime();
+      const status: TifluxContractStatus = expired
+        ? 'expired'
+        : c.status === ContractStatus.ACTIVE
+          ? 'actives'
+          : 'expired';
+      return {
+        id: idx + 1,
+        cancelled: c.status === ContractStatus.INACTIVE,
+        client: { id: 0, name: company.name },
+        contract_type: { id: 0, name: 'Portal' },
+        duration: 0,
+        expiration_date: c.endDate?.toISOString().slice(0, 10) ?? '',
+        modality: 'portal',
+        name: c.title,
+        readjust_duration: 0,
+        readjustment_date: '',
+        rider_tax: '--',
+        rider_value: '--',
+        status,
+        total_value: String(c.extraHourPrice),
+      };
+    });
+
+    const filtered = statusList?.length
+      ? mapped.filter((m) => statusList.includes(m.status))
+      : mapped;
+
+    const start = Math.max(0, (offset - 1) * limit);
+    const page = filtered.slice(start, start + limit);
+
+    return {
+      company: { id: company.id, name: company.name },
+      meta: {
+        offset,
+        limit,
+        totalItems: filtered.length,
+      },
+      items: page,
+    };
+  }
+
   async list(user: AuthenticatedRequestUser, query: ListContractsQueryDto) {
     const resolvedCompanyId = await this.resolveCompanyId(
       user,
@@ -82,16 +143,12 @@ export class ContractsService {
       throw new NotFoundException('Empresa não encontrada');
     }
 
+    if (isTifluxDisconnected()) {
+      return this.listFromPortal(company, query);
+    }
+
     if (!company.tifluxClientId) {
-      return {
-        company: { id: company.id, name: company.name },
-        meta: {
-          offset: query.offset ?? 1,
-          limit: query.limit ?? 20,
-          totalItems: 0,
-        },
-        items: [] as TifluxContract[],
-      };
+      return this.listFromPortal(company, query);
     }
 
     const offset = query.offset ?? 1;

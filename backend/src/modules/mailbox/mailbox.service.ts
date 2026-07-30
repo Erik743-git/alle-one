@@ -618,30 +618,61 @@ export class MailboxService {
 
   private async loadTifluxUserPortalMap(): Promise<TifluxUserMap> {
     const map: TifluxUserMap = new Map();
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{ external_id: number; email: string }>
-      >`
-        SELECT tu.external_id, lower(trim(tu.email)) AS email
-        FROM tiflux.users tu
-        WHERE tu.email IS NOT NULL AND trim(tu.email) <> ''
-      `) ?? [];
-
     const users = await this.prisma.user.findMany({
       where: { deletedAt: null, status: UserStatus.ACTIVE },
-      select: { id: true, email: true },
+      select: { id: true, email: true, name: true },
     });
     const portalByEmail = new Map(
       users.map((u) => [u.email.trim().toLowerCase(), u.id]),
     );
+    const portalByName = new Map(
+      users.map((u) => [u.name.trim().toLowerCase(), u.id]),
+    );
 
-    for (const row of rows) {
-      const portalId = portalByEmail.get(row.email);
-      if (!portalId) continue;
-      map.set(String(row.external_id), {
-        id: Number(row.external_id),
-        userId: portalId,
+    if (isTicketsPortalCanonical()) {
+      const tickets = await this.prisma.portalTicket.findMany({
+        where: {
+          responsibleExternalId: { not: null },
+          responsibleName: { not: null },
+        },
+        select: { responsibleExternalId: true, responsibleName: true },
+        take: 5000,
       });
+      for (const t of tickets) {
+        const extId = t.responsibleExternalId;
+        const name = t.responsibleName?.trim().toLowerCase();
+        if (extId == null || !name) continue;
+        const key = String(extId);
+        if (map.has(key)) continue;
+        const portalId = portalByName.get(name);
+        if (!portalId) continue;
+        map.set(key, { id: extId, userId: portalId });
+      }
+      if (map.size > 0) return map;
+    }
+
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; email: string }>
+        >`
+          SELECT tu.external_id, lower(trim(tu.email)) AS email
+          FROM tiflux.users tu
+          WHERE tu.email IS NOT NULL AND trim(tu.email) <> ''
+        `) ?? [];
+
+      for (const row of rows) {
+        const portalId = portalByEmail.get(row.email);
+        if (!portalId) continue;
+        map.set(String(row.external_id), {
+          id: Number(row.external_id),
+          userId: portalId,
+        });
+      }
+    } catch {
+      this.logger.warn(
+        'Mailbox: mapa tiflux.users indisponível — alertas de responsável podem ficar incompletos.',
+      );
     }
     return map;
   }
