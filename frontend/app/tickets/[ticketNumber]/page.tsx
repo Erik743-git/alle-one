@@ -67,6 +67,14 @@ function formatMinutes(minutes: number) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** ISO `YYYY-MM-DD` → `DD/MM/YYYY`. */
+function formatAppointmentDate(value: string | null | undefined) {
+  if (!value?.trim()) return "—";
+  const [y, m, d] = value.trim().slice(0, 10).split("-");
+  if (!y || !m || !d) return value;
+  return `${d}/${m}/${y}`;
+}
+
 function appointmentRowKey(row: {
   externalId: number | null;
   portalAppointmentId: string | null;
@@ -738,7 +746,9 @@ export default function TicketDetailPage() {
                                   </span>
                                 ) : null}
                               </td>
-                              <td className="px-4 py-2">{row.appointmentDate ?? "—"}</td>
+                              <td className="px-4 py-2">
+                                {formatAppointmentDate(row.appointmentDate)}
+                              </td>
                               <td className="whitespace-nowrap px-4 py-2">
                                 {row.initTime ?? "—"} – {row.endTime ?? "—"}
                               </td>
