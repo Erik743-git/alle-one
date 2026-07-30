@@ -19,6 +19,29 @@ if [[ -z "$DATABASE_URL" ]]; then
   exit 1
 fi
 
+# Prisma ?schema=public não é válido para pg_dump/libpq
+if [[ "$DATABASE_URL" == *"?"* ]]; then
+  BASE="${DATABASE_URL%%\?*}"
+  QS="${DATABASE_URL#*\?}"
+  KEPT=""
+  IFS='&' read -ra PARTS <<< "$QS"
+  for PART in "${PARTS[@]}"; do
+    case "$PART" in
+      schema=*|connection_limit=*|pool_timeout=*|connect_timeout=*|pgbouncer=*|socket_timeout=*) continue ;;
+      "") continue ;;
+      *)
+        if [[ -n "$KEPT" ]]; then KEPT+="&"; fi
+        KEPT+="$PART"
+        ;;
+    esac
+  done
+  if [[ -n "$KEPT" ]]; then
+    DATABASE_URL="${BASE}?${KEPT}"
+  else
+    DATABASE_URL="$BASE"
+  fi
+fi
+
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 OUT="$BACKUP_DIR/alleone_${STAMP}.sql.gz"
