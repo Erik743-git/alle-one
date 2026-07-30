@@ -26,3 +26,6 @@ backend/uploads/**
 
 # Scripts/relatórios locais de import TiFlux (não versionar)
 backend/exports/
+
+tmp/
+

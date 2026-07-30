@@ -31,7 +31,10 @@ import {
   type UpsertDayEventInput,
 } from './rendimento-day-events.helper';
 import { computeRawAppointmentMinutes, computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
-import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
+import {
+  resolvePayrollPeriodRange,
+  resolvePayrollPeriodRangeForCalendarMonth,
+} from './rendimento-payroll-period.helper';
 import { AuditService } from '../audit/audit.service';
 import {
   RendimentoStoreService,
@@ -2517,7 +2520,8 @@ export class RendimentoService {
         totalRawHoursFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
         periodOvertimeFormatted: this.formatMinutes(0),
-        periodOvertimeRangeLabel: resolvePayrollPeriodRange(reference).label,
+        periodOvertimeRangeLabel:
+          resolvePayrollPeriodRangeForCalendarMonth(reference).label,
         periodPlantaoMinutes: 0,
         periodPlantaoFormatted: this.formatMinutes(0),
         overtimeBalanceMinutes,
@@ -2526,7 +2530,7 @@ export class RendimentoService {
       };
     }
 
-    const payrollPeriod = resolvePayrollPeriodRange(reference);
+    const payrollPeriod = resolvePayrollPeriodRangeForCalendarMonth(reference);
 
     const rows = await this.fetchAppointments({
       portalUserId: user.id,

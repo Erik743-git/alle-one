@@ -1,4 +1,7 @@
-import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
+import {
+  resolvePayrollPeriodRange,
+  resolvePayrollPeriodRangeForCalendarMonth,
+} from './rendimento-payroll-period.helper';
 
 describe('resolvePayrollPeriodRange', () => {
   it('dia >= 26: período começa no dia 26 do mês atual', () => {
@@ -23,5 +26,31 @@ describe('resolvePayrollPeriodRange', () => {
     const range = resolvePayrollPeriodRange(new Date('2026-06-25T12:00:00'));
     expect(range.startIso).toBe('2026-05-26');
     expect(range.endIso).toBe('2026-06-25');
+  });
+});
+
+describe('resolvePayrollPeriodRangeForCalendarMonth', () => {
+  it('em julho (mesmo no dia 29) permanece 26/06 → 25/07', () => {
+    const range = resolvePayrollPeriodRangeForCalendarMonth(
+      new Date('2026-07-29T12:00:00'),
+    );
+    expect(range.startIso).toBe('2026-06-26');
+    expect(range.endIso).toBe('2026-07-25');
+  });
+
+  it('no dia 30 de julho não pula para o período 26/07', () => {
+    const range = resolvePayrollPeriodRangeForCalendarMonth(
+      new Date('2026-07-30T12:00:00'),
+    );
+    expect(range.startIso).toBe('2026-06-26');
+    expect(range.endIso).toBe('2026-07-25');
+  });
+
+  it('em agosto usa 26/07 → 25/08', () => {
+    const range = resolvePayrollPeriodRangeForCalendarMonth(
+      new Date('2026-08-05T12:00:00'),
+    );
+    expect(range.startIso).toBe('2026-07-26');
+    expect(range.endIso).toBe('2026-08-25');
   });
 });
