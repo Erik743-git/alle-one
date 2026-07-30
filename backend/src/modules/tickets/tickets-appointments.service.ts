@@ -31,6 +31,7 @@ import {
 } from './appointment-doc.util';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 import { isAlleOneTifluxDesk } from './tiflux-portal-desk.config';
+import { hhmmIntervalsOverlap } from './portal-appointment.helper';
 import type {
   CreateTicketAppointmentDto,
   UpdateTicketAppointmentDto,
@@ -746,6 +747,46 @@ export class TicketsAppointmentsService {
     return h * 60 + m;
   }
 
+  /**
+   * Impede dois apontamentos do mesmo usuário no mesmo ticket com horários
+   * sobrepostos (ou idênticos) no mesmo dia.
+   */
+  private async assertNoOverlappingAppointmentForUser(params: {
+    userId: string;
+    ticketNumber: number;
+    date: string;
+    initTime: string;
+    endTime: string;
+    excludeAppointmentId?: string;
+  }) {
+    const existing = await this.prisma.portalTicketAppointment.findMany({
+      where: {
+        createdBy: params.userId,
+        ticketNumber: params.ticketNumber,
+        appointmentDate: new Date(`${params.date}T12:00:00.000Z`),
+        ...(params.excludeAppointmentId
+          ? { id: { not: params.excludeAppointmentId } }
+          : {}),
+      },
+      select: { id: true, initTime: true, endTime: true },
+    });
+
+    const conflict = existing.find((row) =>
+      hhmmIntervalsOverlap(
+        params.initTime,
+        params.endTime,
+        row.initTime,
+        row.endTime,
+      ),
+    );
+    if (!conflict) return;
+
+    throw new BadRequestException(
+      `Já existe apontamento neste ticket no horário ${conflict.initTime}–${conflict.endTime}. ` +
+        'Não é permitido registrar horários iguais ou sobrepostos.',
+    );
+  }
+
   private async getPortalAppointmentOrThrow(
     ticketNumber: number,
     portalAppointmentId: string,
@@ -941,6 +982,15 @@ export class TicketsAppointmentsService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
+    await this.assertNoOverlappingAppointmentForUser({
+      userId: row.createdBy,
+      ticketNumber,
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+      excludeAppointmentId: row.id,
+    });
+
     const descriptionRaw = dto.description.trim();
     const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
     const syncToTiflux =
@@ -1085,6 +1135,14 @@ export class TicketsAppointmentsService {
     }
 
     this.validateAppointmentDto(dto);
+
+    await this.assertNoOverlappingAppointmentForUser({
+      userId: actor.userId,
+      ticketNumber,
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+    });
 
     const descriptionRaw = dto.description.trim();
     const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);

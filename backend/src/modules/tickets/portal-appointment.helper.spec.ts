@@ -1,5 +1,6 @@
 import {
   hhmmDurationMinutes,
+  hhmmIntervalsOverlap,
   overtimeKindFromServiceName,
   portalAppointmentNumericId,
   serviceNameToValorizationRaw,
@@ -10,6 +11,13 @@ describe('portal-appointment.helper', () => {
     expect(hhmmDurationMinutes('08:00', '12:00')).toBe(240);
     expect(hhmmDurationMinutes('23:00', '01:00')).toBe(120);
     expect(hhmmDurationMinutes(null, '10:00')).toBe(0);
+  });
+
+  it('detecta sobreposição de intervalos HH:MM no mesmo dia', () => {
+    expect(hhmmIntervalsOverlap('08:30', '12:00', '08:30', '12:00')).toBe(true);
+    expect(hhmmIntervalsOverlap('08:00', '10:00', '09:00', '11:00')).toBe(true);
+    expect(hhmmIntervalsOverlap('08:00', '09:00', '09:00', '10:00')).toBe(false);
+    expect(hhmmIntervalsOverlap('08:00', '09:00', '10:00', '11:00')).toBe(false);
   });
 
   it('infere EXTRA/PLANTAO a partir do service_name', () => {

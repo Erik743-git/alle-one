@@ -42,6 +42,25 @@ export function parseHhMmToMinutes(
   return h * 60 + m;
 }
 
+/**
+ * Intervalos [init, end) em HH:MM no mesmo dia civil.
+ * Não modela cruzamento de meia-noite (create de ticket exige end > init).
+ */
+export function hhmmIntervalsOverlap(
+  aInit: string | null | undefined,
+  aEnd: string | null | undefined,
+  bInit: string | null | undefined,
+  bEnd: string | null | undefined,
+): boolean {
+  const a1 = parseHhMmToMinutes(aInit);
+  const a2 = parseHhMmToMinutes(aEnd);
+  const b1 = parseHhMmToMinutes(bInit);
+  const b2 = parseHhMmToMinutes(bEnd);
+  if (a1 == null || a2 == null || b1 == null || b2 == null) return false;
+  if (a2 <= a1 || b2 <= b1) return false;
+  return Math.max(a1, b1) < Math.min(a2, b2);
+}
+
 export function overtimeKindFromServiceName(
   serviceName: string | null | undefined,
 ): 'EXTRA' | 'PLANTAO' | null {

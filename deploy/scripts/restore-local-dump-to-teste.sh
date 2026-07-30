@@ -15,8 +15,15 @@ PG_USER="${PG_USER:-uportal}"
 
 if [[ ! -f "$DUMP" ]]; then
   echo "ERRO: dump nao encontrado: $DUMP"
-  echo "No PC: docker exec alleone_postgres pg_dump -U alle -d alleone --no-owner --no-acl | gzip -9 > alleone-local.sql.gz"
+  echo "No PC: docker exec alleone_postgres bash -lc 'pg_dump -U alle -d alleone --no-owner --no-acl -f /tmp/alleone.sql && gzip -f /tmp/alleone.sql'"
+  echo "       docker cp alleone_postgres:/tmp/alleone.sql.gz ./alleone-local.sql.gz"
   echo "Depois: scp alleone-local.sql.gz ubuntu@VM:/tmp/"
+  exit 1
+fi
+
+if ! gzip -t "$DUMP" 2>/dev/null; then
+  echo "ERRO: $DUMP nao e gzip valido (arquivo corrompido no scp/PowerShell)."
+  echo "Regenere com docker cp (binario) e envie de novo."
   exit 1
 fi
 
