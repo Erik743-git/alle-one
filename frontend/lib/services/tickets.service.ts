@@ -282,6 +282,7 @@ export type UpdateTicketStageResult = {
   stageId: number;
   stageName: string;
   stageGroup: TicketStageGroupKey;
+  isClosed?: boolean;
   message: string;
 };
 

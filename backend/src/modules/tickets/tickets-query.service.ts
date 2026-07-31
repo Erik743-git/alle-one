@@ -1420,11 +1420,25 @@ export class TicketsQueryService {
     }
 
     if (stagesResponse.currentStageId === stageId) {
+      if (targetStage.lastStage && !ticket.is_closed) {
+        await this.portalStore.patchStage(ticketNumber, targetStage.name, {
+          isClosed: true,
+        });
+        return {
+          ok: true,
+          stageId: targetStage.id,
+          stageName: targetStage.name,
+          stageGroup: resolveTicketStageGroup(targetStage.name),
+          isClosed: true,
+          message: `Ticket fechado (estágio "${targetStage.name}").`,
+        };
+      }
       return {
         ok: true,
         stageId: targetStage.id,
         stageName: targetStage.name,
         stageGroup: resolveTicketStageGroup(targetStage.name),
+        isClosed: Boolean(targetStage.lastStage),
         message: 'O ticket já está neste estágio.',
       };
     }
@@ -1463,7 +1477,9 @@ export class TicketsQueryService {
     } catch {
       // Mirror pode estar ausente.
     }
-    await this.portalStore.patchStage(ticketNumber, stageName);
+    await this.portalStore.patchStage(ticketNumber, stageName, {
+      isClosed: Boolean(targetStage.lastStage),
+    });
 
     await this.audit.log({
       actor,
@@ -1474,6 +1490,7 @@ export class TicketsQueryService {
         fromStageName: ticket.stage_name,
         toStageName: stageName,
         stageId,
+        isClosed: Boolean(targetStage.lastStage),
         tifluxWrite: !skipTifluxWrite,
       },
     });
@@ -1483,7 +1500,10 @@ export class TicketsQueryService {
       stageId: resolvedStageId,
       stageName,
       stageGroup: resolveTicketStageGroup(stageName),
-      message: `Estágio atualizado para "${stageName}".`,
+      isClosed: Boolean(targetStage.lastStage),
+      message: targetStage.lastStage
+        ? `Ticket fechado (estágio "${stageName}").`
+        : `Estágio atualizado para "${stageName}".`,
     };
   }
 

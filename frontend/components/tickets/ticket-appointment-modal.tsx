@@ -20,6 +20,7 @@ import {
   AppointmentDescriptionComposer,
   type AppointmentBlockComposerHandle,
 } from "@/components/tickets/appointment-description-composer";
+import { canChangeTicketStage } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   ticketsService,
@@ -35,6 +36,8 @@ const DEFAULT_ATTENDANCE = "Remote" as const;
 
 const FIELD_LABEL = "font-sans text-sm font-semibold text-foreground";
 const FIELD_INPUT = "font-sans h-11";
+
+type SaveMode = "save" | "saveAndAnother" | "saveAndClose";
 
 type Props = {
   ticketNumber: number;
@@ -81,6 +84,7 @@ export function TicketAppointmentModal({
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
   const [projectLink, setProjectLink] = useState<AppointmentCatalogs["projectLink"]>(null);
+  const [ticketClosed, setTicketClosed] = useState(false);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [initTime, setInitTime] = useState(nowTime);
@@ -89,20 +93,30 @@ export function TicketAppointmentModal({
   const [projectActivityId, setProjectActivityId] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
+  const saveModeRef = useRef<SaveMode>("save");
 
   const serviceTypeOptions = useMemo(
     () => SERVICE_TYPES.map((s) => ({ value: s, label: s })),
     [],
   );
 
+  const canCloseTicket = canChangeTicketStage() && !ticketClosed;
+
   const loadTicketMeta = useCallback(async () => {
     try {
       setLoadingMeta(true);
-      const data = await ticketsService.appointmentCatalogs(ticketNumber);
+      const [data, stages] = await Promise.all([
+        ticketsService.appointmentCatalogs(ticketNumber),
+        canChangeTicketStage()
+          ? ticketsService.listStages(ticketNumber).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       setTicketMeta(data.ticket);
       setProjectLink(data.projectLink ?? null);
+      setTicketClosed(Boolean(stages?.isClosed));
     } catch {
       setTicketMeta(null);
+      setTicketClosed(false);
     } finally {
       setLoadingMeta(false);
     }
@@ -138,9 +152,35 @@ export function TicketAppointmentModal({
     [projectLink],
   );
 
+  function resetFormForAnotherAppointment(previousEndTime: string) {
+    setInitTime(previousEndTime);
+    setEndTime(addMinutesToTime(previousEndTime, 15));
+    setComposerKey((k) => k + 1);
+  }
+
+  async function closeTicketAfterAppointment() {
+    const stages = await ticketsService.listStages(ticketNumber);
+    if (stages.isClosed) {
+      setTicketClosed(true);
+      return;
+    }
+    const lastStage =
+      stages.stages.find((stage) => stage.lastStage) ??
+      stages.stages[stages.stages.length - 1];
+    if (!lastStage) {
+      throw new Error("Não há estágio de fechamento configurado para este ticket.");
+    }
+    const result = await ticketsService.updateStage(ticketNumber, lastStage.id);
+    setTicketClosed(true);
+    return result;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return;
+    const mode = saveModeRef.current;
+    saveModeRef.current = "save";
+
     if (!serviceName.trim()) {
       notifyError("Selecione o tipo de atendimento.");
       return;
@@ -182,7 +222,39 @@ export function TicketAppointmentModal({
             payload,
             exported.files,
           );
+
+      if (!isEdit && mode === "saveAndClose") {
+        try {
+          const closeRes = await closeTicketAfterAppointment();
+          notifySuccess(
+            closeRes?.message
+              ? `${res.message} ${closeRes.message}`
+              : `${res.message} Ticket fechado.`,
+          );
+        } catch (closeErr) {
+          notifySuccess(res.message);
+          notifyError(
+            closeErr instanceof Error
+              ? `Apontamento salvo, mas não foi possível fechar o ticket: ${closeErr.message}`
+              : "Apontamento salvo, mas não foi possível fechar o ticket.",
+          );
+          onCreated?.();
+          onOpenChange(false);
+          return;
+        }
+        onCreated?.();
+        onOpenChange(false);
+        return;
+      }
+
       notifySuccess(res.message);
+
+      if (!isEdit && mode === "saveAndAnother") {
+        resetFormForAnotherAppointment(endTime);
+        onCreated?.();
+        return;
+      }
+
       if (!isEdit) {
         setServiceName("");
       }
@@ -215,6 +287,7 @@ export function TicketAppointmentModal({
           ) : ticketMeta ? (
             <SheetDescription>
               {ticketMeta.clientName ?? "—"} · {ticketMeta.deskName ?? "—"}
+              {ticketClosed ? " · Ticket fechado" : ""}
             </SheetDescription>
           ) : null}
 
@@ -330,11 +403,54 @@ export function TicketAppointmentModal({
             />
           </div>
 
-          <SheetFooter className="shrink-0 flex-row justify-end gap-2 border-t border-border px-6 py-4">
-            <Button type="button" variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
+          <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 py-4 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              disabled={saving}
+              onClick={() => onOpenChange(false)}
+            >
               Cancelar
             </Button>
-            <Button type="submit" className="h-11 min-w-[120px]" disabled={saving}>
+            {!isEdit ? (
+              <>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className="h-11"
+                  disabled={saving}
+                  onClick={() => {
+                    saveModeRef.current = "saveAndAnother";
+                  }}
+                >
+                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Salvar e fazer outro
+                </Button>
+                {canCloseTicket ? (
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="h-11"
+                    disabled={saving}
+                    onClick={() => {
+                      saveModeRef.current = "saveAndClose";
+                    }}
+                  >
+                    {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                    Salvar e fechar ticket
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+            <Button
+              type="submit"
+              className="h-11 min-w-[120px]"
+              disabled={saving}
+              onClick={() => {
+                saveModeRef.current = "save";
+              }}
+            >
               {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               {saving
                 ? "Salvando..."

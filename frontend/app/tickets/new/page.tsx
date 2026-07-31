@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, FileText, Loader2, Plus, UserRound } from "lucide-react";
 
@@ -46,6 +47,26 @@ function FormSkeleton() {
         <Skeleton className="h-11 w-full" />
       </CardContent>
     </Card>
+  );
+}
+
+function FieldLabel({
+  children,
+  required = false,
+  optional = false,
+}: {
+  children: ReactNode;
+  required?: boolean;
+  optional?: boolean;
+}) {
+  return (
+    <Label className="text-xs font-semibold text-muted-foreground">
+      {children}
+      {required ? <span className="text-destructive"> *</span> : null}
+      {optional && !required ? (
+        <span className="font-normal text-muted-foreground"> (opcional)</span>
+      ) : null}
+    </Label>
   );
 }
 
@@ -157,11 +178,45 @@ export default function NewTicketPage() {
   const catalogBlocked =
     requiresCatalog && deskId !== "" && catalogItemOptions.length === 0;
 
+  const requiresPriority =
+    Boolean(deskId) && !requiresCatalog && !hasPortalClassification;
+
+  const missingRequired = useMemo(() => {
+    const missing: string[] = [];
+    if (!title.trim()) missing.push("Título");
+    if (!clientId) missing.push("Cliente");
+    if (!deskId) missing.push("Mesa de serviço");
+    if (deskId && hasPortalClassification && !classificationId) {
+      missing.push("Classificação");
+    }
+    if (deskId && requiresCatalog && !catalogBlocked && !catalogItemId) {
+      missing.push("Serviço do catálogo");
+    }
+    if (requiresPriority && !priorityId) missing.push("Prioridade");
+    if (requiresRequestor && !hasRequestorInfo) {
+      missing.push("Solicitante (nome ou e-mail)");
+    }
+    return missing;
+  }, [
+    title,
+    clientId,
+    deskId,
+    hasPortalClassification,
+    classificationId,
+    requiresCatalog,
+    catalogBlocked,
+    catalogItemId,
+    requiresPriority,
+    priorityId,
+    requiresRequestor,
+    hasRequestorInfo,
+  ]);
+
   const canSubmit =
     !loading &&
     !saving &&
     !catalogBlocked &&
-    !(requiresRequestor && !hasRequestorInfo);
+    missingRequired.length === 0;
 
   const prevDeskIdRef = useRef("");
 
@@ -335,9 +390,7 @@ export default function NewTicketPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Título
-                      </Label>
+                      <FieldLabel required>Título</FieldLabel>
                       <Input
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
@@ -351,7 +404,7 @@ export default function NewTicketPage() {
                       disabled={saving}
                       labelClassName="text-xs font-semibold text-muted-foreground"
                       placeholder="Detalhe o que precisa ser atendido"
-                      hintText="Escreva e cole prints na descrição (Ctrl+V). ZIP/PDF e outros arquivos em Anexos."
+                      hintText="Escreva e cole prints na descrição (Ctrl+V). ZIP/PDF e outros arquivos em Anexos. Campo obrigatório."
                       appendButtonLabel="Anexar arquivo"
                     />
                   </CardContent>
@@ -366,9 +419,7 @@ export default function NewTicketPage() {
                   </CardHeader>
                   <CardContent className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Cliente
-                      </Label>
+                      <FieldLabel required>Cliente</FieldLabel>
                       <SearchableSelectField
                         value={clientId}
                         onChange={handleClientChange}
@@ -378,9 +429,7 @@ export default function NewTicketPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Mesa de serviço
-                      </Label>
+                      <FieldLabel required>Mesa de serviço</FieldLabel>
                       <SearchableSelectField
                         value={deskId}
                         onChange={setDeskId}
@@ -397,15 +446,14 @@ export default function NewTicketPage() {
                         value={classificationId}
                         onChange={setClassificationId}
                         disabled={loading || saving}
+                        required
                         levelLabels={classificationLevelLabels}
                       />
                     ) : null}
 
                     {deskId && requiresCatalog ? (
                       <div className="space-y-2 sm:col-span-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Serviço do catálogo
-                        </Label>
+                        <FieldLabel required>Serviço do catálogo</FieldLabel>
                         <SearchableSelectField
                           value={catalogItemId}
                           onChange={setCatalogItemId}
@@ -428,11 +476,9 @@ export default function NewTicketPage() {
                       </div>
                     ) : null}
 
-                    {deskId && !requiresCatalog && !hasPortalClassification ? (
+                    {deskId && requiresPriority ? (
                       <div className="space-y-2 sm:col-span-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Prioridade
-                        </Label>
+                        <FieldLabel required>Prioridade</FieldLabel>
                         <SearchableSelectField
                           value={priorityId}
                           onChange={setPriorityId}
@@ -454,9 +500,7 @@ export default function NewTicketPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Responsável
-                      </Label>
+                      <FieldLabel optional>Responsável</FieldLabel>
                       <SearchableSelectField
                         value={responsibleId}
                         onChange={setResponsibleId}
@@ -472,9 +516,9 @@ export default function NewTicketPage() {
                     </div>
                     <div className="space-y-3">
                       <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
+                        <FieldLabel required={requiresRequestor} optional={!requiresRequestor}>
                           Solicitante
-                        </Label>
+                        </FieldLabel>
                         <Input
                           value={requestorName}
                           onChange={(e) => {
@@ -488,9 +532,12 @@ export default function NewTicketPage() {
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
-                          <Label className="text-xs font-semibold text-muted-foreground">
+                          <FieldLabel
+                            required={requiresRequestor}
+                            optional={!requiresRequestor}
+                          >
                             E-mail do solicitante
-                          </Label>
+                          </FieldLabel>
                           <Input
                             type="email"
                             value={requestorEmail}
@@ -504,9 +551,7 @@ export default function NewTicketPage() {
                           />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-xs font-semibold text-muted-foreground">
-                            Telefone (opcional)
-                          </Label>
+                          <FieldLabel optional>Telefone</FieldLabel>
                           <Input
                             value={requestorTelephone}
                             onChange={(e) => {
@@ -519,11 +564,16 @@ export default function NewTicketPage() {
                           />
                         </div>
                       </div>
+                      {requiresRequestor ? (
+                        <p className="text-xs text-muted-foreground">
+                          Esta mesa exige solicitante: informe <strong>nome ou e-mail</strong>.
+                        </p>
+                      ) : null}
                       {requestorOptions.length > 0 ? (
                         <div className="space-y-2">
-                          <Label className="text-xs font-semibold text-muted-foreground">
-                            Preencher do cadastro do cliente (opcional)
-                          </Label>
+                          <FieldLabel optional>
+                            Preencher do cadastro do cliente
+                          </FieldLabel>
                           <SearchableSelectField
                             value={requestorId}
                             onChange={handleRequestorSuggestion}
@@ -532,17 +582,21 @@ export default function NewTicketPage() {
                             emptyLabel="Escolher contato do cliente"
                             placeholder="Escolher contato do cliente"
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Sugestões do cliente selecionado (sem duplicar e-mail).
+                            Para Alle Tecnologia/Infra, só aparecem endereços @alletecnologia.com.
+                          </p>
                         </div>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
-                        Pode ser de outra empresa — o solicitante não precisa
-                        ser do cliente do chamado.
+                        Você também pode digitar nome/e-mail manualmente — o solicitante
+                        não precisa estar na lista.
                       </p>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Referência GMUD do cliente (opcional)
-                      </Label>
+                      <FieldLabel optional>
+                        Referência GMUD do cliente
+                      </FieldLabel>
                       <Input
                         value={externalGmudRef}
                         onChange={(e) => setExternalGmudRef(e.target.value)}
@@ -556,12 +610,40 @@ export default function NewTicketPage() {
                   </CardContent>
                 </Card>
 
-                <Button type="submit" size="lg" disabled={!canSubmit}>
-                  {saving ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
+                <div className="space-y-3">
+                  {!canSubmit && !loading && !saving ? (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50/95">
+                      {catalogBlocked ? (
+                        <p>
+                          Não é possível abrir o chamado: a mesa exige catálogo, mas
+                          não há serviços cadastrados.
+                        </p>
+                      ) : missingRequired.length > 0 ? (
+                        <>
+                          <p className="font-semibold">
+                            Preencha os campos obrigatórios para habilitar Abrir chamado:
+                          </p>
+                          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm">
+                            {missingRequired.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-2 text-xs text-amber-100/80">
+                            Campos com <span className="text-destructive">*</span> são
+                            obrigatórios. A descrição também é obrigatória.
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
                   ) : null}
-                  Abrir chamado
-                </Button>
+
+                  <Button type="submit" size="lg" disabled={!canSubmit}>
+                    {saving ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : null}
+                    Abrir chamado
+                  </Button>
+                </div>
               </form>
             )}
           </div>

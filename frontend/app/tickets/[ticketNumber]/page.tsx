@@ -877,6 +877,7 @@ export default function TicketDetailPage() {
                         setEditingAppointment(null);
                         setPendingResumeId(null);
                         void load();
+                        void loadStages();
                       }}
                     />
                     <PortalAppointmentTifluxWarningDialog

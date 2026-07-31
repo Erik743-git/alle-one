@@ -1089,7 +1089,10 @@ export class TifluxService {
     return results;
   }
 
-  async getClientRequestors(clientId: number): Promise<
+  async getClientRequestors(
+    clientId: number,
+    opts?: { limitPerPage?: number; maxPages?: number },
+  ): Promise<
     Array<{
       id: number;
       name: string;
@@ -1097,13 +1100,27 @@ export class TifluxService {
       telephone: string | null;
     }>
   > {
-    const data = await this.request<Array<Record<string, unknown>>>(
-      `/clients/${clientId}/requestors`,
-      'GET',
-    );
-    if (!Array.isArray(data)) return [];
+    const limit = Math.max(1, Math.min(opts?.limitPerPage ?? 200, 200));
+    const maxPages = Math.max(1, opts?.maxPages ?? 30);
+    const all: Array<Record<string, unknown>> = [];
+    let page = 1;
 
-    return data
+    while (page <= maxPages) {
+      const qs = new URLSearchParams({
+        limit: String(limit),
+        offset: String(page),
+      });
+      const data = await this.request<Array<Record<string, unknown>>>(
+        `/clients/${clientId}/requestors?${qs.toString()}`,
+        'GET',
+      );
+      if (!Array.isArray(data) || data.length === 0) break;
+      all.push(...data);
+      if (data.length < limit) break;
+      page += 1;
+    }
+
+    return all
       .map((row) => ({
         id: Number(row.id),
         name: String(row.name ?? '').trim(),

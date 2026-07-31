@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -9,6 +10,11 @@ import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
 } from './tickets-portal.config';
+import {
+  portalRequestorSyntheticId,
+  sanitizeTicketRequestors,
+  type TicketRequestorOption,
+} from './ticket-requestors.helper';
 
 export type TicketClassificationNode = {
   id: string;
@@ -582,14 +588,20 @@ export class TicketsCatalogsService {
       this.listTifluxResponsiblesForTicketCreate(),
     ]);
 
-    let requestors: Array<{
-      id: number;
-      name: string;
-      email: string | null;
-      telephone: string | null;
-    }> = [];
+    let requestors: TicketRequestorOption[] = [];
     if (clientId != null && Number.isFinite(clientId)) {
-      requestors = await this.tiflux.getClientRequestors(clientId);
+      const clientName =
+        clientsRaw
+          .map((c) => ({
+            id: Number(c.id),
+            name: String(c.name ?? c.social_name ?? ''),
+          }))
+          .find((c) => c.id === clientId)?.name ?? null;
+      const raw = await this.tiflux.getClientRequestors(clientId, {
+        limitPerPage: 200,
+        maxPages: 30,
+      });
+      requestors = sanitizeTicketRequestors(raw, { clientName });
     }
 
     let desk: Record<string, unknown> | null = null;
@@ -656,7 +668,7 @@ export class TicketsCatalogsService {
   /** Catálogos de criação sem API TiFlux (Company + service_desks + mirror users). */
   private async getCreateCatalogsFromPortal(
     deskId?: number,
-    _clientId?: number,
+    clientId?: number,
   ): Promise<TicketCreateCatalogs> {
     const [companies, desks, responsibles] = await Promise.all([
       this.prisma.company.findMany({
@@ -666,6 +678,7 @@ export class TicketsCatalogsService {
           tifluxClientId: { not: null },
         },
         select: {
+          id: true,
           tifluxClientId: true,
           tifluxClientName: true,
           name: true,
@@ -716,11 +729,25 @@ export class TicketsCatalogsService {
       };
     }
 
+    let requestors: TicketRequestorOption[] = [];
+    if (clientId != null && Number.isFinite(clientId)) {
+      const clientName =
+        clients.find((c) => c.id === clientId)?.name ?? null;
+      const company = companies.find(
+        (c) => Number(c.tifluxClientId) === clientId,
+      );
+      requestors = await this.listPortalRequestorsForClient({
+        clientExternalId: clientId,
+        companyId: company?.id ?? null,
+        clientName,
+      });
+    }
+
     return {
       clients,
       desks: deskOptions,
       responsibles,
-      requestors: [],
+      requestors,
       portalServiceDesk,
       classification,
       desk: deskMeta,
@@ -728,5 +755,69 @@ export class TicketsCatalogsService {
       catalogItems: [],
       source: 'portal',
     };
+  }
+
+  /** Solicitantes no modo portal: usuários da empresa + e-mails já usados em tickets. */
+  private async listPortalRequestorsForClient(params: {
+    clientExternalId: number;
+    companyId: string | null;
+    clientName: string | null;
+  }): Promise<TicketRequestorOption[]> {
+    const rows: TicketRequestorOption[] = [];
+
+    if (params.companyId) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          companyId: params.companyId,
+          deletedAt: null,
+          status: UserStatus.ACTIVE,
+        },
+        select: { name: true, email: true },
+        take: 2000,
+      });
+      for (const user of users) {
+        const email = user.email?.trim();
+        if (!email) continue;
+        rows.push({
+          id: portalRequestorSyntheticId(email),
+          name: user.name?.trim() || email,
+          email,
+          telephone: null,
+        });
+      }
+    }
+
+    const ticketRows = await this.prisma.portalTicket.findMany({
+      where: {
+        clientExternalId: params.clientExternalId,
+        OR: [
+          { requestorEmail: { not: null } },
+          { requestorName: { not: null } },
+        ],
+      },
+      select: {
+        requestorName: true,
+        requestorEmail: true,
+        requestorTelephone: true,
+      },
+      orderBy: { updatedAtSource: 'desc' },
+      take: 3000,
+    });
+
+    for (const row of ticketRows) {
+      const email = row.requestorEmail?.trim() || null;
+      const name = row.requestorName?.trim() || email || '';
+      if (!email && !name) continue;
+      rows.push({
+        id: email
+          ? portalRequestorSyntheticId(email)
+          : portalRequestorSyntheticId(`name:${name}`),
+        name,
+        email,
+        telephone: row.requestorTelephone?.trim() || null,
+      });
+    }
+
+    return sanitizeTicketRequestors(rows, { clientName: params.clientName });
   }
 }

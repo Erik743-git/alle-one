@@ -121,11 +121,16 @@ export class TicketsPortalStoreService {
     });
   }
 
-  async patchStage(ticketNumber: number, stageName: string) {
+  async patchStage(
+    ticketNumber: number,
+    stageName: string,
+    opts?: { isClosed?: boolean },
+  ) {
     return this.prisma.portalTicket.updateMany({
       where: { ticketNumber },
       data: {
         stageName,
+        ...(opts?.isClosed !== undefined ? { isClosed: opts.isClosed } : {}),
         updatedAtSource: new Date(),
       },
     });
