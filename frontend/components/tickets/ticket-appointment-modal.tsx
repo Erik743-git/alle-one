@@ -399,7 +399,7 @@ export function TicketAppointmentModal({
               key={composerKey}
               ref={composerRef}
               disabled={saving}
-              labelClassName={FIELD_LABEL}
+              labelClassName="font-sans text-sm font-semibold text-foreground"
               hintText=""
               initialDescription={
                 isEdit ? editingAppointment?.description ?? null : null
