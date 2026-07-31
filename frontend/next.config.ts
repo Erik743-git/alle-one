@@ -25,6 +25,8 @@ const apiRewriteBase =
 
 const nextConfig: NextConfig = {
   async rewrites() {
+    // /auth/* é tratado por app/auth/[...path]/route.ts (preserva multi Set-Cookie).
+    // Mantém rewrite só como fallback se a rota não existir em builds antigos.
     return [
       {
         source: "/auth/:path*",

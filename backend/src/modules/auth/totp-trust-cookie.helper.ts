@@ -80,7 +80,13 @@ export function verifyTotpTrustToken(
       fromB64url(payloadPart).toString('utf8'),
     ) as TrustPayload;
     if (payload.sub !== userId) return false;
-    if (payload.te !== totpEnabledAt.getTime()) return false;
+    // Compara em segundos — evita falso negativo por ms do TIMESTAMP no Postgres.
+    if (
+      Math.floor(Number(payload.te) / 1000) !==
+      Math.floor(totpEnabledAt.getTime() / 1000)
+    ) {
+      return false;
+    }
     if (typeof payload.exp !== 'number' || payload.exp < Date.now()) {
       return false;
     }
@@ -92,15 +98,15 @@ export function verifyTotpTrustToken(
 
 function cookieFlags() {
   const domain = process.env.AUTH_COOKIE_DOMAIN?.trim();
+  // Lax por padrão: o trust precisa sobreviver a redirect pós-sessão expirada.
+  // AUTH_COOKIE_SAMESITE ainda sobrescreve se definido.
   const sameSiteRaw = process.env.AUTH_COOKIE_SAMESITE?.trim().toLowerCase();
   const sameSite =
     sameSiteRaw === 'strict' ||
     sameSiteRaw === 'lax' ||
     sameSiteRaw === 'none'
       ? sameSiteRaw
-      : process.env.NODE_ENV === 'production'
-        ? 'strict'
-        : 'lax';
+      : 'lax';
   const secureRaw = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
   let secure =
     process.env.NODE_ENV === 'production' || sameSite === 'none';

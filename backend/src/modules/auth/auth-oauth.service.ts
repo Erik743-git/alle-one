@@ -265,8 +265,11 @@ export class AuthOAuthService {
       attachTotpTrustCookie(res, result.totpTrustToken);
     }
 
-    const { accessToken: _omit, totpTrustToken: _trust, ...safe } = result;
-    return safe;
+    const { accessToken: _omit, totpTrustToken, ...safe } = result;
+    return {
+      ...safe,
+      ...(totpTrustToken ? { deviceTrustToken: totpTrustToken } : {}),
+    };
   }
 
   private mapOAuthError(message: string): string {

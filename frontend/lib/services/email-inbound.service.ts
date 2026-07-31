@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import { authFetch } from "@/lib/auth-fetch";
+import { clearDeviceTrustToken } from "@/lib/device-trust";
 import { readBlobDownload, triggerBrowserDownload } from "@/lib/download-blob";
 import { API_URL } from "@/lib/env";
 
@@ -162,16 +163,23 @@ export const totpService = {
       { method: "POST" },
     );
   },
-  confirm(code: string) {
-    return apiRequest<{ backupCodes: string[] }>("/auth/2fa/confirm", {
-      method: "POST",
-      body: { code },
-    });
+  async confirm(code: string) {
+    const result = await apiRequest<{ backupCodes: string[] }>(
+      "/auth/2fa/confirm",
+      {
+        method: "POST",
+        body: { code },
+      },
+    );
+    clearDeviceTrustToken();
+    return result;
   },
-  disable(code: string, password: string) {
-    return apiRequest<{ ok: boolean }>("/auth/2fa/disable", {
+  async disable(code: string, password: string) {
+    const result = await apiRequest<{ ok: boolean }>("/auth/2fa/disable", {
       method: "POST",
       body: { code, password },
     });
+    clearDeviceTrustToken();
+    return result;
   },
 };

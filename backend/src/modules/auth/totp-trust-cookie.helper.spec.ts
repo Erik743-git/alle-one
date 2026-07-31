@@ -21,6 +21,12 @@ describe('totp-trust-cookie.helper', () => {
     ).toBe(false);
   });
 
+  it('aceita totpEnabledAt com diferença só de milissegundos', () => {
+    const token = createTotpTrustToken(userId, enabledAt);
+    const almostSame = new Date(enabledAt.getTime() + 400);
+    expect(verifyTotpTrustToken(token, userId, almostSame)).toBe(true);
+  });
+
   it('rejeita token ausente ou inválido', () => {
     expect(verifyTotpTrustToken(undefined, userId, enabledAt)).toBe(false);
     expect(verifyTotpTrustToken('abc.def', userId, enabledAt)).toBe(false);

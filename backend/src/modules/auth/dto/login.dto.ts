@@ -26,4 +26,15 @@ export class LoginDto {
   @IsBoolean()
   @Transform(({ value }) => value === true || value === 'true' || value === 1)
   rememberDevice?: boolean;
+
+  /**
+   * Backup do token de confiança (localStorage) quando o cookie httpOnly
+   * não é reenviado após expirar a sessão.
+   */
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  deviceTrustToken?: string;
 }

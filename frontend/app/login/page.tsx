@@ -34,6 +34,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import {
+  readDeviceTrustToken,
+  writeDeviceTrustToken,
+} from "@/lib/device-trust";
 import { setSession, type AuthUser } from "@/lib/session";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { useAuth } from "@/lib/use-auth";
@@ -49,6 +53,7 @@ import {
 type LoginResponse = {
   message: string;
   accessToken?: string;
+  deviceTrustToken?: string;
   user: AuthUser;
 };
 
@@ -286,6 +291,7 @@ function LoginPageContent() {
           return;
         }
         const loginData = data as LoginResponse;
+        writeDeviceTrustToken(loginData.deviceTrustToken);
         setSession(undefined, loginData.user);
         establishSession(loginData.user);
         let user: AuthUser = loginData.user;
@@ -340,6 +346,10 @@ function LoginPageContent() {
           password: senha,
           ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
           ...(requires2fa && rememberDevice ? { rememberDevice: true } : {}),
+          ...(() => {
+            const deviceTrustToken = readDeviceTrustToken();
+            return deviceTrustToken ? { deviceTrustToken } : {};
+          })(),
         }),
       });
 
@@ -356,6 +366,7 @@ function LoginPageContent() {
           (data as { requires2fa?: boolean }).requires2fa
         ) {
           setRequires2fa(true);
+          setRememberDevice(true);
           setTotpCode("");
           const days = (data as { trustDays?: number }).trustDays;
           if (typeof days === "number" && days > 0) setTrustDays(days);
@@ -368,6 +379,7 @@ function LoginPageContent() {
       }
 
       const loginData = data as LoginResponse;
+      writeDeviceTrustToken(loginData.deviceTrustToken);
 
       setSession(undefined, loginData.user);
       establishSession(loginData.user);

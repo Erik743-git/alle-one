@@ -131,17 +131,27 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    const headerTrust = req.headers['x-alleone-device-trust'];
     const trustCookie =
-      typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+      (typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
         ? (req.cookies[TOTP_TRUST_COOKIE] as string)
-        : undefined;
+        : undefined) ||
+      (typeof data.deviceTrustToken === 'string' && data.deviceTrustToken
+        ? data.deviceTrustToken
+        : undefined) ||
+      (typeof headerTrust === 'string' && headerTrust.trim()
+        ? headerTrust.trim()
+        : undefined);
     const result = await this.authService.login(data, { trustCookie });
     attachAccessTokenCookie(res, result.accessToken);
     if (result.totpTrustToken) {
       attachTotpTrustCookie(res, result.totpTrustToken);
     }
-    const { accessToken: _omit, totpTrustToken: _trust, ...safe } = result;
-    return safe;
+    const { accessToken: _omit, totpTrustToken, ...safe } = result;
+    return {
+      ...safe,
+      ...(totpTrustToken ? { deviceTrustToken: totpTrustToken } : {}),
+    };
   }
 
   @Public()
