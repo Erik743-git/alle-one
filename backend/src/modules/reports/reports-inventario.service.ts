@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   buildInventarioReportCsv,
@@ -136,11 +140,7 @@ export class ReportsInventarioService {
             { brand: 'asc' },
             { name: 'asc' },
           ]
-        : [
-            { assetType: { name: 'asc' } },
-            { brand: 'asc' },
-            { name: 'asc' },
-          ],
+        : [{ assetType: { name: 'asc' } }, { brand: 'asc' }, { name: 'asc' }],
     });
 
     return rows.map((row) => ({

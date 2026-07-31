@@ -15,7 +15,10 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
-import { multerMemoryLimits, assertInventoryImportUpload } from '../../common/upload.config';
+import {
+  multerMemoryLimits,
+  assertInventoryImportUpload,
+} from '../../common/upload.config';
 import { AuditMeta } from '../audit/audit.decorator';
 import { PermissionModule } from '@prisma/client';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -160,7 +163,11 @@ export class InventarioController {
   @Roles('ADMIN', 'COLLABORATOR')
   @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  @AuditMeta({ entity: 'InventoryAsset', action: 'UPDATE', entityIdParam: 'id' })
+  @AuditMeta({
+    entity: 'InventoryAsset',
+    action: 'UPDATE',
+    entityIdParam: 'id',
+  })
   @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
   updateAsset(
     @CurrentUser() user: AuthenticatedRequestUser,
@@ -174,7 +181,11 @@ export class InventarioController {
   @Delete('assets/:id')
   @Roles('ADMIN', 'COLLABORATOR')
   @RequirePermission(PermissionModule.INVENTARIO, 'canEdit')
-  @AuditMeta({ entity: 'InventoryAsset', action: 'DELETE', entityIdParam: 'id' })
+  @AuditMeta({
+    entity: 'InventoryAsset',
+    action: 'DELETE',
+    entityIdParam: 'id',
+  })
   deleteAsset(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: InventarioAssetIdParamDto,

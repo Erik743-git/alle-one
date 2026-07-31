@@ -142,9 +142,13 @@ export class EmailInboundAdminService {
     });
   }
 
-  async createRoute(actor: AuthenticatedRequestUser, dto: CreateEmailInboundRouteDto) {
+  async createRoute(
+    actor: AuthenticatedRequestUser,
+    dto: CreateEmailInboundRouteDto,
+  ) {
     const matchEmail = dto.matchEmail.trim().toLowerCase();
-    if (!matchEmail) throw new BadRequestException('E-mail de match obrigatório.');
+    if (!matchEmail)
+      throw new BadRequestException('E-mail de match obrigatório.');
     return this.prisma.emailInboundRoute.create({
       data: {
         id: randomUUID(),
@@ -162,7 +166,8 @@ export class EmailInboundAdminService {
     const existing = await this.prisma.emailInboundRoute.findFirst({
       where: { id, deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('Direcionamento não encontrado.');
+    if (!existing)
+      throw new NotFoundException('Direcionamento não encontrado.');
     return this.prisma.emailInboundRoute.update({
       where: { id },
       data: {
@@ -184,7 +189,8 @@ export class EmailInboundAdminService {
     const existing = await this.prisma.emailInboundRoute.findFirst({
       where: { id, deletedAt: null },
     });
-    if (!existing) throw new NotFoundException('Direcionamento não encontrado.');
+    if (!existing)
+      throw new NotFoundException('Direcionamento não encontrado.');
     return this.prisma.emailInboundRoute.update({
       where: { id },
       data: { deletedAt: new Date(), active: false },

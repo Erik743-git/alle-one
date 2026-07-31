@@ -5,9 +5,11 @@ import {
 
 describe('email inbound blocked senders', () => {
   it('parseia linhas e vírgulas', () => {
-    expect(
-      parseBlockedSenders('a@x.com\n*@y.com, z@w.com'),
-    ).toEqual(['a@x.com', '*@y.com', 'z@w.com']);
+    expect(parseBlockedSenders('a@x.com\n*@y.com, z@w.com')).toEqual([
+      'a@x.com',
+      '*@y.com',
+      'z@w.com',
+    ]);
   });
 
   it('bloqueia e-mail exato e domínio', () => {

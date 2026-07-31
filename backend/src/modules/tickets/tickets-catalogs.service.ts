@@ -217,9 +217,7 @@ export class TicketsCatalogsService {
     const toNode = (row: (typeof rows)[number]): TicketClassificationNode => ({
       ...row,
       children:
-        row.level < 3
-          ? sortRows(byParent.get(row.id) ?? []).map(toNode)
-          : [],
+        row.level < 3 ? sortRows(byParent.get(row.id) ?? []).map(toNode) : [],
     });
 
     return sortRows(byParent.get(null) ?? []).map(toNode);
@@ -613,7 +611,10 @@ export class TicketsCatalogsService {
     if (deskId != null && Number.isFinite(deskId)) {
       desk = await this.tiflux.getDesk(deskId);
       const tifluxDeskName = String(desk.display_name ?? desk.name ?? '');
-      const bundle = await this.loadClassificationBundle(deskId, tifluxDeskName);
+      const bundle = await this.loadClassificationBundle(
+        deskId,
+        tifluxDeskName,
+      );
       portalServiceDesk = bundle.portalServiceDesk;
       classification = bundle.classification;
 
@@ -638,7 +639,7 @@ export class TicketsCatalogsService {
       desks: desksRaw
         .map((d) => ({
           id: Number(d.id),
-          name: String(d.display_name ?? d.name ?? `Mesa ${d.id}`),
+          name: String(d.display_name ?? d.name ?? `Mesa ${String(d.id)}`),
           appointmentType: String(d.appointment_type ?? ''),
           requireServiceCatalog: Boolean(d.require_service_catalog_open_ticket),
         }))
@@ -731,8 +732,7 @@ export class TicketsCatalogsService {
 
     let requestors: TicketRequestorOption[] = [];
     if (clientId != null && Number.isFinite(clientId)) {
-      const clientName =
-        clients.find((c) => c.id === clientId)?.name ?? null;
+      const clientName = clients.find((c) => c.id === clientId)?.name ?? null;
       const company = companies.find(
         (c) => Number(c.tifluxClientId) === clientId,
       );

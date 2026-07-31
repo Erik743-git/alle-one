@@ -30,7 +30,10 @@ import {
   type RendimentoDayEventStatus,
   type UpsertDayEventInput,
 } from './rendimento-day-events.helper';
-import { computeRawAppointmentMinutes, computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
+import {
+  computeRawAppointmentMinutes,
+  computeUnionWorkedMinutes,
+} from './rendimento-worked-minutes.helper';
 import {
   resolvePayrollPeriodRange,
   resolvePayrollPeriodRangeForCalendarMonth,
@@ -290,8 +293,16 @@ export class RendimentoService {
     }
 
     // Mês: grade Dom–Sáb (inclui dias 26–30 do mês anterior na mesma tela)
-    const monthStart = new Date(reference.getFullYear(), reference.getMonth(), 1);
-    const monthEnd = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    const monthStart = new Date(
+      reference.getFullYear(),
+      reference.getMonth(),
+      1,
+    );
+    const monthEnd = new Date(
+      reference.getFullYear(),
+      reference.getMonth() + 1,
+      0,
+    );
     start.setTime(monthStart.getTime());
     start.setDate(start.getDate() - start.getDay());
     end.setTime(monthEnd.getTime());
@@ -300,7 +311,10 @@ export class RendimentoService {
   }
 
   /** Limites do mês civil (só o mês exibido no título), para totais da grade. */
-  private resolveCalendarMonthBounds(reference: Date): { start: Date; end: Date } {
+  private resolveCalendarMonthBounds(reference: Date): {
+    start: Date;
+    end: Date;
+  } {
     const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
     const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
     start.setHours(0, 0, 0, 0);
@@ -320,8 +334,7 @@ export class RendimentoService {
     if (Number.isNaN(id)) return null;
     return {
       id,
-      name:
-        String(params.name ?? '').trim() || `Usuário TiFlux ${id}`,
+      name: String(params.name ?? '').trim() || `Usuário TiFlux ${id}`,
     };
   }
 
@@ -389,7 +402,9 @@ export class RendimentoService {
   }
 
   /** Agenda e-mail → usuário TiFlux (carrega uma vez por instância da API). */
-  private async ensureTifluxUserEmailMap(): Promise<Map<string, TifluxUserLink>> {
+  private async ensureTifluxUserEmailMap(): Promise<
+    Map<string, TifluxUserLink>
+  > {
     if (this.tifluxUserEmailMap) {
       return this.tifluxUserEmailMap;
     }
@@ -589,10 +604,7 @@ export class RendimentoService {
     return unique.length ? unique : ['PENDING'];
   }
 
-  private gapLabelForType(
-    type: 'idle' | 'lunch',
-    gapMinutes: number,
-  ): string {
+  private gapLabelForType(type: 'idle' | 'lunch', gapMinutes: number): string {
     if (type === 'lunch') {
       const h = Math.floor(gapMinutes / 60);
       const m = gapMinutes % 60;
@@ -635,9 +647,9 @@ export class RendimentoService {
     return Math.max(aFrom, bFrom) < Math.min(aTo, bTo);
   }
 
-  private justificationSuffix(
-    justification?: { status: RendimentoJustificationStatus },
-  ): string {
+  private justificationSuffix(justification?: {
+    status: RendimentoJustificationStatus;
+  }): string {
     if (!justification) return '';
     if (justification.status === 'APPROVED') return ' · justificado';
     if (justification.status === 'PENDING') return ' · justificativa pendente';
@@ -686,7 +698,7 @@ export class RendimentoService {
       Number(row.gap_minutes) > 0
         ? Number(row.gap_minutes)
         : Math.max(0, toMinutes - fromMinutes);
-    const gapType = row.gap_type as 'idle' | 'lunch';
+    const gapType = row.gap_type;
     const justification = this.mapJustificationDto(row);
     const suffix = this.justificationStatusSuffix(row.status);
 
@@ -710,7 +722,9 @@ export class RendimentoService {
         .map((gap) => gap.justification?.id)
         .filter((id): id is string => Boolean(id)),
     );
-    const missing = alertJustifications.filter((row) => !visibleIds.has(row.id));
+    const missing = alertJustifications.filter(
+      (row) => !visibleIds.has(row.id),
+    );
     if (!missing.length) return gaps;
 
     const recovered = missing.map((row) => this.gapFromJustificationRow(row));
@@ -907,12 +921,7 @@ export class RendimentoService {
     if (apptTo <= apptFrom) {
       apptTo += 24 * 60;
     }
-    return this.overlapsMinutes(
-      period.from,
-      period.to,
-      apptFrom,
-      apptTo,
-    );
+    return this.overlapsMinutes(period.from, period.to, apptFrom, apptTo);
   }
 
   private isPeriodContainedInRawGaps(
@@ -943,7 +952,10 @@ export class RendimentoService {
     return { from, to, gapMinutes };
   }
 
-  private assertValidJustificationPeriod(fromTime: string, toTime: string): {
+  private assertValidJustificationPeriod(
+    fromTime: string,
+    toTime: string,
+  ): {
     from: number;
     to: number;
     gapMinutes: number;
@@ -1011,7 +1023,8 @@ export class RendimentoService {
     const approvedVoluntaryMinutes = dayJustifications
       .filter((j) => j.kind === 'VOLUNTARY' && j.status === 'APPROVED')
       .reduce(
-        (sum, row) => sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
+        (sum, row) =>
+          sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
         0,
       );
 
@@ -1023,7 +1036,8 @@ export class RendimentoService {
     const explainedAlertMinutes = alertJustifications
       .filter((j) => j.status === 'APPROVED' || j.status === 'PENDING')
       .reduce(
-        (sum, row) => sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
+        (sum, row) =>
+          sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
         0,
       );
 
@@ -1107,7 +1121,8 @@ export class RendimentoService {
     nextGaps.sort((a, b) => a.fromTime.localeCompare(b.fromTime));
 
     const hasIdleGapAlert = nextGaps.some((gap) => {
-      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
+      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES)
+        return false;
       const justification = gap.justification;
       if (!justification) return true;
       if (justification.kind === 'VOLUNTARY') return false;
@@ -1172,7 +1187,10 @@ export class RendimentoService {
     const dateOnly = this.toDateOnlyString(this.parseDateOnly(params.date));
     const dayDate = this.parseDateOnly(dateOnly);
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
-    const tifluxUser = this.lookupTifluxUser(params.user.email, tifluxUserByEmail);
+    const tifluxUser = this.lookupTifluxUser(
+      params.user.email,
+      tifluxUserByEmail,
+    );
 
     if (tifluxUser != null || isTicketsPortalCanonical()) {
       const rows = await this.fetchAppointments({
@@ -1242,12 +1260,7 @@ export class RendimentoService {
       if (
         rowSpan &&
         newSpan &&
-        this.overlapsMinutes(
-          newSpan.from,
-          newSpan.to,
-          rowSpan.from,
-          rowSpan.to,
-        )
+        this.overlapsMinutes(newSpan.from, newSpan.to, rowSpan.from, rowSpan.to)
       ) {
         throw new BadRequestException(
           'O período coincide com outra justificativa já registrada.',
@@ -1273,7 +1286,7 @@ export class RendimentoService {
 
     const justification = this.mapJustificationDto(matched);
     const suffix = this.justificationStatusSuffix(matched.status);
-    const userGapType = matched.gap_type as 'idle' | 'lunch';
+    const userGapType = matched.gap_type;
     const effectiveType =
       matched.status === 'APPROVED' ? userGapType : gap.type;
 
@@ -1358,10 +1371,7 @@ export class RendimentoService {
         continue;
       }
 
-      if (
-        gap.justification &&
-        gap.justification.kind !== 'VOLUNTARY'
-      ) {
+      if (gap.justification && gap.justification.kind !== 'VOLUNTARY') {
         result.push(gap);
         continue;
       }
@@ -1494,7 +1504,8 @@ export class RendimentoService {
     );
 
     const hasIdleGapAlert = trimmedGaps.some((gap) => {
-      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
+      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES)
+        return false;
       const justification = gap.justification;
       if (!justification) return true;
       if (justification.kind === 'VOLUNTARY') return false;
@@ -2086,7 +2097,9 @@ export class RendimentoService {
       : new Date(end.getFullYear(), end.getMonth() - 6, end.getDate());
 
     if (start > end) {
-      throw new BadRequestException('Data inicial não pode ser maior que a final.');
+      throw new BadRequestException(
+        'Data inicial não pode ser maior que a final.',
+      );
     }
 
     const collaborators = await this.listCollaboratorsForSelect();
@@ -2174,7 +2187,9 @@ export class RendimentoService {
         usersProcessed += 1;
       } catch (err) {
         const msg =
-          err instanceof Error ? err.message : 'Erro desconhecido ao reprocessar.';
+          err instanceof Error
+            ? err.message
+            : 'Erro desconhecido ao reprocessar.';
         errors.push(`${collaborator.name}: ${msg}`);
       }
     }
@@ -2269,7 +2284,7 @@ export class RendimentoService {
       if (event.event_type !== 'OVERTIME' && event.event_type !== 'PLANTAO') {
         continue;
       }
-      const eventType = event.event_type as 'OVERTIME' | 'PLANTAO';
+      const eventType = event.event_type;
       const key = this.dayEventAttachmentKey(
         event.date_ref,
         Number(event.appointment_external_id),
@@ -2427,7 +2442,9 @@ export class RendimentoService {
     return collaborators;
   }
 
-  async listCollaboratorListPreferences(): Promise<RendimentoCollaboratorListPreferenceDto[]> {
+  async listCollaboratorListPreferences(): Promise<
+    RendimentoCollaboratorListPreferenceDto[]
+  > {
     const collaborators = await this.listCollaboratorsForSelect();
     const prefs = await this.prisma.rendimentoCollaboratorListPref.findMany({
       select: { collaboratorUserId: true, listed: true },
@@ -2504,7 +2521,9 @@ export class RendimentoService {
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
 
     if (tifluxUser == null && !isTicketsPortalCanonical()) {
-      const overtimeBalanceMinutes = await this.getOvertimeBalanceMinutes(user.id);
+      const overtimeBalanceMinutes = await this.getOvertimeBalanceMinutes(
+        user.id,
+      );
       return {
         userId: user.id,
         userName: user.name,
@@ -2525,7 +2544,9 @@ export class RendimentoService {
         periodPlantaoMinutes: 0,
         periodPlantaoFormatted: this.formatMinutes(0),
         overtimeBalanceMinutes,
-        overtimeBalanceFormatted: this.formatSignedMinutes(overtimeBalanceMinutes),
+        overtimeBalanceFormatted: this.formatSignedMinutes(
+          overtimeBalanceMinutes,
+        ),
         days: [],
       };
     }
@@ -2640,7 +2661,9 @@ export class RendimentoService {
       periodPlantaoMinutes,
       periodPlantaoFormatted: this.formatMinutes(periodPlantaoMinutes),
       overtimeBalanceMinutes,
-      overtimeBalanceFormatted: this.formatSignedMinutes(overtimeBalanceMinutes),
+      overtimeBalanceFormatted: this.formatSignedMinutes(
+        overtimeBalanceMinutes,
+      ),
       days: timesheetDays,
     };
   }
@@ -2741,9 +2764,7 @@ export class RendimentoService {
         ? Math.trunc(Number(params.gapMinutes))
         : periodSpan.gapMinutes;
     const debitOvertime =
-      params.kind === 'ALERT' && !reason
-        ? true
-        : Boolean(params.debitOvertime);
+      params.kind === 'ALERT' && !reason ? true : Boolean(params.debitOvertime);
     const overtimeMinutes = debitOvertime
       ? Math.max(0, Math.trunc(Number(params.overtimeMinutes) || gapMinutes))
       : 0;
@@ -2864,7 +2885,9 @@ export class RendimentoService {
 
     const isVoluntary = current.kind === 'VOLUNTARY';
     const date = isVoluntary
-      ? this.toDateOnlyString(this.parseDateOnly(params.date ?? current.date_ref))
+      ? this.toDateOnlyString(
+          this.parseDateOnly(params.date ?? current.date_ref),
+        )
       : current.date_ref.slice(0, 10);
     const fromTime = isVoluntary
       ? this.normalizeTimeHHMM(params.fromTime ?? current.from_time)
@@ -3027,7 +3050,7 @@ export class RendimentoService {
         keepEventId: params.eventId,
         userId: current.user_id,
         dateRef: current.date_ref.slice(0, 10),
-        eventType: current.event_type as 'OVERTIME' | 'PLANTAO',
+        eventType: current.event_type,
         appointmentExternalId: Number(current.appointment_external_id),
         sourceKey: current.source_key,
         fromTime: null,
@@ -3421,9 +3444,7 @@ export class RendimentoService {
         toTime: row.to_time?.slice(0, 5) ?? null,
         gapType,
         gapTypeLabel:
-          gapType === 'lunch'
-            ? 'Almoço'
-            : 'Intervalo sem apontamento',
+          gapType === 'lunch' ? 'Almoço' : 'Intervalo sem apontamento',
         gapMinutes,
         gapLabel: this.gapLabelForType(gapType, gapMinutes),
         kind,
@@ -3449,7 +3470,9 @@ export class RendimentoService {
     decision: 'APPROVED' | 'REJECTED';
     note?: string;
   }) {
-    const uniqueIds = [...new Set(params.ids.map((id) => id.trim()).filter(Boolean))];
+    const uniqueIds = [
+      ...new Set(params.ids.map((id) => id.trim()).filter(Boolean)),
+    ];
     const results: Array<{
       id: string;
       ok: boolean;
@@ -3468,7 +3491,9 @@ export class RendimentoService {
         results.push({ id, ok: true, status: res.status });
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : 'Falha ao decidir justificativa.';
+          err instanceof Error
+            ? err.message
+            : 'Falha ao decidir justificativa.';
         results.push({ id, ok: false, error: message });
       }
     }
@@ -3599,7 +3624,8 @@ export class RendimentoService {
       const ticketNumber =
         row.ticket_number != null ? Number(row.ticket_number) : null;
       const companyName = row.company_name?.trim() || null;
-      const rawDescription = row.description?.trim() || row.label?.trim() || null;
+      const rawDescription =
+        row.description?.trim() || row.label?.trim() || null;
 
       return {
         id: row.id,
@@ -3629,7 +3655,9 @@ export class RendimentoService {
     ids: string[];
     decision: 'APPROVED' | 'REJECTED';
   }) {
-    const uniqueIds = [...new Set(params.ids.map((id) => id.trim()).filter(Boolean))];
+    const uniqueIds = [
+      ...new Set(params.ids.map((id) => id.trim()).filter(Boolean)),
+    ];
     const results: Array<{
       id: string;
       ok: boolean;

@@ -1,4 +1,8 @@
-export type TicketStageGroupKey = 'pendente' | 'aguardando' | 'execucao' | 'outros';
+export type TicketStageGroupKey =
+  | 'pendente'
+  | 'aguardando'
+  | 'execucao'
+  | 'outros';
 
 export type TicketStageGroupDef = {
   key: TicketStageGroupKey;
@@ -14,7 +18,9 @@ export const TICKET_STAGE_GROUPS: TicketStageGroupDef[] = [
 ];
 
 /** Normaliza texto para comparação (caixa, acentos, espaços). */
-export function normalizeStageKey(stageName: string | null | undefined): string {
+export function normalizeStageKey(
+  stageName: string | null | undefined,
+): string {
   return String(stageName ?? '')
     .trim()
     .toLowerCase()

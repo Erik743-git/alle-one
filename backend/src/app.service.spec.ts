@@ -24,10 +24,7 @@ describe('AppService.getIntegrationsHealth', () => {
     delete process.env.TIFLUX_DISCONNECTED;
     delete process.env.TICKETS_TIFLUX_WRITE;
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        AppService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [AppService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = module.get(AppService);
   });

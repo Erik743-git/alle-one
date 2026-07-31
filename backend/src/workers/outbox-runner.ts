@@ -7,9 +7,7 @@ async function bootstrap(): Promise<void> {
   await NestFactory.createApplicationContext(OutboxWorkerModule, {
     logger: ['error', 'warn', 'log'],
   });
-  logger.log(
-    'Processo outbox ativo (cron 1/min). Encerre com SIGINT/SIGTERM.',
-  );
+  logger.log('Processo outbox ativo (cron 1/min). Encerre com SIGINT/SIGTERM.');
 }
 
 void bootstrap().catch((err) => {

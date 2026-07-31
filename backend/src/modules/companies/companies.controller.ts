@@ -84,10 +84,7 @@ export class CompaniesController {
     @CurrentUser() actor: AuthUser,
     @Body() body: ApplyZabbixGroupSuggestionsDto,
   ) {
-    return this.companiesService.applyZabbixGroupSuggestions(
-      actor,
-      body.items,
-    );
+    return this.companiesService.applyZabbixGroupSuggestions(actor, body.items);
   }
 
   @Get(':id')

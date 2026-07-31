@@ -71,14 +71,14 @@ export class AuthOAuthService {
   isGoogleConfigured(): boolean {
     return Boolean(
       process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() &&
-        process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim(),
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim(),
     );
   }
 
   isMicrosoftConfigured(): boolean {
     return Boolean(
       process.env.MICROSOFT_OAUTH_CLIENT_ID?.trim() &&
-        process.env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim(),
+      process.env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim(),
     );
   }
 
@@ -99,7 +99,9 @@ export class AuthOAuthService {
       throw new BadRequestException('Login com Google não está configurado.');
     }
     if (provider === 'microsoft' && !this.isMicrosoftConfigured()) {
-      throw new BadRequestException('Login com Microsoft não está configurado.');
+      throw new BadRequestException(
+        'Login com Microsoft não está configurado.',
+      );
     }
 
     const state = createOAuthState(provider);
@@ -121,8 +123,7 @@ export class AuthOAuthService {
       return;
     }
 
-    const tenant =
-      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+    const tenant = process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
     const params = new URLSearchParams({
       client_id: process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim(),
       redirect_uri: oauthCallbackUrl('microsoft'),
@@ -199,7 +200,7 @@ export class AuthOAuthService {
 
       const trustCookie =
         typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
-          ? (req.cookies[TOTP_TRUST_COOKIE] as string)
+          ? req.cookies[TOTP_TRUST_COOKIE]
           : undefined;
 
       const result = await this.authService.loginWithOAuth(
@@ -246,7 +247,7 @@ export class AuthOAuthService {
   ) {
     const pendingRaw =
       typeof req.cookies?.[OAUTH_2FA_PENDING_COOKIE] === 'string'
-        ? (req.cookies[OAUTH_2FA_PENDING_COOKIE] as string)
+        ? req.cookies[OAUTH_2FA_PENDING_COOKIE]
         : undefined;
     const pending = parseOAuth2faPendingToken(pendingRaw);
     if (!pending) {
@@ -314,17 +315,12 @@ export class AuthOAuthService {
       throw new UnauthorizedException('oauth_profile');
     }
 
-    const tenant =
-      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+    const tenant = process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
     const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim();
 
     let claims: MicrosoftIdTokenClaims;
     try {
-      claims = await verifyMicrosoftIdToken(
-        token.id_token,
-        tenant,
-        clientId,
-      );
+      claims = await verifyMicrosoftIdToken(token.id_token, tenant, clientId);
     } catch (err) {
       this.logger.warn(
         `Microsoft id_token inválido: ${err instanceof Error ? err.message : String(err)}`,
@@ -383,9 +379,7 @@ export class AuthOAuthService {
       error?: { message?: string };
     };
     if (!response.ok) {
-      throw new Error(
-        data.error?.message || 'microsoft_graph_me_failed',
-      );
+      throw new Error(data.error?.message || 'microsoft_graph_me_failed');
     }
     return data;
   }
@@ -414,7 +408,9 @@ export class AuthOAuthService {
     return data;
   }
 
-  private async fetchGoogleProfile(accessToken: string): Promise<GoogleUserInfo> {
+  private async fetchGoogleProfile(
+    accessToken: string,
+  ): Promise<GoogleUserInfo> {
     const response = await fetch(
       'https://openidconnect.googleapis.com/v1/userinfo',
       {
@@ -428,9 +424,10 @@ export class AuthOAuthService {
     return data;
   }
 
-  private async exchangeMicrosoftCode(code: string): Promise<OAuthTokenResponse> {
-    const tenant =
-      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+  private async exchangeMicrosoftCode(
+    code: string,
+  ): Promise<OAuthTokenResponse> {
+    const tenant = process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
     const body = new URLSearchParams({
       code,
       client_id: process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim(),

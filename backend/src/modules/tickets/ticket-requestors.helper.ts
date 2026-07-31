@@ -5,12 +5,12 @@ export type TicketRequestorOption = {
   telephone: string | null;
 };
 
-const ALLE_INTERNAL_ALLOWED_DOMAINS = new Set([
-  'alletecnologia.com',
-]);
+const ALLE_INTERNAL_ALLOWED_DOMAINS = new Set(['alletecnologia.com']);
 
 /** Clientes internos Alle (Tecnologia / Infra) — sugestões só com domínio Alle. */
-export function isAlleInternalClientName(name: string | null | undefined): boolean {
+export function isAlleInternalClientName(
+  name: string | null | undefined,
+): boolean {
   const normalized = String(name ?? '')
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
@@ -28,7 +28,9 @@ export function isAlleInternalClientName(name: string | null | undefined): boole
 }
 
 export function emailDomain(email: string | null | undefined): string | null {
-  const value = String(email ?? '').trim().toLowerCase();
+  const value = String(email ?? '')
+    .trim()
+    .toLowerCase();
   const at = value.lastIndexOf('@');
   if (at <= 0 || at === value.length - 1) return null;
   return value.slice(at + 1);
@@ -36,7 +38,7 @@ export function emailDomain(email: string | null | undefined): string | null {
 
 function isNoReplyEmail(email: string): boolean {
   const local = email.split('@')[0] ?? '';
-  return /^(no[\-_]?reply|noreply|mailer[\-_]?daemon|postmaster|donotreply)$/i.test(
+  return /^(no[-_]?reply|noreply|mailer[-_]?daemon|postmaster|donotreply)$/i.test(
     local,
   );
 }
@@ -91,7 +93,8 @@ export function sanitizeTicketRequestors(
 
     // Prefere nome “humano” (não igual ao e-mail) e telefone preenchido
     const existingNameIsEmail =
-      existing.name.trim().toLowerCase() === (existing.email ?? '').toLowerCase();
+      existing.name.trim().toLowerCase() ===
+      (existing.email ?? '').toLowerCase();
     const nextNameIsEmail = name.toLowerCase() === emailKey;
     if (existingNameIsEmail && !nextNameIsEmail) {
       existing.name = name;

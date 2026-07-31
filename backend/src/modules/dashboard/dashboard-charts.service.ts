@@ -42,7 +42,9 @@ export class DashboardChartsService {
     filters: DashboardChartTicketsFilters,
   ): Promise<Array<Record<string, unknown>>> {
     if (filters.tifluxClientId === null) {
-      this.devDebug('fetchTicketsForCharts: tifluxClientId nulo, retornando []');
+      this.devDebug(
+        'fetchTicketsForCharts: tifluxClientId nulo, retornando []',
+      );
       return [];
     }
 

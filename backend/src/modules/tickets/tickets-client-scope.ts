@@ -45,9 +45,7 @@ export async function resolveClientListFilter(
     requestedClientId != null &&
     Number(requestedClientId) !== Number(allowed)
   ) {
-    throw new ForbiddenException(
-      'client_ids não permitido para a sua empresa',
-    );
+    throw new ForbiddenException('client_ids não permitido para a sua empresa');
   }
   return { clientExternalId: allowed, mineOnlyForcedOff: true };
 }

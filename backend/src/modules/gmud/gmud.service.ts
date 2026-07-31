@@ -108,10 +108,14 @@ export class GmudService {
           creator: { select: { id: true, name: true, email: true } },
           responsible: { select: { id: true, name: true, email: true } },
           executors: {
-            include: { user: { select: { id: true, name: true, email: true } } },
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
           },
           approvers: {
-            include: { user: { select: { id: true, name: true, email: true } } },
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
           },
         },
         orderBy: { createdAt: 'desc' },

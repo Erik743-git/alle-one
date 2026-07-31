@@ -50,10 +50,7 @@ export class PreTicketsService {
   ) {}
 
   private assertOperator(actor: AuthenticatedRequestUser) {
-    if (
-      actor.role !== UserRole.ADMIN &&
-      actor.role !== UserRole.COLLABORATOR
-    ) {
+    if (actor.role !== UserRole.ADMIN && actor.role !== UserRole.COLLABORATOR) {
       throw new ForbiddenException('Sem permissão para pré-tickets.');
     }
   }
@@ -200,8 +197,7 @@ export class PreTicketsService {
     const responsibleExternalId = dto.responsibleExternalId
       ? Number(dto.responsibleExternalId)
       : null;
-    const responsibleName =
-      dto.responsibleName?.trim() || opener?.name || null;
+    const responsibleName = dto.responsibleName?.trim() || opener?.name || null;
 
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
@@ -246,13 +242,14 @@ export class PreTicketsService {
       select: { fileId: true },
     });
     if (preAttachments.length > 0) {
-      const already = await this.prisma.portalTicketAppointmentAttachment.findMany({
-        where: {
-          ticketNumber,
-          fileId: { in: preAttachments.map((a) => a.fileId) },
-        },
-        select: { fileId: true },
-      });
+      const already =
+        await this.prisma.portalTicketAppointmentAttachment.findMany({
+          where: {
+            ticketNumber,
+            fileId: { in: preAttachments.map((a) => a.fileId) },
+          },
+          select: { fileId: true },
+        });
       const linked = new Set(already.map((a) => a.fileId));
       for (const att of preAttachments) {
         if (linked.has(att.fileId)) continue;

@@ -135,12 +135,15 @@ export class TicketsOutboxService {
 
     try {
       // Mesa AlleOne no TiFlux não possui valorização: enviamos só data/hora/descrição.
-      const created = await this.tiflux.createTicketAppointment(row.ticketNumber, {
-        date: payload.date,
-        init_time: payload.init_time,
-        end_time: payload.end_time,
-        description: payload.description,
-      });
+      const created = await this.tiflux.createTicketAppointment(
+        row.ticketNumber,
+        {
+          date: payload.date,
+          init_time: payload.init_time,
+          end_time: payload.end_time,
+          description: payload.description,
+        },
+      );
 
       const tifluxId = Number(created?.id);
       if (!Number.isFinite(tifluxId) || tifluxId <= 0) {

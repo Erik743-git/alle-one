@@ -22,10 +22,7 @@ import {
   UpdateEmailInboundRouteDto,
   UpsertEmailInboundSettingsDto,
 } from './email-inbound-admin.service';
-import {
-  OpenPreTicketDto,
-  PreTicketsService,
-} from './pre-tickets.service';
+import { OpenPreTicketDto, PreTicketsService } from './pre-tickets.service';
 
 @Controller()
 @UseGuards(RolesGuard)
@@ -64,7 +61,10 @@ export class EmailInboundController {
 
   @Patch('admin/email/routes/:id')
   @Roles(UserRole.ADMIN)
-  updateRoute(@Param('id') id: string, @Body() dto: UpdateEmailInboundRouteDto) {
+  updateRoute(
+    @Param('id') id: string,
+    @Body() dto: UpdateEmailInboundRouteDto,
+  ) {
     return this.admin.updateRoute(id, dto);
   }
 
@@ -88,10 +88,7 @@ export class EmailInboundController {
 
   @Get('pre-tickets')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
-  list(
-    @CurrentUser() actor: AuthenticatedRequestUser,
-    @Query('q') q?: string,
-  ) {
+  list(@CurrentUser() actor: AuthenticatedRequestUser, @Query('q') q?: string) {
     return this.preTickets.list(actor, q);
   }
 

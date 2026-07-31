@@ -86,10 +86,14 @@ export class TenantScopeService {
     }
 
     if (!zabbixGroupListIncludes(company.zabbixGroupName, normalized)) {
-      throw new ForbiddenException('Grupo Zabbix não permitido para sua empresa');
+      throw new ForbiddenException(
+        'Grupo Zabbix não permitido para sua empresa',
+      );
     }
 
-    return allowed.find((group) => group.toLowerCase() === normalized.toLowerCase())!;
+    return allowed.find(
+      (group) => group.toLowerCase() === normalized.toLowerCase(),
+    )!;
   }
 
   /** CLIENT só enxerga o próprio grupo no monitoramento. */

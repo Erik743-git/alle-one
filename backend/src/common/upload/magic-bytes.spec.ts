@@ -1,7 +1,4 @@
-import {
-  detectUploadKind,
-  mimeMatchesMagicBytes,
-} from './magic-bytes';
+import { detectUploadKind, mimeMatchesMagicBytes } from './magic-bytes';
 import {
   assertAllowedUpload,
   assertInventoryImportUpload,

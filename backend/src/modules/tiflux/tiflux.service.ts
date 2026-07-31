@@ -8,7 +8,10 @@ import {
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { cleanupExpiredExternalApiCache } from '../../common/cache/external-api-cache.cleanup';
-import { mapTicket, type TifluxTicket as MappedTifluxTicket } from './mapper/tiflux.mapper';
+import {
+  mapTicket,
+  type TifluxTicket as MappedTifluxTicket,
+} from './mapper/tiflux.mapper';
 import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
 
 type TifluxApiError = {
@@ -279,7 +282,9 @@ export class TifluxService {
       if (this.cacheWriteCount % 25 === 0) {
         void cleanupExpiredExternalApiCache(this.prisma, 200).then((n) => {
           if (n > 0) {
-            this.logger.debug(`external_api_cache: removidas ${n} entradas expiradas`);
+            this.logger.debug(
+              `external_api_cache: removidas ${n} entradas expiradas`,
+            );
           }
         });
       }
@@ -334,7 +339,9 @@ export class TifluxService {
       }
 
       if (data.detail && typeof data.detail === 'object') {
-        const fieldMessages = Object.values(data.detail as Record<string, unknown>)
+        const fieldMessages = Object.values(
+          data.detail as Record<string, unknown>,
+        )
           .flatMap((value) => (Array.isArray(value) ? value : [value]))
           .map((item) => String(item))
           .filter(Boolean);
@@ -555,11 +562,7 @@ export class TifluxService {
           const response = await fetch(url, {
             method,
             headers,
-            body: isFormData
-              ? body
-              : body
-                ? JSON.stringify(body)
-                : undefined,
+            body: isFormData ? body : body ? JSON.stringify(body) : undefined,
             signal: controller.signal,
           });
 
@@ -1147,7 +1150,10 @@ export class TifluxService {
     }
     const query = searchParams.toString();
     const path = query ? `/desks?${query}` : '/desks';
-    const data = await this.request<Array<Record<string, unknown>>>(path, 'GET');
+    const data = await this.request<Array<Record<string, unknown>>>(
+      path,
+      'GET',
+    );
     return Array.isArray(data) ? data : [];
   }
 
@@ -1229,7 +1235,9 @@ export class TifluxService {
     return tickets.find((row) => row.ticket_number === ticketNumber) ?? null;
   }
 
-  async createTicket(fields: Record<string, string | number | undefined | null>) {
+  async createTicket(
+    fields: Record<string, string | number | undefined | null>,
+  ) {
     return this.postMultipart('/tickets', fields);
   }
 
@@ -1283,7 +1291,10 @@ export class TifluxService {
     }
     const query = searchParams.toString();
     const path = query ? `/contracts?${query}` : '/contracts';
-    const data = await this.request<Array<Record<string, unknown>>>(path, 'GET');
+    const data = await this.request<Array<Record<string, unknown>>>(
+      path,
+      'GET',
+    );
     return Array.isArray(data) ? data : [];
   }
 
@@ -1336,13 +1347,7 @@ export class TifluxService {
     }
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
-      for (const key of [
-        'histories',
-        'history',
-        'items',
-        'data',
-        'records',
-      ]) {
+      for (const key of ['histories', 'history', 'items', 'data', 'records']) {
         const nested = obj[key];
         if (Array.isArray(nested)) {
           return nested.filter(

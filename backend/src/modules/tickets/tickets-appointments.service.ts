@@ -23,7 +23,10 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { ProjetosService } from '../projetos/projetos.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { assertTicketClientScope } from './tickets-client-scope';
-import { isTicketsPortalCanonical, isTifluxRuntimeApiEnabled } from './tickets-portal.config';
+import {
+  isTicketsPortalCanonical,
+  isTifluxRuntimeApiEnabled,
+} from './tickets-portal.config';
 import {
   appointmentDescriptionToPlainText,
   enrichAppointmentDescriptionWithImages,

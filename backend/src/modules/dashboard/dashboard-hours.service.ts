@@ -1199,7 +1199,11 @@ export class DashboardHoursService {
     const endDateOnly = params.endDate.toISOString().slice(0, 10);
 
     if (isTicketsPortalCanonical()) {
-      return this.getAppointmentsByClientFromPortal(params, startDateOnly, endDateOnly);
+      return this.getAppointmentsByClientFromPortal(
+        params,
+        startDateOnly,
+        endDateOnly,
+      );
     }
 
     try {
@@ -1427,10 +1431,12 @@ export class DashboardHoursService {
     }
 
     const appointmentsByTicket = [...byTicket.values()].sort(
-      (a, b) =>
-        Number(a.ticket.ticket_number) - Number(b.ticket.ticket_number),
+      (a, b) => Number(a.ticket.ticket_number) - Number(b.ticket.ticket_number),
     );
-    const ticketMap = new Map<number, { ticket_number: number } & Record<string, unknown>>();
+    const ticketMap = new Map<
+      number,
+      { ticket_number: number } & Record<string, unknown>
+    >();
     for (const t of [...primary.tickets, ...extra.tickets]) {
       ticketMap.set(Number(t.ticket_number), t);
     }

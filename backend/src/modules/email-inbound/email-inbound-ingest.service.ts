@@ -52,8 +52,7 @@ export class EmailInboundIngestService {
 
     let created = 0;
     for (const msg of messages) {
-      const messageId =
-        msg.internetMessageId?.trim() || `graph:${msg.id}`;
+      const messageId = msg.internetMessageId?.trim() || `graph:${msg.id}`;
       const existing = await this.prisma.preTicket.findUnique({
         where: { messageId },
         select: { id: true },
@@ -77,9 +76,7 @@ export class EmailInboundIngestService {
           toEmails,
           mailbox: settings.sharedMailboxAddress,
           title:
-            msg.subject?.trim() ||
-            msg.bodyPreview?.trim() ||
-            '(sem assunto)',
+            msg.subject?.trim() || msg.bodyPreview?.trim() || '(sem assunto)',
           receivedAt: msg.receivedDateTime
             ? new Date(msg.receivedDateTime)
             : new Date(),
@@ -165,9 +162,7 @@ export class EmailInboundIngestService {
       '(sem assunto)';
 
     const mailbox =
-      params.settings.sharedMailboxAddress ??
-      toEmails[0] ??
-      'unknown';
+      params.settings.sharedMailboxAddress ?? toEmails[0] ?? 'unknown';
 
     // Remetente bloqueado: grava IGNORED com messageId para não reprocessar (sem virar pré-ticket).
     if (isSenderBlocked(fromEmail, params.settings.blockedSenders)) {
@@ -191,12 +186,11 @@ export class EmailInboundIngestService {
 
     const contentType = params.message.body?.contentType?.toLowerCase();
     const bodyContent = params.message.body?.content ?? '';
-    const descriptionHtml =
-      contentType === 'html' ? bodyContent : null;
+    const descriptionHtml = contentType === 'html' ? bodyContent : null;
     const descriptionText =
       contentType === 'text'
         ? bodyContent
-        : params.message.bodyPreview ?? stripHtml(bodyContent);
+        : (params.message.bodyPreview ?? stripHtml(bodyContent));
 
     const requestor = await this.prisma.user.findFirst({
       where: {
@@ -212,11 +206,13 @@ export class EmailInboundIngestService {
     const priorityName = route?.priorityName ?? null;
 
     const systemUploader =
-      (await this.prisma.user.findFirst({
-        where: { role: 'ADMIN', deletedAt: null, status: 'ACTIVE' },
-        select: { id: true },
-        orderBy: { createdAt: 'asc' },
-      }))?.id ?? requestor?.id;
+      (
+        await this.prisma.user.findFirst({
+          where: { role: 'ADMIN', deletedAt: null, status: 'ACTIVE' },
+          select: { id: true },
+          orderBy: { createdAt: 'asc' },
+        })
+      )?.id ?? requestor?.id;
 
     if (!systemUploader) {
       this.logger.warn('Sem usuário para gravar anexos do pré-ticket');
@@ -225,27 +221,27 @@ export class EmailInboundIngestService {
     let preTicket;
     try {
       preTicket = await this.prisma.preTicket.create({
-      data: {
-        id: randomUUID(),
-        status: PreTicketStatus.PENDING,
-        title: title.slice(0, 500),
-        descriptionHtml,
-        descriptionText,
-        fromName: fromName ?? requestor?.name ?? fromEmail,
-        fromEmail,
-        toEmails: toEmails.length ? toEmails : [mailbox],
-        mailboxAddress: mailbox,
-        messageId: params.messageId,
-        graphMessageId: params.message.id,
-        companyId,
-        requestorUserId: requestor?.id ?? null,
-        deskId,
-        priorityName,
-        receivedAt: params.message.receivedDateTime
-          ? new Date(params.message.receivedDateTime)
-          : new Date(),
-      },
-    });
+        data: {
+          id: randomUUID(),
+          status: PreTicketStatus.PENDING,
+          title: title.slice(0, 500),
+          descriptionHtml,
+          descriptionText,
+          fromName: fromName ?? requestor?.name ?? fromEmail,
+          fromEmail,
+          toEmails: toEmails.length ? toEmails : [mailbox],
+          mailboxAddress: mailbox,
+          messageId: params.messageId,
+          graphMessageId: params.message.id,
+          companyId,
+          requestorUserId: requestor?.id ?? null,
+          deskId,
+          priorityName,
+          receivedAt: params.message.receivedDateTime
+            ? new Date(params.message.receivedDateTime)
+            : new Date(),
+        },
+      });
     } catch (err) {
       // Duplicado por corrida no messageId único — não cria de novo.
       if (
@@ -453,7 +449,10 @@ export class EmailInboundIngestService {
       return false;
     }
 
-    if (html === row.descriptionHtml && attachmentCount === row.attachmentCount) {
+    if (
+      html === row.descriptionHtml &&
+      attachmentCount === row.attachmentCount
+    ) {
       return false;
     }
 
@@ -487,9 +486,7 @@ export class EmailInboundIngestService {
             'Remetente bloqueado nas configurações de e-mail — não vira pré-ticket.',
           fromName: params.fromName,
           fromEmail: params.fromEmail,
-          toEmails: params.toEmails.length
-            ? params.toEmails
-            : [params.mailbox],
+          toEmails: params.toEmails.length ? params.toEmails : [params.mailbox],
           mailboxAddress: params.mailbox,
           messageId: params.messageId,
           graphMessageId: params.graphMessageId,
@@ -518,9 +515,7 @@ export class EmailInboundIngestService {
       (r) => r.matchEmail.trim().toLowerCase() === fromEmail,
     );
     if (exact) return exact;
-    const domain = fromEmail.includes('@')
-      ? fromEmail.split('@')[1]
-      : null;
+    const domain = fromEmail.includes('@') ? fromEmail.split('@')[1] : null;
     if (domain) {
       return (
         routes.find((r) => {
@@ -557,7 +552,7 @@ export function isSenderBlocked(
 ): boolean {
   const email = fromEmail.trim().toLowerCase();
   if (!email) return false;
-  const domain = email.includes('@') ? email.split('@').pop() ?? '' : '';
+  const domain = email.includes('@') ? (email.split('@').pop() ?? '') : '';
   for (const pattern of parseBlockedSenders(blockedRaw)) {
     if (pattern.startsWith('*@') || pattern.startsWith('@')) {
       const blockedDomain = pattern.replace(/^\*?@/, '');

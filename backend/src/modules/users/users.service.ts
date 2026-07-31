@@ -36,12 +36,7 @@ export class UsersService {
   ) {}
 
   private toPublicUser(user: UserWithCompany): PublicUser {
-    const {
-      passwordHash: _omit,
-      serviceDeskLinks,
-      lastSeenAt,
-      ...rest
-    } = user;
+    const { passwordHash: _omit, serviceDeskLinks, lastSeenAt, ...rest } = user;
     return {
       ...rest,
       isOnline: isUserOnline(lastSeenAt),
@@ -50,9 +45,9 @@ export class UsersService {
   }
 
   private async validateServiceDeskIds(serviceDeskIds: string[]) {
-    const ids = Array.from(new Set(serviceDeskIds.map((id) => id.trim()))).filter(
-      Boolean,
-    );
+    const ids = Array.from(
+      new Set(serviceDeskIds.map((id) => id.trim())),
+    ).filter(Boolean);
     if (ids.length === 0) return [];
 
     const existing = await this.prisma.serviceDesk.findMany({
@@ -164,7 +159,9 @@ export class UsersService {
           serviceDeskIds.length > 0
             ? {
                 createMany: {
-                  data: serviceDeskIds.map((serviceDeskId) => ({ serviceDeskId })),
+                  data: serviceDeskIds.map((serviceDeskId) => ({
+                    serviceDeskId,
+                  })),
                 },
               }
             : undefined,
@@ -204,7 +201,11 @@ export class UsersService {
     return this.toPublicUser(created);
   }
 
-  async update(actor: AuthenticatedRequestUser, id: string, data: UpdateUserDto) {
+  async update(
+    actor: AuthenticatedRequestUser,
+    id: string,
+    data: UpdateUserDto,
+  ) {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -264,7 +265,9 @@ export class UsersService {
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name.trim() }),
-        ...(data.email !== undefined && { email: data.email.trim().toLowerCase() }),
+        ...(data.email !== undefined && {
+          email: data.email.trim().toLowerCase(),
+        }),
         passwordHash,
         ...(passwordChanging && { tokenVersion: { increment: 1 } }),
         role: data.role,

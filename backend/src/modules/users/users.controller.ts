@@ -69,7 +69,10 @@ export class UsersController {
   @Delete(':id')
   @RequirePermission(PermissionModule.USERS, 'canDelete')
   @AuditMeta({ entity: 'User', action: 'DELETE', entityIdParam: 'id' })
-  remove(@CurrentUser() actor: AuthenticatedRequestUser, @Param('id') id: string) {
+  remove(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id') id: string,
+  ) {
     return this.usersService.remove(actor, id);
   }
 }

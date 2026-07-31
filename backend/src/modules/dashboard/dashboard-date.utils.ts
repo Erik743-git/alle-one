@@ -223,7 +223,15 @@ export function getCalendarMonthBounds(
 ) {
   const anchor = new Date(reference.getFullYear(), reference.getMonth(), 1);
   anchor.setMonth(anchor.getMonth() + monthOffset);
-  const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1, 0, 0, 0, 0);
+  const start = new Date(
+    anchor.getFullYear(),
+    anchor.getMonth(),
+    1,
+    0,
+    0,
+    0,
+    0,
+  );
   const end = new Date(
     anchor.getFullYear(),
     anchor.getMonth() + 1,

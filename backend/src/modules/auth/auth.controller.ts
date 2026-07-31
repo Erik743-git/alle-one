@@ -75,10 +75,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('google')
-  googleLogin(
-    @Res() res: Response,
-    @Query('email') email?: string,
-  ): void {
+  googleLogin(@Res() res: Response, @Query('email') email?: string): void {
     this.authOAuth.startGoogle(res, email);
   }
 
@@ -95,10 +92,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('microsoft')
-  microsoftLogin(
-    @Res() res: Response,
-    @Query('email') email?: string,
-  ): void {
+  microsoftLogin(@Res() res: Response, @Query('email') email?: string): void {
     this.authOAuth.startMicrosoft(res, email);
   }
 
@@ -134,7 +128,7 @@ export class AuthController {
     const headerTrust = req.headers['x-alleone-device-trust'];
     const trustCookie =
       (typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
-        ? (req.cookies[TOTP_TRUST_COOKIE] as string)
+        ? req.cookies[TOTP_TRUST_COOKIE]
         : undefined) ||
       (typeof data.deviceTrustToken === 'string' && data.deviceTrustToken
         ? data.deviceTrustToken

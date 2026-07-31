@@ -29,9 +29,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsStrongPassword()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   password?: string;
 
   @IsOptional()

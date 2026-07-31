@@ -68,7 +68,10 @@ export class ProjetosDocumentsService {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       const targetName = `${Date.now()}-${randomUUID()}-${safeName}`;
       const relativeKey = join('projetos', projectId, targetName);
-      const stored = await this.fileStorage.saveBuffer(relativeKey, file.buffer);
+      const stored = await this.fileStorage.saveBuffer(
+        relativeKey,
+        file.buffer,
+      );
       const createdFile = await this.prisma.file.create({
         data: {
           originalName: file.originalname,

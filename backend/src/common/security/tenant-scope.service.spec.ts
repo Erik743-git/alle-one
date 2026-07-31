@@ -29,9 +29,9 @@ describe('TenantScopeService', () => {
       zabbixGroupName: 'ALLE - Cliente',
     });
 
-    await expect(service.resolveTifluxClientIds(clientUser, undefined)).resolves.toEqual(
-      [42],
-    );
+    await expect(
+      service.resolveTifluxClientIds(clientUser, undefined),
+    ).resolves.toEqual([42]);
   });
 
   it('rejeita client_ids de outra empresa', async () => {

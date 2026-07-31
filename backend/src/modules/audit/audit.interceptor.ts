@@ -50,7 +50,6 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const controllerPath =
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       (Reflect.getMetadata('path', context.getClass()) as string | undefined) ??
       context.getClass().name;
 
@@ -60,7 +59,8 @@ export class AuditInterceptor implements NestInterceptor {
       meta?.entityIdParam && req.params
         ? String((req.params as any)[meta.entityIdParam] ?? '')
         : null;
-    const normalizedEntityId = entityId && entityId !== 'undefined' ? entityId : null;
+    const normalizedEntityId =
+      entityId && entityId !== 'undefined' ? entityId : null;
 
     const action = meta?.action
       ? `${meta.action}`
@@ -70,7 +70,7 @@ export class AuditInterceptor implements NestInterceptor {
       method,
       path: `${req.baseUrl || ''}${req.path || ''}` || req.originalUrl || '',
       ip: resolveAuditClientIp(req),
-      userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
       params: req.params ?? undefined,
       query: req.query ?? undefined,
     };
@@ -96,7 +96,11 @@ export class AuditInterceptor implements NestInterceptor {
         },
         error: (err) => {
           const message =
-            err instanceof Error ? err.message : err ? String(err) : 'unknown_error';
+            err instanceof Error
+              ? err.message
+              : err
+                ? String(err)
+                : 'unknown_error';
           void this.audit.log({
             actor: {
               userId: actor.userId,
@@ -118,4 +122,3 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 }
-

@@ -13,15 +13,11 @@ import {
   buildTifluxDateRange,
   buildWeekMap,
   getMonthKey,
-  getMonthLabel,
   getCalendarMonthBoundsToDate,
   getRange,
   getWeekKey,
-  getWeekLabel,
-  getWeekStart,
   toDateOrNull,
   countDaysInRange,
-  getDefaultDateRange,
 } from './dashboard-date.utils';
 import { DashboardChartsService } from './dashboard-charts.service';
 import { DashboardIntegrationsService } from './dashboard-integrations.service';
@@ -1229,15 +1225,15 @@ export class DashboardService {
       alertasPorSemana: options.includeCharts ? alertRowsByWeek : [],
       principaisHostsPorMes: options.includeCharts ? topHostsByMonth : [],
       topTriggers: options.includeCharts ? topTriggers : [],
-      allTriggersInPeriod: options.includeCharts ? topTriggersPack.allItems : [],
+      allTriggersInPeriod: options.includeCharts
+        ? topTriggersPack.allItems
+        : [],
       hostsDetalhados: options.includeCharts ? zabbixData.hosts : [],
       templates: options.includeCharts ? zabbixData.templates : [],
       eventosRecentes: options.includeCharts
         ? zabbixData.events.slice(0, 20)
         : [],
-      monthlyTrends: options.includeCharts
-        ? await monthlyTrendsPromise
-        : null,
+      monthlyTrends: options.includeCharts ? await monthlyTrendsPromise : null,
     };
   }
 

@@ -25,9 +25,7 @@ describe('audit-client-ip', () => {
     delete process.env.TRUST_PROXY;
     expect(isTrustProxyEnabled()).toBe(false);
     expect(
-      resolveAuditClientIp(
-        fakeReq({ xff: '1.2.3.4', remote: '10.0.0.8' }),
-      ),
+      resolveAuditClientIp(fakeReq({ xff: '1.2.3.4', remote: '10.0.0.8' })),
     ).toBe('10.0.0.8');
   });
 

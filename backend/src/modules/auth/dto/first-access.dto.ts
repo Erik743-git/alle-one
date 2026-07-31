@@ -10,15 +10,11 @@ export class FirstAccessDto {
   email: string;
 
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   currentPassword: string;
 
   @IsString()
   @IsStrongPassword()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   newPassword: string;
 }

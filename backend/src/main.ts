@@ -46,7 +46,10 @@ async function bootstrap() {
     adapter.set?.('trust proxy', 1);
   }
 
-  const apiPrefix = process.env.API_GLOBAL_PREFIX?.trim().replace(/^\/+|\/+$/g, '');
+  const apiPrefix = process.env.API_GLOBAL_PREFIX?.trim().replace(
+    /^\/+|\/+$/g,
+    '',
+  );
   if (apiPrefix) {
     app.setGlobalPrefix(apiPrefix);
   }

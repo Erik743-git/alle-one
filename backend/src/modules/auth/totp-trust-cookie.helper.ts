@@ -102,14 +102,11 @@ function cookieFlags() {
   // AUTH_COOKIE_SAMESITE ainda sobrescreve se definido.
   const sameSiteRaw = process.env.AUTH_COOKIE_SAMESITE?.trim().toLowerCase();
   const sameSite =
-    sameSiteRaw === 'strict' ||
-    sameSiteRaw === 'lax' ||
-    sameSiteRaw === 'none'
+    sameSiteRaw === 'strict' || sameSiteRaw === 'lax' || sameSiteRaw === 'none'
       ? sameSiteRaw
       : 'lax';
   const secureRaw = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
-  let secure =
-    process.env.NODE_ENV === 'production' || sameSite === 'none';
+  let secure = process.env.NODE_ENV === 'production' || sameSite === 'none';
   if (secureRaw === 'false' || secureRaw === '0' || secureRaw === 'no') {
     secure = false;
   } else if (secureRaw === 'true' || secureRaw === '1' || secureRaw === 'yes') {

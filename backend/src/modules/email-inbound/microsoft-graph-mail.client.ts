@@ -69,7 +69,9 @@ export class MicrosoftGraphMailClient {
     );
     if (!res.ok) {
       const text = await res.text();
-      this.logger.warn(`Falha token Graph: ${res.status} ${text.slice(0, 200)}`);
+      this.logger.warn(
+        `Falha token Graph: ${res.status} ${text.slice(0, 200)}`,
+      );
       throw new Error(`Falha ao obter token Microsoft Graph (${res.status}).`);
     }
     const json = (await res.json()) as {
@@ -115,7 +117,9 @@ export class MicrosoftGraphMailClient {
     );
     if (!res.ok) {
       const text = await res.text();
-      throw new Error(`Graph list messages ${res.status}: ${text.slice(0, 300)}`);
+      throw new Error(
+        `Graph list messages ${res.status}: ${text.slice(0, 300)}`,
+      );
     }
     const json = (await res.json()) as { value?: GraphMailMessage[] };
     return json.value ?? [];

@@ -84,10 +84,6 @@ export class ConsoleController {
     @Param() params: ConsoleEventIdParamDto,
     @Body() body: ConsoleAcknowledgeDto,
   ) {
-    return this.consoleService.acknowledgeAlert(
-      req.user,
-      params.eventid,
-      body,
-    );
+    return this.consoleService.acknowledgeAlert(req.user, params.eventid, body);
   }
 }

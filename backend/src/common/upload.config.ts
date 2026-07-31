@@ -183,7 +183,8 @@ export function assertInventoryImportUpload(file: UploadLike) {
   const mime = (file.mimetype || '').toLowerCase();
   const mimeOk =
     !mime ||
-    mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    mime ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
     mime === 'application/zip' ||
     mime === 'application/octet-stream' ||
     mime.includes('spreadsheet') ||
@@ -191,12 +192,12 @@ export function assertInventoryImportUpload(file: UploadLike) {
   if (!mimeOk) {
     throw new BadRequestException('Envie um arquivo Excel (.xlsx).');
   }
-  if (!mimeMatchesMagicBytes(
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    file.buffer,
-  )) {
-    throw new BadRequestException(
-      'Arquivo inválido: esperado Excel (.xlsx).',
-    );
+  if (
+    !mimeMatchesMagicBytes(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      file.buffer,
+    )
+  ) {
+    throw new BadRequestException('Arquivo inválido: esperado Excel (.xlsx).');
   }
 }

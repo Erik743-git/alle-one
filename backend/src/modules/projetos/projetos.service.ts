@@ -271,7 +271,9 @@ export class ProjetosExcelService {
         const tipo = this.kindExportLabel(row.kind, row.isMilestone);
         const durationHours =
           row.durationHours ??
-          (row.durationDays != null ? row.durationDays * HOURS_PER_WORK_DAY : '');
+          (row.durationDays != null
+            ? row.durationDays * HOURS_PER_WORK_DAY
+            : '');
         const actualHours =
           row.actualDurationHours ??
           (row.actualDurationDays != null
@@ -314,7 +316,10 @@ export class ProjetosExcelService {
 
       const summary = workbook.addWorksheet('Resumo');
       summary.addRow(['Empresa', params.companyName]);
-      summary.addRow(['Projeto', `#${params.project.code} — ${params.project.name}`]);
+      summary.addRow([
+        'Projeto',
+        `#${params.project.code} — ${params.project.name}`,
+      ]);
       summary.addRow(['Status', params.project.status]);
       summary.addRow(['Andamento', `${params.project.progressPercent}%`]);
       summary.addRow(['Início', params.project.startDate ?? '']);
@@ -334,9 +339,10 @@ export class ProjetosExcelService {
     errors: Array<{ row: number; message: string }>;
   }> {
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(Buffer.from(params.buffer) as unknown as ExcelJS.Buffer);
-    const sheet =
-      workbook.getWorksheet('Atividades') ?? workbook.worksheets[0];
+    await workbook.xlsx.load(
+      Buffer.from(params.buffer) as unknown as ExcelJS.Buffer,
+    );
+    const sheet = workbook.getWorksheet('Atividades') ?? workbook.worksheets[0];
     if (!sheet) {
       throw new BadRequestException('Planilha sem aba de atividades.');
     }
@@ -391,19 +397,15 @@ export class ProjetosExcelService {
       const endDate = this.parseExcelDate(
         columns.end ? this.cellRaw(row, columns.end) : null,
       );
-      const assigneeName =
-        this.cellText(row, columns.assigneeName) || null;
-      const assigneeEmail =
-        this.cellText(row, columns.assigneeEmail) || null;
+      const assigneeName = this.cellText(row, columns.assigneeName) || null;
+      const assigneeEmail = this.cellText(row, columns.assigneeEmail) || null;
       const progressPercent = Math.min(
         100,
         Math.max(
           0,
           Math.trunc(
             Number(
-              columns.progress
-                ? this.cellRaw(row, columns.progress)
-                : 0,
+              columns.progress ? this.cellRaw(row, columns.progress) : 0,
             ) || 0,
           ),
         ),
@@ -525,16 +527,14 @@ export class ProjetosExcelService {
             ? 0
             : isMilestone
               ? 0
-              : Math.max(1, Math.ceil((durationHours ?? 8) / HOURS_PER_WORK_DAY));
-          const actualDurationHours = isPhase
-            ? null
-            : row.actualDurationHours;
+              : Math.max(
+                  1,
+                  Math.ceil((durationHours ?? 8) / HOURS_PER_WORK_DAY),
+                );
+          const actualDurationHours = isPhase ? null : row.actualDurationHours;
           const actualDurationDays =
             actualDurationHours != null
-              ? Math.max(
-                  0,
-                  Math.ceil(actualDurationHours / HOURS_PER_WORK_DAY),
-                )
+              ? Math.max(0, Math.ceil(actualDurationHours / HOURS_PER_WORK_DAY))
               : null;
           const activityStatus =
             row.progressPercent >= 100
@@ -629,11 +629,7 @@ export class ProjetosExcelService {
   }
 
   private normalizeHeader(value: string) {
-    return value
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .trim()
-      .toLowerCase();
+    return value.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
   }
 
   private cellText(row: ExcelJS.Row, column?: number | null) {
@@ -672,11 +668,21 @@ export class ProjetosExcelService {
         'duracao horas',
         'duration hours',
       ]),
-      duration: col(['duracao (dias)', 'duração (dias)', 'duracao', 'duration']),
+      duration: col([
+        'duracao (dias)',
+        'duração (dias)',
+        'duracao',
+        'duration',
+      ]),
       start: col(['inicio', 'início', 'start', 'data inicio']),
       end: col(['termino', 'término', 'fim', 'end', 'data termino']),
       assigneeName: col(['responsavel', 'responsável', 'assignee']),
-      assigneeEmail: col(['e-mail responsavel', 'email responsavel', 'e-mail', 'email']),
+      assigneeEmail: col([
+        'e-mail responsavel',
+        'email responsavel',
+        'e-mail',
+        'email',
+      ]),
       progress: col(['% andamento', 'andamento', 'progresso', 'progress']),
       actualHours: col([
         'tempo real (horas)',
@@ -684,7 +690,11 @@ export class ProjetosExcelService {
         'actual hours',
       ]),
       actual: col(['tempo real (dias)', 'tempo real', 'actual']),
-      predecessors: col(['predecessoras (wbs)', 'predecessoras', 'predecessors']),
+      predecessors: col([
+        'predecessoras (wbs)',
+        'predecessoras',
+        'predecessors',
+      ]),
       milestone: col(['marco (s/n)', 'marco', 'milestone']),
       notes: col(['observacoes', 'observações', 'notes', 'obs']),
     };
@@ -774,7 +784,9 @@ export class ProjetosExcelService {
     }
     const text = String(value).trim();
     if (!text) return null;
-    const iso = /^\d{4}-\d{2}-\d{2}$/.test(text) ? `${text}T00:00:00.000Z` : text;
+    const iso = /^\d{4}-\d{2}-\d{2}$/.test(text)
+      ? `${text}T00:00:00.000Z`
+      : text;
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? null : d;
   }
@@ -832,12 +844,16 @@ export class ProjetosService {
 
   private assertCanMutate(user: AuthenticatedRequestUser) {
     if (user.role === UserRole.CLIENT) {
-      throw new ForbiddenException('Cliente pode apenas visualizar e exportar projetos.');
+      throw new ForbiddenException(
+        'Cliente pode apenas visualizar e exportar projetos.',
+      );
     }
   }
 
   private isProjectLocked(status: ProjectStatus) {
-    return status === ProjectStatus.COMPLETED || status === ProjectStatus.CANCELED;
+    return (
+      status === ProjectStatus.COMPLETED || status === ProjectStatus.CANCELED
+    );
   }
 
   private assertProjectEditable(status: ProjectStatus) {
@@ -871,10 +887,13 @@ export class ProjetosService {
 
   private deriveActivityStatus(
     progressPercent: number,
-    current?: ProjectActivityStatus,
+    _current?: ProjectActivityStatus,
   ): { activityStatus: ProjectActivityStatus; completedAt: Date | null } {
     if (progressPercent >= 100) {
-      return { activityStatus: ProjectActivityStatus.COMPLETED, completedAt: new Date() };
+      return {
+        activityStatus: ProjectActivityStatus.COMPLETED,
+        completedAt: new Date(),
+      };
     }
     if (progressPercent > 0) {
       return {
@@ -890,7 +909,10 @@ export class ProjetosService {
 
   private activityWeight(row: ActivityRow): number {
     if (row.kind === ProjectActivityKind.PHASE || row.isMilestone) return 0;
-    return Math.max(1, row.durationHours ?? ((row.durationDays * HOURS_PER_WORK_DAY) || 1));
+    return Math.max(
+      1,
+      row.durationHours ?? (row.durationDays * HOURS_PER_WORK_DAY || 1),
+    );
   }
 
   private async logProjectHistory(params: {
@@ -911,16 +933,17 @@ export class ProjetosService {
         entityType: params.entityType ?? null,
         entityId: params.entityId ?? null,
         payload:
-          params.payload === undefined
-            ? undefined
-            : (params.payload as object),
+          params.payload === undefined ? undefined : (params.payload as object),
       },
     });
   }
 
-  private isActivityCompleted(row: Pick<ActivityRow, 'activityStatus' | 'progressPercent'>) {
+  private isActivityCompleted(
+    row: Pick<ActivityRow, 'activityStatus' | 'progressPercent'>,
+  ) {
     return (
-      row.activityStatus === ProjectActivityStatus.COMPLETED || row.progressPercent >= 100
+      row.activityStatus === ProjectActivityStatus.COMPLETED ||
+      row.progressPercent >= 100
     );
   }
 
@@ -952,7 +975,9 @@ export class ProjetosService {
       return;
     }
 
-    const allCompleted = children.every((child) => this.isActivityCompleted(child));
+    const allCompleted = children.every((child) =>
+      this.isActivityCompleted(child),
+    );
     const anyStarted = children.some(
       (child) =>
         child.progressPercent > 0 ||
@@ -966,7 +991,8 @@ export class ProjetosService {
           ? 1
           : Math.max(
               1,
-              child.durationHours ?? ((child.durationDays * HOURS_PER_WORK_DAY) || 1),
+              child.durationHours ??
+                (child.durationDays * HOURS_PER_WORK_DAY || 1),
             )),
       0,
     );
@@ -983,18 +1009,23 @@ export class ProjetosService {
                     : Math.max(
                         1,
                         child.durationHours ??
-                          ((child.durationDays * HOURS_PER_WORK_DAY) || 1),
+                          (child.durationDays * HOURS_PER_WORK_DAY || 1),
                       )),
               0,
             ) / totalWeight,
           ),
         )
       : Math.round(
-          children.reduce((sum, child) => sum + child.progressPercent, 0) / children.length,
+          children.reduce((sum, child) => sum + child.progressPercent, 0) /
+            children.length,
         );
 
-    const startDates = children.map((child) => child.startDate).filter(Boolean) as Date[];
-    const endDates = children.map((child) => child.endDate).filter(Boolean) as Date[];
+    const startDates = children
+      .map((child) => child.startDate)
+      .filter(Boolean) as Date[];
+    const endDates = children
+      .map((child) => child.endDate)
+      .filter(Boolean) as Date[];
 
     await this.prisma.projectActivity.update({
       where: { id: phaseId },
@@ -1050,13 +1081,17 @@ export class ProjetosService {
 
   private assertCanImport(user: AuthenticatedRequestUser) {
     if (user.role === UserRole.CLIENT) {
-      throw new ForbiddenException('Cliente não pode importar planilhas de projetos.');
+      throw new ForbiddenException(
+        'Cliente não pode importar planilhas de projetos.',
+      );
     }
   }
 
   private assertAdmin(user: AuthenticatedRequestUser) {
     if (user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Apenas administradores podem executar esta ação.');
+      throw new ForbiddenException(
+        'Apenas administradores podem executar esta ação.',
+      );
     }
   }
 
@@ -1086,7 +1121,10 @@ export class ProjetosService {
   }
 
   private stripAppointmentDescription(value: string): string {
-    return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    return value
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   private maskBudgetForClient(budget: ProjectBudgetDto): ProjectBudgetDto {
@@ -1220,20 +1258,31 @@ export class ProjetosService {
       select: { id: true },
     });
     if (existing) {
-      throw new BadRequestException('Este apontamento já está vinculado a uma atividade.');
+      throw new BadRequestException(
+        'Este apontamento já está vinculado a uma atividade.',
+      );
     }
 
     const activity = await this.prisma.projectActivity.findFirst({
       where: { id: params.projectActivityId, deletedAt: null },
       include: {
-        project: { select: { id: true, ticketNumber: true, deletedAt: true, status: true } },
+        project: {
+          select: {
+            id: true,
+            ticketNumber: true,
+            deletedAt: true,
+            status: true,
+          },
+        },
       },
     });
     if (!activity?.project || activity.project.deletedAt) {
       throw new BadRequestException('Atividade do projeto inválida.');
     }
     if (activity.kind === ProjectActivityKind.PHASE) {
-      throw new BadRequestException('Apontamentos vinculam-se a atividades, não a fases.');
+      throw new BadRequestException(
+        'Apontamentos vinculam-se a atividades, não a fases.',
+      );
     }
     if (activity.project.ticketNumber !== params.ticketNumber) {
       throw new BadRequestException(
@@ -1242,7 +1291,10 @@ export class ProjetosService {
     }
 
     const portal = await this.prisma.portalTicketAppointment.findFirst({
-      where: { id: params.portalAppointmentId, ticketNumber: params.ticketNumber },
+      where: {
+        id: params.portalAppointmentId,
+        ticketNumber: params.ticketNumber,
+      },
       select: { id: true },
     });
     if (!portal) {
@@ -1265,7 +1317,10 @@ export class ProjetosService {
       },
     });
 
-    await this.recalculateActivityFromAppointments(activity.id, params.createdBy);
+    await this.recalculateActivityFromAppointments(
+      activity.id,
+      params.createdBy,
+    );
 
     await this.logProjectHistory({
       projectId: activity.projectId,
@@ -1281,7 +1336,10 @@ export class ProjetosService {
   async listProjectTicketAppointments(
     user: AuthenticatedRequestUser,
     projectId: string,
-  ): Promise<{ ticketNumber: number | null; appointments: ProjectTicketAppointmentDto[] }> {
+  ): Promise<{
+    ticketNumber: number | null;
+    appointments: ProjectTicketAppointmentDto[];
+  }> {
     const project = await this.resolveProjectInScope(user, projectId);
     if (!project.ticketNumber) {
       return { ticketNumber: null, appointments: [] };
@@ -1301,13 +1359,18 @@ export class ProjetosService {
       }),
     ]);
 
-    const linkByPortal = new Map(links.map((row) => [row.portalAppointmentId, row]));
+    const linkByPortal = new Map(
+      links.map((row) => [row.portalAppointmentId, row]),
+    );
 
     return {
       ticketNumber: project.ticketNumber,
       appointments: portalRows.map((row) => {
         const link = linkByPortal.get(row.id);
-        const minutes = this.appointmentMinutesFromStrings(row.initTime, row.endTime);
+        const minutes = this.appointmentMinutesFromStrings(
+          row.initTime,
+          row.endTime,
+        );
         return {
           portalAppointmentId: row.id,
           appointmentDate: this.formatDateOnly(row.appointmentDate) ?? '',
@@ -1390,7 +1453,9 @@ export class ProjetosService {
     await this.resolveProjectInScope(user, link.activity.projectId);
     this.assertProjectEditable(link.activity.project.status);
 
-    await this.prisma.projectActivityAppointment.delete({ where: { id: linkId } });
+    await this.prisma.projectActivityAppointment.delete({
+      where: { id: linkId },
+    });
     await this.recalculateActivityFromAppointments(link.activityId);
 
     await this.logProjectHistory({
@@ -1400,7 +1465,10 @@ export class ProjetosService {
       actorUserId: user.userId,
       entityType: link.activity.kind,
       entityId: link.activityId,
-      payload: { portalAppointmentId: link.portalAppointmentId, action: 'UNLINK' },
+      payload: {
+        portalAppointmentId: link.portalAppointmentId,
+        action: 'UNLINK',
+      },
     });
 
     if (link.activity.parentId) {
@@ -1476,7 +1544,9 @@ export class ProjetosService {
 
     const plannedHours =
       activity.durationHours ??
-      (activity.durationDays > 0 ? activity.durationDays * HOURS_PER_WORK_DAY : 0);
+      (activity.durationDays > 0
+        ? activity.durationDays * HOURS_PER_WORK_DAY
+        : 0);
 
     let progressPercent = activity.progressPercent;
     if (plannedHours > 0 && totalMinutes > 0) {
@@ -1594,7 +1664,8 @@ export class ProjetosService {
       consumedHours: metrics.consumedHours,
       consumedInUnit,
       exceeded,
-      unitLabel: project.budgetUnit === ProjectBudgetUnit.HOURS ? 'horas' : 'dias',
+      unitLabel:
+        project.budgetUnit === ProjectBudgetUnit.HOURS ? 'horas' : 'dias',
     };
   }
 
@@ -1612,7 +1683,9 @@ export class ProjetosService {
     };
   }
 
-  private async loadProjectDocuments(projectId: string): Promise<ProjectDocumentDto[]> {
+  private async loadProjectDocuments(
+    projectId: string,
+  ): Promise<ProjectDocumentDto[]> {
     return this.documents.list(projectId);
   }
 
@@ -1638,12 +1711,14 @@ export class ProjetosService {
     const budget = this.buildBudgetDto(project, activities);
     if (!budget.exceeded) {
       if (
-        project.completionApprovalStatus === ProjectCompletionApprovalStatus.PENDING
+        project.completionApprovalStatus ===
+        ProjectCompletionApprovalStatus.PENDING
       ) {
         await this.prisma.project.update({
           where: { id: project.id },
           data: {
-            completionApprovalStatus: ProjectCompletionApprovalStatus.NOT_REQUIRED,
+            completionApprovalStatus:
+              ProjectCompletionApprovalStatus.NOT_REQUIRED,
           },
         });
       }
@@ -1651,7 +1726,8 @@ export class ProjetosService {
     }
 
     if (
-      project.completionApprovalStatus !== ProjectCompletionApprovalStatus.APPROVED
+      project.completionApprovalStatus !==
+      ProjectCompletionApprovalStatus.APPROVED
     ) {
       await this.prisma.project.update({
         where: { id: project.id },
@@ -1665,7 +1741,9 @@ export class ProjetosService {
     }
   }
 
-  async getAccessibleCompanyIds(user: AuthenticatedRequestUser): Promise<string[]> {
+  async getAccessibleCompanyIds(
+    user: AuthenticatedRequestUser,
+  ): Promise<string[]> {
     if (user.role === UserRole.CLIENT) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada.');
@@ -1700,7 +1778,10 @@ export class ProjetosService {
       ? leaves
       : activities.filter((a) => a.kind !== ProjectActivityKind.PHASE);
     if (!pool.length) return 0;
-    const totalWeight = pool.reduce((sum, row) => sum + this.activityWeight(row), 0);
+    const totalWeight = pool.reduce(
+      (sum, row) => sum + this.activityWeight(row),
+      0,
+    );
     if (!totalWeight) {
       return Math.round(
         pool.reduce((sum, row) => sum + row.progressPercent, 0) / pool.length,
@@ -1783,14 +1864,19 @@ export class ProjetosService {
       }
     }
     const sortRec = (nodes: ProjectActivityDto[]) => {
-      nodes.sort((a, b) => a.sortOrder - b.sortOrder || a.wbsCode.localeCompare(b.wbsCode));
+      nodes.sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder || a.wbsCode.localeCompare(b.wbsCode),
+      );
       nodes.forEach((node) => sortRec(node.children));
     };
     sortRec(roots);
     return roots;
   }
 
-  private async loadProjectActivities(projectId: string): Promise<ActivityRow[]> {
+  private async loadProjectActivities(
+    projectId: string,
+  ): Promise<ActivityRow[]> {
     return this.prisma.projectActivity.findMany({
       where: { projectId, deletedAt: null },
       orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { wbsCode: 'asc' }],
@@ -1936,7 +2022,10 @@ export class ProjetosService {
     return { company, projects: summaries };
   }
 
-  async getProject(user: AuthenticatedRequestUser, projectId: string): Promise<ProjectDetailDto> {
+  async getProject(
+    user: AuthenticatedRequestUser,
+    projectId: string,
+  ): Promise<ProjectDetailDto> {
     const project = await this.resolveProjectInScope(user, projectId);
     const full = await this.prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
@@ -1980,9 +2069,14 @@ export class ProjetosService {
         companyId,
         name: body.name.trim(),
         description: body.description?.trim() || null,
-        status: (body.status as ProjectStatus | undefined) ?? ProjectStatus.PLANNING,
-        startDate: body.startDate ? new Date(`${body.startDate}T00:00:00.000Z`) : null,
-        endDate: body.endDate ? new Date(`${body.endDate}T00:00:00.000Z`) : null,
+        status:
+          (body.status as ProjectStatus | undefined) ?? ProjectStatus.PLANNING,
+        startDate: body.startDate
+          ? new Date(`${body.startDate}T00:00:00.000Z`)
+          : null,
+        endDate: body.endDate
+          ? new Date(`${body.endDate}T00:00:00.000Z`)
+          : null,
         budgetUnit: body.budgetUnit as ProjectBudgetUnit,
         budgetAmount: body.budgetAmount,
         ticketNumber: body.ticketNumber,
@@ -2034,9 +2128,12 @@ export class ProjetosService {
       throw new NotFoundException('Projeto não encontrado.');
     }
     if (
-      project.completionApprovalStatus !== ProjectCompletionApprovalStatus.PENDING
+      project.completionApprovalStatus !==
+      ProjectCompletionApprovalStatus.PENDING
     ) {
-      throw new BadRequestException('Este projeto não possui aprovação pendente.');
+      throw new BadRequestException(
+        'Este projeto não possui aprovação pendente.',
+      );
     }
     await this.prisma.project.update({
       where: { id: projectId },
@@ -2079,7 +2176,9 @@ export class ProjetosService {
         ...(body.description !== undefined
           ? { description: body.description?.trim() || null }
           : {}),
-        ...(body.status !== undefined ? { status: body.status as ProjectStatus } : {}),
+        ...(body.status !== undefined
+          ? { status: body.status as ProjectStatus }
+          : {}),
         ...(body.startDate !== undefined
           ? {
               startDate: body.startDate
@@ -2156,7 +2255,9 @@ export class ProjetosService {
   }) {
     const unique = [...new Set(params.predecessorIds.filter(Boolean))];
     if (params.activityId && unique.includes(params.activityId)) {
-      throw new BadRequestException('Atividade não pode ser predecessora de si mesma.');
+      throw new BadRequestException(
+        'Atividade não pode ser predecessora de si mesma.',
+      );
     }
     if (!unique.length) return;
 
@@ -2211,7 +2312,10 @@ export class ProjetosService {
       adj.set(edge.activityId, list);
     }
     for (const predId of unique) {
-      adj.set(params.activityId!, [...(adj.get(params.activityId!) ?? []), predId]);
+      adj.set(params.activityId, [
+        ...(adj.get(params.activityId) ?? []),
+        predId,
+      ]);
     }
     const visiting = new Set<string>();
     const visited = new Set<string>();
@@ -2227,7 +2331,9 @@ export class ProjetosService {
       return false;
     };
     if (dfs(params.activityId)) {
-      throw new BadRequestException('Dependência circular entre predecessoras.');
+      throw new BadRequestException(
+        'Dependência circular entre predecessoras.',
+      );
     }
   }
 
@@ -2388,7 +2494,9 @@ export class ProjetosService {
           projectId,
           parentId,
           deletedAt: null,
-          kind: { in: [ProjectActivityKind.TASK, ProjectActivityKind.MILESTONE] },
+          kind: {
+            in: [ProjectActivityKind.TASK, ProjectActivityKind.MILESTONE],
+          },
         },
         orderBy: [{ sortOrder: 'desc' }, { wbsCode: 'desc' }],
       });
@@ -2452,7 +2560,9 @@ export class ProjetosService {
         activityStatus: statusDerived.activityStatus,
         completedAt: statusDerived.completedAt,
         assigneeUserId: body.assigneeUserId ?? null,
-        assigneeName: body.assigneeUserId ? null : body.assigneeName?.trim() || null,
+        assigneeName: body.assigneeUserId
+          ? null
+          : body.assigneeName?.trim() || null,
         isMilestone,
         notes: body.notes?.trim() || null,
       },
@@ -2527,7 +2637,9 @@ export class ProjetosService {
         where: { id: activityId },
         data: {
           ...(body.name !== undefined ? { name: body.name.trim() } : {}),
-          ...(body.notes !== undefined ? { notes: body.notes?.trim() || null } : {}),
+          ...(body.notes !== undefined
+            ? { notes: body.notes?.trim() || null }
+            : {}),
         },
       });
       await this.logProjectHistory({
@@ -2560,16 +2672,22 @@ export class ProjetosService {
         ? Math.max(0, body.durationHours)
         : body.durationDays !== undefined
           ? body.durationDays * HOURS_PER_WORK_DAY
-          : current.durationHours ?? current.durationDays * HOURS_PER_WORK_DAY;
+          : (current.durationHours ??
+            current.durationDays * HOURS_PER_WORK_DAY);
     const durationDays =
       body.durationDays !== undefined
         ? isMilestone
           ? 0
-          : this.hoursToDurationDays(body.durationDays * HOURS_PER_WORK_DAY, false)
+          : this.hoursToDurationDays(
+              body.durationDays * HOURS_PER_WORK_DAY,
+              false,
+            )
         : this.hoursToDurationDays(durationHours, isMilestone);
     const dates = this.resolveDates({
-      startDate: body.startDate ?? this.formatDateOnly(current.startDate) ?? undefined,
-      endDate: body.endDate ?? this.formatDateOnly(current.endDate) ?? undefined,
+      startDate:
+        body.startDate ?? this.formatDateOnly(current.startDate) ?? undefined,
+      endDate:
+        body.endDate ?? this.formatDateOnly(current.endDate) ?? undefined,
       durationDays,
       isMilestone,
     });
@@ -2591,8 +2709,12 @@ export class ProjetosService {
       await this.assertPredecessorsCompleted(predIds);
     }
 
-    const statusDerived = this.deriveActivityStatus(progressPercent, current.activityStatus);
-    const wasCompleted = current.activityStatus === ProjectActivityStatus.COMPLETED;
+    const statusDerived = this.deriveActivityStatus(
+      progressPercent,
+      current.activityStatus,
+    );
+    const wasCompleted =
+      current.activityStatus === ProjectActivityStatus.COMPLETED;
 
     await this.prisma.projectActivity.update({
       where: { id: activityId },
@@ -2623,13 +2745,19 @@ export class ProjetosService {
         ...(body.assigneeUserId !== undefined
           ? {
               assigneeUserId: body.assigneeUserId,
-              assigneeName: body.assigneeUserId ? null : body.assigneeName ?? null,
+              assigneeName: body.assigneeUserId
+                ? null
+                : (body.assigneeName ?? null),
             }
           : body.assigneeName !== undefined
             ? { assigneeName: body.assigneeName?.trim() || null }
             : {}),
-        ...(body.isMilestone !== undefined ? { isMilestone: body.isMilestone } : {}),
-        ...(body.notes !== undefined ? { notes: body.notes?.trim() || null } : {}),
+        ...(body.isMilestone !== undefined
+          ? { isMilestone: body.isMilestone }
+          : {}),
+        ...(body.notes !== undefined
+          ? { notes: body.notes?.trim() || null }
+          : {}),
       },
     });
 
@@ -2645,7 +2773,8 @@ export class ProjetosService {
     }
 
     const eventType =
-      !wasCompleted && statusDerived.activityStatus === ProjectActivityStatus.COMPLETED
+      !wasCompleted &&
+      statusDerived.activityStatus === ProjectActivityStatus.COMPLETED
         ? ProjectHistoryEventType.TASK_COMPLETED
         : ProjectHistoryEventType.TASK_UPDATED;
     await this.logProjectHistory({
@@ -2720,7 +2849,9 @@ export class ProjetosService {
     const q = query.q?.trim();
     const scope = await this.getAccessibleCompanyIds(user);
     const companyId =
-      user.role === UserRole.CLIENT ? user.companyId : query.companyId ?? null;
+      user.role === UserRole.CLIENT
+        ? user.companyId
+        : (query.companyId ?? null);
     if (companyId) {
       this.ensureCompanyInScope(companyId, scope);
     }
@@ -2735,7 +2866,11 @@ export class ProjetosService {
             ? {
                 OR: [
                   { companyId },
-                  { role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] } },
+                  {
+                    role: {
+                      in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ],
+                    },
+                  },
                 ],
               }
             : { companyId: { in: scope } }),

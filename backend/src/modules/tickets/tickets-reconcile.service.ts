@@ -49,7 +49,9 @@ export class TicketsReconcileService {
     private readonly outbox: TicketsOutboxService,
   ) {}
 
-  async reconcile(options?: { autoRetry?: boolean }): Promise<TicketReconcileResult> {
+  async reconcile(options?: {
+    autoRetry?: boolean;
+  }): Promise<TicketReconcileResult> {
     const pendingStaleMinutes = Number(
       process.env.TIFLUX_OUTBOX_PENDING_STALE_MINUTES ?? 30,
     );
@@ -105,18 +107,19 @@ export class TicketsReconcileService {
       });
     }
 
-    const pendingAppointments = await this.prisma.portalTicketAppointment.findMany({
-      where: {
-        syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
-      select: {
-        id: true,
-        ticketNumber: true,
-        createdAt: true,
-      },
-    });
+    const pendingAppointments =
+      await this.prisma.portalTicketAppointment.findMany({
+        where: {
+          syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          ticketNumber: true,
+          createdAt: true,
+        },
+      });
 
     for (const row of pendingAppointments) {
       if (isTifluxDisconnected()) {
@@ -172,8 +175,9 @@ export class TicketsReconcileService {
     const summary = {
       total: issues.length,
       outboxFailed: issues.filter((i) => i.kind === 'OUTBOX_FAILED').length,
-      outboxPendingStale: issues.filter((i) => i.kind === 'OUTBOX_PENDING_STALE')
-        .length,
+      outboxPendingStale: issues.filter(
+        (i) => i.kind === 'OUTBOX_PENDING_STALE',
+      ).length,
       appointmentPendingSync: issues.filter(
         (i) => i.kind === 'APPOINTMENT_PENDING_SYNC',
       ).length,

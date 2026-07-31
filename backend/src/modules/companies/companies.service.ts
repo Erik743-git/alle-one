@@ -599,7 +599,9 @@ export class CompaniesService {
 
     let classificationId: string | null | undefined;
     if (dto.classificationId !== undefined) {
-      classificationId = await this.resolveClassificationId(dto.classificationId);
+      classificationId = await this.resolveClassificationId(
+        dto.classificationId,
+      );
     }
 
     return this.prisma.contract.update({
@@ -717,7 +719,9 @@ export class CompaniesService {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     const mime = (file.mimetype || '').toLowerCase();
     if (!mime.startsWith('image/')) {
-      throw new BadRequestException('Logo deve ser uma imagem (PNG, JPG, etc.).');
+      throw new BadRequestException(
+        'Logo deve ser uma imagem (PNG, JPG, etc.).',
+      );
     }
     assertAllowedUpload(file);
     const company = await this.findOne(companyId);
@@ -912,7 +916,9 @@ export class CompaniesService {
         continue;
       }
 
-      const resolved = await this.zabbix.resolveGroupByName(item.zabbixGroupName);
+      const resolved = await this.zabbix.resolveGroupByName(
+        item.zabbixGroupName,
+      );
       if (!resolved.exists || !resolved.name) {
         results.push({
           companyId: company.id,

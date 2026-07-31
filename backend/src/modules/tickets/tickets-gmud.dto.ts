@@ -1,4 +1,10 @@
-import { IsOptional, IsString, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateIf,
+} from 'class-validator';
 
 export class LinkTicketGmudDto {
   /** ID/referência GMUD do cliente. Envie `null` ou string vazia para remover. */

@@ -21,4 +21,3 @@ export type AuditLogInput = {
   entityId?: string | null;
   payload?: Record<string, unknown> | null;
 };
-

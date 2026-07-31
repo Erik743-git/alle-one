@@ -95,7 +95,6 @@ export function SessionIdleGuard() {
 
   useEffect(() => {
     if (!authenticated) {
-      setWarningOpen(false);
       endingRef.current = false;
       return;
     }
@@ -107,7 +106,6 @@ export function SessionIdleGuard() {
     writeLastActivity(now);
     lastActivityRef.current = now;
     lastWriteRef.current = now;
-    setWarningOpen(false);
 
     const onActivity = () => bumpActivity();
     for (const evt of ACTIVITY_EVENTS) {
@@ -177,7 +175,7 @@ export function SessionIdleGuard() {
 
   return (
     <Dialog
-      open={warningOpen}
+      open={authenticated && warningOpen}
       onOpenChange={(open) => {
         if (!open) staySignedIn();
       }}

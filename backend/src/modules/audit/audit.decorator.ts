@@ -13,4 +13,3 @@ export type AuditMetaOptions = {
 
 export const AuditMeta = (options: AuditMetaOptions) =>
   SetMetadata(AUDIT_META_KEY, options);
-

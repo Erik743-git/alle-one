@@ -35,7 +35,13 @@ import { MailModule } from '../mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthOAuthService, JwtStrategy, AuthMailService, TotpService],
+  providers: [
+    AuthService,
+    AuthOAuthService,
+    JwtStrategy,
+    AuthMailService,
+    TotpService,
+  ],
   exports: [TotpService],
 })
 export class AuthModule {}

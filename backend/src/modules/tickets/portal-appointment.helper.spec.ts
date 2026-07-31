@@ -16,8 +16,12 @@ describe('portal-appointment.helper', () => {
   it('detecta sobreposição de intervalos HH:MM no mesmo dia', () => {
     expect(hhmmIntervalsOverlap('08:30', '12:00', '08:30', '12:00')).toBe(true);
     expect(hhmmIntervalsOverlap('08:00', '10:00', '09:00', '11:00')).toBe(true);
-    expect(hhmmIntervalsOverlap('08:00', '09:00', '09:00', '10:00')).toBe(false);
-    expect(hhmmIntervalsOverlap('08:00', '09:00', '10:00', '11:00')).toBe(false);
+    expect(hhmmIntervalsOverlap('08:00', '09:00', '09:00', '10:00')).toBe(
+      false,
+    );
+    expect(hhmmIntervalsOverlap('08:00', '09:00', '10:00', '11:00')).toBe(
+      false,
+    );
   });
 
   it('infere EXTRA/PLANTAO a partir do service_name', () => {

@@ -47,19 +47,24 @@ export class ProjetosHistoryPdfService {
       doc.on('error', reject);
     });
 
-    doc.fillColor(BRAND).fontSize(20).text('Histórico do projeto', { align: 'left' });
+    doc
+      .fillColor(BRAND)
+      .fontSize(20)
+      .text('Histórico do projeto', { align: 'left' });
     doc.moveDown(0.4);
-    doc.fillColor(DARK).fontSize(12).text(`#${params.projectCode} — ${params.projectName}`);
+    doc
+      .fillColor(DARK)
+      .fontSize(12)
+      .text(`#${params.projectCode} — ${params.projectName}`);
     doc.fillColor(MUTED).fontSize(10).text(params.companyName);
     doc.moveDown(0.6);
-    doc
-      .strokeColor(BORDER)
-      .moveTo(48, doc.y)
-      .lineTo(547, doc.y)
-      .stroke();
+    doc.strokeColor(BORDER).moveTo(48, doc.y).lineTo(547, doc.y).stroke();
     doc.moveDown(0.8);
 
-    doc.fillColor(MUTED).fontSize(9).text(`Gerado em ${formatDateTime(new Date().toISOString())}`);
+    doc
+      .fillColor(MUTED)
+      .fontSize(9)
+      .text(`Gerado em ${formatDateTime(new Date().toISOString())}`);
     doc.fillColor(MUTED).fontSize(9).text(`${params.events.length} evento(s)`);
     doc.moveDown(1);
 
@@ -79,11 +84,7 @@ export class ProjetosHistoryPdfService {
           doc.fillColor(MUTED).fontSize(9).text(`por ${event.actorName}`);
         }
         doc.moveDown(0.8);
-        doc
-          .strokeColor(BORDER)
-          .moveTo(48, doc.y)
-          .lineTo(547, doc.y)
-          .stroke();
+        doc.strokeColor(BORDER).moveTo(48, doc.y).lineTo(547, doc.y).stroke();
         doc.moveDown(0.6);
       }
     }

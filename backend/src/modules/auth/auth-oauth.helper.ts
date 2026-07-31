@@ -28,7 +28,9 @@ function signOAuthState(payload: OAuthStatePayload): string {
   return `${body}.${sig}`;
 }
 
-export function parseOAuthState(raw: string | undefined): OAuthStatePayload | null {
+export function parseOAuthState(
+  raw: string | undefined,
+): OAuthStatePayload | null {
   if (!raw?.includes('.')) return null;
   const [body, sig] = raw.split('.', 2);
   const expected = createHmac('sha256', oauthStateSecret())
@@ -147,7 +149,10 @@ export function oauthEmailsMatch(
   return hint.toLowerCase() === profileEmail.trim().toLowerCase();
 }
 
-export function oauthLoginRedirect(error?: string, firstAccess?: boolean): string {
+export function oauthLoginRedirect(
+  error?: string,
+  firstAccess?: boolean,
+): string {
   const base = getFrontendBaseUrl();
   if (error) {
     return `${base}/login?error=${encodeURIComponent(error)}`;
@@ -167,7 +172,9 @@ type OAuth2faPendingPayload = {
 };
 
 function signOAuth2faPending(body: string): string {
-  return createHmac('sha256', oauthStateSecret()).update(body).digest('base64url');
+  return createHmac('sha256', oauthStateSecret())
+    .update(body)
+    .digest('base64url');
 }
 
 export function createOAuth2faPendingToken(userId: string): string {
@@ -214,7 +221,10 @@ function oauth2faCookieFlags() {
   return { secure } as const;
 }
 
-export function attachOAuth2faPendingCookie(res: Response, token: string): void {
+export function attachOAuth2faPendingCookie(
+  res: Response,
+  token: string,
+): void {
   const { secure } = oauth2faCookieFlags();
   res.cookie(OAUTH_2FA_PENDING_COOKIE, token, {
     httpOnly: true,

@@ -189,12 +189,11 @@ export class DeskClassificationService {
       parentId = parent.id;
     }
 
-    const lastSibling =
-      await this.prisma.serviceDeskClassification.findFirst({
-        where: { serviceDeskId: dto.serviceDeskId, parentId },
-        orderBy: { sortOrder: 'desc' },
-        select: { sortOrder: true },
-      });
+    const lastSibling = await this.prisma.serviceDeskClassification.findFirst({
+      where: { serviceDeskId: dto.serviceDeskId, parentId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
     const sortOrder = (lastSibling?.sortOrder ?? -1) + 1;
 
     try {
@@ -307,9 +306,7 @@ export class DeskClassificationService {
       sortOrder: row.sortOrder,
       parentId: row.parentId,
       children:
-        row.level < 3
-          ? sortRows(byParent.get(row.id) ?? []).map(toNode)
-          : [],
+        row.level < 3 ? sortRows(byParent.get(row.id) ?? []).map(toNode) : [],
     });
 
     return sortRows(byParent.get(null) ?? []).map(toNode);

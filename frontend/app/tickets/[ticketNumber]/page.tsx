@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
-  ChevronDown,
   Clock,
   Download,
   History,
@@ -38,7 +37,6 @@ import {
   canCreateTicket,
   canCreateTicketAppointment,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
-  TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import {
   TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION,

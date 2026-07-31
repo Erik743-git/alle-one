@@ -104,8 +104,7 @@ export class AppService {
       const agg = await this.prisma.portalTicket.aggregate({
         _max: { updatedAt: true, updatedAtSource: true },
       });
-      const maxUpdated =
-        agg._max.updatedAtSource ?? agg._max.updatedAt ?? null;
+      const maxUpdated = agg._max.updatedAtSource ?? agg._max.updatedAt ?? null;
       if (!maxUpdated) {
         return {
           status: 'unknown',

@@ -7,7 +7,10 @@ import type { AuthenticatedRequestUser } from '../auth-request-user';
 
 function buildContext(
   user: AuthenticatedRequestUser | undefined,
-  meta?: { module: PermissionModule; flag: keyof AuthenticatedRequestUser['permissions'][0] },
+  meta?: {
+    module: PermissionModule;
+    flag: keyof AuthenticatedRequestUser['permissions'][0];
+  },
 ) {
   const reflector = {
     getAllAndOverride: jest.fn(() => meta),

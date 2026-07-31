@@ -32,10 +32,7 @@ import {
   UpdateDeskClassificationDto,
   UpdateServiceDeskDto,
 } from './desk-classification.dto';
-import {
-  CreateTicketStageDto,
-  UpdateTicketStageDto,
-} from './ticket-stage.dto';
+import { CreateTicketStageDto, UpdateTicketStageDto } from './ticket-stage.dto';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 

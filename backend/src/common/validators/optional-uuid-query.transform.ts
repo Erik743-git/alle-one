@@ -1,13 +1,7 @@
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const PLACEHOLDER_VALUES = new Set([
-  '',
-  '__all__',
-  'all',
-  'undefined',
-  'null',
-]);
+const PLACEHOLDER_VALUES = new Set(['', '__all__', 'all', 'undefined', 'null']);
 
 /** Query string opcional: ignora vazio, placeholders e UUID inválido. */
 export function optionalUuidQuery(value: unknown): string | undefined {

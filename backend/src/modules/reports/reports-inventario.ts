@@ -124,7 +124,9 @@ export async function buildInventarioReportXlsx(params: {
   workbook.created = params.generatedAt;
 
   const lastCol = params.multiCompany ? 'J' : 'I';
-  const headers = params.multiCompany ? XLSX_HEADERS_MULTI : XLSX_HEADERS_SINGLE;
+  const headers = params.multiCompany
+    ? XLSX_HEADERS_MULTI
+    : XLSX_HEADERS_SINGLE;
   const statusCol = params.multiCompany ? 10 : 9;
 
   const sheet = workbook.addWorksheet('Inventário', {

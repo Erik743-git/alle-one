@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Filter, Loader2, Plus, RefreshCw, Search, Ticket } from "lucide-react";
+import { Filter, Plus, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -19,7 +19,6 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicket,
-  isAdmin,
   isClient,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";

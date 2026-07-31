@@ -241,7 +241,9 @@ export class ConsoleService {
     const scoped = await this.zabbix.getConsoleAlertsForGroup(group, {
       limit: 1000,
     });
-    if (!scoped.alerts.some((alert: ConsoleAlertDto) => alert.eventId === eventid)) {
+    if (
+      !scoped.alerts.some((alert: ConsoleAlertDto) => alert.eventId === eventid)
+    ) {
       throw new BadRequestException(
         'Evento fora do escopo do grupo selecionado.',
       );

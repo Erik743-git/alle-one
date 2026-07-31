@@ -33,17 +33,14 @@ import {
   ALL_COMPANIES_REPORT_ID,
   ReportsInventarioService,
 } from './reports-inventario.service';
-import { toDateOnlyISO, parseDateInput } from '../dashboard/dashboard-date.utils';
+import {
+  toDateOnlyISO,
+  parseDateInput,
+} from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5']);
-
-const REPORT_TYPE_LABELS: Record<string, string> = {
-  '1': 'Rendimento',
-  '4': 'Estatística Geral',
-  '5': 'Inventário',
-};
 
 const REPORT_TYPE_SLUGS: Record<string, string> = {
   '1': 'rendimento',
@@ -222,7 +219,11 @@ export class ReportsService {
     return total;
   }
 
-  private styleTipo4TitleBand(sheet: ExcelJS.Worksheet, title: string, colSpan: number) {
+  private styleTipo4TitleBand(
+    sheet: ExcelJS.Worksheet,
+    title: string,
+    colSpan: number,
+  ) {
     const lastCol = String.fromCharCode(64 + colSpan);
     sheet.mergeCells(`A1:${lastCol}1`);
     const cell = sheet.getCell('A1');
@@ -284,8 +285,7 @@ export class ReportsService {
     colCount: number,
     options?: { minHeight?: number },
   ) {
-    const fillArgb =
-      rowIndex % 2 === 0 ? 'FFFFFFFF' : this.tipo4Theme.rowAlt;
+    const fillArgb = rowIndex % 2 === 0 ? 'FFFFFFFF' : this.tipo4Theme.rowAlt;
     row.alignment = { vertical: 'middle', horizontal: 'center' };
     row.height = options?.minHeight ?? 18;
     for (let c = 1; c <= colCount; c += 1) {
@@ -354,11 +354,7 @@ export class ReportsService {
       Number(dashSummary?.totalTriggersDistintos) || topTriggers.length;
     const top10 = topTriggers.slice(0, 10);
 
-    this.styleTipo4TitleBand(
-      sheet,
-      `Top Triggers — ${companyName}`,
-      colCount,
-    );
+    this.styleTipo4TitleBand(sheet, `Top Triggers — ${companyName}`, colCount);
     addCompanyLogo(sheet);
 
     sheet.mergeCells(`A2:${lastCol}2`);
@@ -421,7 +417,11 @@ export class ReportsService {
       row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 22 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+      row.getCell(2).alignment = {
+        horizontal: 'left',
+        indent: 1,
+        wrapText: false,
+      };
       row.getCell(3).font = { size: 9 };
       row.getCell(3).alignment = {
         horizontal: 'left',
@@ -498,7 +498,11 @@ export class ReportsService {
             e.qty,
           ];
           this.styleTipo4DataRow(row, zebra, colCount);
-          row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          row.getCell(1).alignment = {
+            vertical: 'middle',
+            horizontal: 'left',
+            indent: 1,
+          };
           row.getCell(2).alignment = {
             horizontal: 'left',
             indent: 1,
@@ -578,7 +582,11 @@ export class ReportsService {
       row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+      row.getCell(2).alignment = {
+        horizontal: 'left',
+        indent: 1,
+        wrapText: false,
+      };
       row.getCell(3).font = { size: 9 };
       row.getCell(3).alignment = {
         horizontal: 'left',
@@ -745,7 +753,10 @@ export class ReportsService {
     ];
     this.styleTipo4ColumnHeaderRow(headerRow, colCount);
     sheet.mergeCells('D4:F4');
-    sheet.getCell('D4').alignment = { vertical: 'middle', horizontal: 'center' };
+    sheet.getCell('D4').alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
 
     const valuesRow = sheet.getRow(5);
     valuesRow.values = [
@@ -774,7 +785,10 @@ export class ReportsService {
       };
     }
     sheet.mergeCells('D5:F5');
-    sheet.getCell('D5').alignment = { vertical: 'middle', horizontal: 'center' };
+    sheet.getCell('D5').alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
 
     await this.embedTipo4Chart(
       workbook,
@@ -782,7 +796,11 @@ export class ReportsService {
       7,
       this.buildTipo4GroupedBarChart({
         title: 'Abertos/Fechados no período + Em aberto geral',
-        labels: ['Abertos (período)', 'Fechados (período)', 'Em aberto (geral)'],
+        labels: [
+          'Abertos (período)',
+          'Fechados (período)',
+          'Em aberto (geral)',
+        ],
         datasets: [
           {
             label: 'Chamados',
@@ -833,7 +851,11 @@ export class ReportsService {
       ];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: true };
+      row.getCell(2).alignment = {
+        horizontal: 'left',
+        indent: 1,
+        wrapText: true,
+      };
       row.getCell(3).alignment = { horizontal: 'left', indent: 1 };
       row.getCell(4).alignment = { horizontal: 'left', indent: 1 };
       row.getCell(5).alignment = { horizontal: 'center' };
@@ -1018,7 +1040,10 @@ export class ReportsService {
       plugins: this.tipo4ChartPlugins(),
     });
     if (!chart) return;
-    const imageId = workbook.addImage({ buffer: chart as any, extension: 'png' });
+    const imageId = workbook.addImage({
+      buffer: chart as any,
+      extension: 'png',
+    });
     const chartRow = rowAfterTable + 0.2;
     sheet.addImage(imageId, {
       tl: { col: 0.1, row: chartRow },
@@ -1071,13 +1096,15 @@ export class ReportsService {
     const alertasSemanaRaw = Array.isArray(
       (dash as { alertasPorSemana?: unknown[] }).alertasPorSemana,
     )
-      ? ((dash as {
-          alertasPorSemana: Array<{
-            weekLabel: string;
-            High: number;
-            Disaster: number;
-          }>;
-        }).alertasPorSemana ?? [])
+      ? ((
+          dash as {
+            alertasPorSemana: Array<{
+              weekLabel: string;
+              High: number;
+              Disaster: number;
+            }>;
+          }
+        ).alertasPorSemana ?? [])
       : [];
 
     const chamadosMonths = this.splitTipo4MonthRows(chamados as any).months;
@@ -1086,11 +1113,13 @@ export class ReportsService {
     const alertasWeeks =
       alertasSemanaRaw.length > 0
         ? alertasSemanaRaw
-        : (alertasMonths as Array<{
-            monthLabel: string;
-            High: number;
-            Disaster: number;
-          }>).map((row) => ({
+        : (
+            alertasMonths as Array<{
+              monthLabel: string;
+              High: number;
+              Disaster: number;
+            }>
+          ).map((row) => ({
             weekLabel: row.monthLabel,
             High: Number(row.High) || 0,
             Disaster: Number(row.Disaster) || 0,
@@ -1106,47 +1135,58 @@ export class ReportsService {
           High: Number(row.High) || 0,
           Disaster: Number(row.Disaster) || 0,
         }))
-      : (alertasMonths as Array<{
-          monthLabel: string;
-          High: number;
-          Disaster: number;
-        }>).map((row) => ({
+      : (
+          alertasMonths as Array<{
+            monthLabel: string;
+            High: number;
+            Disaster: number;
+          }>
+        ).map((row) => ({
           periodLabel: row.monthLabel,
           High: Number(row.High) || 0,
           Disaster: Number(row.Disaster) || 0,
         }));
-    const dashSummary = (dash as { summary?: Record<string, unknown> })
-      .summary;
+    const dashSummary = (dash as { summary?: Record<string, unknown> }).summary;
     const topTriggers = Array.isArray(
       (dash as { topTriggers?: unknown[] }).topTriggers,
     )
-      ? ((dash as { topTriggers: Array<{
-          host: string;
-          trigger: string;
-          severity: string;
-          count: number;
-        }> }).topTriggers)
+      ? (
+          dash as {
+            topTriggers: Array<{
+              host: string;
+              trigger: string;
+              severity: string;
+              count: number;
+            }>;
+          }
+        ).topTriggers
       : [];
     const allTriggersInPeriod = Array.isArray(
       (dash as { allTriggersInPeriod?: unknown[] }).allTriggersInPeriod,
     )
-      ? ((dash as { allTriggersInPeriod: Array<{
-          host: string;
-          trigger: string;
-          severity: string;
-          count: number;
-        }> }).allTriggersInPeriod)
+      ? (
+          dash as {
+            allTriggersInPeriod: Array<{
+              host: string;
+              trigger: string;
+              severity: string;
+              count: number;
+            }>;
+          }
+        ).allTriggersInPeriod
       : topTriggers;
     const principaisHosts = Array.isArray(
       (dash as { principaisHostsPorMes?: unknown[] }).principaisHostsPorMes,
     )
-      ? ((dash as {
-          principaisHostsPorMes: Array<{
-            monthLabel: string;
-            High: Array<{ host: string; quantity: number }>;
-            Disaster: Array<{ host: string; quantity: number }>;
-          }>;
-        }).principaisHostsPorMes)
+      ? (
+          dash as {
+            principaisHostsPorMes: Array<{
+              monthLabel: string;
+              High: Array<{ host: string; quantity: number }>;
+              Disaster: Array<{ host: string; quantity: number }>;
+            }>;
+          }
+        ).principaisHostsPorMes
       : [];
     const ticketsStats =
       company.tifluxClientId != null
@@ -1467,9 +1507,7 @@ export class ReportsService {
         sheet,
         rowIdx + 1,
         this.buildTipo4LineChart({
-          title: monitoringUseWeekly
-            ? 'Alertas por Semana'
-            : 'Alertas por Mês',
+          title: monitoringUseWeekly ? 'Alertas por Semana' : 'Alertas por Mês',
           labels: chartLabels,
           rotateLabels: chartLabels.length > 4,
           datasets: [
@@ -1819,9 +1857,9 @@ export class ReportsService {
 
     return rows.map((r) => {
       const attendant = String(r.user_name || '').trim();
-      const dateLabel = new Date(`${r.appointment_date}T12:00:00`).toLocaleDateString(
-        'pt-BR',
-      );
+      const dateLabel = new Date(
+        `${r.appointment_date}T12:00:00`,
+      ).toLocaleDateString('pt-BR');
       const initHHMM = this.formatTimeHHMM(r.init_time);
       const endHHMM = this.formatTimeHHMM(r.end_time);
       const durationMinutes = this.getAppointmentMinutes({
@@ -1854,7 +1892,9 @@ export class ReportsService {
     start: Date;
     end: Date;
     userId?: string | null;
-  }): Promise<Array<{ day: string; user: string; minutes: number; company: string }>> {
+  }): Promise<
+    Array<{ day: string; user: string; minutes: number; company: string }>
+  > {
     const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
@@ -1972,15 +2012,12 @@ export class ReportsService {
         offset: 1,
       });
 
-      const appointmentLists = await mapWithConcurrency(
-        tickets,
-        6,
-        (t) =>
-          this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
-            start_date: startDateOnly,
-            end_date: endDateOnly,
-            limit: 200,
-          }),
+      const appointmentLists = await mapWithConcurrency(tickets, 6, (t) =>
+        this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
+          start_date: startDateOnly,
+          end_date: endDateOnly,
+          limit: 200,
+        }),
       );
 
       for (const appts of appointmentLists) {
@@ -2084,7 +2121,9 @@ export class ReportsService {
     };
   }
 
-  private async resolveCollaboratorAppointmentFilter(userId?: string | null): Promise<{
+  private async resolveCollaboratorAppointmentFilter(
+    userId?: string | null,
+  ): Promise<{
     portalUserId: string | null;
     tifluxUserExternalId: number | null;
     attendantName: string | null;
@@ -2308,7 +2347,10 @@ export class ReportsService {
         description: null,
       }));
       const valorizationById = new Map(
-        dayRows.map((row) => [Number(row.appointment_id) || 0, row.valorization_raw]),
+        dayRows.map((row) => [
+          Number(row.appointment_id) || 0,
+          row.valorization_raw,
+        ]),
       );
       const { insights } = analyzeRendimentoDay(entries, valorizationById);
       alerts += insights.gaps.filter((g) => g.type === 'idle').length;
@@ -2428,12 +2470,12 @@ export class ReportsService {
     if (!company) throw new NotFoundException('Empresa não encontrada');
 
     const collaboratorLabel = params.userId?.trim()
-      ? (
+      ? ((
           await this.prisma.user.findFirst({
             where: { id: params.userId.trim(), deletedAt: null },
             select: { name: true },
           })
-        )?.name ?? 'Colaborador'
+        )?.name ?? 'Colaborador')
       : 'Todos os colaboradores';
 
     const startDateOnly = toDateOnlyISO(params.start);
@@ -2769,10 +2811,7 @@ export class ReportsService {
         })
       : null;
 
-    if (
-      type === '4' &&
-      companyId === ALL_COMPANIES_REPORT_ID
-    ) {
+    if (type === '4' && companyId === ALL_COMPANIES_REPORT_ID) {
       throw new BadRequestException(
         'Estatística Geral exige uma empresa específica.',
       );
@@ -2838,8 +2877,7 @@ export class ReportsService {
       rendimentoScope?.displayName ??
       company.name;
     const typePart =
-      REPORT_TYPE_SLUGS[type] ??
-      `tipo-${safeFilenamePart(reportType) || 'x'}`;
+      REPORT_TYPE_SLUGS[type] ?? `tipo-${safeFilenamePart(reportType) || 'x'}`;
     const snapshotPart = toDateOnlyISO(generatedAt);
     const startPart = toDateOnlyISO(range.start);
     const endPart = toDateOnlyISO(range.end);

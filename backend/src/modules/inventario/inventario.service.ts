@@ -58,7 +58,9 @@ export class InventarioService {
 
   private assertCanMutate(user: AuthenticatedRequestUser) {
     if (user.role === UserRole.CLIENT) {
-      throw new ForbiddenException('Cliente pode apenas visualizar o inventário.');
+      throw new ForbiddenException(
+        'Cliente pode apenas visualizar o inventário.',
+      );
     }
   }
 
@@ -186,7 +188,9 @@ export class InventarioService {
   }
 
   private parseBoolean(value?: string | null): boolean {
-    const normalized = String(value ?? '').trim().toLowerCase();
+    const normalized = String(value ?? '')
+      .trim()
+      .toLowerCase();
     return normalized === 'true' || normalized === '1' || normalized === 'sim';
   }
 
@@ -201,13 +205,14 @@ export class InventarioService {
   ): { supplierThirdParty: boolean; supplier: string } {
     const thirdParty = this.parseBoolean(thirdPartyRaw);
     if (!thirdParty) {
-      return { supplierThirdParty: false, supplier: INVENTORY_DEFAULT_SUPPLIER };
+      return {
+        supplierThirdParty: false,
+        supplier: INVENTORY_DEFAULT_SUPPLIER,
+      };
     }
     const supplier = String(supplierRaw ?? '').trim();
     if (!supplier) {
-      throw new BadRequestException(
-        'Informe o nome do fornecedor terceiro.',
-      );
+      throw new BadRequestException('Informe o nome do fornecedor terceiro.');
     }
     return { supplierThirdParty: true, supplier };
   }
@@ -336,10 +341,7 @@ export class InventarioService {
     }));
   }
 
-  async listAssetsByType(
-    user: AuthenticatedRequestUser,
-    assetTypeId: string,
-  ) {
+  async listAssetsByType(user: AuthenticatedRequestUser, assetTypeId: string) {
     const scope = await this.getAccessibleCompanyIds(user);
     const assetType = await this.resolveAssetType(assetTypeId);
 
@@ -386,7 +388,9 @@ export class InventarioService {
       where: { name: { equals: name, mode: 'insensitive' }, deletedAt: null },
     });
     if (existing) {
-      throw new BadRequestException('Já existe um tipo de ativo com este nome.');
+      throw new BadRequestException(
+        'Já existe um tipo de ativo com este nome.',
+      );
     }
     const created = await this.prisma.inventoryAssetType.create({
       data: { name },
@@ -547,7 +551,9 @@ export class InventarioService {
           supplier: created.supplier,
           supplierThirdParty: created.supplierThirdParty,
           description: created.description,
-          dueDate: created.dueDate ? created.dueDate.toISOString().slice(0, 10) : null,
+          dueDate: created.dueDate
+            ? created.dueDate.toISOString().slice(0, 10)
+            : null,
           reminderDaysBefore: created.reminderDaysBefore,
           fileId: created.fileId,
           createdBy: created.createdBy,
@@ -626,7 +632,9 @@ export class InventarioService {
     const brand =
       body.brand !== undefined ? body.brand.trim() || null : undefined;
     const quantity =
-      body.quantity !== undefined ? this.parseQuantity(body.quantity) : undefined;
+      body.quantity !== undefined
+        ? this.parseQuantity(body.quantity)
+        : undefined;
 
     let supplier: string | undefined;
     let supplierThirdParty: boolean | undefined;
@@ -675,7 +683,9 @@ export class InventarioService {
           supplier: existing.supplier,
           supplierThirdParty: existing.supplierThirdParty,
           description: existing.description,
-          dueDate: existing.dueDate ? existing.dueDate.toISOString().slice(0, 10) : null,
+          dueDate: existing.dueDate
+            ? existing.dueDate.toISOString().slice(0, 10)
+            : null,
           reminderDaysBefore: existing.reminderDaysBefore,
           fileId: existing.fileId,
         },
@@ -689,7 +699,9 @@ export class InventarioService {
           supplier: updated.supplier,
           supplierThirdParty: updated.supplierThirdParty,
           description: updated.description,
-          dueDate: updated.dueDate ? updated.dueDate.toISOString().slice(0, 10) : null,
+          dueDate: updated.dueDate
+            ? updated.dueDate.toISOString().slice(0, 10)
+            : null,
           reminderDaysBefore: updated.reminderDaysBefore,
           fileId: updated.fileId,
         },

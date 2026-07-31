@@ -45,7 +45,9 @@ describe('ConsoleService', () => {
   });
 
   it('exige grupo para ADMIN na listagem de alertas', async () => {
-    (tenantScope.resolveZabbixGroupForList as jest.Mock).mockResolvedValue(null);
+    (tenantScope.resolveZabbixGroupForList as jest.Mock).mockResolvedValue(
+      null,
+    );
 
     await expect(service.listAlerts(adminUser, {})).rejects.toBeInstanceOf(
       BadRequestException,
@@ -75,7 +77,9 @@ describe('ConsoleService', () => {
     (tenantScope.resolveZabbixGroupForList as jest.Mock).mockResolvedValue(
       'Grupo A;Grupo B',
     );
-    (tenantScope.assertZabbixGroupAccess as jest.Mock).mockResolvedValue('Grupo B');
+    (tenantScope.assertZabbixGroupAccess as jest.Mock).mockResolvedValue(
+      'Grupo B',
+    );
     (zabbix.getConsoleAlertsForGroup as jest.Mock).mockResolvedValue({
       group: 'Grupo B',
       alerts: [],
@@ -110,7 +114,9 @@ describe('ConsoleService', () => {
   });
 
   it('listGroups consulta Zabbix para ADMIN', async () => {
-    (tenantScope.resolveZabbixGroupForList as jest.Mock).mockResolvedValue(null);
+    (tenantScope.resolveZabbixGroupForList as jest.Mock).mockResolvedValue(
+      null,
+    );
     (zabbix.getGroups as jest.Mock).mockResolvedValue([
       { groupid: '1', name: 'Grupo X' },
     ]);
@@ -137,7 +143,9 @@ describe('ConsoleService', () => {
     (zabbix.getConsoleAlertsForGroup as jest.Mock).mockResolvedValue({
       alerts: [{ eventId: '99', name: 'Problema' }],
     });
-    (zabbix.acknowledgeEvents as jest.Mock).mockResolvedValue({ eventids: ['99'] });
+    (zabbix.acknowledgeEvents as jest.Mock).mockResolvedValue({
+      eventids: ['99'],
+    });
 
     await expect(
       service.acknowledgeAlert(clientUser, '99', {

@@ -859,7 +859,9 @@ export class TicketsQueryService {
     }
 
     // Tickets só-portal (pré-ticket/e-mail) sem linha em tiflux.tickets e sem evento de criação.
-    const hasCreatedEvent = events.some((e) => e.eventType === 'TICKET_CREATED');
+    const hasCreatedEvent = events.some(
+      (e) => e.eventType === 'TICKET_CREATED',
+    );
     if (!hasCreatedEvent) {
       const portalMeta = await this.prisma.portalTicket.findUnique({
         where: { ticketNumber },
@@ -1020,7 +1022,13 @@ export class TicketsQueryService {
       const payload = (log.payload ?? {}) as Record<string, unknown>;
       let summary = String(payload.message ?? '').trim();
       if (log.action === 'STAGE_CHANGED') {
-        summary = `Estágio alterado: ${payload.fromStageName ?? '—'} → ${payload.toStageName ?? '—'}`;
+        const fromStage =
+          typeof payload.fromStageName === 'string'
+            ? payload.fromStageName
+            : '—';
+        const toStage =
+          typeof payload.toStageName === 'string' ? payload.toStageName : '—';
+        summary = `Estágio alterado: ${fromStage} → ${toStage}`;
       }
       events.push({
         id: `audit-${log.id}`,
@@ -1359,7 +1367,10 @@ export class TicketsQueryService {
         'Fechado',
       ];
       const current = ticket.stage_name?.trim();
-      if (current && !names.some((n) => normalizeDeskName(n) === normalizeDeskName(current))) {
+      if (
+        current &&
+        !names.some((n) => normalizeDeskName(n) === normalizeDeskName(current))
+      ) {
         names.unshift(current);
       }
       stages = names.map((name, index) => ({
@@ -1539,15 +1550,14 @@ export class TicketsQueryService {
         (a) => a.file && !a.file.deletedAt,
       );
       if (preFiles.length > 0) {
-        const already = await this.prisma.portalTicketAppointmentAttachment.findMany(
-          {
+        const already =
+          await this.prisma.portalTicketAppointmentAttachment.findMany({
             where: {
               ticketNumber,
               fileId: { in: preFiles.map((a) => a.fileId) },
             },
             select: { fileId: true },
-          },
-        );
+          });
         const linked = new Set(already.map((a) => a.fileId));
         for (const att of preFiles) {
           if (linked.has(att.fileId)) continue;

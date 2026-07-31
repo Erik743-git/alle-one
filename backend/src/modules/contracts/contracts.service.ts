@@ -85,8 +85,7 @@ export class ContractsService {
     });
 
     const mapped: TifluxContract[] = rows.map((c, idx) => {
-      const expired =
-        c.endDate != null && c.endDate.getTime() < now.getTime();
+      const expired = c.endDate != null && c.endDate.getTime() < now.getTime();
       const status: TifluxContractStatus = expired
         ? 'expired'
         : c.status === ContractStatus.ACTIVE

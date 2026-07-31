@@ -5,9 +5,7 @@ export function isTicketsPortalCanonical(): boolean {
   return process.env.TICKETS_PORTAL_CANONICAL === 'true';
 }
 
-function parseEnvFlag(
-  raw: string | undefined,
-): boolean | undefined {
+function parseEnvFlag(raw: string | undefined): boolean | undefined {
   const v = raw?.trim().toLowerCase();
   if (v === 'true' || v === '1' || v === 'yes' || v === 'on') return true;
   if (v === 'false' || v === '0' || v === 'no' || v === 'off') return false;

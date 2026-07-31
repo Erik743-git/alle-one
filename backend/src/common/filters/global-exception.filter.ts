@@ -24,11 +24,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       if (status >= 500 && process.env.SENTRY_DSN?.trim()) {
         Sentry.captureException(exception);
       }
-      response.status(status).json(
-        typeof body === 'string'
-          ? { statusCode: status, message: body }
-          : body,
-      );
+      response
+        .status(status)
+        .json(
+          typeof body === 'string'
+            ? { statusCode: status, message: body }
+            : body,
+        );
       return;
     }
 

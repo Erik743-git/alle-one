@@ -51,10 +51,7 @@ export class AuthService {
     private readonly totp: TotpService,
   ) {}
 
-  async login(
-    data: LoginDto,
-    opts?: { trustCookie?: string },
-  ) {
+  async login(data: LoginDto, opts?: { trustCookie?: string }) {
     const user = await this.prisma.user.findFirst({
       where: {
         email: { equals: data.email, mode: 'insensitive' },
@@ -325,11 +322,7 @@ export class AuthService {
       },
     });
 
-    if (
-      !user ||
-      user.deletedAt ||
-      user.status !== UserStatus.ACTIVE
-    ) {
+    if (!user || user.deletedAt || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Usuário não encontrado');
     }
 

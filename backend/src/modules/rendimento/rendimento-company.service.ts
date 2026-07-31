@@ -425,8 +425,7 @@ export class RendimentoCompanyService {
     }
 
     const refDate =
-      params.date?.trim() ||
-      new Date().toISOString().slice(0, 10);
+      params.date?.trim() || new Date().toISOString().slice(0, 10);
     const range =
       params.view === 'day'
         ? { start: refDate, end: refDate }
@@ -479,20 +478,18 @@ export class RendimentoCompanyService {
           ORDER BY a.appointment_date DESC, a.init_time DESC NULLS LAST
         `) ?? [];
 
-      const questions = await this.prisma.rendimentoAppointmentQuestion.findMany({
-        where: {
-          companyId: params.companyId,
-          appointmentDate: {
-            gte: new Date(`${range.start}T12:00:00.000Z`),
-            lte: new Date(`${range.end}T12:00:00.000Z`),
+      const questions =
+        await this.prisma.rendimentoAppointmentQuestion.findMany({
+          where: {
+            companyId: params.companyId,
+            appointmentDate: {
+              gte: new Date(`${range.start}T12:00:00.000Z`),
+              lte: new Date(`${range.end}T12:00:00.000Z`),
+            },
           },
-        },
-      });
+        });
       const questionByRef = new Map(
-        questions.map((q) => [
-          `${q.appointmentSource}:${q.appointmentRef}`,
-          q,
-        ]),
+        questions.map((q) => [`${q.appointmentSource}:${q.appointmentRef}`, q]),
       );
 
       for (const row of portalOnly) {
@@ -588,20 +585,18 @@ export class RendimentoCompanyService {
         portalTickets.map((t) => [t.ticketNumber, t.clientExternalId]),
       );
 
-      const questions = await this.prisma.rendimentoAppointmentQuestion.findMany({
-        where: {
-          companyId: params.companyId,
-          appointmentDate: {
-            gte: new Date(`${range.start}T12:00:00.000Z`),
-            lte: new Date(`${range.end}T12:00:00.000Z`),
+      const questions =
+        await this.prisma.rendimentoAppointmentQuestion.findMany({
+          where: {
+            companyId: params.companyId,
+            appointmentDate: {
+              gte: new Date(`${range.start}T12:00:00.000Z`),
+              lte: new Date(`${range.end}T12:00:00.000Z`),
+            },
           },
-        },
-      });
+        });
       const questionByRef = new Map(
-        questions.map((q) => [
-          `${q.appointmentSource}:${q.appointmentRef}`,
-          q,
-        ]),
+        questions.map((q) => [`${q.appointmentSource}:${q.appointmentRef}`, q]),
       );
 
       for (const row of tifluxRows) {
@@ -774,7 +769,9 @@ export class RendimentoCompanyService {
     message: string;
   }) {
     if (params.actor.role !== 'CLIENT') {
-      throw new ForbiddenException('Somente clientes podem questionar apontamentos.');
+      throw new ForbiddenException(
+        'Somente clientes podem questionar apontamentos.',
+      );
     }
     await this.assertCompanyAccess(params.actor, params.companyId);
     const company = await this.getCompanyOrThrow(params.companyId);
@@ -795,7 +792,9 @@ export class RendimentoCompanyService {
       },
     });
     if (existing) {
-      throw new BadRequestException('Já existe um questionamento pendente para este apontamento.');
+      throw new BadRequestException(
+        'Já existe um questionamento pendente para este apontamento.',
+      );
     }
 
     const question = await this.prisma.rendimentoAppointmentQuestion.create({
@@ -869,13 +868,15 @@ export class RendimentoCompanyService {
 
     const note = params.responseNote.trim();
     if (note.length < 3) {
-      throw new BadRequestException('Informe a resposta ao cliente (mín. 3 caracteres).');
+      throw new BadRequestException(
+        'Informe a resposta ao cliente (mín. 3 caracteres).',
+      );
     }
 
     const abonar = params.abonar === true;
     const code = abonar
       ? 'ABONADO'
-      : (params.responseCode?.trim() || 'RESPONDIDO');
+      : params.responseCode?.trim() || 'RESPONDIDO';
 
     const updated = await this.prisma.rendimentoAppointmentQuestion.update({
       where: { id: params.questionId },

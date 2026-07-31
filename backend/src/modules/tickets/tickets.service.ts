@@ -24,9 +24,7 @@ import {
 } from './appointment-doc.util';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
 import { TicketsCatalogsService } from './tickets-catalogs.service';
-import {
-  isTicketsTifluxWriteEnabled,
-} from './tickets-portal.config';
+import { isTicketsTifluxWriteEnabled } from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 
 @Injectable()
@@ -447,7 +445,7 @@ export class TicketsService {
     const statusName = dto.statusName?.trim();
     const descriptionRaw = dto.description?.trim();
 
-    let responsibleId =
+    const responsibleId =
       dto.responsibleId === undefined ? undefined : dto.responsibleId;
     let responsibleName =
       dto.responsibleName === undefined
@@ -607,6 +605,4 @@ export class TicketsService {
       },
     });
   }
-
-
 }

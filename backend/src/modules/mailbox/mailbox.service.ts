@@ -232,7 +232,9 @@ export class MailboxService {
           title: draft.title,
           body: draft.body,
           href: draft.href ?? null,
-          payload: (draft.payload ?? undefined) as Prisma.InputJsonValue | undefined,
+          payload: (draft.payload ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
           dedupeKey: draft.dedupeKey,
         },
         update: {
@@ -240,7 +242,9 @@ export class MailboxService {
           title: draft.title,
           body: draft.body,
           href: draft.href ?? null,
-          payload: (draft.payload ?? undefined) as Prisma.InputJsonValue | undefined,
+          payload: (draft.payload ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
         },
       });
     }
@@ -250,9 +254,7 @@ export class MailboxService {
         where: {
           userId,
           kind: { in: kindsToPrune },
-          ...(dedupeKeys.length
-            ? { dedupeKey: { notIn: dedupeKeys } }
-            : {}),
+          ...(dedupeKeys.length ? { dedupeKey: { notIn: dedupeKeys } } : {}),
         },
       });
     }
@@ -305,9 +307,9 @@ export class MailboxService {
 
       if (alertDays.length === 1) {
         const day = alertDays[0];
-        const dateLabel = new Date(`${day.date.slice(0, 10)}T12:00:00`).toLocaleDateString(
-          'pt-BR',
-        );
+        const dateLabel = new Date(
+          `${day.date.slice(0, 10)}T12:00:00`,
+        ).toLocaleDateString('pt-BR');
         return [
           {
             kind: MailboxNotificationKind.RENDIMENTO_ALERT,

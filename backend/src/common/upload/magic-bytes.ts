@@ -23,7 +23,9 @@ function startsWithBytes(buffer: Buffer, bytes: number[]): boolean {
  * ZIP cobre .zip, .docx, .xlsx e demais OOXML.
  * OLE cobre .doc legado (Compound File).
  */
-export function detectUploadKind(buffer: Buffer | undefined | null): DetectedUploadKind {
+export function detectUploadKind(
+  buffer: Buffer | undefined | null,
+): DetectedUploadKind {
   if (!buffer?.length) {
     return 'unknown';
   }
@@ -31,7 +33,9 @@ export function detectUploadKind(buffer: Buffer | undefined | null): DetectedUpl
   if (startsWithBytes(buffer, [0x25, 0x50, 0x44, 0x46])) {
     return 'pdf'; // %PDF
   }
-  if (startsWithBytes(buffer, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+  if (
+    startsWithBytes(buffer, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  ) {
     return 'png';
   }
   if (startsWithBytes(buffer, [0xff, 0xd8, 0xff])) {
@@ -52,7 +56,10 @@ export function detectUploadKind(buffer: Buffer | undefined | null): DetectedUpl
     return 'webp';
   }
   // ZIP / OOXML (docx, xlsx, …)
-  if (startsWithBytes(buffer, [0x50, 0x4b, 0x03, 0x04]) || startsWithBytes(buffer, [0x50, 0x4b, 0x05, 0x06])) {
+  if (
+    startsWithBytes(buffer, [0x50, 0x4b, 0x03, 0x04]) ||
+    startsWithBytes(buffer, [0x50, 0x4b, 0x05, 0x06])
+  ) {
     return 'zip';
   }
   // RAR 1.5+ / RAR5 ("Rar!")
@@ -64,7 +71,9 @@ export function detectUploadKind(buffer: Buffer | undefined | null): DetectedUpl
     return '7z';
   }
   // OLE Compound File (.doc, .xls legado)
-  if (startsWithBytes(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+  if (
+    startsWithBytes(buffer, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
+  ) {
     return 'ole';
   }
 
@@ -82,7 +91,10 @@ export function detectUploadKind(buffer: Buffer | undefined | null): DetectedUpl
 }
 
 /** MIME declarados pelo cliente → kinds aceitos no conteúdo. */
-const MIME_TO_KINDS: Array<{ match: (mime: string) => boolean; kinds: DetectedUploadKind[] }> = [
+const MIME_TO_KINDS: Array<{
+  match: (mime: string) => boolean;
+  kinds: DetectedUploadKind[];
+}> = [
   {
     match: (m) => m === 'application/pdf',
     kinds: ['pdf'],
@@ -111,9 +123,12 @@ const MIME_TO_KINDS: Array<{ match: (mime: string) => boolean; kinds: DetectedUp
     match: (m) =>
       m === 'application/zip' ||
       m === 'application/x-zip-compressed' ||
-      m === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-      m === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-      m === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+      m ===
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      m ===
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      m ===
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
       m.startsWith('application/vnd.openxmlformats-officedocument'),
     kinds: ['zip'],
   },
@@ -125,8 +140,7 @@ const MIME_TO_KINDS: Array<{ match: (mime: string) => boolean; kinds: DetectedUp
     kinds: ['rar'],
   },
   {
-    match: (m) =>
-      m === 'application/x-7z-compressed' || m === 'application/7z',
+    match: (m) => m === 'application/x-7z-compressed' || m === 'application/7z',
     kinds: ['7z'],
   },
   {
@@ -142,7 +156,9 @@ const MIME_TO_KINDS: Array<{ match: (mime: string) => boolean; kinds: DetectedUp
   },
 ];
 
-export function kindsAllowedForMime(mimeType: string): DetectedUploadKind[] | null {
+export function kindsAllowedForMime(
+  mimeType: string,
+): DetectedUploadKind[] | null {
   const mime = mimeType.toLowerCase().trim();
   for (const entry of MIME_TO_KINDS) {
     if (entry.match(mime)) {

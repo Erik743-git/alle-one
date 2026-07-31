@@ -263,9 +263,7 @@ export class RendimentoController {
   @Get('justifications/pending')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
   @Roles('ADMIN')
-  listPendingJustifications(
-    @Query() query: ListPendingOvertimeQueryDto,
-  ) {
+  listPendingJustifications(@Query() query: ListPendingOvertimeQueryDto) {
     return this.rendimentoService.listPendingJustifications({
       start: query.start,
       end: query.end,
@@ -314,9 +312,7 @@ export class RendimentoController {
   @Get('overtime/pending')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canApprove')
   @Roles('ADMIN')
-  listPendingOvertime(
-    @Query() query: ListPendingOvertimeQueryDto,
-  ) {
+  listPendingOvertime(@Query() query: ListPendingOvertimeQueryDto) {
     return this.rendimentoService.listPendingOvertimeEvents({
       start: query.start,
       end: query.end,

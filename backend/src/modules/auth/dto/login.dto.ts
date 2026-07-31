@@ -9,16 +9,12 @@ export class LoginDto {
   email: string;
 
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   password: string;
 
   @IsOptional()
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   totpCode?: string;
 
   /** Confiar neste dispositivo e não pedir 2FA pelos próximos TOTP_TRUST_DAYS. */
@@ -33,8 +29,6 @@ export class LoginDto {
    */
   @IsOptional()
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   deviceTrustToken?: string;
 }
