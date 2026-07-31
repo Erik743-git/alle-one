@@ -1,0 +1,16 @@
+{
+  "name": "alle-one-monorepo",
+  "private": true,
+  "version": "0.6.0",
+  "description": "Scripts na raiz (lint / git hooks) — apps em backend/ e frontend/",
+  "scripts": {
+    "prepare": "husky",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "npm run lint:ci --prefix backend",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "lint:fix": "npm run lint --prefix backend && npm run lint --prefix frontend"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
