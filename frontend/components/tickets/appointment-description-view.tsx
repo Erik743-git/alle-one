@@ -128,7 +128,7 @@ function FullDescriptionBody({ description }: { description: string }) {
   if (looksLikeHtml(description)) {
     return (
       <div
-        className="prose prose-sm dark:prose-invert max-w-none text-foreground [&_*]:!text-inherit [&_a]:!text-primary [&_img]:max-h-[480px] [&_img]:rounded-md"
+        className="prose prose-sm dark:prose-invert max-w-none text-foreground [&_*]:!text-inherit [&_a]:!text-primary [&_img]:!h-auto [&_img]:!w-auto [&_img]:max-h-[480px] [&_img]:max-w-full [&_img]:object-contain [&_img]:rounded-md"
         dangerouslySetInnerHTML={{ __html: description }}
       />
     );

@@ -13,7 +13,7 @@ export const TICKETS_CLIENT_LIST_SUBTITLE =
   "Chamados da sua empresa. A abertura de novos chamados é feita pela equipe Alle.";
 
 export const TICKETS_CREATE_RESTRICTED =
-  "A abertura de novos chamados é feita pela equipe administrativa. Você pode consultar os chamados existentes.";
+  "Você não tem permissão para abrir novos chamados. Consulte os existentes ou fale com o administrador.";
 
 export const TICKETS_APPOINTMENT_CREATE_RESTRICTED =
   "Você não tem permissão para registrar apontamentos neste módulo. Consulte os chamados existentes ou fale com o administrador.";

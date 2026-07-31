@@ -13,7 +13,7 @@ import {
 import { FileText, Paperclip, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { FieldLabel } from "@/components/ui/field-label";
 import {
   isAppointmentDoc,
   parseAppointmentDoc,
@@ -47,6 +47,8 @@ type Props = {
   placeholder?: string;
   hintText?: string;
   appendButtonLabel?: string;
+  /** Exibe * vermelho padrão (FieldLabel). Default true. */
+  required?: boolean;
   /** Descrição já salva (texto, HTML de e-mail ou doc Alle One) para pré-carregar o editor. */
   initialDescription?: string | null;
   /** Anexos existentes do ticket (imagens reidratam na descrição; outros aparecem em Anexos). */
@@ -211,6 +213,7 @@ export const AppointmentDescriptionComposer = forwardRef<
     placeholder = "Descreva o que foi feito neste trecho…",
     hintText = "",
     appendButtonLabel = "Anexar arquivo",
+    required = true,
     initialDescription = null,
     initialAttachments = [],
   },
@@ -1016,7 +1019,9 @@ export const AppointmentDescriptionComposer = forwardRef<
     <div className="space-y-3">
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <Label className={labelClassName}>Descrição *</Label>
+          <FieldLabel required={required} className={labelClassName}>
+            Descrição
+          </FieldLabel>
 
           {hintText ? (
             <span className="text-xs text-muted-foreground">{hintText}</span>

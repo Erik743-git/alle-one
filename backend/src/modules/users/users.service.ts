@@ -261,6 +261,14 @@ export class UsersService {
           })
         : undefined;
 
+    const nextStatus = data.status ?? existingUser.status;
+    const nextResponsible =
+      nextStatus === UserStatus.INACTIVE
+        ? false
+        : data.responsible !== undefined
+          ? data.responsible
+          : existingUser.responsible;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -274,7 +282,7 @@ export class UsersService {
         status: data.status,
         companyId: data.companyId,
         firstAccess: data.firstAccess,
-        responsible: data.responsible,
+        responsible: nextResponsible,
         ...(schedule ?? {}),
         ...(serviceDeskIds !== undefined && {
           serviceDeskLinks: {
@@ -348,6 +356,7 @@ export class UsersService {
       where: { id },
       data: {
         status: UserStatus.INACTIVE,
+        responsible: false,
       },
       include: {
         company: true,

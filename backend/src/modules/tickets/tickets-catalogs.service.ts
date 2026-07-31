@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { UserStatus } from '@prisma/client';
+import { UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -10,6 +10,7 @@ import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
 } from './tickets-portal.config';
+import { resolveResponsibleExternalId } from './portal-responsible.helper';
 import {
   portalRequestorSyntheticId,
   sanitizeTicketRequestors,
@@ -134,61 +135,80 @@ export class TicketsCatalogsService {
   }
 
   /**
-   * Responsáveis sem depender de `tiflux.users`: DISTINCT em portal_tickets
-   * + e-mail do User portal quando o nome casa.
+   * Fonte de verdade: usuários portal ACTIVE com checkbox `responsible`,
+   * não-CLIENT. ID = match tiflux.users por e-mail, senão sintético estável.
+   * Inativos / soft-deleted nunca entram.
    */
+  async listResponsiblesFromPortalUsers(): Promise<
+    Array<{ id: number; name: string; email: string | null }>
+  > {
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+        responsible: true,
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+      take: 500,
+    });
+
+    if (users.length === 0) return [];
+
+    const emailToTifluxId = new Map<string, number>();
+    try {
+      const emails = users.map((u) => u.email.trim().toLowerCase());
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; email: string }>
+        >`
+          SELECT tu.external_id, lower(trim(tu.email)) AS email
+          FROM tiflux.users tu
+          WHERE COALESCE(tu.active, true) = true
+            AND lower(trim(tu.email)) = ANY(${emails}::text[])
+          ORDER BY tu.external_id ASC
+        `) ?? [];
+      for (const row of rows) {
+        const email = String(row.email ?? '').trim();
+        const id = Number(row.external_id);
+        if (!email || !Number.isFinite(id) || id <= 0) continue;
+        if (!emailToTifluxId.has(email)) {
+          emailToTifluxId.set(email, id);
+        }
+      }
+    } catch {
+      // Sem schema tiflux (portal-only): usa só IDs sintéticos.
+    }
+
+    return users
+      .map((u) => {
+        const email = u.email.trim();
+        const name = u.name.trim();
+        if (!name) return null;
+        const tifluxId = emailToTifluxId.get(email.toLowerCase()) ?? null;
+        return {
+          id: resolveResponsibleExternalId(u.id, tifluxId),
+          name,
+          email: email || null,
+        };
+      })
+      .filter((r): r is { id: number; name: string; email: string | null } =>
+        Boolean(r),
+      );
+  }
+
+  /** @deprecated Preferir listResponsiblesFromPortalUsers (checkbox). */
   async listResponsiblesFromPortal(): Promise<
     Array<{ id: number; name: string; email: string | null }>
   > {
-    const tickets = await this.prisma.portalTicket.findMany({
-      where: {
-        isClosed: false,
-        responsibleExternalId: { not: null },
-        responsibleName: { not: null },
-      },
-      select: { responsibleExternalId: true, responsibleName: true },
-      take: 3000,
-    });
-
-    const byId = new Map<
-      number,
-      { id: number; name: string; email: string | null }
-    >();
-    for (const t of tickets) {
-      const id = t.responsibleExternalId;
-      const name = t.responsibleName?.trim();
-      if (id == null || !name) continue;
-      if (!byId.has(id)) {
-        byId.set(id, { id, name, email: null });
-      }
-    }
-
-    const users = await this.prisma.user.findMany({
-      where: { deletedAt: null, status: 'ACTIVE' },
-      select: { name: true, email: true },
-      take: 500,
-    });
-    const emailByName = new Map(
-      users.map((u) => [u.name.trim().toLowerCase(), u.email.trim()]),
-    );
-    for (const r of byId.values()) {
-      const email = emailByName.get(r.name.toLowerCase());
-      if (email) r.email = email;
-    }
-
-    return [...byId.values()].sort((a, b) =>
-      a.name.localeCompare(b.name, 'pt-BR'),
-    );
+    return this.listResponsiblesFromPortalUsers();
   }
 
   async listResponsiblesForCatalogs(): Promise<
     Array<{ id: number; name: string; email: string | null }>
   > {
-    if (isTicketsPortalCanonical()) {
-      const fromPortal = await this.listResponsiblesFromPortal();
-      if (fromPortal.length) return fromPortal;
-    }
-    return this.listResponsiblesFromMirror();
+    return this.listResponsiblesFromPortalUsers();
   }
 
   private buildClassificationTree(
@@ -416,16 +436,7 @@ export class TicketsCatalogsService {
         ORDER BY t.client_name ASC
         LIMIT 200
       `,
-      this.prisma.$queryRaw<
-        Array<{ external_id: number; name: string; email: string | null }>
-      >`
-        SELECT tu.external_id, tu.name, tu.email
-        FROM tiflux.users tu
-        WHERE COALESCE(tu.active, true) = true
-          AND tu.type IN ('attendant', 'admin')
-        ORDER BY tu.name ASC
-        LIMIT 300
-      `,
+      this.listResponsiblesForCatalogs(),
       this.prisma.$queryRaw<Array<{ desk_name: string }>>`
         SELECT DISTINCT trim(t.desk_name) AS desk_name
         FROM tiflux.tickets t
@@ -456,7 +467,7 @@ export class TicketsCatalogsService {
         actor.role === 'CLIENT'
           ? []
           : responsibles.map((r) => ({
-              externalId: Number(r.external_id),
+              externalId: r.id,
               name: r.name,
               email: r.email,
             })),
@@ -532,18 +543,6 @@ export class TicketsCatalogsService {
         email: r.email,
       });
     }
-    for (const t of tickets) {
-      if (t.responsibleExternalId == null || !t.responsibleName?.trim()) {
-        continue;
-      }
-      if (!responsibleMap.has(t.responsibleExternalId)) {
-        responsibleMap.set(t.responsibleExternalId, {
-          externalId: t.responsibleExternalId,
-          name: t.responsibleName.trim(),
-          email: null,
-        });
-      }
-    }
 
     return {
       stages,
@@ -583,7 +582,7 @@ export class TicketsCatalogsService {
     const [clientsRaw, desksRaw, responsibles] = await Promise.all([
       this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
       this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
-      this.listTifluxResponsiblesForTicketCreate(),
+      this.listResponsiblesForCatalogs(),
     ]);
 
     let requestors: TicketRequestorOption[] = [];

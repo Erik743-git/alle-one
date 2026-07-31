@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, FileText, Loader2, Plus, UserRound } from "lucide-react";
 
@@ -16,8 +15,8 @@ import {
 } from "@/components/tickets/appointment-description-composer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -47,26 +46,6 @@ function FormSkeleton() {
         <Skeleton className="h-11 w-full" />
       </CardContent>
     </Card>
-  );
-}
-
-function FieldLabel({
-  children,
-  required = false,
-  optional = false,
-}: {
-  children: ReactNode;
-  required?: boolean;
-  optional?: boolean;
-}) {
-  return (
-    <Label className="text-xs font-semibold text-muted-foreground">
-      {children}
-      {required ? <span className="text-destructive"> *</span> : null}
-      {optional && !required ? (
-        <span className="font-normal text-muted-foreground"> (opcional)</span>
-      ) : null}
-    </Label>
   );
 }
 
@@ -515,6 +494,26 @@ export default function NewTicketPage() {
                       />
                     </div>
                     <div className="space-y-3">
+                      {requestorOptions.length > 0 ? (
+                        <div className="space-y-2">
+                          <FieldLabel optional>
+                            Preencher do cadastro do cliente
+                          </FieldLabel>
+                          <SearchableSelectField
+                            value={requestorId}
+                            onChange={handleRequestorSuggestion}
+                            options={requestorOptions}
+                            loading={loading}
+                            emptyLabel="Escolher contato do cliente"
+                            placeholder="Escolher contato do cliente"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Sugestões do cliente selecionado (sem duplicar e-mail).
+                            Para Alle Tecnologia/Infra, só aparecem endereços @alletecnologia.com.
+                            Preenche nome, e-mail e telefone abaixo.
+                          </p>
+                        </div>
+                      ) : null}
                       <div className="space-y-2">
                         <FieldLabel required={requiresRequestor} optional={!requiresRequestor}>
                           Solicitante
@@ -568,25 +567,6 @@ export default function NewTicketPage() {
                         <p className="text-xs text-muted-foreground">
                           Esta mesa exige solicitante: informe <strong>nome ou e-mail</strong>.
                         </p>
-                      ) : null}
-                      {requestorOptions.length > 0 ? (
-                        <div className="space-y-2">
-                          <FieldLabel optional>
-                            Preencher do cadastro do cliente
-                          </FieldLabel>
-                          <SearchableSelectField
-                            value={requestorId}
-                            onChange={handleRequestorSuggestion}
-                            options={requestorOptions}
-                            loading={loading}
-                            emptyLabel="Escolher contato do cliente"
-                            placeholder="Escolher contato do cliente"
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Sugestões do cliente selecionado (sem duplicar e-mail).
-                            Para Alle Tecnologia/Infra, só aparecem endereços @alletecnologia.com.
-                          </p>
-                        </div>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
                         Você também pode digitar nome/e-mail manualmente — o solicitante

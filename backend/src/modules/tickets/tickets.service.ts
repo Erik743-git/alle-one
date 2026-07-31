@@ -223,9 +223,8 @@ export class TicketsService {
         ? Number(dto.servicesCatalogsItemId)
         : null;
 
-    const allowedResponsibles = writeTiflux
-      ? await this.catalogs.listTifluxResponsiblesForTicketCreate()
-      : await this.catalogs.listResponsiblesFromMirror();
+    const allowedResponsibles =
+      await this.catalogs.listResponsiblesForCatalogs();
 
     let responsibleId = dto.responsibleId ?? null;
     if (responsibleId == null) {
@@ -236,16 +235,27 @@ export class TicketsService {
           : false;
         responsibleId = mineAllowed ? (mine?.externalId ?? null) : null;
       } else {
-        responsibleId = mine?.externalId ?? null;
+        const mineInList = mine
+          ? allowedResponsibles.find((row) => row.id === mine.externalId)
+          : null;
+        if (mineInList) {
+          responsibleId = mineInList.id;
+        } else {
+          const byEmail = allowedResponsibles.find(
+            (row) =>
+              row.email != null &&
+              this.normalizeEmail(row.email) ===
+                this.normalizeEmail(actor.email),
+          );
+          responsibleId = byEmail?.id ?? null;
+        }
       }
     } else if (
       allowedResponsibles.length > 0 &&
       !allowedResponsibles.some((row) => row.id === responsibleId)
     ) {
       throw new BadRequestException(
-        writeTiflux
-          ? 'O responsável selecionado não é válido no TiFlux.'
-          : 'O responsável selecionado não é válido.',
+        'O responsável selecionado não é válido (precisa estar ativo e marcado como responsável no cadastro).',
       );
     }
 
@@ -452,10 +462,17 @@ export class TicketsService {
         ? undefined
         : dto.responsibleName?.trim() || null;
 
-    if (responsibleId != null && !responsibleName) {
-      const fromMirror = await this.catalogs.listResponsiblesFromMirror();
-      responsibleName =
-        fromMirror.find((r) => r.id === responsibleId)?.name ?? null;
+    if (responsibleId != null) {
+      const allowed = await this.catalogs.listResponsiblesForCatalogs();
+      const match = allowed.find((r) => r.id === responsibleId);
+      if (!match) {
+        throw new BadRequestException(
+          'O responsável selecionado não é válido (precisa estar ativo e marcado como responsável no cadastro).',
+        );
+      }
+      if (!responsibleName) {
+        responsibleName = match.name;
+      }
     }
 
     if (writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL) {

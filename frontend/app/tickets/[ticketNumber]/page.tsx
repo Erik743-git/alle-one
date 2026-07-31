@@ -696,12 +696,28 @@ export default function TicketDetailPage() {
                   </Card>
                 ) : (
                 <Card>
-                  <CardHeader className="space-y-2">
-                    <CardTitle className="text-base">Apontamentos</CardTitle>
-                    {!canCreateTicketAppointment() ? (
-                      <p className="text-xs font-normal text-muted-foreground">
-                        {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
-                      </p>
+                  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base">Apontamentos</CardTitle>
+                      {!canCreateTicketAppointment() ? (
+                        <p className="text-xs font-normal text-muted-foreground">
+                          {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
+                        </p>
+                      ) : null}
+                    </div>
+                    {ticket && canCreateTicketAppointment() ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setEditingAppointment(null);
+                          setPendingResumeId(null);
+                          setAppointmentOpen(true);
+                        }}
+                      >
+                        <Clock className="mr-2 size-4" />
+                        Apontar
+                      </Button>
                     ) : null}
                   </CardHeader>
                   <CardContent className="overflow-x-auto p-0">

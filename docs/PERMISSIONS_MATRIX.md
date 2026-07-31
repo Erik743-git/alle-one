@@ -14,11 +14,11 @@ Legenda: **V** view · **C** create · **E** edit · **D** delete · **A** appro
 |------|-------|-------------------|--------|
 | Menu / listar | V | V (fallback) | V (fallback) — escopo empresa TiFlux |
 | Detalhe / histórico | V | V | V — só tickets da empresa |
-| Criar ticket (`POST /tickets`) | C | — | — |
-| Apontar / estágio | C | C (matriz `canCreate`) | — |
+| Criar ticket (`POST /tickets`) | C | C (fallback `canCreate`) | — |
+| Apontar / estágio | C | C (fallback `canCreate`) | — |
 | Reconciliar / link GMUD | E/C | — | — |
 
-**Decisão de produto:** menu e lista alinhados ao `canView`. CLIENT nunca vê tickets de outras empresas (`TenantScopeService`).
+**Decisão de produto:** menu e lista alinhados ao `canView`. CLIENT nunca vê tickets de outras empresas (`TenantScopeService`). Colaborador/PJ abrem chamado e apontam com `TICKETS.canCreate` (fallback `true`; matriz explícita pode revogar).
 
 ---
 

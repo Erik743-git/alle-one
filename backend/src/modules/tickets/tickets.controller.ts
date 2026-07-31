@@ -74,7 +74,7 @@ export class TicketsController {
   }
 
   @Get('catalogs/create')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   createCatalogs(
     @Query('deskId') deskIdRaw?: string,
@@ -127,7 +127,7 @@ export class TicketsController {
   }
 
   @Post()
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
   async create(

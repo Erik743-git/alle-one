@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, User2 } from "lucide-react";
 
+import { FieldLabel } from "@/components/ui/field-label";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   Sheet,
@@ -34,7 +34,6 @@ const SERVICE_TYPES = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
 
 const DEFAULT_ATTENDANCE = "Remote" as const;
 
-const FIELD_LABEL = "font-sans text-sm font-semibold text-foreground";
 const FIELD_INPUT = "font-sans h-11";
 
 type SaveMode = "save" | "saveAndAnother" | "saveAndClose";
@@ -312,7 +311,9 @@ export function TicketAppointmentModal({
           <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Dia *</Label>
+                <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                  Dia
+                </FieldLabel>
                 <DatePickerField
                   value={date}
                   onChange={setDate}
@@ -321,7 +322,9 @@ export function TicketAppointmentModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Início *</Label>
+                <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                  Início
+                </FieldLabel>
                 <Input
                   type="time"
                   value={initTime}
@@ -337,7 +340,9 @@ export function TicketAppointmentModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Fim *</Label>
+                <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                  Fim
+                </FieldLabel>
                 <Input
                   type="time"
                   value={endTime}
@@ -349,7 +354,9 @@ export function TicketAppointmentModal({
             </div>
 
             <div className="space-y-2">
-              <Label className={FIELD_LABEL}>Tipo de atendimento *</Label>
+              <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                Tipo de atendimento
+              </FieldLabel>
               <SearchableSelectField
                 value={serviceName}
                 onChange={setServiceName}
@@ -369,9 +376,9 @@ export function TicketAppointmentModal({
 
             {!isEdit && !fixedActivityId && projectLink?.activities.length ? (
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>
+                <FieldLabel optional className="font-sans text-sm font-semibold text-foreground">
                   Atividade do projeto {projectLink.project.name}
-                </Label>
+                </FieldLabel>
                 <SearchableSelectField
                   value={projectActivityId}
                   onChange={setProjectActivityId}

@@ -13,9 +13,9 @@
 | **Escrita ticket** | Sempre `portal_tickets`; API TiFlux se `TICKETS_TIFLUX_WRITE=true` (default) |
 | **Cutover futuro** | ETL + dual-read → desligar sync/API |
 
-**Criar ticket:** somente ADMIN.  
+**Criar ticket / apontar:** ADMIN, COLLABORATOR e PJ com `TICKETS.canCreate` (fallback `true`).  
 **Listar / detalhe:** ADMIN, COLLABORATOR, PJ, CLIENT com `TICKETS.canView` (CLIENT escopado à empresa).  
-**Apontar:** ADMIN ou colaborador/PJ com `TICKETS.canCreate`.
+**CLIENT:** não cria ticket nem aponta.
 
 Ver matriz completa: [PERMISSIONS_MATRIX.md](./PERMISSIONS_MATRIX.md).
 

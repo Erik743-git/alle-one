@@ -56,7 +56,7 @@ const ROLE_FALLBACK: Record<
     },
     TICKETS: {
       canView: true,
-      canCreate: false,
+      canCreate: true,
       canEdit: false,
       canDelete: false,
       canApprove: false,
@@ -121,7 +121,7 @@ const ROLE_FALLBACK: Record<
     },
     TICKETS: {
       canView: true,
-      canCreate: false,
+      canCreate: true,
       canEdit: false,
       canDelete: false,
       canApprove: false,

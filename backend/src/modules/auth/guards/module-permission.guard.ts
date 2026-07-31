@@ -16,8 +16,8 @@ import {
 /**
  * Regras de produto (sobrescrevem a matriz `permissions` do banco):
  * - REPORTS: somente ADMIN
- * - TICKETS: criar ticket só ADMIN via `@Roles` em POST /tickets;
- *   apontamentos usam canCreate + `@Roles` (ADMIN/COLLABORATOR/PJ)
+ * - TICKETS: criar ticket e apontar — ADMIN/COLLABORATOR/PJ com `canCreate`;
+ *   CLIENT só visualiza (escopo empresa)
  * - DASHBOARD canView: liberado para autenticados (escopo por empresa no service)
  * - CORREIO canView: não-CLIENT
  * - INVENTARIO/FINANCIAL/RENDIMENTO: defaults por role documentados abaixo
