@@ -6,6 +6,7 @@ type StoredImageBlock = {
   fileIndex: number;
   fileId?: string;
   dataUrl?: string;
+  width?: number;
 };
 type StoredBlock = StoredTextBlock | StoredImageBlock;
 
@@ -81,6 +82,7 @@ export function enrichAppointmentDescriptionWithImages(
       fileIndex: block.fileIndex,
       fileId: saved.fileId,
       dataUrl: `data:${saved.mimeType};base64,${saved.base64}`,
+      ...(typeof block.width === 'number' ? { width: block.width } : {}),
     };
   });
 

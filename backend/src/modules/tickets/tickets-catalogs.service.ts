@@ -28,7 +28,7 @@ export type TicketClassificationNode = {
 };
 
 export type TicketCreateCatalogs = {
-  clients: Array<{ id: number; name: string }>;
+  clients: Array<{ id: number; name: string; companyId?: string }>;
   desks: Array<{
     id: number;
     name: string;
@@ -579,11 +579,17 @@ export class TicketsCatalogsService {
       return this.getCreateCatalogsFromPortal(deskId, clientId);
     }
 
-    const [clientsRaw, desksRaw, responsibles] = await Promise.all([
-      this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
-      this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
-      this.listResponsiblesForCatalogs(),
-    ]);
+    const [clientsRaw, desksRaw, responsibles, companiesForMap] =
+      await Promise.all([
+        this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
+        this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
+        this.listResponsiblesForCatalogs(),
+        this.prisma.company.findMany({
+          where: { deletedAt: null, tifluxClientId: { not: null } },
+          select: { id: true, tifluxClientId: true },
+          take: 2000,
+        }),
+      ]);
 
     let requestors: TicketRequestorOption[] = [];
     if (clientId != null && Number.isFinite(clientId)) {
@@ -630,10 +636,17 @@ export class TicketsCatalogsService {
 
     return {
       clients: clientsRaw
-        .map((c) => ({
-          id: Number(c.id),
-          name: String(c.name ?? c.social_name ?? `Cliente ${c.id}`),
-        }))
+        .map((c) => {
+          const id = Number(c.id);
+          const company = companiesForMap.find(
+            (row) => Number(row.tifluxClientId) === id,
+          );
+          return {
+            id,
+            name: String(c.name ?? c.social_name ?? `Cliente ${c.id}`),
+            companyId: company?.id,
+          };
+        })
         .filter((c) => Number.isFinite(c.id)),
       desks: desksRaw
         .map((d) => ({
@@ -698,6 +711,7 @@ export class TicketsCatalogsService {
       .map((c) => ({
         id: Number(c.tifluxClientId),
         name: (c.tifluxClientName?.trim() || c.name).trim(),
+        companyId: c.id,
       }))
       .filter((c) => Number.isFinite(c.id));
 

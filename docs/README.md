@@ -8,6 +8,7 @@
 | [EMAIL_PRETICKET_GRAPH.md](./EMAIL_PRETICKET_GRAPH.md) | E-mail M365 → pré-tickets, Redis, Sentry, 2FA |
 | [REDIS.md](./REDIS.md) | Redis opcional + fila BullMQ e-mail |
 | [PERFORMANCE.md](./PERFORMANCE.md) | Caches dashboard (LRU/TTL), Redis L2 e external_api_cache |
+| [CLIENTE_DUTEX_MODULO_TI.md](./CLIENTE_DUTEX_MODULO_TI.md) | Dutex × ALLE: portal, chamados, inventário e frentes da reunião |
 | [PR1_ALLE_TICKET_REVIEW.md](./PR1_ALLE_TICKET_REVIEW.md) | Revisão do PR #1 vs cutover v0.6.0 |
 | [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) | Cutover TiFlux → `portal_*` canônico |
 | [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md) | Runbook operacional (ETL, flags, riscos, remoções) |

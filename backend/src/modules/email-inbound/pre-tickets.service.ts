@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TicketsPortalStoreService } from '../tickets/tickets-portal-store.service';
+import { EmailTemplatesService } from '../mail/email-templates.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
@@ -47,6 +48,7 @@ export class PreTicketsService {
     private readonly portalStore: TicketsPortalStoreService,
     private readonly files: FileStorageService,
     private readonly ingest: EmailInboundIngestService,
+    private readonly emailTemplates: EmailTemplatesService,
   ) {}
 
   private assertOperator(actor: AuthenticatedRequestUser) {
@@ -299,6 +301,19 @@ export class PreTicketsService {
         occurredAt: row.receivedAt ?? new Date(),
       },
     });
+
+    if (row.fromEmail?.trim()) {
+      void this.emailTemplates
+        .sendTicketRegistered({
+          to: row.fromEmail.trim(),
+          ticketNumber,
+          title,
+          requestorName: row.fromName,
+          companyName: company?.tifluxClientName || company?.name || null,
+          openedAt: row.receivedAt ?? new Date(),
+        })
+        .catch(() => undefined);
+    }
 
     return { ticketNumber, preTicketId: id };
   }

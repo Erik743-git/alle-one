@@ -1,7 +1,9 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
@@ -12,6 +14,10 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
+
+/** Telefone BR opcional: 10–11 dígitos (com ou sem máscara). */
+const BR_PHONE_PATTERN =
+  /^(?:\(?\d{2}\)?\s?)?(?:9\d{4}|\d{4})-?\d{4}$|^\d{10,11}$/;
 
 export class CreateTicketDto {
   @IsString()
@@ -56,27 +62,39 @@ export class CreateTicketDto {
   @Type(() => Number)
   requestorId?: number;
 
-  @IsOptional()
   @IsString()
+  @MinLength(2)
   @MaxLength(255)
-  requestorName?: string;
+  requestorName!: string;
+
+  @IsEmail()
+  @MaxLength(255)
+  requestorEmail!: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  requestorEmail?: string;
-
-  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' && !value.trim() ? undefined : value,
+  )
   @IsString()
   @MaxLength(50)
+  @Matches(BR_PHONE_PATTERN, {
+    message: 'Telefone inválido. Use DDD + número (10 ou 11 dígitos).',
+  })
   requestorTelephone?: string;
 
-  /** Referência GMUD externa informada pelo cliente. */
+  /** Referência GMUD (código da lista do cliente ou texto legado). */
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(120)
   externalGmudRef?: string;
+
+  /** E-mails em cópia nas notificações do chamado. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsEmail({}, { each: true })
+  ccEmails?: string[];
 }
 
 export class CreateTicketAppointmentDto {

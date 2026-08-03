@@ -805,6 +805,33 @@ model PortalTicketGmudLink {
   @@map("portal_ticket_gmud_links")
 }
 
+/// E-mails em cópia (seguidores) do chamado.
+model PortalTicketWatcher {
+  id           String   @id @default(uuid())
+  ticketNumber Int      @map("ticket_number")
+  email        String   @db.VarChar(255)
+  createdBy    String?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([ticketNumber, email])
+  @@index([ticketNumber])
+  @@map("portal_ticket_watchers")
+}
+
+/// Templates de e-mail parametrizados (Admin → E-mail).
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  key       String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(120)
+  subject   String   @db.VarChar(500)
+  bodyHtml  String   @map("body_html")
+  bodyText  String   @map("body_text")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
+}
+
 /// Cache de eventos do histórico TiFlux (estágios e interações anteriores ao portal).
 model TicketHistory {
   id           String   @id @default(uuid())

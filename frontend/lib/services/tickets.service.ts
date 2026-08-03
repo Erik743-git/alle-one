@@ -157,7 +157,7 @@ export type TicketClassificationNode = {
 };
 
 export type TicketCreateCatalogs = {
-  clients: Array<{ id: number; name: string }>;
+  clients: Array<{ id: number; name: string; companyId?: string }>;
   desks: Array<{
     id: number;
     name: string;
@@ -197,10 +197,11 @@ export type CreateTicketPayload = {
   classificationId?: string;
   responsibleId?: number;
   requestorId?: number;
-  requestorName?: string;
-  requestorEmail?: string;
+  requestorName: string;
+  requestorEmail: string;
   requestorTelephone?: string;
   externalGmudRef?: string;
+  ccEmails?: string[];
 };
 
 export type AppointmentCatalogs = {

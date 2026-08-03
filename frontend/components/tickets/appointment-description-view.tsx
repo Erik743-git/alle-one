@@ -8,7 +8,9 @@ import {
   looksLikeHtml,
   parseAppointmentDoc,
   stripHtmlToPlain,
+  type StoredImageBlock,
 } from "@/lib/appointment-doc";
+import { sanitizeEmailHtmlBackground } from "@/components/tickets/email-html-frame";
 import { AppointmentImageChip } from "@/components/tickets/appointment-image-chip";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +26,7 @@ type ImagePreview = {
   fileId?: string;
   filename: string;
   previewDataUrl?: string | null;
+  width?: number;
 };
 
 type Props = {
@@ -51,8 +54,11 @@ function resolveImageAttachment(
 function collectImagePreviews(
   description: string,
   attachments: Attachment[],
+  /** Quando o corpo já renderiza imagens inline, não repetir nos chips. */
+  skipInlineDocImages: boolean,
 ): ImagePreview[] {
   if (isAppointmentDoc(description)) {
+    if (skipInlineDocImages) return [];
     const doc = parseAppointmentDoc(description);
     if (doc) {
       const seen = new Set<string>();
@@ -75,13 +81,13 @@ function collectImagePreviews(
           fileId,
           filename: attachment?.originalName ?? "Print",
           previewDataUrl,
+          width: block.width,
         });
       }
       if (result.length > 0) return result;
     }
   }
 
-  // HTML de e-mail já renderiza <img> no corpo — não repetir nos chips.
   if (
     looksLikeHtml(description) &&
     (/<img[\s\S]*src\s*=/i.test(description) ||
@@ -105,7 +111,43 @@ function isLongText(text: string) {
   return lines.length > 3 || text.length > 220;
 }
 
-function FullDescriptionBody({ description }: { description: string }) {
+function InlineDocImage({
+  block,
+  attachments,
+}: {
+  block: StoredImageBlock;
+  attachments: Attachment[];
+}) {
+  const attachment = resolveImageAttachment(
+    block.fileIndex,
+    block.fileId,
+    attachments,
+  );
+  const src = block.dataUrl ?? attachment?.previewDataUrl ?? null;
+  if (!src) return null;
+  const width =
+    typeof block.width === "number" && block.width >= 96
+      ? Math.min(block.width, 720)
+      : undefined;
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={attachment?.originalName ?? "Print"}
+      className="my-2 h-auto max-w-full rounded-md border border-border/50 object-contain"
+      style={width ? { width } : { maxHeight: 360 }}
+    />
+  );
+}
+
+function FullDescriptionBody({
+  description,
+  attachments,
+}: {
+  description: string;
+  attachments: Attachment[];
+}) {
   if (isAppointmentDoc(description)) {
     const doc = parseAppointmentDoc(description);
     if (!doc) {
@@ -114,11 +156,22 @@ function FullDescriptionBody({ description }: { description: string }) {
     return (
       <div className="space-y-2">
         {doc.blocks.map((block, index) => {
-          if (block.type !== "text") return null;
+          if (block.type === "text") {
+            return (
+              <p
+                key={`text-${index}`}
+                className="whitespace-pre-wrap text-foreground/90"
+              >
+                {block.content}
+              </p>
+            );
+          }
           return (
-            <p key={`text-${index}`} className="whitespace-pre-wrap text-foreground/90">
-              {block.content}
-            </p>
+            <InlineDocImage
+              key={`img-${index}`}
+              block={block}
+              attachments={attachments}
+            />
           );
         })}
       </div>
@@ -126,10 +179,11 @@ function FullDescriptionBody({ description }: { description: string }) {
   }
 
   if (looksLikeHtml(description)) {
+    const cleaned = sanitizeEmailHtmlBackground(description);
     return (
       <div
-        className="prose prose-sm dark:prose-invert max-w-none text-foreground [&_*]:!text-inherit [&_a]:!text-primary [&_img]:!h-auto [&_img]:!w-auto [&_img]:max-h-[480px] [&_img]:max-w-full [&_img]:object-contain [&_img]:rounded-md"
-        dangerouslySetInnerHTML={{ __html: description }}
+        className="prose prose-sm dark:prose-invert max-w-none rounded-md bg-transparent text-foreground [&_*]:!bg-transparent [&_*]:!text-inherit [&_a]:!text-primary [&_img]:!h-auto [&_img]:max-h-[480px] [&_img]:max-w-full [&_img]:object-contain [&_img]:rounded-md"
+        dangerouslySetInnerHTML={{ __html: cleaned }}
       />
     );
   }
@@ -162,21 +216,23 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
     }
   }
 
-  const imagePreviews = text ? collectImagePreviews(text, attachments) : [];
+  const isDoc = Boolean(text && isAppointmentDoc(text));
+  const imagePreviews = text
+    ? collectImagePreviews(text, attachments, isDoc)
+    : [];
 
   const isHtml = Boolean(text && looksLikeHtml(text));
   const hasHtmlImages =
     isHtml &&
     (/<img[\s\S]*src\s*=/i.test(text!) || text!.includes("data:image/"));
   const hasLongText = Boolean(plainText && isLongText(plainText));
-  // HTML só com print (assinatura etc.): sempre mostra o corpo, não some por falta de texto.
-  const showCollapsed = hasLongText && !expanded && !hasHtmlImages;
+  const showCollapsed = hasLongText && !expanded && !hasHtmlImages && !isDoc;
 
   if (!text) {
     return <span className="text-muted-foreground">—</span>;
   }
 
-  const showDescriptionBody = Boolean(plainText) || isHtml || isAppointmentDoc(text);
+  const showDescriptionBody = Boolean(plainText) || isHtml || isDoc;
 
   return (
     <div className="space-y-2 text-sm leading-relaxed">
@@ -187,9 +243,9 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
               {plainText}
             </p>
           ) : (
-            <FullDescriptionBody description={text} />
+            <FullDescriptionBody description={text} attachments={attachments} />
           )}
-          {hasLongText && !hasHtmlImages ? (
+          {hasLongText && !hasHtmlImages && !isDoc ? (
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}

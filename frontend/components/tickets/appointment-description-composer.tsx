@@ -954,6 +954,12 @@ export const AppointmentDescriptionComposer = forwardRef<
             storedBlocks.push({
               type: "image",
               fileIndex: files.length,
+              width: (() => {
+                const parsed = Number.parseInt(node.style.width, 10);
+                if (Number.isFinite(parsed) && parsed >= 96) return parsed;
+                const rect = node.getBoundingClientRect().width;
+                return Number.isFinite(rect) ? Math.round(rect) : undefined;
+              })(),
             });
             files.push(file);
             return;

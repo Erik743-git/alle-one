@@ -56,6 +56,16 @@ export type PreTicketDetail = PreTicketListItem & {
   }>;
 };
 
+export type EmailTemplate = {
+  id: string;
+  key: string;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string;
+  updatedAt: string;
+};
+
 export const emailInboundService = {
   getSettings() {
     return apiRequest<EmailInboundSettings>("/admin/email/settings");
@@ -95,6 +105,23 @@ export const emailInboundService = {
       "/admin/email/poll",
       { method: "POST" },
     );
+  },
+  listTemplates() {
+    return apiRequest<EmailTemplate[]>("/admin/email/templates");
+  },
+  updateTemplate(
+    key: string,
+    body: {
+      name?: string;
+      subject?: string;
+      bodyHtml?: string;
+      bodyText?: string;
+    },
+  ) {
+    return apiRequest<EmailTemplate>(`/admin/email/templates/${key}`, {
+      method: "PATCH",
+      body,
+    });
   },
   countPreTickets() {
     return apiRequest<{ count: number }>("/pre-tickets/count");

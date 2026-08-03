@@ -6,6 +6,8 @@ export type StoredImageBlock = {
   fileIndex: number;
   fileId?: string;
   dataUrl?: string;
+  /** Largura em px no editor (persistida para manter o tamanho do print). */
+  width?: number;
 };
 export type StoredBlock = StoredTextBlock | StoredImageBlock;
 

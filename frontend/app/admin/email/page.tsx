@@ -18,6 +18,7 @@ import {
   emailInboundService,
   type EmailInboundRoute,
   type EmailInboundSettings,
+  type EmailTemplate,
 } from "@/lib/services/email-inbound.service";
 import { Plus, RefreshCw, Trash2 } from "lucide-react";
 
@@ -27,6 +28,14 @@ export default function AdminEmailPage() {
   const [tab, setTab] = useState<Tab>("recebimento");
   const [settings, setSettings] = useState<EmailInboundSettings | null>(null);
   const [routes, setRoutes] = useState<EmailInboundRoute[]>([]);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]);
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState("");
+  const [templateDraft, setTemplateDraft] = useState<{
+    name: string;
+    subject: string;
+    bodyHtml: string;
+    bodyText: string;
+  } | null>(null);
   const [desks, setDesks] = useState<ServiceDeskOption[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -38,21 +47,71 @@ export default function AdminEmailPage() {
 
   const load = useCallback(async () => {
     try {
-      const [s, r, deskList, companyList] = await Promise.all([
+      const [s, r, deskList, companyList, templateList] = await Promise.all([
         emailInboundService.getSettings(),
         emailInboundService.listRoutes(),
         classificationService.listDesks().catch(() => [] as ServiceDeskOption[]),
         companiesService.list().catch(() => [] as Company[]),
+        emailInboundService.listTemplates().catch(() => [] as EmailTemplate[]),
       ]);
       setSettings(s);
       setRoutes(r);
       setDesks(deskList);
       setCompanies(companyList.filter((c) => c.status && !c.deletedAt));
+      setTemplates(templateList);
       setError(null);
+      setSelectedTemplateKey((prev) => {
+        const next =
+          templateList.find((t) => t.key === prev)?.key ??
+          templateList[0]?.key ??
+          "";
+        const current = templateList.find((t) => t.key === next);
+        if (current) {
+          setTemplateDraft({
+            name: current.name,
+            subject: current.subject,
+            bodyHtml: current.bodyHtml,
+            bodyText: current.bodyText,
+          });
+        }
+        return next;
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao carregar");
     }
   }, []);
+
+  function selectTemplate(key: string) {
+    const current = templates.find((t) => t.key === key);
+    setSelectedTemplateKey(key);
+    if (current) {
+      setTemplateDraft({
+        name: current.name,
+        subject: current.subject,
+        bodyHtml: current.bodyHtml,
+        bodyText: current.bodyText,
+      });
+    }
+  }
+
+  async function saveTemplate() {
+    if (!selectedTemplateKey || !templateDraft) return;
+    setBusy(true);
+    try {
+      const updated = await emailInboundService.updateTemplate(
+        selectedTemplateKey,
+        templateDraft,
+      );
+      setTemplates((prev) =>
+        prev.map((t) => (t.key === updated.key ? updated : t)),
+      );
+      setError("Template salvo.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao salvar template");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     void load();
@@ -182,19 +241,102 @@ export default function AdminEmailPage() {
             ) : null}
 
             {tab === "envio" ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Envio</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-2">
-                  <p>
-                    O envio SMTP do portal continua nas variáveis{" "}
-                    <code>SMTP_*</code> / <code>MAIL_FROM</code>. Para
-                    configurar o e-mail de recebimento (caixa compartilhada),
-                    use a aba Recebimento.
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Templates de e-mail</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 text-sm">
+                    <p className="text-muted-foreground">
+                      Textos enviados ao registrar chamado (criação ou abertura de
+                      pré-ticket) e notificações de GMUD. Variáveis:{" "}
+                      <code>{"{{ticketNumber}}"}</code>,{" "}
+                      <code>{"{{title}}"}</code>,{" "}
+                      <code>{"{{requestorName}}"}</code>,{" "}
+                      <code>{"{{companyName}}"}</code>,{" "}
+                      <code>{"{{openedAt}}"}</code>,{" "}
+                      <code>{"{{gmudCode}}"}</code>,{" "}
+                      <code>{"{{gmudLink}}"}</code>.
+                    </p>
+                    <p className="text-muted-foreground">
+                      SMTP continua em <code>SMTP_*</code> / <code>MAIL_FROM</code>.
+                    </p>
+                    <div className="space-y-2">
+                      <Label>Template</Label>
+                      <SearchableSelectField
+                        value={selectedTemplateKey}
+                        onChange={selectTemplate}
+                        options={templates.map((t) => ({
+                          value: t.key,
+                          label: `${t.name} (${t.key})`,
+                        }))}
+                        emptyLabel="Nenhum template"
+                      />
+                    </div>
+                    {templateDraft ? (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label>Nome</Label>
+                          <Input
+                            value={templateDraft.name}
+                            onChange={(e) =>
+                              setTemplateDraft({
+                                ...templateDraft,
+                                name: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Assunto</Label>
+                          <Input
+                            value={templateDraft.subject}
+                            onChange={(e) =>
+                              setTemplateDraft({
+                                ...templateDraft,
+                                subject: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Corpo HTML</Label>
+                          <textarea
+                            className="min-h-[160px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={templateDraft.bodyHtml}
+                            onChange={(e) =>
+                              setTemplateDraft({
+                                ...templateDraft,
+                                bodyHtml: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label>Corpo texto</Label>
+                          <textarea
+                            className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            value={templateDraft.bodyText}
+                            onChange={(e) =>
+                              setTemplateDraft({
+                                ...templateDraft,
+                                bodyText: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void saveTemplate()}
+                        >
+                          Salvar template
+                        </Button>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </div>
             ) : null}
 
             {tab === "recebimento" && settings ? (

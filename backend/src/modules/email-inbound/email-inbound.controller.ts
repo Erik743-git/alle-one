@@ -12,10 +12,12 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { UserRole } from '@prisma/client';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { EmailTemplatesService } from '../mail/email-templates.service';
 import {
   CreateEmailInboundRouteDto,
   EmailInboundAdminService,
@@ -24,12 +26,36 @@ import {
 } from './email-inbound-admin.service';
 import { OpenPreTicketDto, PreTicketsService } from './pre-tickets.service';
 
+class UpdateEmailTemplateDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(500)
+  subject?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  bodyHtml?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  bodyText?: string;
+}
+
 @Controller()
 @UseGuards(RolesGuard)
 export class EmailInboundController {
   constructor(
     private readonly admin: EmailInboundAdminService,
     private readonly preTickets: PreTicketsService,
+    private readonly emailTemplates: EmailTemplatesService,
   ) {}
 
   @Get('admin/email/settings')
@@ -78,6 +104,21 @@ export class EmailInboundController {
   @Roles(UserRole.ADMIN)
   pollNow() {
     return this.admin.pollNow();
+  }
+
+  @Get('admin/email/templates')
+  @Roles(UserRole.ADMIN)
+  listTemplates() {
+    return this.emailTemplates.list();
+  }
+
+  @Patch('admin/email/templates/:key')
+  @Roles(UserRole.ADMIN)
+  updateTemplate(
+    @Param('key') key: string,
+    @Body() dto: UpdateEmailTemplateDto,
+  ) {
+    return this.emailTemplates.update(key, dto);
   }
 
   @Get('pre-tickets/count')

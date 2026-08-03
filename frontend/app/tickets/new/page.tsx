@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, FileText, Loader2, Plus, UserRound } from "lucide-react";
+import { Building2, FileText, Loader2, Plus, UserRound, X } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -26,9 +26,15 @@ import {
 import { TICKETS_NEW_SUBTITLE } from "@/lib/module-copy";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
+  applyClientTitlePrefix,
+  formatBrPhone,
+  isValidBrPhone,
+} from "@/lib/ticket-form";
+import {
   ticketsService,
   type TicketCreateCatalogs,
 } from "@/lib/services/tickets.service";
+import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 
 function FormSkeleton() {
   return (
@@ -70,10 +76,19 @@ export default function NewTicketPage() {
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorTelephone, setRequestorTelephone] = useState("");
   const [externalGmudRef, setExternalGmudRef] = useState("");
+  const [gmudOptions, setGmudOptions] = useState<Gmud[]>([]);
+  const [loadingGmuds, setLoadingGmuds] = useState(false);
+  const [ccInput, setCcInput] = useState("");
+  const [ccEmails, setCcEmails] = useState<string[]>([]);
 
   const selectedDesk = useMemo(
     () => catalogs?.desks.find((d) => String(d.id) === deskId) ?? null,
     [catalogs, deskId],
+  );
+
+  const selectedClient = useMemo(
+    () => catalogs?.clients.find((c) => String(c.id) === clientId) ?? null,
+    [catalogs, clientId],
   );
 
   const hasPortalClassification =
@@ -145,13 +160,13 @@ export default function NewTicketPage() {
     [catalogs],
   );
 
-  const requiresRequestor = Boolean(
-    catalogs?.desk?.requiredFields?.requestor_name ||
-      catalogs?.desk?.requiredFields?.requestor_email,
-  );
-
-  const hasRequestorInfo = Boolean(
-    requestorName.trim() || requestorEmail.trim(),
+  const gmudSelectOptions = useMemo(
+    () =>
+      gmudOptions.map((g) => ({
+        value: String(g.code),
+        label: `#${g.code} — ${g.title}`,
+      })),
+    [gmudOptions],
   );
 
   const catalogBlocked =
@@ -172,9 +187,8 @@ export default function NewTicketPage() {
       missing.push("Serviço do catálogo");
     }
     if (requiresPriority && !priorityId) missing.push("Prioridade");
-    if (requiresRequestor && !hasRequestorInfo) {
-      missing.push("Solicitante (nome ou e-mail)");
-    }
+    if (!requestorName.trim()) missing.push("Solicitante");
+    if (!requestorEmail.trim()) missing.push("E-mail do solicitante");
     return missing;
   }, [
     title,
@@ -187,8 +201,8 @@ export default function NewTicketPage() {
     catalogItemId,
     requiresPriority,
     priorityId,
-    requiresRequestor,
-    hasRequestorInfo,
+    requestorName,
+    requestorEmail,
   ]);
 
   const canSubmit =
@@ -245,10 +259,44 @@ export default function NewTicketPage() {
     });
   }, [deskId, clientId, loadCatalogs]);
 
+  useEffect(() => {
+    const companyId = selectedClient?.companyId;
+    if (!companyId) {
+      setGmudOptions([]);
+      setExternalGmudRef("");
+      return;
+    }
+    let cancelled = false;
+    setLoadingGmuds(true);
+    void gmudsService
+      .list({ companyId })
+      .then((rows) => {
+        if (!cancelled) setGmudOptions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setGmudOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingGmuds(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClient?.companyId]);
+
   function handleClientChange(nextClientId: string) {
+    const nextClient =
+      catalogs?.clients.find((c) => String(c.id) === nextClientId) ?? null;
+    setTitle((prev) =>
+      applyClientTitlePrefix(
+        prev,
+        (catalogs?.clients ?? []).map((c) => c.name),
+        nextClient?.name ?? null,
+      ),
+    );
     setClientId(nextClientId);
-    // Solicitante é independente do cliente — não limpa ao trocar a empresa.
     setRequestorId("");
+    setExternalGmudRef("");
   }
 
   function handleRequestorSuggestion(nextRequestorId: string) {
@@ -260,7 +308,24 @@ export default function NewTicketPage() {
     if (!selected) return;
     setRequestorName(selected.name ?? "");
     setRequestorEmail(selected.email ?? "");
-    setRequestorTelephone(selected.telephone ?? "");
+    setRequestorTelephone(
+      selected.telephone ? formatBrPhone(selected.telephone) : "",
+    );
+  }
+
+  function addCcEmail() {
+    const email = ccInput.trim().toLowerCase();
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      notifyError("E-mail em cópia inválido.");
+      return;
+    }
+    if (ccEmails.includes(email)) {
+      setCcInput("");
+      return;
+    }
+    setCcEmails((prev) => [...prev, email]);
+    setCcInput("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -296,13 +361,16 @@ export default function NewTicketPage() {
       return;
     }
 
-    const requiredFields = catalogs?.desk?.requiredFields ?? {};
-    if (
-      (requiredFields.requestor_name || requiredFields.requestor_email) &&
-      !requestorName.trim() &&
-      !requestorEmail.trim()
-    ) {
-      notifyError("Informe o solicitante (nome ou e-mail).");
+    if (!requestorName.trim()) {
+      notifyError("Informe o nome do solicitante.");
+      return;
+    }
+    if (!requestorEmail.trim()) {
+      notifyError("Informe o e-mail do solicitante.");
+      return;
+    }
+    if (requestorTelephone.trim() && !isValidBrPhone(requestorTelephone)) {
+      notifyError("Telefone inválido. Use DDD + número.");
       return;
     }
 
@@ -321,10 +389,11 @@ export default function NewTicketPage() {
           classificationId: classificationId ?? undefined,
           responsibleId: responsibleId ? Number(responsibleId) : undefined,
           requestorId: requestorId ? Number(requestorId) : undefined,
-          requestorName: requestorName.trim() || undefined,
-          requestorEmail: requestorEmail.trim() || undefined,
+          requestorName: requestorName.trim(),
+          requestorEmail: requestorEmail.trim(),
           requestorTelephone: requestorTelephone.trim() || undefined,
           externalGmudRef: externalGmudRef.trim() || undefined,
+          ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
         },
         files,
       );
@@ -373,17 +442,25 @@ export default function NewTicketPage() {
                       <Input
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Resumo do problema ou solicitação"
+                        placeholder={
+                          selectedClient
+                            ? `${selectedClient.name.toUpperCase()} - Resumo do problema`
+                            : "Resumo do problema ou solicitação"
+                        }
                         className="h-11"
                         required
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Ao escolher o cliente, o título recebe o prefixo automático
+                        (ex.: TUPER - ).
+                      </p>
                     </div>
                     <AppointmentDescriptionComposer
                       ref={descriptionComposerRef}
                       disabled={saving}
                       labelClassName="text-xs font-semibold text-muted-foreground"
                       placeholder="Detalhe o que precisa ser atendido"
-                      hintText="Escreva e cole prints na descrição (Ctrl+V). ZIP/PDF e outros arquivos em Anexos. Campo obrigatório."
+                      hintText="Escreva e cole prints na descrição (Ctrl+V). Arraste a alça para ajustar o tamanho do print. ZIP/PDF em Anexos."
                       appendButtonLabel="Anexar arquivo"
                     />
                   </CardContent>
@@ -507,17 +584,10 @@ export default function NewTicketPage() {
                             emptyLabel="Escolher contato do cliente"
                             placeholder="Escolher contato do cliente"
                           />
-                          <p className="text-xs text-muted-foreground">
-                            Sugestões do cliente selecionado (sem duplicar e-mail).
-                            Para Alle Tecnologia/Infra, só aparecem endereços @alletecnologia.com.
-                            Preenche nome, e-mail e telefone abaixo.
-                          </p>
                         </div>
                       ) : null}
                       <div className="space-y-2">
-                        <FieldLabel required={requiresRequestor} optional={!requiresRequestor}>
-                          Solicitante
-                        </FieldLabel>
+                        <FieldLabel required>Solicitante</FieldLabel>
                         <Input
                           value={requestorName}
                           onChange={(e) => {
@@ -527,16 +597,12 @@ export default function NewTicketPage() {
                           placeholder="Nome de quem está solicitando"
                           className="h-11"
                           disabled={saving}
+                          required
                         />
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
-                          <FieldLabel
-                            required={requiresRequestor}
-                            optional={!requiresRequestor}
-                          >
-                            E-mail do solicitante
-                          </FieldLabel>
+                          <FieldLabel required>E-mail do solicitante</FieldLabel>
                           <Input
                             type="email"
                             value={requestorEmail}
@@ -547,6 +613,7 @@ export default function NewTicketPage() {
                             placeholder="email@empresa.com"
                             className="h-11"
                             disabled={saving}
+                            required
                           />
                         </div>
                         <div className="space-y-2">
@@ -554,37 +621,92 @@ export default function NewTicketPage() {
                           <Input
                             value={requestorTelephone}
                             onChange={(e) => {
-                              setRequestorTelephone(e.target.value);
+                              setRequestorTelephone(formatBrPhone(e.target.value));
                               setRequestorId("");
                             }}
                             placeholder="(00) 00000-0000"
                             className="h-11"
                             disabled={saving}
+                            inputMode="tel"
                           />
                         </div>
                       </div>
-                      {requiresRequestor ? (
-                        <p className="text-xs text-muted-foreground">
-                          Esta mesa exige solicitante: informe <strong>nome ou e-mail</strong>.
-                        </p>
-                      ) : null}
-                      <p className="text-xs text-muted-foreground">
-                        Você também pode digitar nome/e-mail manualmente — o solicitante
-                        não precisa estar na lista.
-                      </p>
                     </div>
+
                     <div className="space-y-2">
-                      <FieldLabel optional>
-                        Referência GMUD do cliente
-                      </FieldLabel>
-                      <Input
+                      <FieldLabel optional>GMUD do cliente</FieldLabel>
+                      <SearchableSelectField
                         value={externalGmudRef}
-                        onChange={(e) => setExternalGmudRef(e.target.value)}
-                        placeholder="Ex.: GMUD-2024-001 ou número interno do cliente"
-                        className="h-11"
+                        onChange={setExternalGmudRef}
+                        options={gmudSelectOptions}
+                        loading={loadingGmuds}
+                        emptyLabel={
+                          !selectedClient?.companyId
+                            ? "Selecione o cliente para listar GMUDs"
+                            : gmudSelectOptions.length === 0
+                              ? "Nenhuma GMUD cadastrada para este cliente"
+                              : "Selecione a GMUD (opcional)"
+                        }
+                        placeholder="Selecione a GMUD"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Código ou identificador da GMUD no sistema do cliente — não é a GMUD cadastrada no Alle.
+                        Lista das GMUDs cadastradas no portal para a empresa do
+                        cliente. O número fica vinculado ao chamado.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <FieldLabel optional>Pessoas em cópia (e-mail)</FieldLabel>
+                      <div className="flex gap-2">
+                        <Input
+                          type="email"
+                          value={ccInput}
+                          onChange={(e) => setCcInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addCcEmail();
+                            }
+                          }}
+                          placeholder="email@empresa.com"
+                          className="h-11"
+                          disabled={saving}
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          onClick={addCcEmail}
+                          disabled={saving}
+                        >
+                          Adicionar
+                        </Button>
+                      </div>
+                      {ccEmails.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {ccEmails.map((email) => (
+                            <span
+                              key={email}
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
+                            >
+                              {email}
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={() =>
+                                  setCcEmails((prev) =>
+                                    prev.filter((item) => item !== email),
+                                  )
+                                }
+                                aria-label={`Remover ${email}`}
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        Recebem cópia das notificações do chamado (ex.: registro).
                       </p>
                     </div>
                   </CardContent>
@@ -608,10 +730,6 @@ export default function NewTicketPage() {
                               <li key={item}>{item}</li>
                             ))}
                           </ul>
-                          <p className="mt-2 text-xs text-amber-100/80">
-                            Campos com <span className="text-destructive">*</span> são
-                            obrigatórios. A descrição também é obrigatória.
-                          </p>
                         </>
                       ) : null}
                     </div>

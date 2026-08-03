@@ -26,6 +26,7 @@ import { TicketsAppointmentsService } from './tickets-appointments.service';
 import { TicketsCatalogsService } from './tickets-catalogs.service';
 import { isTicketsTifluxWriteEnabled } from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
+import { EmailTemplatesService } from '../mail/email-templates.service';
 
 @Injectable()
 export class TicketsService {
@@ -35,6 +36,7 @@ export class TicketsService {
     private readonly catalogs: TicketsCatalogsService,
     private readonly appointments: TicketsAppointmentsService,
     private readonly portalStore: TicketsPortalStoreService,
+    private readonly emailTemplates: EmailTemplatesService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -211,6 +213,24 @@ export class TicketsService {
       throw new BadRequestException('Esta mesa exige uma prioridade.');
     }
 
+    const requestorName = dto.requestorName?.trim() ?? '';
+    const requestorEmail = dto.requestorEmail?.trim() ?? '';
+    if (requestorName.length < 2) {
+      throw new BadRequestException('Informe o nome do solicitante.');
+    }
+    if (!requestorEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestorEmail)) {
+      throw new BadRequestException('Informe um e-mail válido do solicitante.');
+    }
+    const requestorTelephone = dto.requestorTelephone?.trim() || null;
+    if (requestorTelephone) {
+      const digits = requestorTelephone.replace(/\D/g, '');
+      if (digits.length !== 10 && digits.length !== 11) {
+        throw new BadRequestException(
+          'Telefone inválido. Use DDD + número (10 ou 11 dígitos).',
+        );
+      }
+    }
+
     const descriptionRaw = dto.description.trim();
     const descriptionPlain = appointmentDescriptionToPlainText(descriptionRaw);
     if (!descriptionPlain && files.length === 0) {
@@ -278,9 +298,9 @@ export class TicketsService {
       services_catalogs_item_id: servicesCatalogsItemId ?? undefined,
       responsible_id: responsibleId ?? undefined,
       requestor_id: dto.requestorId ?? undefined,
-      requestor_name: dto.requestorName?.trim() || undefined,
-      requestor_email: dto.requestorEmail?.trim() || undefined,
-      requestor_telephone: dto.requestorTelephone?.trim() || undefined,
+      requestor_name: requestorName,
+      requestor_email: requestorEmail,
+      requestor_telephone: requestorTelephone || undefined,
     };
 
     const responsibleMeta = responsibleId
@@ -335,9 +355,9 @@ export class TicketsService {
         deskName: tifluxDeskName || null,
         responsibleExternalId: responsibleId,
         responsibleName,
-        requestorName: dto.requestorName?.trim() || null,
-        requestorEmail: dto.requestorEmail?.trim() || null,
-        requestorTelephone: dto.requestorTelephone?.trim() || null,
+        requestorName,
+        requestorEmail,
+        requestorTelephone,
         statusName: 'Aberto',
         stageName: 'Aberto',
         priorityName: null,
@@ -365,12 +385,40 @@ export class TicketsService {
         files,
       );
 
+      const ccEmails = Array.from(
+        new Set(
+          (dto.ccEmails ?? [])
+            .map((e) => e.trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      );
+      if (ccEmails.length > 0) {
+        await this.prisma.portalTicketWatcher.createMany({
+          data: ccEmails.map((email) => ({
+            ticketNumber,
+            email,
+            createdBy: actor.userId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      void this.emailTemplates
+        .sendTicketRegistered({
+          to: requestorEmail,
+          cc: ccEmails,
+          ticketNumber,
+          title: dto.title.trim(),
+          requestorName,
+          companyName: clientName,
+          openedAt: new Date(),
+        })
+        .catch(() => undefined);
+
       return {
         ok: true,
         ticketNumber,
-        message: writeTiflux
-          ? 'Ticket criado com sucesso.'
-          : 'Ticket criado no portal (sem sync TiFlux).',
+        message: 'Ticket criado com sucesso.',
         tiflux: tifluxRaw,
         portalCanonical: true,
       };
