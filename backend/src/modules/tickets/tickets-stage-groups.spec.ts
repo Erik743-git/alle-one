@@ -20,6 +20,11 @@ describe('resolveTicketStageGroup', () => {
     expect(resolveTicketStageGroup('In progress')).toBe('execucao');
   });
 
+  it('recupera label com encoding corrompido', () => {
+    expect(resolveTicketStageGroup('Em execu??o')).toBe('execucao');
+    expect(canonicalizeStageName('Em execu??o')).toBe('Em execução');
+  });
+
   it('cai em outros para estágio desconhecido', () => {
     expect(resolveTicketStageGroup('Fechado')).toBe('outros');
     expect(resolveTicketStageGroup(null)).toBe('outros');

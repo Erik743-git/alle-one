@@ -1,5 +1,3 @@
-"use client";
-
 import { DeferredResponsiveContainer } from "@/components/charts/deferred-responsive-container";
 import { useChartTheme, useChartTooltipProps } from "@/lib/chart-theme";
 import { useIsMobileChart } from "@/lib/use-media-query";
@@ -7,9 +5,12 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -34,8 +35,18 @@ export type DashboardAlertRow = {
   Total: number;
 };
 
+export type DashboardDeskRow = {
+  deskName: string;
+  totalTickets: number;
+};
+
 type Props =
-  | { kind: "chamados"; data: DashboardBarRow[] }
+  | {
+      kind: "chamados";
+      data: DashboardBarRow[];
+      chartType?: "bar" | "line" | "pie";
+      deskData?: DashboardDeskRow[];
+    }
   | { kind: "horas"; data: DashboardBarRow[] }
   | { kind: "alertas"; data: DashboardAlertRow[] };
 
@@ -46,6 +57,16 @@ const BAR_SERIES = [
   { key: "Rotinas", fill: "#9bc45b" },
   { key: "Consult", fill: "#ed7d31" },
 ] as const;
+
+const PIE_COLORS = [
+  "#4f8bd6",
+  "#d85c57",
+  "#8c6fd1",
+  "#9bc45b",
+  "#ed7d31",
+  "#57c1d9",
+  "#6b7280",
+];
 
 function chartMargins(compact: boolean) {
   return compact
@@ -65,7 +86,9 @@ function legendProps(compact: boolean, tickColor: string) {
       lineHeight: 1.3,
     },
     formatter: (value: string) => (
-      <span style={{ color: tickColor, fontSize: compact ? 10 : 12 }}>{value}</span>
+      <span style={{ color: tickColor, fontSize: compact ? 10 : 12 }}>
+        {value}
+      </span>
     ),
   };
 }
@@ -130,6 +153,79 @@ export function DashboardLazyChart(props: Props) {
   }
 
   const data = props.data;
+  const chartType = props.kind === "chamados" ? props.chartType ?? "bar" : "bar";
+  const deskData = props.kind === "chamados" ? props.deskData ?? [] : [];
+
+  if (props.kind === "chamados" && chartType === "pie") {
+    const pieRows =
+      deskData.length > 0
+        ? deskData.map((d) => ({ name: d.deskName, value: d.totalTickets }))
+        : data.map((row) => ({ name: row.monthLabel, value: row.Total }));
+    return (
+      <div className={chartHeight}>
+        <DeferredResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Tooltip {...TOOLTIP_PROPS} />
+            <Legend {...legend} />
+            <Pie
+              data={pieRows}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="45%"
+              outerRadius={compact ? 90 : 120}
+              label={!compact}
+            >
+              {pieRows.map((_, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={PIE_COLORS[index % PIE_COLORS.length]}
+                />
+              ))}
+            </Pie>
+          </PieChart>
+        </DeferredResponsiveContainer>
+      </div>
+    );
+  }
+
+  if (props.kind === "chamados" && chartType === "line") {
+    return (
+      <div className={chartHeight}>
+        <DeferredResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={margins}>
+            <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
+            <XAxis
+              dataKey="monthLabel"
+              stroke={chartTheme.tick}
+              tick={{ fill: chartTheme.tick, fontSize: compact ? 9 : 11 }}
+              tickLine={{ stroke: chartTheme.tick }}
+              axisLine={{ stroke: chartTheme.grid }}
+            />
+            <YAxis
+              width={compact ? 28 : 40}
+              stroke={chartTheme.tick}
+              tick={{ fill: chartTheme.tick, fontSize: compact ? 9 : 11 }}
+              tickLine={{ stroke: chartTheme.tick }}
+              axisLine={{ stroke: chartTheme.grid }}
+            />
+            <Tooltip {...TOOLTIP_PROPS} />
+            <Legend {...legend} />
+            {BAR_SERIES.map((series) => (
+              <Line
+                key={series.key}
+                type="monotone"
+                dataKey={series.key}
+                stroke={series.fill}
+                strokeWidth={compact ? 1.5 : 2}
+                dot={{ r: compact ? 2 : 3 }}
+              />
+            ))}
+          </LineChart>
+        </DeferredResponsiveContainer>
+      </div>
+    );
+  }
 
   return (
     <div className={chartHeight}>
@@ -187,7 +283,12 @@ export function DashboardLazyChart(props: Props) {
                   maxBarSize={48}
                 />
               ))}
-              <Bar dataKey="Total" fill="#57c1d9" radius={[4, 4, 0, 0]} maxBarSize={48} />
+              <Bar
+                dataKey="Total"
+                fill="#57c1d9"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={48}
+              />
             </>
           )}
         </BarChart>

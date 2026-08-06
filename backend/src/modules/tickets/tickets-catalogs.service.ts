@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserRole, UserStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -463,14 +464,13 @@ export class TicketsCatalogsService {
         externalId: Number(c.client_external_id),
         name: c.client_name,
       })),
-      responsibles:
-        actor.role === 'CLIENT'
-          ? []
-          : responsibles.map((r) => ({
-              externalId: r.id,
-              name: r.name,
-              email: r.email,
-            })),
+      responsibles: isClientPortalRole(actor.role)
+        ? []
+        : responsibles.map((r) => ({
+            externalId: r.id,
+            name: r.name,
+            email: r.email,
+          })),
       desks: desks.map((d) => d.desk_name),
       statuses: statuses.map((s) => s.status_name),
     };
@@ -549,12 +549,11 @@ export class TicketsCatalogsService {
       clients: [...clientMap.entries()]
         .map(([externalId, name]) => ({ externalId, name }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-      responsibles:
-        actor.role === 'CLIENT'
-          ? []
-          : [...responsibleMap.values()].sort((a, b) =>
-              a.name.localeCompare(b.name, 'pt-BR'),
-            ),
+      responsibles: isClientPortalRole(actor.role)
+        ? []
+        : [...responsibleMap.values()].sort((a, b) =>
+            a.name.localeCompare(b.name, 'pt-BR'),
+          ),
       desks,
       statuses,
     };

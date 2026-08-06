@@ -12,10 +12,18 @@ import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { useAuth } from "@/lib/use-auth";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { ClientDashboardViewToggle } from "@/components/dashboard/client-dashboard-view-toggle";
+import { EditChartPresetDialog } from "@/components/dashboard/edit-chart-preset-dialog";
+import {
+  dashboardChartPresetsService,
+  type DashboardChartType,
+  type DashboardClientViewMode,
+} from "@/lib/services/dashboard-chart-presets.service";
 import {
   getPersistedCompanyId,
   isValidCompanyUuid,
@@ -304,6 +312,12 @@ function normalizeDashboardResponse(
       hostsInativos: Number(raw?.summary?.hostsInativos ?? 0),
     },
     chamadosPorMes: Array.isArray(raw?.chamadosPorMes) ? raw.chamadosPorMes : [],
+    chamadosPorMesa: Array.isArray(
+      (raw as { chamadosPorMesa?: unknown }).chamadosPorMesa,
+    )
+      ? (raw as { chamadosPorMesa: Array<{ deskName: string; totalTickets: number }> })
+          .chamadosPorMesa
+      : [],
     horasPorMes: Array.isArray(raw?.horasPorMes) ? raw.horasPorMes : [],
     alertasPorMes: Array.isArray(raw?.alertasPorMes) ? raw.alertasPorMes : [],
     alertasPorSemana: Array.isArray(raw?.alertasPorSemana)
@@ -341,10 +355,18 @@ export default function DashboardPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const canSelectCompany = user?.role === "ADMIN" || user?.role === "COLLABORATOR";
+  const isClientUser = isClientPortalRole(user?.role);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
     if (!canSelectCompany) return user?.companyId ?? null;
     return user?.id ? getPersistedCompanyId(user.id) : null;
   });
+
+  const [clientViewMode, setClientViewMode] =
+    useState<DashboardClientViewMode>("ALLE");
+  const [chartType, setChartType] = useState<DashboardChartType>("bar");
+  const [deskNamesFilter, setDeskNamesFilter] = useState<string[]>([]);
+  const [editChartOpen, setEditChartOpen] = useState(false);
+  const [presetPeriodDays, setPresetPeriodDays] = useState(30);
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [manualRefreshing, setManualRefreshing] = useState(false);
@@ -367,6 +389,37 @@ export default function DashboardPage() {
   useEffect(() => {
     dashboardSnapshotRef.current = dashboard;
   }, [dashboard]);
+
+  useEffect(() => {
+    if (!isClientUser || !user?.companyId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const preset = await dashboardChartPresetsService.get(
+          clientViewMode,
+          user.companyId,
+        );
+        if (cancelled || !preset) return;
+        const type =
+          preset.chartType === "line" || preset.chartType === "pie"
+            ? preset.chartType
+            : "bar";
+        setChartType(type);
+        setDeskNamesFilter(preset.deskNames ?? []);
+        setPresetPeriodDays(preset.periodDays ?? 30);
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - Math.max(6, (preset.periodDays ?? 30) - 1));
+        setStartDate(formatDateInput(start));
+        setEndDate(formatDateInput(end));
+      } catch {
+        /* preset opcional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isClientUser, user?.companyId, clientViewMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -501,6 +554,12 @@ export default function DashboardPage() {
           start: toRangeDateString(startDate, false),
           end: toRangeDateString(endDate, true),
           companyId: effectiveCompanyId,
+          ...(isClientUser
+            ? {
+                viewMode: clientViewMode,
+                deskNames: deskNamesFilter,
+              }
+            : {}),
         };
 
         if (!isValidDateInput(startDate) || !isValidDateInput(endDate)) {
@@ -618,7 +677,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, selectedCompanyId, startDate, user?.companyId, user?.role],
+    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, selectedCompanyId, startDate, user?.companyId, user?.role, isClientUser, clientViewMode, deskNamesFilter],
   );
 
   useEffect(() => {
@@ -840,6 +899,14 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          {isClientUser ? (
+            <ClientDashboardViewToggle
+              viewMode={clientViewMode}
+              onChange={setClientViewMode}
+              onEditChart={() => setEditChartOpen(true)}
+            />
+          ) : null}
+
           <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between">
             <div className="inline-flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -990,7 +1057,12 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <DashboardLazyChart kind="chamados" data={chamadosChartData} />
+              <DashboardLazyChart
+                kind="chamados"
+                data={chamadosChartData}
+                chartType={isClientUser ? chartType : "bar"}
+                deskData={dashboard?.chamadosPorMesa ?? []}
+              />
 
               {dashboard?.resumoHorasTrabalhadas ? (
                 <div className="space-y-4 border-t border-border pt-6">
@@ -1269,6 +1341,32 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+        {isClientUser ? (
+          <EditChartPresetDialog
+            open={editChartOpen}
+            onOpenChange={setEditChartOpen}
+            viewMode={clientViewMode}
+            companyId={user?.companyId ?? null}
+            availableDesks={(dashboard?.chamadosPorMesa ?? []).map(
+              (d) => d.deskName,
+            )}
+            initialChartType={chartType}
+            initialDeskNames={deskNamesFilter}
+            initialPeriodDays={presetPeriodDays}
+            onSaved={(next) => {
+              setChartType(next.chartType);
+              setDeskNamesFilter(next.deskNames);
+              setPresetPeriodDays(next.periodDays);
+              const end = new Date();
+              const start = new Date();
+              start.setDate(
+                end.getDate() - Math.max(6, next.periodDays - 1),
+              );
+              setStartDate(formatDateInput(start));
+              setEndDate(formatDateInput(end));
+            }}
+          />
+        ) : null}
       </AppShell>
       </PermissionGate>
     </ProtectedPage>

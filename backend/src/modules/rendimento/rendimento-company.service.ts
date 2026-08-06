@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { RendimentoAppointmentQuestionStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { summarizeCompanyAppointmentDescription } from './company-description.util';
@@ -169,7 +170,7 @@ export class RendimentoCompanyService {
     companyId: string,
   ) {
     if (actor.role === 'ADMIN') return;
-    if (actor.role === 'CLIENT' && actor.companyId === companyId) return;
+    if (isClientPortalRole(actor.role) && actor.companyId === companyId) return;
     throw new ForbiddenException('Sem permissão para esta empresa.');
   }
 
@@ -297,7 +298,7 @@ export class RendimentoCompanyService {
   ): Promise<CompanyListItemDto[]> {
     const monthRange = this.currentMonthRange();
 
-    if (actor.role === 'CLIENT') {
+    if (isClientPortalRole(actor.role)) {
       if (!actor.companyId) return [];
       const company = await this.getCompanyOrThrow(actor.companyId);
       const monthMinutes = company.tifluxClientId
@@ -768,7 +769,7 @@ export class RendimentoCompanyService {
     description?: string;
     message: string;
   }) {
-    if (params.actor.role !== 'CLIENT') {
+    if (!isClientPortalRole(params.actor.role)) {
       throw new ForbiddenException(
         'Somente clientes podem questionar apontamentos.',
       );

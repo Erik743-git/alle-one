@@ -147,6 +147,13 @@ export class RendimentoController {
     return this.rendimentoService.listCollaborators();
   }
 
+  @Get('company-employees')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('CLIENT')
+  listCompanyEmployees(@Req() req: AuthenticatedRequest) {
+    return this.rendimentoService.listCompanyEmployees(req.user);
+  }
+
   @Get('collaborators/list-preferences')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   @Roles('ADMIN')

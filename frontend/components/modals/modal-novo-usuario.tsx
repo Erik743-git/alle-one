@@ -44,7 +44,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [companyId, setCompanyId] = useState("");
-  const [role, setRole] = useState("CLIENT");
+  const [role, setRole] = useState("CLIENT_GESTOR");
   const [responsible, setResponsible] = useState(false);
   const [serviceDeskIds, setServiceDeskIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
@@ -107,7 +107,13 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
         name: nome.trim(),
         email: email.trim().toLowerCase(),
         password: password.trim(),
-        role: role as "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT",
+        role: role as
+          | "ADMIN"
+          | "COLLABORATOR"
+          | "PJ"
+          | "CLIENT"
+          | "CLIENT_GESTOR"
+          | "CLIENT_MEMBER",
         companyId,
         status: "ACTIVE",
         firstAccess: true,
@@ -126,7 +132,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
       setEmail("");
       setPassword("");
       setCompanyId("");
-      setRole("CLIENT");
+      setRole("CLIENT_GESTOR");
       setResponsible(false);
       setServiceDeskIds([]);
       setRendimentoSchedule(defaultUserRendimentoSchedule());
@@ -220,7 +226,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                 onChange={setRole}
                 options={[
                   { value: "ADMIN", label: "Administrador" },
-                  { value: "CLIENT", label: "Cliente" },
+                  { value: "CLIENT_GESTOR", label: "Cliente (gestor)" },
+                  { value: "CLIENT_MEMBER", label: "Cliente (funcionário)" },
                   { value: "COLLABORATOR", label: "Colaborador" },
                   { value: "PJ", label: "Terceiro" },
                 ]}
@@ -274,7 +281,15 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
             </div>
 
             <UserRendimentoScheduleFields
-              role={role as "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT"}
+              role={
+                role as
+                  | "ADMIN"
+                  | "COLLABORATOR"
+                  | "PJ"
+                  | "CLIENT"
+                  | "CLIENT_GESTOR"
+                  | "CLIENT_MEMBER"
+              }
               value={rendimentoSchedule}
               onChange={setRendimentoSchedule}
             />

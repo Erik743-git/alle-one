@@ -1,3 +1,4 @@
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -114,6 +115,8 @@ export class DashboardService {
       start: params.start ?? '',
       end: params.end ?? '',
       companyId: params.companyId ?? '',
+      viewMode: params.viewMode ?? '',
+      deskNames: [...(params.deskNames ?? [])].sort().join('|'),
     });
   }
 
@@ -300,6 +303,8 @@ export class DashboardService {
     startISO: string;
     endISO: string;
     chartLimit: number;
+    viewMode?: DashboardFilters['viewMode'];
+    deskNames?: string[];
   }): Promise<{
     ticketsForCharts: Array<Record<string, unknown>>;
     /** Lista completa no período para tabela "Chamados por mês" / mesas (o cartão usa totalTickets). */
@@ -310,6 +315,36 @@ export class DashboardService {
     const ticketsTable = isTicketsPortalCanonical()
       ? 'portal_tickets'
       : 'tiflux.tickets';
+
+    const deskNames = (params.deskNames ?? [])
+      .map((d) => String(d).trim())
+      .filter(Boolean);
+    const viewMode =
+      isTicketsPortalCanonical() && params.viewMode
+        ? params.viewMode
+        : undefined;
+
+    const viewSql =
+      viewMode === 'INTERNAL'
+        ? `and t.created_by is not null
+           and exists (
+             select 1 from users u
+             where u.id = t.created_by
+               and u.role::text in ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
+           )`
+        : viewMode === 'ALLE'
+          ? `and (
+               t.created_by is null
+               or not exists (
+                 select 1 from users u
+                 where u.id = t.created_by
+                   and u.role::text in ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
+               )
+             )`
+          : '';
+
+    const deskSql =
+      deskNames.length > 0 ? `and t.desk_name = any($4::text[])` : '';
 
     const countRows =
       (await this.prisma.$queryRawUnsafe<
@@ -326,10 +361,13 @@ export class DashboardService {
           and t.created_at_source is not null
           and t.created_at_source >= $2::timestamptz
           and t.created_at_source <= $3::timestamptz
+          ${viewSql}
+          ${deskSql}
       `,
         params.tifluxClientId,
         params.startISO,
         params.endISO,
+        ...(deskNames.length > 0 ? [deskNames] : []),
       )) ?? [];
 
     const totalTickets = countRows[0]?.total_all ?? 0;
@@ -361,11 +399,14 @@ export class DashboardService {
         and t.created_at_source is not null
         and t.created_at_source >= $2::timestamptz
         and t.created_at_source <= $3::timestamptz
+        ${viewSql}
+        ${deskSql}
       order by t.created_at_source desc
     `,
         params.tifluxClientId,
         params.startISO,
         params.endISO,
+        ...(deskNames.length > 0 ? [deskNames] : []),
       )) ?? [];
 
     const ticketsForAggregation = listRows.map((r) =>
@@ -643,7 +684,7 @@ export class DashboardService {
     user: AuthenticatedRequestUser,
     params: DashboardFilters,
   ): Promise<DashboardFilters> {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada');
       }
@@ -982,6 +1023,8 @@ export class DashboardService {
               startISO,
               endISO,
               chartLimit: this.dashboardCharts.chartTicketsLimit,
+              viewMode: params.viewMode,
+              deskNames: params.deskNames,
             });
 
             if (this.allowRuntimeTifluxApi) {
@@ -1168,7 +1211,7 @@ export class DashboardService {
     let totalHorasFormatadas = options.includeHours ? '00:00' : '--';
     let resumoHorasTrabalhadas: WorkHoursTifluxSummary | null = null;
 
-    if (options.includeHours) {
+    if (options.includeHours && params.viewMode !== 'INTERNAL') {
       const hoursPack =
         await this.dashboardHours.loadOrReuseDashboardHours(params);
       hoursRows = hoursPack.horasPorMes ?? emptyHoursRows;
@@ -1201,6 +1244,8 @@ export class DashboardService {
         start: startDate.toISOString(),
         end: endDate.toISOString(),
         companyId: params.companyId ?? null,
+        viewMode: params.viewMode ?? null,
+        deskNames: params.deskNames ?? [],
       },
       summary: {
         totalChamados,

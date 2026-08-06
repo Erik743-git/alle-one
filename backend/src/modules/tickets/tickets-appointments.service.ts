@@ -12,6 +12,7 @@ import {
   PortalTifluxOutboxKind,
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import {
@@ -694,7 +695,7 @@ export class TicketsAppointmentsService {
       select: { clientExternalId: true },
     });
     let clientExternalId = portalTicket?.clientExternalId ?? null;
-    if (clientExternalId == null && actor.role === 'CLIENT') {
+    if (clientExternalId == null && isClientPortalRole(actor.role)) {
       try {
         const mirror =
           (await this.prisma.$queryRaw<

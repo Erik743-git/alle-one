@@ -116,6 +116,26 @@ export const companiesService = {
     });
   },
 
+  async listPackModuleOptions() {
+    return apiRequest<{ modules: string[] }>("/companies/pack-modules");
+  },
+
+  async getModules(companyId: string) {
+    return apiRequest<{ companyId: string; modules: string[] }>(
+      `/companies/${companyId}/modules`,
+    );
+  },
+
+  async replaceModules(companyId: string, modules: string[]) {
+    return apiRequest<{ companyId: string; modules: string[] }>(
+      `/companies/${companyId}/modules`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ modules }),
+      },
+    );
+  },
+
   async listZabbixGroups() {
     return apiRequest<Array<{ groupid: string; name: string }>>(
       "/companies/zabbix-groups",

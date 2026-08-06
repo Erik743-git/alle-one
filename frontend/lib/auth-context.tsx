@@ -11,6 +11,8 @@ import {
 } from "./session";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
+import { authService } from "@/lib/services/auth.service";
+import { notifyError } from "@/lib/notify";
 
 function authMeUrl(): string {
   if (typeof window !== "undefined") {
@@ -28,6 +30,7 @@ type AuthContextValue = {
   refreshUser: () => Promise<void>;
   /** Após POST /auth/login — atualiza estado sem depender só do sessionStorage. */
   establishSession: (user: AuthUser) => void;
+  switchCompany: (companyId: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -66,6 +69,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     purgeInvalidPersistedCompanyIds();
     setUser(nextUser);
   }, []);
+
+  const switchCompany = React.useCallback(
+    async (companyId: string) => {
+      try {
+        const session = await authService.switchCompany(companyId);
+        establishSession(session.user);
+        // Recarrega dados da empresa ativa (tickets/dashboard).
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+      } catch (err) {
+        notifyError(
+          err instanceof Error ? err.message : "Não foi possível trocar de empresa.",
+        );
+        throw err;
+      }
+    },
+    [establishSession],
+  );
 
   const signOut = React.useCallback(async () => {
     setUser(null);
@@ -149,9 +171,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       refreshUser,
       establishSession,
+      switchCompany,
       signOut,
     }),
-    [loading, authenticated, user, refreshUser, establishSession, signOut],
+    [
+      loading,
+      authenticated,
+      user,
+      refreshUser,
+      establishSession,
+      switchCompany,
+      signOut,
+    ],
   );
 
   return (

@@ -10,6 +10,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Input } from "@/components/ui/input";
+import { isClientPortalRole } from "@/lib/app-roles";
 import {
   Popover,
   PopoverContent,
@@ -254,7 +255,7 @@ export default function GeradorRelatoriosPage() {
             preferredIds: [
               companyId === ALL_COMPANIES_REPORT_VALUE ? null : companyId,
               alleId,
-              user?.role === "CLIENT" ? user.companyId : null,
+              isClientPortalRole(user?.role) ? user.companyId : null,
             ],
           }) ?? "";
 

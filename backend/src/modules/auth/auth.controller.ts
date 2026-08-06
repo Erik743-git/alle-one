@@ -31,6 +31,7 @@ import {
 } from './totp-trust-cookie.helper';
 import { Public } from '../../common/decorators/public.decorator';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { SwitchCompanyDto } from './dto/switch-company.dto';
 
 class TotpCodeDto {
   @IsString()
@@ -190,6 +191,23 @@ export class AuthController {
   @Get('me')
   me(@Req() req: AuthenticatedRequest) {
     return this.authService.me(req.user.userId);
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @Post('switch-company')
+  async switchCompany(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SwitchCompanyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = await this.authService.switchCompany(
+      req.user.userId,
+      body.companyId,
+    );
+    attachAccessTokenCookie(res, session.accessToken);
+    return session;
   }
 
   @UseGuards(JwtAuthGuard)

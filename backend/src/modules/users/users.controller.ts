@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { PermissionModule } from '@prisma/client';
@@ -18,6 +19,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpsertUserCompanyMembershipDto } from './dto/upsert-user-company-membership.dto';
 import { AuditMeta } from '../audit/audit.decorator';
 import { UsersService } from './users.service';
 
@@ -43,6 +45,34 @@ export class UsersController {
   @RequirePermission(PermissionModule.USERS, 'canView')
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
+  }
+
+  @Get(':id/memberships')
+  @RequirePermission(PermissionModule.USERS, 'canView')
+  listMemberships(@Param('id') id: string) {
+    return this.usersService.listCompanyMemberships(id);
+  }
+
+  @Put(':id/memberships')
+  @RequirePermission(PermissionModule.USERS, 'canEdit')
+  @AuditMeta({ entity: 'UserCompany', action: 'UPSERT', entityIdParam: 'id' })
+  upsertMembership(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id') id: string,
+    @Body() data: UpsertUserCompanyMembershipDto,
+  ) {
+    return this.usersService.upsertCompanyMembership(actor, id, data);
+  }
+
+  @Delete(':id/memberships/:companyId')
+  @RequirePermission(PermissionModule.USERS, 'canEdit')
+  @AuditMeta({ entity: 'UserCompany', action: 'DELETE', entityIdParam: 'id' })
+  removeMembership(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id') id: string,
+    @Param('companyId') companyId: string,
+  ) {
+    return this.usersService.removeCompanyMembership(actor, id, companyId);
   }
 
   @Post()

@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ContractStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
@@ -41,7 +42,7 @@ export class ContractsService {
     user: AuthenticatedRequestUser,
     companyId?: string,
   ) {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário CLIENT sem empresa vinculada');
       }

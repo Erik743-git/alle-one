@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -208,9 +209,11 @@ export class TicketsQueryService {
       actor,
       query.clientExternalId,
     );
-    const mineOnly = clientScope.mineOnlyForcedOff
-      ? false
-      : query.mineOnly !== false;
+    const mineOnly = clientScope.mineOnlyForcedOn
+      ? true
+      : clientScope.mineOnlyForcedOff
+        ? false
+        : query.mineOnly !== false;
     const clientExternalIdFilter = clientScope.clientExternalId;
 
     let responsibleFilter: number | null = null;
@@ -219,6 +222,7 @@ export class TicketsQueryService {
       createdBy: string;
       email: string;
     } | null = null;
+    const actorEmail = this.normalizeEmail(actor.email);
 
     if (mineOnly) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
@@ -228,7 +232,7 @@ export class TicketsQueryService {
       } else {
         portalMineFallback = {
           createdBy: actor.userId,
-          email: this.normalizeEmail(actor.email),
+          email: actorEmail,
         };
         responsibleName = actor.email;
       }
@@ -242,24 +246,67 @@ export class TicketsQueryService {
     const toDate = query.to?.trim() ? new Date(`${query.to}T23:59:59`) : null;
     const search = query.search?.trim() ?? '';
 
+    const watcherTicketNumbers = mineOnly
+      ? (
+          await this.prisma.portalTicketWatcher.findMany({
+            where: { email: actorEmail },
+            select: { ticketNumber: true },
+          })
+        ).map((w) => w.ticketNumber)
+      : [];
+
+    const mineOr: Prisma.PortalTicketWhereInput[] = [];
+    if (mineOnly) {
+      if (responsibleFilter != null) {
+        mineOr.push({ responsibleExternalId: responsibleFilter });
+      }
+      if (portalMineFallback) {
+        mineOr.push({ createdBy: portalMineFallback.createdBy });
+        mineOr.push({
+          requestorEmail: {
+            equals: portalMineFallback.email,
+            mode: 'insensitive',
+          },
+        });
+      }
+      if (watcherTicketNumbers.length > 0) {
+        mineOr.push({ ticketNumber: { in: watcherTicketNumbers } });
+      }
+    }
+
+    const andParts: Prisma.PortalTicketWhereInput[] = [];
+    if (mineOnly) {
+      if (mineOr.length === 0) {
+        return {
+          total: 0,
+          mineOnly: true,
+          responsibleExternalId: responsibleFilter,
+          responsibleName,
+          tifluxUserResolved: responsibleFilter != null,
+          message: portalMineFallback
+            ? 'Filtrando pelos seus tickets no portal (sem vínculo TiFlux).'
+            : null,
+          groups: [],
+        };
+      }
+      andParts.push({ OR: mineOr });
+    }
+    if (search) {
+      andParts.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          ...(Number.isFinite(Number(search))
+            ? [{ ticketNumber: Number(search) }]
+            : []),
+        ],
+      });
+    }
+
     const rows = await this.prisma.portalTicket.findMany({
       where: {
         isClosed: false,
-        ...(responsibleFilter != null
+        ...(!mineOnly && responsibleFilter != null
           ? { responsibleExternalId: responsibleFilter }
-          : {}),
-        ...(portalMineFallback
-          ? {
-              OR: [
-                { createdBy: portalMineFallback.createdBy },
-                {
-                  requestorEmail: {
-                    equals: portalMineFallback.email,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
           : {}),
         ...(clientExternalIdFilter != null
           ? { clientExternalId: clientExternalIdFilter }
@@ -284,16 +331,7 @@ export class TicketsQueryService {
               },
             }
           : {}),
-        ...(search
-          ? {
-              OR: [
-                { title: { contains: search, mode: 'insensitive' } },
-                ...(Number.isFinite(Number(search))
-                  ? [{ ticketNumber: Number(search) }]
-                  : []),
-              ],
-            }
-          : {}),
+        ...(andParts.length > 0 ? { AND: andParts } : {}),
       },
       orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
       take: limit,
@@ -460,9 +498,11 @@ export class TicketsQueryService {
       actor,
       query.clientExternalId,
     );
-    const mineOnly = clientScope.mineOnlyForcedOff
-      ? false
-      : query.mineOnly !== false;
+    const mineOnly = clientScope.mineOnlyForcedOn
+      ? true
+      : clientScope.mineOnlyForcedOff
+        ? false
+        : query.mineOnly !== false;
     const clientExternalIdFilter = clientScope.clientExternalId;
 
     let responsibleFilter: number | null = null;
@@ -471,15 +511,70 @@ export class TicketsQueryService {
     if (mineOnly) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
       if (!mine) {
+        // Sem TiFlux: ainda inclui tickets em que o usuário está em cópia (seguidor).
+        const watched = await this.prisma.portalTicketWatcher.findMany({
+          where: { email: this.normalizeEmail(actor.email) },
+          select: { ticketNumber: true },
+        });
+        const watchedNumbers = watched.map((w) => w.ticketNumber);
+        if (watchedNumbers.length === 0) {
+          return {
+            total: 0,
+            mineOnly: true,
+            responsibleExternalId: null,
+            responsibleName: null,
+            tifluxUserResolved: false,
+            message:
+              'Seu e-mail não está vinculado a um usuário TiFlux. Use a busca avançada para consultar outros tickets.',
+            groups: [],
+          };
+        }
+        const portalRows = await this.prisma.portalTicket.findMany({
+          where: {
+            isClosed: false,
+            ticketNumber: { in: watchedNumbers },
+          },
+          orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
+          take: limit,
+        });
+        const groupedMap = new Map<TicketStageGroupKey, TicketListItemDto[]>();
+        for (const def of TICKET_STAGE_GROUPS) {
+          groupedMap.set(def.key, []);
+        }
+        for (const r of portalRows) {
+          const item = this.mapListItem({
+            ticket_number: r.ticketNumber,
+            title: r.title,
+            client_name: r.clientName,
+            client_external_id: r.clientExternalId,
+            created_by_way_of: r.createdByWayOf,
+            priority_name: r.priorityName,
+            status_name: r.statusName,
+            stage_name: r.stageName,
+            responsible_external_id: r.responsibleExternalId,
+            responsible_name: r.responsibleName,
+            desk_name: r.deskName,
+            desk_external_id: r.deskExternalId,
+            created_at_source: r.createdAtSource,
+            updated_at_source: r.updatedAtSource,
+            is_closed: r.isClosed,
+            external_gmud_ref: null,
+          });
+          groupedMap.get(item.stageGroup)?.push(item);
+        }
         return {
-          total: 0,
+          total: portalRows.length,
           mineOnly: true,
           responsibleExternalId: null,
-          responsibleName: null,
+          responsibleName: actor.email,
           tifluxUserResolved: false,
           message:
-            'Seu e-mail não está vinculado a um usuário TiFlux. Use a busca avançada para consultar outros tickets.',
-          groups: [],
+            'Exibindo chamados em que você está em cópia (sem vínculo TiFlux).',
+          groups: TICKET_STAGE_GROUPS.map((def) => ({
+            key: def.key,
+            label: def.label,
+            tickets: groupedMap.get(def.key) ?? [],
+          })).filter((g) => g.tickets.length > 0),
         };
       }
       responsibleFilter = mine.externalId;
@@ -527,7 +622,15 @@ export class TicketsQueryService {
             FROM tiflux.tickets t
             LEFT JOIN portal_ticket_gmud_links l ON l.ticket_number = t.ticket_number
             WHERE COALESCE(t.is_closed, false) = false
-              AND t.responsible_external_id = ${responsibleFilter}
+              AND (
+                t.responsible_external_id = ${responsibleFilter}
+                OR EXISTS (
+                  SELECT 1
+                  FROM portal_ticket_watchers w
+                  WHERE w.ticket_number = t.ticket_number
+                    AND lower(w.email) = ${this.normalizeEmail(actor.email)}
+                )
+              )
               AND (${clientExternalIdFilter ?? null}::int IS NULL OR t.client_external_id = ${clientExternalIdFilter ?? null})
               AND (${query.stageName ?? null}::text IS NULL OR t.stage_name ILIKE ${query.stageName ? `%${query.stageName}%` : null})
               AND (${query.statusName ?? null}::text IS NULL OR t.status_name ILIKE ${query.statusName ? `%${query.statusName}%` : null})

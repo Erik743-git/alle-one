@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { PermissionModule } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -196,7 +197,7 @@ export class ZabbixController {
       throw new BadRequestException('O parâmetro "hostid" é obrigatório.');
     }
 
-    if (req.user.role === 'CLIENT') {
+    if (isClientPortalRole(req.user.role)) {
       if (!group?.trim()) {
         throw new BadRequestException(
           'O parâmetro "group" é obrigatório para clientes.',

@@ -14,6 +14,10 @@
 | [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md) | Runbook operacional (ETL, flags, riscos, remoções) |
 | [MAINTENANCE.md](./MAINTENANCE.md) | Correções, limitações, backup Postgres e convenções |
 | [SECURITY.md](./SECURITY.md) | Segredos, auth, uploads e checklist de produção |
+| [PORTAL_CLIENTE_V3.md](./PORTAL_CLIENTE_V3.md) | Portal cliente v3: packs, multi-empresa, dashboard dual |
+| [DEPLOY_PORTAL_CLIENTE_V3_TESTE.md](./DEPLOY_PORTAL_CLIENTE_V3_TESTE.md) | Deploy v3 no ambiente de teste |
+| [ROTEIRO_TESTE_PORTAL_CLIENTE_V3_LOCAL.md](./ROTEIRO_TESTE_PORTAL_CLIENTE_V3_LOCAL.md) | Roteiro de testes local v3 |
+| [SMOKE_PORTAL_CLIENTE_TENANT.md](./SMOKE_PORTAL_CLIENTE_TENANT.md) | Smoke portal cliente (tenant) |
 | [VERSIONING.md](./VERSIONING.md) | SemVer, tags Git, releases no GitHub, rollback de prod |
 | [../CHANGELOG.md](../CHANGELOG.md) | Histórico de releases |
 | [../README.md](../README.md) | Setup local, variáveis de ambiente, operação |

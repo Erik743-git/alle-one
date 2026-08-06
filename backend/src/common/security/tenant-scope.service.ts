@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../../modules/auth/auth-request-user';
+import { isClientPortalRole } from './client-portal-role';
 import {
   parseZabbixGroupNames,
   zabbixGroupListIncludes,
@@ -40,7 +41,7 @@ export class TenantScopeService {
     user: AuthenticatedRequestUser,
     requested?: number[],
   ): Promise<number[] | undefined> {
-    if (user.role !== 'CLIENT') {
+    if (!isClientPortalRole(user.role)) {
       return requested;
     }
 
@@ -74,7 +75,7 @@ export class TenantScopeService {
       throw new ForbiddenException('Grupo Zabbix inválido');
     }
 
-    if (user.role !== 'CLIENT') {
+    if (!isClientPortalRole(user.role)) {
       return normalized;
     }
 
@@ -100,7 +101,7 @@ export class TenantScopeService {
   async resolveZabbixGroupForList(
     user: AuthenticatedRequestUser,
   ): Promise<string | null> {
-    if (user.role !== 'CLIENT') {
+    if (!isClientPortalRole(user.role)) {
       return null;
     }
 

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -8,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { LoginDto } from './dto/login.dto';
 import { FirstAccessDto } from './dto/first-access.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -243,20 +245,27 @@ export class AuthService {
     company?: { name: string } | null;
   }) {
     const tokenVersion = user.tokenVersion ?? 0;
+    const requestUser = await this.permissionsService.buildRequestUser(
+      user.id,
+      tokenVersion,
+    );
+
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
-      companyId: user.companyId,
+      role: requestUser.role,
+      companyId: requestUser.companyId,
       tv: tokenVersion,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
     this.presence.touch(user.id);
-    const requestUser = await this.permissionsService.buildRequestUser(
-      user.id,
-      tokenVersion,
-    );
+
+    const activeName =
+      requestUser.companies?.find((c) => c.id === requestUser.companyId)
+        ?.name ??
+      user.company?.name ??
+      null;
 
     return {
       message: 'Login realizado com sucesso',
@@ -265,25 +274,74 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        companyId: user.companyId,
-        companyName: user.company?.name ?? null,
+        role: requestUser.role,
+        companyId: requestUser.companyId,
+        companyName: activeName,
         firstAccess: user.firstAccess,
         permissions: requestUser.permissions,
+        companies: requestUser.companies ?? [],
         totpEnabled: Boolean(user.totpEnabledAt),
       },
     };
   }
 
+  async switchCompany(userId: string, companyId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException();
+    }
+    if (!isClientPortalRole(user.role)) {
+      throw new ForbiddenException(
+        'Troca de empresa disponível apenas para usuários do portal cliente.',
+      );
+    }
+
+    const membership = await this.prisma.userCompany.findUnique({
+      where: {
+        userId_companyId: { userId, companyId },
+      },
+      include: {
+        company: { select: { id: true, name: true, deletedAt: true } },
+      },
+    });
+
+    if (!membership || membership.company.deletedAt) {
+      throw new BadRequestException('Empresa não vinculada a este usuário.');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        companyId: membership.companyId,
+        role: membership.clientRole as UserRole,
+        tokenVersion: { increment: 1 },
+      },
+      include: { company: true },
+    });
+
+    return this.createSessionForUser(updated);
+  }
+
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { company: true, permissions: true },
+      include: { company: true },
     });
 
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException();
     }
+
+    const requestUser = await this.permissionsService.buildRequestUser(
+      userId,
+      user.tokenVersion ?? 0,
+    );
+
+    const activeName =
+      requestUser.companies?.find((c) => c.id === requestUser.companyId)
+        ?.name ??
+      user.company?.name ??
+      null;
 
     return {
       message: 'Token válido',
@@ -291,11 +349,12 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        companyId: user.companyId,
-        companyName: user.company?.name ?? null,
+        role: requestUser.role,
+        companyId: requestUser.companyId,
+        companyName: activeName,
         firstAccess: user.firstAccess,
-        permissions: this.permissionsService.computeEffective(user),
+        permissions: requestUser.permissions,
+        companies: requestUser.companies ?? [],
         totpEnabled: Boolean(user.totpEnabledAt),
         totpAdminMustEnable: this.totp.adminMustEnable(user),
       },

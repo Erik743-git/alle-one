@@ -47,7 +47,7 @@ type ApiUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT" | "CLIENT_GESTOR" | "CLIENT_MEMBER";
   status: "ACTIVE" | "INACTIVE";
   firstAccess: boolean;
   responsible: boolean;
@@ -79,7 +79,7 @@ type UsuarioUI = {
   id: string;
   nome: string;
   email: string;
-  perfil: "Admin" | "Colaborador" | "Terceiro" | "Cliente";
+  perfil: "Admin" | "Colaborador" | "Terceiro" | "Cliente" | "Cliente gestor" | "Cliente funcionário";
   status: "Ativo" | "Inativo";
   online: boolean;
 };
@@ -93,7 +93,7 @@ type FormEdicao = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT" | "CLIENT_GESTOR" | "CLIENT_MEMBER";
   status: "ACTIVE" | "INACTIVE";
   companyId: string;
   firstAccess: boolean;
@@ -117,7 +117,10 @@ function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
     case "PJ":
       return "Terceiro";
     case "CLIENT":
-      return "Cliente";
+    case "CLIENT_GESTOR":
+      return "Cliente gestor";
+    case "CLIENT_MEMBER":
+      return "Cliente funcionário";
     default:
       return "Cliente";
   }
@@ -133,7 +136,7 @@ export default function AdminUsuariosPage() {
   const [modalEditarUsuario, setModalEditarUsuario] = useState(false);
   const [modalDesativarUsuario, setModalDesativarUsuario] = useState(false);
 
-  const [usuarioSelecionado, setUsuarioSelecionado] = useState("Usuário");
+  const [usuarioSelecionado, setUsuarioSelecionado] = useState("UsuÃ¡rio");
   const [permissoesUserId, setPermissoesUserId] = useState<string | null>(null);
   const [permissoesUserRole, setPermissoesUserRole] = useState<
     ApiUser["role"] | undefined
@@ -162,7 +165,7 @@ export default function AdminUsuariosPage() {
     id: "",
     name: "",
     email: "",
-    role: "CLIENT",
+    role: "CLIENT_GESTOR",
     status: "ACTIVE",
     companyId: "",
     firstAccess: false,
@@ -212,7 +215,7 @@ export default function AdminUsuariosPage() {
         const message =
           !Array.isArray(data) && typeof data.message === "string"
             ? data.message
-            : "Não foi possível carregar as empresas.";
+            : "NÃ£o foi possÃ­vel carregar as empresas.";
 
         setErroEdicao(message);
         setEmpresas([]);
@@ -306,7 +309,7 @@ export default function AdminUsuariosPage() {
   ).length;
 
   const totalClientes = usuariosFiltrados.filter(
-    (usuario) => usuario.role === "CLIENT"
+    (usuario) => usuario.role === "CLIENT" || usuario.role === "CLIENT_GESTOR" || usuario.role === "CLIENT_MEMBER"
   ).length;
 
   async function abrirEdicao(id: string) {
@@ -372,7 +375,7 @@ export default function AdminUsuariosPage() {
 
     if (habilitandoPrimeiroAcesso && !senhaProvisoriaEdicao.trim()) {
       setErroEdicao(
-        "Defina a senha provisória para o usuário concluir o primeiro acesso.",
+        "Defina a senha provisÃ³ria para o usuÃ¡rio concluir o primeiro acesso.",
       );
       return;
     }
@@ -383,7 +386,7 @@ export default function AdminUsuariosPage() {
       senhaProvisoriaEdicao.trim().length < 8
     ) {
       setErroEdicao(
-        "A senha provisória deve ter pelo menos 8 caracteres, com maiúscula, minúscula, número e caractere especial.",
+        "A senha provisÃ³ria deve ter pelo menos 8 caracteres, com maiÃºscula, minÃºscula, nÃºmero e caractere especial.",
       );
       return;
     }
@@ -450,7 +453,7 @@ export default function AdminUsuariosPage() {
       setErroDesativacao(
         err instanceof Error
           ? err.message
-          : "Não foi possível desativar o usuário.",
+          : "NÃ£o foi possÃ­vel desativar o usuÃ¡rio.",
       );
     } finally {
       setDesativandoUsuario(false);
@@ -464,9 +467,9 @@ export default function AdminUsuariosPage() {
         <div className="font-sans w-full space-y-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
+              <h1 className="text-3xl font-bold text-foreground">UsuÃ¡rios</h1>
               <p className="text-muted-foreground">
-                Gerencie usuários, vínculos por empresa e permissões de acesso.
+                Gerencie usuÃ¡rios, vÃ­nculos por empresa e permissÃµes de acesso.
               </p>
             </div>
 
@@ -475,7 +478,7 @@ export default function AdminUsuariosPage() {
               className="h-11 gap-2"
             >
               <Plus size={18} />
-              Novo usuário
+              Novo usuÃ¡rio
             </Button>
           </div>
 
@@ -484,7 +487,7 @@ export default function AdminUsuariosPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">
-                    Total de usuários
+                    Total de usuÃ¡rios
                   </p>
                   <p className="text-3xl font-bold">{totalUsuarios}</p>
                 </div>
@@ -549,10 +552,10 @@ export default function AdminUsuariosPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
                     <h2 className="text-xl font-bold text-foreground">
-                      Gestão de usuários
+                      GestÃ£o de usuÃ¡rios
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      Usuários organizados por empresa com foco em permissões.
+                      UsuÃ¡rios organizados por empresa com foco em permissÃµes.
                     </p>
                   </div>
 
@@ -564,7 +567,7 @@ export default function AdminUsuariosPage() {
                     <Input
                       value={busca}
                       onChange={(e) => setBusca(e.target.value)}
-                      placeholder="Buscar usuário..."
+                      placeholder="Buscar usuÃ¡rio..."
                       className="h-11 pl-10"
                     />
                   </div>
@@ -572,7 +575,7 @@ export default function AdminUsuariosPage() {
 
                 {carregando ? (
                   <div className="rounded-2xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-                    Carregando usuários...
+                    Carregando usuÃ¡rios...
                   </div>
                 ) : erro ? (
                   <div className="alle-alert-error rounded-2xl p-6 text-sm">
@@ -580,7 +583,7 @@ export default function AdminUsuariosPage() {
                   </div>
                 ) : usuariosPorEmpresa.length === 0 ? (
                   <div className="rounded-2xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-                    Nenhum usuário encontrado.
+                    Nenhum usuÃ¡rio encontrado.
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -601,7 +604,7 @@ export default function AdminUsuariosPage() {
                                 {grupo.empresa}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {grupo.usuarios.length} usuário(s)
+                                {grupo.usuarios.length} usuÃ¡rio(s)
                               </p>
                             </div>
                           </div>
@@ -630,7 +633,7 @@ export default function AdminUsuariosPage() {
                                     }`}
                                     title={
                                       usuario.online
-                                        ? "Online no portal (últimos 10 min)"
+                                        ? "Online no portal (Ãºltimos 10 min)"
                                         : "Offline"
                                     }
                                     aria-hidden
@@ -648,7 +651,7 @@ export default function AdminUsuariosPage() {
                                     <>
                                       <p className="text-xs text-muted-foreground">
                                         {desks ? `Mesas: ${desks}` : "Sem mesa vinculada"}
-                                        {full.responsible ? " • Responsável" : ""}
+                                        {full.responsible ? " â¢ ResponsÃ¡vel" : ""}
                                       </p>
                                       {usesRendimentoScheduleRole(full.role) ? (
                                         <p className="text-xs text-muted-foreground">
@@ -692,14 +695,14 @@ export default function AdminUsuariosPage() {
                                 >
                                   <ShieldCheck size={15} />
                                   <span className="text-xs font-semibold">
-                                    Permissões
+                                    PermissÃµes
                                   </span>
                                 </button>
 
                                 <button
                                   onClick={() => void abrirEdicao(usuario.id)}
                                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
-                                  title="Editar usuário"
+                                  title="Editar usuÃ¡rio"
                                 >
                                   <Pencil size={16} />
                                 </button>
@@ -707,7 +710,7 @@ export default function AdminUsuariosPage() {
                                 <button
                                   onClick={() => abrirDesativacao(usuario.id)}
                                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
-                                  title="Desativar usuário"
+                                  title="Desativar usuÃ¡rio"
                                 >
                                   <Trash2 size={16} />
                                 </button>
@@ -735,7 +738,7 @@ export default function AdminUsuariosPage() {
                     </h2>
 
                     <p className="text-sm leading-6 text-muted-foreground">
-                      Organize usuários por empresa e mantenha permissões
+                      Organize usuÃ¡rios por empresa e mantenha permissÃµes
                       centralizadas para cada perfil do portal.
                     </p>
                   </div>
@@ -762,8 +765,8 @@ export default function AdminUsuariosPage() {
                 </div>
 
                 <div className="mt-6 rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  Área preparada para edição de perfil, vínculos por empresa e
-                  permissões detalhadas por módulo.
+                  Ãrea preparada para ediÃ§Ã£o de perfil, vÃ­nculos por empresa e
+                  permissÃµes detalhadas por mÃ³dulo.
                 </div>
               </CardContent>
             </Card>
@@ -820,10 +823,10 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-1">
                   <DialogTitle className="text-2xl font-bold text-foreground">
-                    Editar usuário
+                    Editar usuÃ¡rio
                   </DialogTitle>
                   <DialogDescription className="text-sm text-muted-foreground">
-                    Atualize os dados, vínculo e status do usuário selecionado.
+                    Atualize os dados, vÃ­nculo e status do usuÃ¡rio selecionado.
                   </DialogDescription>
                 </div>
               </DialogHeader>
@@ -898,7 +901,8 @@ export default function AdminUsuariosPage() {
                     }
                     options={[
                       { value: "ADMIN", label: "Administrador" },
-                      { value: "CLIENT", label: "Cliente" },
+                      { value: "CLIENT_GESTOR", label: "Cliente (gestor)" },
+                      { value: "CLIENT_MEMBER", label: "Cliente (funcionário)" },
                       { value: "COLLABORATOR", label: "Colaborador" },
                       { value: "PJ", label: "Terceiro" },
                     ]}
@@ -937,20 +941,20 @@ export default function AdminUsuariosPage() {
                       }))
                     }
                     options={[
-                      { value: "false", label: "Não" },
+                      { value: "false", label: "NÃ£o" },
                       { value: "true", label: "Sim" },
                     ]}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Com &quot;Sim&quot;, o usuário entra com a senha provisória e
-                    é direcionado a definir a senha definitiva no primeiro acesso.
+                    Com &quot;Sim&quot;, o usuÃ¡rio entra com a senha provisÃ³ria e
+                    Ã© direcionado a definir a senha definitiva no primeiro acesso.
                   </p>
                 </div>
 
                 {formEdicao.firstAccess ? (
                   <div className="space-y-2 sm:col-span-2">
                     <Label className="text-sm font-semibold text-foreground">
-                      Senha provisória
+                      Senha provisÃ³ria
                       {formEdicao.firstAccess && !firstAccessInicialEdicao ? (
                         <span className="text-destructive"> *</span>
                       ) : null}
@@ -959,28 +963,28 @@ export default function AdminUsuariosPage() {
                       type="password"
                       value={senhaProvisoriaEdicao}
                       onChange={(e) => setSenhaProvisoriaEdicao(e.target.value)}
-                      placeholder="Mín. 8 caracteres (A a, 0-9, especial)"
+                      placeholder="MÃ­n. 8 caracteres (A a, 0-9, especial)"
                       autoComplete="new-password"
                       className="h-11"
                     />
                     <p className="text-xs text-muted-foreground">
                       {firstAccessInicialEdicao
-                        ? "Deixe em branco para manter a senha atual. Preencha apenas se quiser gerar uma nova senha provisória."
-                        : "Obrigatória ao ativar primeiro acesso. O usuário usará esta senha no login e depois criará a senha definitiva."}
+                        ? "Deixe em branco para manter a senha atual. Preencha apenas se quiser gerar uma nova senha provisÃ³ria."
+                        : "ObrigatÃ³ria ao ativar primeiro acesso. O usuÃ¡rio usarÃ¡ esta senha no login e depois criarÃ¡ a senha definitiva."}
                     </p>
                   </div>
                 ) : null}
 
                 <div className="space-y-2 sm:col-span-2">
                   <Label className="text-sm font-semibold text-foreground">
-                    Mesas de serviço
+                    Mesas de serviÃ§o
                   </Label>
                   <div className="max-h-40 overflow-y-auto rounded-xl border border-input bg-background p-3">
                     {carregandoMesas ? (
                       <p className="text-sm text-muted-foreground">Carregando mesas...</p>
                     ) : serviceDesks.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
-                        Nenhuma mesa disponível.
+                        Nenhuma mesa disponÃ­vel.
                       </p>
                     ) : (
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -1012,7 +1016,7 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-2 sm:col-span-2">
                   <Label className="text-sm font-semibold text-foreground">
-                    Responsável
+                    ResponsÃ¡vel
                   </Label>
                   <label className="flex items-center gap-2 text-sm text-foreground">
                     <FlipCheckbox
@@ -1024,7 +1028,7 @@ export default function AdminUsuariosPage() {
                         }))
                       }
                     />
-                    Marcar usuário como responsável
+                    Marcar usuÃ¡rio como responsÃ¡vel
                   </label>
                 </div>
 
@@ -1064,7 +1068,7 @@ export default function AdminUsuariosPage() {
                   disabled={salvandoEdicao}
                   className="h-11"
                 >
-                  {salvandoEdicao ? "Salvando..." : "Salvar alterações"}
+                  {salvandoEdicao ? "Salvando..." : "Salvar alteraÃ§Ãµes"}
                 </Button>
               </div>
             </div>
@@ -1090,10 +1094,10 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-1">
                   <DialogTitle className="text-2xl font-bold text-foreground">
-                    Desativar usuário
+                    Desativar usuÃ¡rio
                   </DialogTitle>
                   <DialogDescription className="text-sm text-muted-foreground">
-                    Essa ação irá inativar o usuário no sistema, sem excluir os
+                    Essa aÃ§Ã£o irÃ¡ inativar o usuÃ¡rio no sistema, sem excluir os
                     dados do cadastro.
                   </DialogDescription>
                 </div>
@@ -1102,9 +1106,9 @@ export default function AdminUsuariosPage() {
 
             <div className="px-6 py-6">
               <div className="rounded-2xl border border-border bg-muted/40 p-4">
-                <p className="text-sm text-muted-foreground">Usuário selecionado</p>
+                <p className="text-sm text-muted-foreground">UsuÃ¡rio selecionado</p>
                 <p className="mt-1 text-base font-bold text-foreground">
-                  {usuarioDesativar?.nome ?? "Usuário"}
+                  {usuarioDesativar?.nome ?? "UsuÃ¡rio"}
                 </p>
               </div>
 
@@ -1133,7 +1137,7 @@ export default function AdminUsuariosPage() {
                   className="h-11"
                   variant="destructive"
                 >
-                  {desativandoUsuario ? "Desativando..." : "Desativar usuário"}
+                  {desativandoUsuario ? "Desativando..." : "Desativar usuÃ¡rio"}
                 </Button>
               </div>
             </div>

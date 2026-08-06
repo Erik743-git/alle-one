@@ -1,14 +1,19 @@
 import { ForbiddenException } from '@nestjs/common';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type { TenantScopeService } from '../../common/security/tenant-scope.service';
+import {
+  isClientGestorRole,
+  isClientMemberRole,
+  isClientPortalRole,
+} from '../../common/security/client-portal-role';
 
-/** CLIENT só acessa tickets do cliente TiFlux da própria empresa. */
+/** CLIENT_* só acessa tickets do cliente TiFlux da própria empresa. */
 export async function assertTicketClientScope(
   tenantScope: TenantScopeService,
   actor: AuthenticatedRequestUser,
   clientExternalId: number | null | undefined,
 ): Promise<void> {
-  if (actor.role !== 'CLIENT') {
+  if (!isClientPortalRole(actor.role)) {
     return;
   }
   const allowedIds = await tenantScope.resolveTifluxClientIds(actor);
@@ -28,12 +33,15 @@ export async function resolveClientListFilter(
   requestedClientId: number | null | undefined,
 ): Promise<{
   clientExternalId: number | null;
+  /** Gestor: força ver todos da empresa. Member: força “meus”. */
   mineOnlyForcedOff: boolean;
+  mineOnlyForcedOn: boolean;
 }> {
-  if (actor.role !== 'CLIENT') {
+  if (!isClientPortalRole(actor.role)) {
     return {
       clientExternalId: requestedClientId ?? null,
       mineOnlyForcedOff: false,
+      mineOnlyForcedOn: false,
     };
   }
   const allowedIds = await tenantScope.resolveTifluxClientIds(actor);
@@ -47,5 +55,27 @@ export async function resolveClientListFilter(
   ) {
     throw new ForbiddenException('client_ids não permitido para a sua empresa');
   }
-  return { clientExternalId: allowed, mineOnlyForcedOff: true };
+
+  if (isClientMemberRole(actor.role)) {
+    return {
+      clientExternalId: allowed,
+      mineOnlyForcedOff: false,
+      mineOnlyForcedOn: true,
+    };
+  }
+
+  // CLIENT legado + CLIENT_GESTOR
+  if (isClientGestorRole(actor.role)) {
+    return {
+      clientExternalId: allowed,
+      mineOnlyForcedOff: true,
+      mineOnlyForcedOn: false,
+    };
+  }
+
+  return {
+    clientExternalId: allowed,
+    mineOnlyForcedOff: true,
+    mineOnlyForcedOn: false,
+  };
 }

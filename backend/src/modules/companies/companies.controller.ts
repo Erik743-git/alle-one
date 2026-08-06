@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Res,
   UploadedFile,
@@ -28,6 +29,9 @@ import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
+import { UpdateCompanyModulesDto } from './dto/update-company-modules.dto';
+import { PermissionsService } from '../permissions/permissions.service';
+import { COMPANY_PACK_MODULES } from '../permissions/company-pack.constants';
 import {
   CreateCompanyContractDto,
   UpdateCompanyContractDto,
@@ -42,7 +46,10 @@ import type { Response } from 'express';
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 @Roles('ADMIN')
 export class CompaniesController {
-  constructor(private readonly companiesService: CompaniesService) {}
+  constructor(
+    private readonly companiesService: CompaniesService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   @Get()
   @RequirePermission(PermissionModule.COMPANIES, 'canView')
@@ -85,6 +92,31 @@ export class CompaniesController {
     @Body() body: ApplyZabbixGroupSuggestionsDto,
   ) {
     return this.companiesService.applyZabbixGroupSuggestions(actor, body.items);
+  }
+
+  @Get('pack-modules')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  listPackModuleOptions() {
+    return { modules: COMPANY_PACK_MODULES };
+  }
+
+  @Get(':id/modules')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  listModules(@Param('id') id: string) {
+    return this.permissionsService.listCompanyModules(id).then((modules) => ({
+      companyId: id,
+      modules,
+    }));
+  }
+
+  @Put(':id/modules')
+  @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
+  @AuditMeta({ entity: 'Company', action: 'UPDATE', entityIdParam: 'id' })
+  replaceModules(
+    @Param('id') id: string,
+    @Body() body: UpdateCompanyModulesDto,
+  ) {
+    return this.permissionsService.replaceCompanyModules(id, body.modules);
   }
 
   @Get(':id')

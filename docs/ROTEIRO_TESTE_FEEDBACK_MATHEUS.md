@@ -20,7 +20,7 @@ Ambiente: local (`frontend` :3000 · `backend` API). Login com usuário que **cr
 | 4 | Descrição: texto + Ctrl+V print | Print aparece; **arrastar canto** muda tamanho; após criar, no detalhe o tamanho se mantém. |
 | 5 | Fundo da descrição | No detalhe, HTML/e-mail **não** fica bloco branco estranho. |
 | 6 | **GMUD do cliente** | Lista GMUDs da empresa do cliente; sem cliente → mensagem; escolher grava referência no chamado. |
-| 7 | **Pessoas em cópia** | Adicionar 1–2 e-mails; chips; remover um. |
+| 7 | **Pessoas em cópia** | Digitar nome/e-mail sugere usuários do portal; externo também ok. Portal → aparece em Meus chamados do seguidor. |
 | 8 | Abrir chamado | Toast **“Ticket criado com sucesso.”** (sem falar TiFlux). Abre o detalhe. |
 | 9 | E-mail registro | Solicitante (e CC) recebem / ou log SMTP no backend. |
 

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { createReadStream, existsSync } from 'fs';
 import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
@@ -57,7 +58,7 @@ export class InventarioService {
   ) {}
 
   private assertCanMutate(user: AuthenticatedRequestUser) {
-    if (user.role === UserRole.CLIENT) {
+    if (isClientPortalRole(user.role)) {
       throw new ForbiddenException(
         'Cliente pode apenas visualizar o inventário.',
       );
@@ -83,7 +84,7 @@ export class InventarioService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === UserRole.CLIENT) {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada.');
       }
@@ -799,7 +800,7 @@ export class InventarioService {
     if (
       user.role !== UserRole.ADMIN &&
       user.role !== UserRole.COLLABORATOR &&
-      user.role !== UserRole.CLIENT
+      !isClientPortalRole(user.role)
     ) {
       return [];
     }

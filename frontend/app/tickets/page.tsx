@@ -20,6 +20,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicket,
   isClient,
+  isClientGestor,
+  isClientMember,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import { TICKETS_LIST_SUBTITLE, TICKETS_CLIENT_LIST_SUBTITLE } from "@/lib/module-copy";
@@ -54,7 +56,7 @@ export default function TicketsPage() {
   const [catalogs, setCatalogs] = useState<TicketFilterCatalogs | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [includeAllResponsibles, setIncludeAllResponsibles] = useState(
-    () => isClient(),
+    () => isClientGestor(),
   );
 
   const mineOnly = !includeAllResponsibles;
@@ -184,11 +186,13 @@ export default function TicketsPage() {
               icon={<Ticket size={24} />}
               title="Chamados"
               description={
-                isClient()
-                  ? TICKETS_CLIENT_LIST_SUBTITLE
-                  : canCreateTicket()
-                    ? TICKETS_LIST_SUBTITLE
-                    : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
+                isClientMember()
+                  ? "Chamados em que você é solicitante, criador ou está em cópia."
+                  : isClientGestor()
+                    ? TICKETS_CLIENT_LIST_SUBTITLE
+                    : canCreateTicket()
+                      ? TICKETS_LIST_SUBTITLE
+                      : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
               }
               actions={
                 <>
@@ -227,11 +231,13 @@ export default function TicketsPage() {
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-2">
                   <CardTitle className="text-lg">
-                    {isClient()
-                      ? "Chamados da empresa"
-                      : mineOnly
-                        ? "Meus chamados"
-                        : "Todos os chamados abertos"}
+                    {isClientMember()
+                      ? "Meus chamados"
+                      : isClientGestor()
+                        ? "Chamados da empresa"
+                        : mineOnly
+                          ? "Meus chamados"
+                          : "Todos os chamados abertos"}
                   </CardTitle>
                   {!isClient() ? (
                     <div className="flex flex-wrap items-center gap-2">

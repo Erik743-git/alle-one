@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { isClientGestorRole } from '../../common/security/client-portal-role';
 import type { RendimentoCalendarView } from './rendimento.dto';
 import {
   analyzeRendimentoDay,
@@ -2440,6 +2441,60 @@ export class RendimentoService {
     }
 
     return collaborators;
+  }
+
+  /**
+   * Gestor do cliente: lista funcionários (CLIENT_MEMBER) da empresa ativa.
+   * Não mistura roster Alle — isso fica em Financeiro.
+   */
+  async listCompanyEmployees(actor: AuthenticatedRequestUser): Promise<
+    Array<{
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      clientRole: string;
+      status: string;
+    }>
+  > {
+    if (!isClientGestorRole(actor.role) || !actor.companyId) {
+      throw new ForbiddenException(
+        'Somente o gestor da empresa pode listar funcionários.',
+      );
+    }
+
+    const companyId = actor.companyId;
+    const memberships = await this.prisma.userCompany.findMany({
+      where: {
+        companyId,
+        clientRole: 'CLIENT_MEMBER',
+        user: {
+          deletedAt: null,
+          status: UserStatus.ACTIVE,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: { user: { name: 'asc' } },
+    });
+
+    return memberships.map((m) => ({
+      id: m.user.id,
+      name: m.user.name,
+      email: m.user.email,
+      role: m.user.role,
+      clientRole: m.clientRole,
+      status: m.user.status,
+    }));
   }
 
   async listCollaboratorListPreferences(): Promise<

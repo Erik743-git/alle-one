@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { CompanyAgendaPanel } from "@/components/financeiro/company-agenda-panel";
 import {
   CompanyPendingQuestionsDialog,
@@ -35,6 +36,11 @@ import {
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { getStoredUser } from "@/lib/session";
+import {
+  FINANCEIRO_ADMIN_AGENDA_SUBTITLE,
+  FINANCEIRO_CLIENT_AGENDA_SUBTITLE,
+  FINANCEIRO_CLIENT_AGENDA_TITLE,
+} from "@/lib/module-copy";
 import { companiesService, type Company } from "@/lib/services/companies.service";
 import {
   companyContractsService,
@@ -59,7 +65,7 @@ import { ensureArray } from "@/lib/utils";
 
 export default function FinanceiroPage() {
   const user = getStoredUser();
-  const isClient = user?.role === "CLIENT";
+  const isClient = isClientPortalRole(user?.role);
   const isAdmin = user?.role === "ADMIN";
 
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -684,14 +690,14 @@ export default function FinanceiroPage() {
             <Card id="agenda-empresa">
               <CardHeader>
                 <CardTitle className="text-sm text-muted-foreground">
-                  Apontamentos da empresa
+                  {isClient
+                    ? FINANCEIRO_CLIENT_AGENDA_TITLE
+                    : "Apontamentos da empresa"}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Agenda por dia, semana ou mês — mesma visão que o cliente vê no
-                  portal.
                   {isClient
-                    ? " Você pode questionar apontamentos diretamente no calendário."
-                    : " Responda questionamentos e abone apontamentos quando necessário."}
+                    ? FINANCEIRO_CLIENT_AGENDA_SUBTITLE
+                    : FINANCEIRO_ADMIN_AGENDA_SUBTITLE}
                 </p>
               </CardHeader>
               <CardContent>

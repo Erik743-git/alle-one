@@ -21,6 +21,9 @@ export const TICKETS_APPOINTMENT_CREATE_RESTRICTED =
 export const APONTAMENTOS_ADMIN_SUBTITLE =
   "Consulte a agenda e as horas registradas de cada colaborador.";
 
+export const APONTAMENTOS_GESTOR_SUBTITLE =
+  "Funcionários da sua empresa. Os apontamentos da equipe Alle ficam em Financeiro.";
+
 export const APONTAMENTOS_AGENDA_SUBTITLE =
   "Registros de horas vinculados aos chamados de atendimento.";
 
@@ -38,6 +41,23 @@ export const APONTAMENTOS_LIST_SETTINGS_DESCRIPTION =
 
 export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
   "Listar na tela";
+
+export const FINANCEIRO_CLIENT_AGENDA_TITLE =
+  "Atendimento Alle no seu ambiente";
+
+export const FINANCEIRO_CLIENT_AGENDA_SUBTITLE =
+  "Horas e apontamentos dos colaboradores Alle na sua empresa. Você pode questionar registros no calendário.";
+
+export const FINANCEIRO_ADMIN_AGENDA_SUBTITLE =
+  "Agenda por dia, semana ou mês — mesma visão que o cliente vê no portal. Responda questionamentos e abone apontamentos quando necessário.";
+
+export const DASHBOARD_CLIENT_ALLE_LABEL = "Visão Alle";
+export const DASHBOARD_CLIENT_INTERNAL_LABEL = "Visão interna";
+export const DASHBOARD_CLIENT_ALLE_HINT =
+  "O que a Alle registra no seu ambiente (chamados e horas de atendimento).";
+export const DASHBOARD_CLIENT_INTERNAL_HINT =
+  "Chamados abertos pelos seus funcionários no portal.";
+export const DASHBOARD_EDIT_CHART_LABEL = "Editar gráfico";
 
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
   "Informe o período da lacuna detectada pelo sistema. A descrição é opcional; se deixar em branco, o débito será feito no saldo de horas extras (pode ficar negativo). Para horários em outras faixas do dia, use Justificativa voluntária.";

@@ -286,6 +286,19 @@ export const rendimentoService = {
     return apiRequest<RendimentoCollaborator[]>("/rendimento/collaborators");
   },
 
+  listCompanyEmployees() {
+    return apiRequest<
+      Array<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        clientRole: string;
+        status: string;
+      }>
+    >("/rendimento/company-employees");
+  },
+
   listCollaboratorListPreferences() {
     return apiRequest<RendimentoCollaboratorListPreference[]>(
       "/rendimento/collaborators/list-preferences",

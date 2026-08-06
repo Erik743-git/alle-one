@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ReportFormat, ReportStatus, ReportType } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { mapWithConcurrency } from '../../common/concurrency.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -1676,7 +1677,7 @@ export class ReportsService {
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
     if (companyId === ALL_COMPANIES_REPORT_ID) {
-      if (user.role === 'CLIENT') {
+      if (isClientPortalRole(user.role)) {
         throw new ForbiddenException(
           'Usuários CLIENT não podem gerar apontamentos de todas as empresas.',
         );
@@ -2053,7 +2054,7 @@ export class ReportsService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário CLIENT sem empresa vinculada');
       }

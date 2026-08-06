@@ -8,6 +8,7 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { sortByName } from "@/lib/collections";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { getStoredUser } from "@/lib/session";
 import {
   gmudsService,
@@ -73,7 +74,7 @@ export function GmudForm({
 }) {
   const router = useRouter();
   const authUser = getStoredUser();
-  const isClient = authUser?.role === "CLIENT";
+  const isClient = isClientPortalRole(authUser?.role);
 
   const [companies, setCompanies] = useState<GmudCompanyOption[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);

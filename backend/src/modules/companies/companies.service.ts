@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ContractFileType, ContractStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -20,6 +21,7 @@ import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { StreamableFile } from '@nestjs/common';
 import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
+import { DEFAULT_COMPANY_PACK_MODULES } from '../permissions/company-pack.constants';
 import { ZabbixService } from '../zabbix/zabbix.service';
 import {
   buildZabbixGroupSuggestions,
@@ -302,6 +304,15 @@ export class CompaniesService {
         status: data.status ?? true,
         monitoringPriority: data.monitoringPriority ?? false,
       },
+    });
+
+    await this.prisma.companyModule.createMany({
+      data: DEFAULT_COMPANY_PACK_MODULES.map((module) => ({
+        companyId: created.id,
+        module,
+        enabled: true,
+      })),
+      skipDuplicates: true,
     });
 
     await this.audit.log({
@@ -771,7 +782,7 @@ export class CompaniesService {
   async downloadLogo(user: AuthenticatedRequestUser, companyId: string) {
     // ADMIN-only controller already, but keep minimal guard for future use
     if (
-      user.role === 'CLIENT' &&
+      isClientPortalRole(user.role) &&
       user.companyId &&
       user.companyId !== companyId
     ) {

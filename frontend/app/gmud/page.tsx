@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { isClientPortalRole } from "@/lib/app-roles";
 import {
   Accordion,
   AccordionContent,
@@ -118,7 +119,7 @@ export default function GmudPage() {
     }
     setError(null);
     try {
-      const isClient = user?.role === "CLIENT";
+      const isClient = isClientPortalRole(user?.role);
       const seesGmudsByParticipation =
         user?.role === "COLLABORATOR" || user?.role === "PJ";
       const [companiesData, gmudsData] = await Promise.all([
@@ -155,7 +156,7 @@ export default function GmudPage() {
   }, [user?.role]);
 
   const scopedCompanies = useMemo<CompanyGroup[]>(() => {
-    const isClient = user?.role === "CLIENT";
+    const isClient = isClientPortalRole(user?.role);
     const seesGmudsByParticipation =
       user?.role === "COLLABORATOR" || user?.role === "PJ";
 
@@ -381,7 +382,7 @@ export default function GmudPage() {
                       <SearchableSelectField
                         value={selectedCompanyId === "ALL" ? "" : selectedCompanyId}
                         onChange={(value) => setSelectedCompanyId(value || "ALL")}
-                        disabled={user?.role === "CLIENT"}
+                        disabled={isClientPortalRole(user?.role)}
                         options={scopedCompanies.map((g) => ({
                           value: g.company.id,
                           label: g.company.name,

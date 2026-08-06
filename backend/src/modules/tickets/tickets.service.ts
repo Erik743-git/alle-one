@@ -39,6 +39,32 @@ export class TicketsService {
     private readonly emailTemplates: EmailTemplatesService,
   ) {}
 
+  /** Autocomplete de usuários do portal para pessoas em cópia (seguidores). */
+  async searchUsersForCc(q?: string) {
+    const term = q?.trim() ?? '';
+    if (term.length < 2) return [];
+
+    return this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        status: 'ACTIVE',
+        OR: [
+          { name: { contains: term, mode: 'insensitive' } },
+          { email: { contains: term, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        companyId: true,
+      },
+      orderBy: [{ name: 'asc' }],
+      take: 15,
+    });
+  }
+
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
   }

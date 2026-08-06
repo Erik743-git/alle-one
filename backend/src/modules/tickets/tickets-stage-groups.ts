@@ -61,11 +61,13 @@ export function resolveTicketStageGroup(
     return 'aguardando';
   }
   // Em execução / Em Execução / In progress
+  // Também "Em execu??o" (UTF-8 corrompido em dumps/clones).
   if (
     normalized.includes('execuc') ||
     normalized.includes('execut') ||
     normalized.includes('in progress') ||
-    normalized === 'progress'
+    normalized === 'progress' ||
+    /^em execu/.test(normalized)
   ) {
     return 'execucao';
   }

@@ -351,6 +351,21 @@ export const ticketsService = {
     );
   },
 
+  searchUsers(q: string) {
+    const qs = new URLSearchParams();
+    if (q.trim()) qs.set("q", q.trim());
+    const query = qs.toString();
+    return apiRequest<
+      Array<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        companyId: string | null;
+      }>
+    >(`/tickets/users/search${query ? `?${query}` : ""}`);
+  },
+
   createTicket(payload: CreateTicketPayload, files: File[] = []) {
     const body = new FormData();
     body.append("payload", JSON.stringify(payload));

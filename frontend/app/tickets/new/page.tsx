@@ -79,7 +79,15 @@ export default function NewTicketPage() {
   const [gmudOptions, setGmudOptions] = useState<Gmud[]>([]);
   const [loadingGmuds, setLoadingGmuds] = useState(false);
   const [ccInput, setCcInput] = useState("");
-  const [ccEmails, setCcEmails] = useState<string[]>([]);
+  const [ccPeople, setCcPeople] = useState<
+    Array<{ email: string; name?: string }>
+  >([]);
+  const [ccSuggestions, setCcSuggestions] = useState<
+    Array<{ id: string; name: string; email: string }>
+  >([]);
+  const [ccSearching, setCcSearching] = useState(false);
+  const [ccSuggestOpen, setCcSuggestOpen] = useState(false);
+  const ccSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const selectedDesk = useMemo(
     () => catalogs?.desks.find((d) => String(d.id) === deskId) ?? null,
@@ -313,19 +321,58 @@ export default function NewTicketPage() {
     );
   }
 
-  function addCcEmail() {
-    const email = ccInput.trim().toLowerCase();
+  function addCcPerson(emailRaw: string, name?: string) {
+    const email = emailRaw.trim().toLowerCase();
     if (!email) return;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       notifyError("E-mail em cópia inválido.");
       return;
     }
-    if (ccEmails.includes(email)) {
-      setCcInput("");
+    setCcPeople((prev) => {
+      if (prev.some((p) => p.email === email)) return prev;
+      return [...prev, { email, name }];
+    });
+    setCcInput("");
+    setCcSuggestions([]);
+    setCcSuggestOpen(false);
+  }
+
+  function addCcEmail() {
+    addCcPerson(ccInput);
+  }
+
+  function onCcInputChange(value: string) {
+    setCcInput(value);
+    if (ccSearchTimer.current) clearTimeout(ccSearchTimer.current);
+    const q = value.trim();
+    if (q.length < 2) {
+      setCcSuggestions([]);
+      setCcSuggestOpen(false);
       return;
     }
-    setCcEmails((prev) => [...prev, email]);
-    setCcInput("");
+    ccSearchTimer.current = setTimeout(() => {
+      void (async () => {
+        try {
+          setCcSearching(true);
+          const rows = await ticketsService.searchUsers(q);
+          const selected = new Set(ccPeople.map((p) => p.email));
+          setCcSuggestions(
+            rows
+              .filter((u) => !selected.has(u.email.toLowerCase()))
+              .map((u) => ({
+                id: u.id,
+                name: u.name,
+                email: u.email.toLowerCase(),
+              })),
+          );
+          setCcSuggestOpen(true);
+        } catch {
+          setCcSuggestions([]);
+        } finally {
+          setCcSearching(false);
+        }
+      })();
+    }, 250);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -393,7 +440,8 @@ export default function NewTicketPage() {
           requestorEmail: requestorEmail.trim(),
           requestorTelephone: requestorTelephone.trim() || undefined,
           externalGmudRef: externalGmudRef.trim() || undefined,
-          ccEmails: ccEmails.length > 0 ? ccEmails : undefined,
+          ccEmails:
+            ccPeople.length > 0 ? ccPeople.map((p) => p.email) : undefined,
         },
         files,
       );
@@ -450,10 +498,6 @@ export default function NewTicketPage() {
                         className="h-11"
                         required
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Ao escolher o cliente, o título recebe o prefixo automático
-                        (ex.: TUPER - ).
-                      </p>
                     </div>
                     <AppointmentDescriptionComposer
                       ref={descriptionComposerRef}
@@ -657,47 +701,100 @@ export default function NewTicketPage() {
 
                     <div className="space-y-2">
                       <FieldLabel optional>Pessoas em cópia (e-mail)</FieldLabel>
-                      <div className="flex gap-2">
-                        <Input
-                          type="email"
-                          value={ccInput}
-                          onChange={(e) => setCcInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              addCcEmail();
-                            }
-                          }}
-                          placeholder="email@empresa.com"
-                          className="h-11"
-                          disabled={saving}
-                        />
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={addCcEmail}
-                          disabled={saving}
-                        >
-                          Adicionar
-                        </Button>
+                      <div className="relative">
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            value={ccInput}
+                            onChange={(e) => onCcInputChange(e.target.value)}
+                            onFocus={() => {
+                              if (ccSuggestions.length > 0) setCcSuggestOpen(true);
+                            }}
+                            onBlur={() => {
+                              // delay para permitir click na sugestão
+                              setTimeout(() => setCcSuggestOpen(false), 150);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                if (ccSuggestions[0]) {
+                                  addCcPerson(
+                                    ccSuggestions[0].email,
+                                    ccSuggestions[0].name,
+                                  );
+                                } else {
+                                  addCcEmail();
+                                }
+                              }
+                            }}
+                            placeholder="Nome ou e-mail (portal ou externo)"
+                            className="h-11"
+                            disabled={saving}
+                            autoComplete="off"
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={addCcEmail}
+                            disabled={saving}
+                          >
+                            Adicionar
+                          </Button>
+                        </div>
+                        {ccSuggestOpen &&
+                        (ccSuggestions.length > 0 || ccSearching) ? (
+                          <div className="absolute z-20 mt-1 w-[calc(100%-6.5rem)] overflow-hidden rounded-md border border-border bg-popover shadow-md">
+                            {ccSearching && ccSuggestions.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-muted-foreground">
+                                Buscando usuários...
+                              </p>
+                            ) : (
+                              <ul className="max-h-48 overflow-auto py-1">
+                                {ccSuggestions.map((user) => (
+                                  <li key={user.id}>
+                                    <button
+                                      type="button"
+                                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
+                                      onMouseDown={(e) => e.preventDefault()}
+                                      onClick={() =>
+                                        addCcPerson(user.email, user.name)
+                                      }
+                                    >
+                                      <span className="font-medium">
+                                        {user.name}
+                                      </span>
+                                      <span className="text-xs text-muted-foreground">
+                                        {user.email}
+                                      </span>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ) : null}
                       </div>
-                      {ccEmails.length > 0 ? (
+                      {ccPeople.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 pt-1">
-                          {ccEmails.map((email) => (
+                          {ccPeople.map((person) => (
                             <span
-                              key={email}
+                              key={person.email}
                               className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
                             >
-                              {email}
+                              {person.name
+                                ? `${person.name} (${person.email})`
+                                : person.email}
                               <button
                                 type="button"
                                 className="text-muted-foreground hover:text-foreground"
                                 onClick={() =>
-                                  setCcEmails((prev) =>
-                                    prev.filter((item) => item !== email),
+                                  setCcPeople((prev) =>
+                                    prev.filter(
+                                      (item) => item.email !== person.email,
+                                    ),
                                   )
                                 }
-                                aria-label={`Remover ${email}`}
+                                aria-label={`Remover ${person.email}`}
                               >
                                 <X className="size-3.5" />
                               </button>
@@ -706,7 +803,8 @@ export default function NewTicketPage() {
                         </div>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
-                        Recebem cópia das notificações do chamado (ex.: registro).
+                        Usuários do portal na cópia passam a ver o chamado em Meus
+                        chamados. E-mails externos só recebem a notificação.
                       </p>
                     </div>
                   </CardContent>

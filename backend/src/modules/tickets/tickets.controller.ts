@@ -35,7 +35,11 @@ import {
   UpdateTicketAppointmentDto,
   UpdateTicketDto,
 } from './tickets-create.dto';
-import { TicketsListQueryDto, UpdateTicketStageDto } from './tickets.dto';
+import {
+  SearchTicketUsersQueryDto,
+  TicketsListQueryDto,
+  UpdateTicketStageDto,
+} from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
 import { TicketsReconcileService } from './tickets-reconcile.service';
@@ -74,7 +78,7 @@ export class TicketsController {
   }
 
   @Get('catalogs/create')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   createCatalogs(
     @Query('deskId') deskIdRaw?: string,
@@ -92,6 +96,13 @@ export class TicketsController {
       deskId != null && Number.isFinite(deskId) ? deskId : undefined,
       clientId != null && Number.isFinite(clientId) ? clientId : undefined,
     );
+  }
+
+  @Get('users/search')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  searchUsers(@Query() query: SearchTicketUsersQueryDto) {
+    return this.ticketsService.searchUsersForCc(query.q);
   }
 
   @Get('attachments/:fileId')
@@ -127,7 +138,7 @@ export class TicketsController {
   }
 
   @Post()
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
   async create(

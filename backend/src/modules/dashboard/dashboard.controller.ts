@@ -38,10 +38,27 @@ export class DashboardController {
     @Query('companyId') companyId?: string,
     @Query('includeHours') includeHours?: string,
     @Query('includeCharts') includeCharts?: string,
+    @Query('viewMode') viewMode?: string,
+    @Query('deskNames') deskNames?: string | string[],
   ) {
     if (!group?.trim()) {
       throw new BadRequestException('O parâmetro "group" é obrigatório.');
     }
+
+    const normalizedView =
+      viewMode?.trim().toUpperCase() === 'INTERNAL'
+        ? ('INTERNAL' as const)
+        : viewMode?.trim().toUpperCase() === 'ALLE'
+          ? ('ALLE' as const)
+          : undefined;
+    const desks = Array.isArray(deskNames)
+      ? deskNames
+      : typeof deskNames === 'string' && deskNames.trim()
+        ? deskNames
+            .split(',')
+            .map((d) => d.trim())
+            .filter(Boolean)
+        : undefined;
 
     return this.dashboardService.getCompleteDashboard(
       req.user,
@@ -50,6 +67,8 @@ export class DashboardController {
         start,
         end,
         companyId,
+        viewMode: normalizedView,
+        deskNames: desks,
       },
       {
         includeHours: includeHours === 'true',

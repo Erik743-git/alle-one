@@ -9,6 +9,7 @@ import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import type { FinancialOverviewQueryDto } from './financial.dto';
 import { createReadStream, existsSync } from 'fs';
 import { ContractFileType, ContractStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 
@@ -39,7 +40,7 @@ export class FinancialService {
     user: AuthenticatedRequestUser,
     companyId?: string,
   ) {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário CLIENT sem empresa vinculada');
       }

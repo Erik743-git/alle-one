@@ -11,7 +11,16 @@ enum UserRole {
   ADMIN
   COLLABORATOR
   PJ
+  /// @deprecated Migrado para CLIENT_GESTOR — mantido para compatibilidade.
   CLIENT
+  CLIENT_GESTOR
+  CLIENT_MEMBER
+}
+
+/// Papel do usuário CLIENT_* em uma empresa (membership multi-tenant).
+enum ClientCompanyRole {
+  CLIENT_GESTOR
+  CLIENT_MEMBER
 }
 
 enum UserStatus {
@@ -106,6 +115,8 @@ model User {
   deletedAt           DateTime?            @map("deleted_at")
 
   company             Company?             @relation(fields: [companyId], references: [id])
+  companyMemberships  UserCompany[]
+  dashboardChartPresets DashboardChartPreset[]
   preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
   preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
   emailInboundRoutesCreated EmailInboundRoute[] @relation("EmailInboundRouteCreator")
@@ -196,9 +207,66 @@ model Company {
   inventoryAssets      InventoryAsset[]
   appointmentQuestions RendimentoAppointmentQuestion[]
   projects             Project[]
+  modules              CompanyModule[]
+  userMemberships      UserCompany[]
+  dashboardChartPresets DashboardChartPreset[]
 
   @@unique([cnpj])
   @@map("companies")
+}
+
+/// Vínculo usuário ↔ empresa (mesmo e-mail pode atender mais de um cliente).
+model UserCompany {
+  id         String            @id @default(uuid())
+  userId     String            @map("user_id")
+  companyId  String            @map("company_id")
+  clientRole ClientCompanyRole @map("client_role")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@map("user_companies")
+}
+
+/// Preset de gráfico do dashboard (visão Alle vs interna) por usuário+empresa.
+model DashboardChartPreset {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  companyId  String   @map("company_id")
+  /// ALLE | INTERNAL
+  viewMode   String   @default("ALLE") @map("view_mode") @db.VarChar(20)
+  chartType  String   @default("bar") @map("chart_type") @db.VarChar(32)
+  deskNames  String[] @default([]) @map("desk_names")
+  periodDays Int      @default(30) @map("period_days")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId, viewMode])
+  @@index([companyId])
+  @@map("dashboard_chart_presets")
+}
+
+/// Módulos contratados (pack vendido) por empresa. Staff Alle ignora; CLIENT_* intersecta.
+model CompanyModule {
+  id        String           @id @default(uuid())
+  companyId String           @map("company_id")
+  module    PermissionModule
+  enabled   Boolean          @default(true)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, module])
+  @@index([companyId])
+  @@map("company_modules")
 }
 
 model InventoryAssetType {
@@ -815,6 +883,7 @@ model PortalTicketWatcher {
 
   @@unique([ticketNumber, email])
   @@index([ticketNumber])
+  @@index([email])
   @@map("portal_ticket_watchers")
 }
 

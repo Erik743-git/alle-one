@@ -129,6 +129,7 @@ export type DashboardCompleteResponse = {
   };
   summary: DashboardSummary;
   chamadosPorMes: DashboardChamadosMes[];
+  chamadosPorMesa?: Array<{ deskName: string; totalTickets: number }>;
   horasPorMes: DashboardHorasMes[];
   alertasPorMes: DashboardAlertasMes[];
   alertasPorSemana?: DashboardAlertasSemana[];
@@ -164,6 +165,8 @@ export type DashboardRequestParams = {
   start?: string;
   end?: string;
   companyId?: string | number | null;
+  viewMode?: "ALLE" | "INTERNAL";
+  deskNames?: string[];
 };
 
 function buildDashboardSearch(params: DashboardRequestParams) {
@@ -185,6 +188,16 @@ function buildDashboardSearch(params: DashboardRequestParams) {
     isValidCompanyUuid(String(params.companyId))
   ) {
     search.set("companyId", String(params.companyId));
+  }
+
+  if (params.viewMode === "ALLE" || params.viewMode === "INTERNAL") {
+    search.set("viewMode", params.viewMode);
+  }
+
+  if (params.deskNames?.length) {
+    for (const desk of params.deskNames) {
+      if (desk.trim()) search.append("deskNames", desk.trim());
+    }
   }
 
   return search.toString();

@@ -1,5 +1,8 @@
 import type { PermissionFlag, PermissionModuleKey } from "./permission-modules";
 import {
+  isClientGestorRole,
+  isClientMemberRole,
+  isClientPortalRole,
   isCollaboratorRole,
   isInternalStaffRole,
   isPjRole,
@@ -27,7 +30,15 @@ export function isPj() {
 }
 
 export function isClient() {
-  return getCurrentRole() === "CLIENT";
+  return isClientPortalRole(getCurrentRole());
+}
+
+export function isClientGestor() {
+  return isClientGestorRole(getCurrentRole());
+}
+
+export function isClientMember() {
+  return isClientMemberRole(getCurrentRole());
 }
 
 function getModuleEntry(module: PermissionModuleKey) {
@@ -64,12 +75,10 @@ const PJ_DEFAULT_VIEW: PermissionModuleKey[] = [
 ];
 
 export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag) {
-  // Para CLIENT: permitir ver o dashboard mesmo quando `permissions` vier vazio.
   if (flag === "canView" && module === "DASHBOARD" && isClient()) {
     return true;
   }
 
-  // CLIENT: módulos com fallback no backend; matriz explícita pode revogar.
   if (flag === "canView" && isClient()) {
     const clientMatrixModules: PermissionModuleKey[] = [
       "FINANCIAL",
@@ -77,18 +86,14 @@ export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag)
       "GMUD",
       "INVENTARIO",
       "PROJECTS",
+      "TICKETS",
+      "MONITORING",
     ];
     if (clientMatrixModules.includes(module)) {
       const entry = getModuleEntry(module);
       if (entry && entry.canView === false) return false;
-      if (
-        module === "FINANCIAL" ||
-        module === "RENDIMENTO" ||
-        module === "INVENTARIO" ||
-        module === "PROJECTS"
-      ) {
-        return true;
-      }
+      // Sem entrada: confia no effective do JWT (pack ∩ fallback).
+      if (entry) return entry.canView === true;
     }
   }
 
@@ -119,16 +124,14 @@ export function canViewModule(module: PermissionModuleKey) {
   return hasPermission(module, "canView");
 }
 
-/** Navegação: Administração exige papel ADMIN (e módulo ADMIN na matriz). */
 export function canAccessAdmin() {
   return isAdmin() && canViewModule("ADMIN");
 }
 
 export function canAccessFinanceiro() {
+  if (isClientMember()) return false;
   if (isClient()) {
-    const entry = getModuleEntry("FINANCIAL");
-    if (entry && entry.canView === false) return false;
-    return true;
+    return canViewModule("FINANCIAL");
   }
   return canViewModule("FINANCIAL");
 }
@@ -142,15 +145,13 @@ export function canAccessRelatorios() {
 }
 
 export function canAccessDashboard() {
-  // Cliente sempre pode ver o dashboard da própria empresa (mesmo sem matriz preenchida)
   return isClient() || canViewModule("DASHBOARD");
 }
 
 export function canAccessRendimento() {
+  if (isClientMember()) return false;
   if (isClient()) {
-    const entry = getModuleEntry("RENDIMENTO");
-    if (entry && entry.canView === false) return false;
-    return true;
+    return canViewModule("RENDIMENTO");
   }
   if (isPj()) return canViewModule("RENDIMENTO");
   return (isAdmin() || isCollaborator()) && canViewModule("RENDIMENTO");
@@ -160,37 +161,37 @@ export function canAccessTickets() {
   return canViewModule("TICKETS");
 }
 
-/** Mensagem exibida quando o usuário não pode criar ticket ou apontamento. */
 export {
   TICKETS_CREATE_RESTRICTED as TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
 } from "./module-copy";
 
-/** Criar ticket: ADMIN, colaborador ou PJ com canCreate em TICKETS. */
+/** Criar ticket: staff com canCreate, ou CLIENT_* com canCreate (pack). */
 export function canCreateTicket() {
   if (isAdmin()) return hasPermission("TICKETS", "canCreate");
   if (isCollaborator() || isPj()) {
     return hasPermission("TICKETS", "canCreate");
   }
+  if (isClient()) {
+    return hasPermission("TICKETS", "canCreate");
+  }
   return false;
 }
 
-/** Apontamento no ticket: mesma regra de criar ticket. */
+/** Apontamento: staff only no MVP (cliente cria ticket, não aponta ainda). */
 export function canCreateTicketAppointment() {
+  if (isClient()) return false;
   return canCreateTicket();
 }
 
-/** Alterar estágio do ticket (mesma permissão de apontamento). */
 export function canChangeTicketStage() {
   return canCreateTicketAppointment();
 }
 
-/** @deprecated Use canCreateTicket ou canCreateTicketAppointment */
 export function canCreateTicketsAndAppointments() {
   return canCreateTicket();
 }
 
-/** Colaborador pode registrar justificativa voluntária na própria agenda (canView basta). */
 export function canCreateVoluntaryRendimentoJustification() {
   if (isPj()) return false;
   if (isAdmin()) return true;
@@ -198,7 +199,6 @@ export function canCreateVoluntaryRendimentoJustification() {
   return canViewModule("RENDIMENTO");
 }
 
-/** Colaborador pode justificar lacuna de tempo na própria agenda (canView basta). */
 export function canCreateAlertRendimentoJustification() {
   return canCreateVoluntaryRendimentoJustification();
 }
@@ -215,10 +215,9 @@ export function canAccessCorreio() {
 
 export function canAccessInventario() {
   if (isPj()) return false;
+  if (isClientMember()) return false;
   if (isClient()) {
-    const entry = getModuleEntry("INVENTARIO");
-    if (entry && entry.canView === false) return false;
-    return true;
+    return canViewModule("INVENTARIO");
   }
   return canViewModule("INVENTARIO");
 }
@@ -237,10 +236,9 @@ export function canDeleteInventario() {
 
 export function canAccessProjetos() {
   if (isPj()) return canViewModule("PROJECTS");
+  if (isClientMember()) return false;
   if (isClient()) {
-    const entry = getModuleEntry("PROJECTS");
-    if (entry && entry.canView === false) return false;
-    return true;
+    return canViewModule("PROJECTS");
   }
   return canViewModule("PROJECTS");
 }
@@ -265,5 +263,5 @@ export function canImportProjetos() {
 
 export function canAccessAplicativos() {
   const role = getCurrentRole();
-  return isInternalStaffRole(role) || role === "CLIENT";
+  return isInternalStaffRole(role) || isClientPortalRole(role);
 }

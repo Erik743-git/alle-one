@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GmudStatus, GmudApproverStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ApproveGmudDto,
@@ -52,7 +53,7 @@ export class GmudService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada');
       }
@@ -279,7 +280,7 @@ export class GmudService {
     // - CLIENT só pode ser vinculado à própria empresa da GMUD.
     // - ADMIN/COLLABORATOR podem ser vinculados como executores/aprovadores mesmo sendo de outra empresa (ex.: equipe Alle).
     const invalidUser = users.find((u) => {
-      const isClientRole = u.role === 'CLIENT';
+      const isClientRole = isClientPortalRole(u.role);
       if (!isClientRole) {
         return false;
       }
@@ -814,12 +815,11 @@ export class GmudService {
     const q = query.q?.trim();
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
-    const companyId =
-      user.role === 'CLIENT'
-        ? user.companyId
-        : query.companyId
-          ? query.companyId
-          : null;
+    const companyId = isClientPortalRole(user.role)
+      ? user.companyId
+      : query.companyId
+        ? query.companyId
+        : null;
 
     if (companyId) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
@@ -829,7 +829,7 @@ export class GmudService {
       where: {
         deletedAt: null,
         status: 'ACTIVE',
-        ...(user.role === 'CLIENT'
+        ...(isClientPortalRole(user.role)
           ? { companyId: user.companyId }
           : companyId
             ? {

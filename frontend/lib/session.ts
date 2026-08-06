@@ -2,14 +2,22 @@ import { API_URL, getBrowserApiBase } from "@/lib/env";
 import type { ModulePermission } from "./permission-modules";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 
+export type AuthCompanyMembership = {
+  id: string;
+  name: string;
+  clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER";
+};
+
 export type AuthUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT" | "CLIENT_GESTOR" | "CLIENT_MEMBER";
   companyId: string | null;
   companyName: string | null;
   firstAccess: boolean;
+  /** Empresas do portal cliente (multi-tenant). */
+  companies?: AuthCompanyMembership[];
   /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */
   permissions?: ModulePermission[];
   totpEnabled?: boolean;

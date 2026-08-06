@@ -1,3 +1,4 @@
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -222,7 +223,7 @@ export class ConsoleService {
       ? await this.tenantScope.assertZabbixGroupAccess(user, query.group)
       : await this.resolveGroup(user, query.group);
 
-    if (user.role === 'CLIENT' || query.group?.trim()) {
+    if (isClientPortalRole(user.role) || query.group?.trim()) {
       return this.zabbix.getHostItemsSummaryForGroup(group, hostid);
     }
 
