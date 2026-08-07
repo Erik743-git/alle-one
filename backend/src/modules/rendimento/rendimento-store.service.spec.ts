@@ -58,26 +58,28 @@ describe('RendimentoStoreService', () => {
   });
 
   it('lista justificativas com nomes de criador e aprovador', async () => {
-    (prisma.rendimentoGapJustification.findMany as jest.Mock).mockResolvedValue([
-      {
-        id: 'gap-1',
-        userId: 'u1',
-        dateRef: new Date('2026-06-02T00:00:00.000Z'),
-        fromTime: new Date('1970-01-01T10:00:00.000Z'),
-        toTime: new Date('1970-01-01T10:30:00.000Z'),
-        gapType: 'idle',
-        gapMinutes: 30,
-        kind: 'ALERT',
-        status: 'APPROVED',
-        reason: 'Reunião',
-        debitOvertime: false,
-        overtimeMinutes: 0,
-        createdBy: 'creator-id',
-        createdAt: new Date('2026-06-02T14:00:00.000Z'),
-        approvedBy: 'approver-id',
-        approvedAt: new Date('2026-06-02T15:00:00.000Z'),
-      },
-    ]);
+    (prisma.rendimentoGapJustification.findMany as jest.Mock).mockResolvedValue(
+      [
+        {
+          id: 'gap-1',
+          userId: 'u1',
+          dateRef: new Date('2026-06-02T00:00:00.000Z'),
+          fromTime: new Date('1970-01-01T10:00:00.000Z'),
+          toTime: new Date('1970-01-01T10:30:00.000Z'),
+          gapType: 'idle',
+          gapMinutes: 30,
+          kind: 'ALERT',
+          status: 'APPROVED',
+          reason: 'Reunião',
+          debitOvertime: false,
+          overtimeMinutes: 0,
+          createdBy: 'creator-id',
+          createdAt: new Date('2026-06-02T14:00:00.000Z'),
+          approvedBy: 'approver-id',
+          approvedAt: new Date('2026-06-02T15:00:00.000Z'),
+        },
+      ],
+    );
     (prisma.user.findMany as jest.Mock).mockResolvedValue([
       { id: 'creator-id', name: 'Maria' },
       { id: 'approver-id', name: 'João' },

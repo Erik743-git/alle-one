@@ -14,7 +14,9 @@ import { S3FileStorageService } from './s3-file-storage.service';
         local: LocalFileStorageService,
         s3: S3FileStorageService,
       ) => {
-        const driver = (process.env.FILE_STORAGE_DRIVER ?? 'local').toLowerCase();
+        const driver = (
+          process.env.FILE_STORAGE_DRIVER ?? 'local'
+        ).toLowerCase();
         return driver === 's3' ? s3 : local;
       },
       inject: [LocalFileStorageService, S3FileStorageService],

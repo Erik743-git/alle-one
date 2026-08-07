@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { adminService, type TicketStage } from "@/lib/services/admin.service";
 
 function StageBadges({ stage }: { stage: TicketStage }) {
+  if (!stage.isSystem && stage.active) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {stage.isSystem ? (
@@ -34,15 +34,6 @@ function StageBadges({ stage }: { stage: TicketStage }) {
           Padrão
         </span>
       ) : null}
-      {stage.syncsToTiflux ? (
-        <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-          Sincroniza com TiFlux
-        </span>
-      ) : (
-        <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-          Só portal — não reflete no TiFlux
-        </span>
-      )}
       {!stage.active ? (
         <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
           Inativo
@@ -62,7 +53,6 @@ export default function AdminTicketPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TicketStage | null>(null);
   const [name, setName] = useState("");
-  const [syncsToTiflux, setSyncsToTiflux] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -86,14 +76,12 @@ export default function AdminTicketPage() {
   function openCreate() {
     setEditing(null);
     setName("");
-    setSyncsToTiflux(false);
     setModalOpen(true);
   }
 
   function openEdit(stage: TicketStage) {
     setEditing(stage);
     setName(stage.name);
-    setSyncsToTiflux(stage.syncsToTiflux);
     setModalOpen(true);
   }
 
@@ -108,11 +96,10 @@ export default function AdminTicketPage() {
       if (editing) {
         await adminService.updateTicketStage(editing.id, {
           name: trimmed,
-          syncsToTiflux,
         });
         notifySuccess("Estágio atualizado.");
       } else {
-        await adminService.createTicketStage({ name: trimmed, syncsToTiflux });
+        await adminService.createTicketStage({ name: trimmed });
         notifySuccess("Estágio criado.");
       }
       setModalOpen(false);
@@ -160,7 +147,6 @@ export default function AdminTicketPage() {
                 <h1 className="text-3xl font-bold text-foreground">Ticket</h1>
                 <p className="text-muted-foreground">
                   Parametrize os estágios de ticket. Os estágios padrão são fixos.
-                  Estágios marcados como “só portal” não alteram nada no TiFlux.
                 </p>
               </div>
 
@@ -234,8 +220,7 @@ export default function AdminTicketPage() {
                   {editing ? "Editar estágio" : "Adicionar estágio"}
                 </DialogTitle>
                 <DialogDescription>
-                  Estágios que não sincronizam com o TiFlux servem apenas para
-                  controle interno no portal.
+                  Defina o nome do estágio usado nos tickets.
                 </DialogDescription>
               </DialogHeader>
 
@@ -248,21 +233,6 @@ export default function AdminTicketPage() {
                     onChange={(e) => setName(e.target.value)}
                     maxLength={120}
                     placeholder="Ex.: Aguardando fornecedor"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between gap-3 rounded-md border p-3">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="stage-sync">Sincroniza com o TiFlux?</Label>
-                    <p className="text-xs text-muted-foreground">
-                      Desligado: estágio só do portal, não altera nada no TiFlux.
-                    </p>
-                  </div>
-                  <Switch
-                    id="stage-sync"
-                    checked={syncsToTiflux}
-                    aria-label="Sincroniza com o TiFlux"
-                    onCheckedChange={setSyncsToTiflux}
                   />
                 </div>
               </div>

@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ReportFormat, ReportStatus, ReportType } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { mapWithConcurrency } from '../../common/concurrency.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -28,23 +29,19 @@ import {
 } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 import {
-  buildInventarioReportCsv,
-  buildInventarioReportXlsx,
-  type InventarioReportRow,
-} from './reports-inventario';
-import { toDateOnlyISO, parseDateInput } from '../dashboard/dashboard-date.utils';
+  ALL_COMPANIES_REPORT_ID,
+  ReportsInventarioService,
+} from './reports-inventario.service';
+import {
+  toDateOnlyISO,
+  parseDateInput,
+} from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5']);
-const ALL_COMPANIES_REPORT_ID = '__all__';
-
-const REPORT_TYPE_LABELS: Record<string, string> = {
-  '1': 'Rendimento',
-  '4': 'Estatística Geral',
-  '5': 'Inventário',
-};
 
 const REPORT_TYPE_SLUGS: Record<string, string> = {
   '1': 'rendimento',
@@ -101,7 +98,74 @@ export class ReportsService {
     private readonly tiflux: TifluxService,
     private readonly dashboard: DashboardService,
     private readonly rendimento: RendimentoService,
+    private readonly inventario: ReportsInventarioService,
   ) {}
+
+  /**
+   * Stub do relatório de cobrança por especialidade.
+   * Ver docs/ESPECIALIDADE_COBRANCA.md — fórmulas B/C/D/E/F.
+   * TODO: calcular horas gastas (C) a partir de apontamentos do usuário da especialidade.
+   */
+  async getBillingChargeReport(
+    _user: AuthenticatedRequestUser,
+    query: {
+      companyIds?: string | string[];
+      specialtyIds?: string | string[];
+      mode?: string;
+      start?: string;
+      end?: string;
+    },
+  ) {
+    const toArray = (v?: string | string[]) =>
+      (Array.isArray(v) ? v : v ? [v] : [])
+        .flatMap((item) => String(item).split(','))
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const companyIds = toArray(query.companyIds);
+    const specialtyIds = toArray(query.specialtyIds);
+    const mode = query.mode === 'excess' ? 'excess' : 'all';
+    const start = query.start ?? null;
+    const end = query.end ?? null;
+
+    return {
+      filters: { companyIds, specialtyIds, mode, start, end },
+      formulas: {
+        B: 'horas contratadas (linha do contrato)',
+        C: 'horas gastas (apontamentos de usuários da especialidade)',
+        D: 'B - C (saldo; negativo se estourou)',
+        E: 'D × valor hora excedente',
+        F: 'C × valor hora calculado (contractValue / monthlyHours)',
+        amountDue:
+          'ilimitado ou C≤B → valor contrato; C>B → valor contrato + |E|',
+      },
+      rows: [] as Array<{
+        companyId: string;
+        companyName: string;
+        specialtyId: string;
+        specialtyName: string;
+        contractId: string | null;
+        monthlyHours: number; // B
+        spentHours: number; // C
+        balanceHours: number; // D
+        excessValue: number; // E
+        theoreticalCost: number; // F
+        contractValue: number;
+        excessHourPrice: number;
+        hourlyRate: number | null;
+        unlimited: boolean;
+        amountDue: number;
+      }>,
+      totals: {
+        spentHours: 0,
+        balanceHours: 0,
+        excessValue: 0,
+        theoreticalCost: 0,
+        amountDue: 0,
+      },
+      stub: true,
+    };
+  }
 
   private async fetchChartPng(params: {
     chart: unknown;
@@ -222,7 +286,11 @@ export class ReportsService {
     return total;
   }
 
-  private styleTipo4TitleBand(sheet: ExcelJS.Worksheet, title: string, colSpan: number) {
+  private styleTipo4TitleBand(
+    sheet: ExcelJS.Worksheet,
+    title: string,
+    colSpan: number,
+  ) {
     const lastCol = String.fromCharCode(64 + colSpan);
     sheet.mergeCells(`A1:${lastCol}1`);
     const cell = sheet.getCell('A1');
@@ -284,8 +352,7 @@ export class ReportsService {
     colCount: number,
     options?: { minHeight?: number },
   ) {
-    const fillArgb =
-      rowIndex % 2 === 0 ? 'FFFFFFFF' : this.tipo4Theme.rowAlt;
+    const fillArgb = rowIndex % 2 === 0 ? 'FFFFFFFF' : this.tipo4Theme.rowAlt;
     row.alignment = { vertical: 'middle', horizontal: 'center' };
     row.height = options?.minHeight ?? 18;
     for (let c = 1; c <= colCount; c += 1) {
@@ -354,11 +421,7 @@ export class ReportsService {
       Number(dashSummary?.totalTriggersDistintos) || topTriggers.length;
     const top10 = topTriggers.slice(0, 10);
 
-    this.styleTipo4TitleBand(
-      sheet,
-      `Top Triggers — ${companyName}`,
-      colCount,
-    );
+    this.styleTipo4TitleBand(sheet, `Top Triggers — ${companyName}`, colCount);
     addCompanyLogo(sheet);
 
     sheet.mergeCells(`A2:${lastCol}2`);
@@ -421,7 +484,11 @@ export class ReportsService {
       row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 22 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+      row.getCell(2).alignment = {
+        horizontal: 'left',
+        indent: 1,
+        wrapText: false,
+      };
       row.getCell(3).font = { size: 9 };
       row.getCell(3).alignment = {
         horizontal: 'left',
@@ -498,7 +565,11 @@ export class ReportsService {
             e.qty,
           ];
           this.styleTipo4DataRow(row, zebra, colCount);
-          row.getCell(1).alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          row.getCell(1).alignment = {
+            vertical: 'middle',
+            horizontal: 'left',
+            indent: 1,
+          };
           row.getCell(2).alignment = {
             horizontal: 'left',
             indent: 1,
@@ -578,7 +649,11 @@ export class ReportsService {
       row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: false };
+      row.getCell(2).alignment = {
+        horizontal: 'left',
+        indent: 1,
+        wrapText: false,
+      };
       row.getCell(3).font = { size: 9 };
       row.getCell(3).alignment = {
         horizontal: 'left',
@@ -618,33 +693,44 @@ export class ReportsService {
       updatedAtSource: string | null;
     }>;
   }> {
+    const ticketsTable = isTicketsPortalCanonical()
+      ? 'portal_tickets'
+      : 'tiflux.tickets';
+    const startIso = params.start.toISOString();
+    const endIso = params.end.toISOString();
+
     const [summary] =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           opened_in_period: number;
           closed_in_period: number;
           open_now_total: number;
           tickets_base_total: number;
         }>
-      >`
+      >(
+        `
       select
         count(*) filter (
           where t.created_at_source is not null
-            and t.created_at_source between ${params.start.toISOString()}::timestamptz and ${params.end.toISOString()}::timestamptz
+            and t.created_at_source between $2::timestamptz and $3::timestamptz
         )::int as opened_in_period,
         count(*) filter (
           where coalesce(t.is_closed, false) = true
             and t.updated_at_source is not null
-            and t.updated_at_source between ${params.start.toISOString()}::timestamptz and ${params.end.toISOString()}::timestamptz
+            and t.updated_at_source between $2::timestamptz and $3::timestamptz
         )::int as closed_in_period,
         count(*) filter (where coalesce(t.is_closed, false) = false)::int as open_now_total,
         count(*)::int as tickets_base_total
-      from tiflux.tickets t
-      where t.client_external_id = ${params.tifluxClientId}
-    `) ?? [];
+      from ${ticketsTable} t
+      where t.client_external_id = $1
+    `,
+        params.tifluxClientId,
+        startIso,
+        endIso,
+      )) ?? [];
 
     const openRows =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           ticket_number: number;
           title: string | null;
@@ -653,7 +739,8 @@ export class ReportsService {
           status_name: string | null;
           updated_at_source: string | null;
         }>
-      >`
+      >(
+        `
       select
         t.ticket_number,
         t.title,
@@ -661,11 +748,13 @@ export class ReportsService {
         t.desk_name,
         t.status_name,
         t.updated_at_source::text as updated_at_source
-      from tiflux.tickets t
-      where t.client_external_id = ${params.tifluxClientId}
+      from ${ticketsTable} t
+      where t.client_external_id = $1
         and coalesce(t.is_closed, false) = false
       order by t.updated_at_source desc nulls last, t.ticket_number asc
-    `) ?? [];
+    `,
+        params.tifluxClientId,
+      )) ?? [];
 
     return {
       openedInPeriod: Number(summary?.opened_in_period) || 0,
@@ -731,7 +820,10 @@ export class ReportsService {
     ];
     this.styleTipo4ColumnHeaderRow(headerRow, colCount);
     sheet.mergeCells('D4:F4');
-    sheet.getCell('D4').alignment = { vertical: 'middle', horizontal: 'center' };
+    sheet.getCell('D4').alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
 
     const valuesRow = sheet.getRow(5);
     valuesRow.values = [
@@ -760,7 +852,10 @@ export class ReportsService {
       };
     }
     sheet.mergeCells('D5:F5');
-    sheet.getCell('D5').alignment = { vertical: 'middle', horizontal: 'center' };
+    sheet.getCell('D5').alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
 
     await this.embedTipo4Chart(
       workbook,
@@ -768,7 +863,11 @@ export class ReportsService {
       7,
       this.buildTipo4GroupedBarChart({
         title: 'Abertos/Fechados no período + Em aberto geral',
-        labels: ['Abertos (período)', 'Fechados (período)', 'Em aberto (geral)'],
+        labels: [
+          'Abertos (período)',
+          'Fechados (período)',
+          'Em aberto (geral)',
+        ],
         datasets: [
           {
             label: 'Chamados',
@@ -819,7 +918,11 @@ export class ReportsService {
       ];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = { horizontal: 'left', indent: 1, wrapText: true };
+      row.getCell(2).alignment = {
+        horizontal: 'left',
+        indent: 1,
+        wrapText: true,
+      };
       row.getCell(3).alignment = { horizontal: 'left', indent: 1 };
       row.getCell(4).alignment = { horizontal: 'left', indent: 1 };
       row.getCell(5).alignment = { horizontal: 'center' };
@@ -1004,7 +1107,10 @@ export class ReportsService {
       plugins: this.tipo4ChartPlugins(),
     });
     if (!chart) return;
-    const imageId = workbook.addImage({ buffer: chart as any, extension: 'png' });
+    const imageId = workbook.addImage({
+      buffer: chart as any,
+      extension: 'png',
+    });
     const chartRow = rowAfterTable + 0.2;
     sheet.addImage(imageId, {
       tl: { col: 0.1, row: chartRow },
@@ -1057,13 +1163,15 @@ export class ReportsService {
     const alertasSemanaRaw = Array.isArray(
       (dash as { alertasPorSemana?: unknown[] }).alertasPorSemana,
     )
-      ? ((dash as {
-          alertasPorSemana: Array<{
-            weekLabel: string;
-            High: number;
-            Disaster: number;
-          }>;
-        }).alertasPorSemana ?? [])
+      ? ((
+          dash as {
+            alertasPorSemana: Array<{
+              weekLabel: string;
+              High: number;
+              Disaster: number;
+            }>;
+          }
+        ).alertasPorSemana ?? [])
       : [];
 
     const chamadosMonths = this.splitTipo4MonthRows(chamados as any).months;
@@ -1072,11 +1180,13 @@ export class ReportsService {
     const alertasWeeks =
       alertasSemanaRaw.length > 0
         ? alertasSemanaRaw
-        : (alertasMonths as Array<{
-            monthLabel: string;
-            High: number;
-            Disaster: number;
-          }>).map((row) => ({
+        : (
+            alertasMonths as Array<{
+              monthLabel: string;
+              High: number;
+              Disaster: number;
+            }>
+          ).map((row) => ({
             weekLabel: row.monthLabel,
             High: Number(row.High) || 0,
             Disaster: Number(row.Disaster) || 0,
@@ -1092,47 +1202,58 @@ export class ReportsService {
           High: Number(row.High) || 0,
           Disaster: Number(row.Disaster) || 0,
         }))
-      : (alertasMonths as Array<{
-          monthLabel: string;
-          High: number;
-          Disaster: number;
-        }>).map((row) => ({
+      : (
+          alertasMonths as Array<{
+            monthLabel: string;
+            High: number;
+            Disaster: number;
+          }>
+        ).map((row) => ({
           periodLabel: row.monthLabel,
           High: Number(row.High) || 0,
           Disaster: Number(row.Disaster) || 0,
         }));
-    const dashSummary = (dash as { summary?: Record<string, unknown> })
-      .summary;
+    const dashSummary = (dash as { summary?: Record<string, unknown> }).summary;
     const topTriggers = Array.isArray(
       (dash as { topTriggers?: unknown[] }).topTriggers,
     )
-      ? ((dash as { topTriggers: Array<{
-          host: string;
-          trigger: string;
-          severity: string;
-          count: number;
-        }> }).topTriggers)
+      ? (
+          dash as {
+            topTriggers: Array<{
+              host: string;
+              trigger: string;
+              severity: string;
+              count: number;
+            }>;
+          }
+        ).topTriggers
       : [];
     const allTriggersInPeriod = Array.isArray(
       (dash as { allTriggersInPeriod?: unknown[] }).allTriggersInPeriod,
     )
-      ? ((dash as { allTriggersInPeriod: Array<{
-          host: string;
-          trigger: string;
-          severity: string;
-          count: number;
-        }> }).allTriggersInPeriod)
+      ? (
+          dash as {
+            allTriggersInPeriod: Array<{
+              host: string;
+              trigger: string;
+              severity: string;
+              count: number;
+            }>;
+          }
+        ).allTriggersInPeriod
       : topTriggers;
     const principaisHosts = Array.isArray(
       (dash as { principaisHostsPorMes?: unknown[] }).principaisHostsPorMes,
     )
-      ? ((dash as {
-          principaisHostsPorMes: Array<{
-            monthLabel: string;
-            High: Array<{ host: string; quantity: number }>;
-            Disaster: Array<{ host: string; quantity: number }>;
-          }>;
-        }).principaisHostsPorMes)
+      ? (
+          dash as {
+            principaisHostsPorMes: Array<{
+              monthLabel: string;
+              High: Array<{ host: string; quantity: number }>;
+              Disaster: Array<{ host: string; quantity: number }>;
+            }>;
+          }
+        ).principaisHostsPorMes
       : [];
     const ticketsStats =
       company.tifluxClientId != null
@@ -1453,9 +1574,7 @@ export class ReportsService {
         sheet,
         rowIdx + 1,
         this.buildTipo4LineChart({
-          title: monitoringUseWeekly
-            ? 'Alertas por Semana'
-            : 'Alertas por Mês',
+          title: monitoringUseWeekly ? 'Alertas por Semana' : 'Alertas por Mês',
           labels: chartLabels,
           rotateLabels: chartLabels.length > 4,
           datasets: [
@@ -1624,7 +1743,7 @@ export class ReportsService {
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
     if (companyId === ALL_COMPANIES_REPORT_ID) {
-      if (user.role === 'CLIENT') {
+      if (isClientPortalRole(user.role)) {
         throw new ForbiddenException(
           'Usuários CLIENT não podem gerar apontamentos de todas as empresas.',
         );
@@ -1647,7 +1766,7 @@ export class ReportsService {
 
       if (!withClient.length) {
         throw new BadRequestException(
-          'Nenhuma empresa com cliente TiFlux configurado para gerar apontamentos.',
+          'Nenhuma empresa com cliente vinculado para gerar apontamentos.',
         );
       }
 
@@ -1697,21 +1816,59 @@ export class ReportsService {
     const endDateOnly = toDateOnlyISO(params.end);
     const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
 
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          user_name: string | null;
-          ticket_number: number | null;
-          title: string | null;
-          description: string | null;
-          appointment_date: string;
-          init_time: string | null;
-          end_time: string | null;
-          client_name: string | null;
-          valorization_raw: unknown | null;
-          created_by_way_of: string | null;
-        }>
-      >`
+    const rows = isTicketsPortalCanonical()
+      ? ((await this.prisma.$queryRaw<
+          Array<{
+            user_name: string | null;
+            ticket_number: number | null;
+            title: string | null;
+            description: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            client_name: string | null;
+            valorization_raw: unknown | null;
+            created_by_way_of: string | null;
+          }>
+        >`
+        select
+          u.name as user_name,
+          a.ticket_number,
+          coalesce(t.title, a.description, '') as title,
+          coalesce(a.description, '') as description,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          t.client_name,
+          jsonb_build_object('name', a.service_name) as valorization_raw,
+          t.created_by_way_of
+        from portal_ticket_appointments a
+        inner join portal_tickets t on t.ticket_number = a.ticket_number
+        left join users u on u.id = a.created_by
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+          and u.name is not null
+          and trim(u.name) <> ''
+          and (
+            ${collaboratorFilter.portalUserId}::text is null
+            or a.created_by = ${collaboratorFilter.portalUserId}::text
+          )
+        order by a.appointment_date asc, u.name asc, a.ticket_number asc, a.id asc
+      `) ?? [])
+      : ((await this.prisma.$queryRaw<
+          Array<{
+            user_name: string | null;
+            ticket_number: number | null;
+            title: string | null;
+            description: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            client_name: string | null;
+            valorization_raw: unknown | null;
+            created_by_way_of: string | null;
+          }>
+        >`
         select
           a.user_name,
           a.ticket_number,
@@ -1743,33 +1900,29 @@ export class ReportsService {
             )
           )
         order by a.appointment_date::date asc, a.user_name asc, a.ticket_number asc, a.external_id asc
-      `) ?? [];
+      `) ?? []);
 
     const users = await this.prisma.user.findMany({
       where: { deletedAt: null },
       select: {
         name: true,
-        serviceDeskLinks: {
-          include: { serviceDesk: { select: { name: true } } },
-        },
+        specialty: { select: { name: true } },
       },
     });
     const teamByUserName = new Map<string, string>();
     for (const u of users) {
       const key = normalizeNameKey(u.name);
       if (!key) continue;
-      const desks = u.serviceDeskLinks
-        .map((l) => l.serviceDesk.name)
-        .filter((name) => !!String(name || '').trim());
-      if (desks.length === 0) continue;
-      teamByUserName.set(key, desks.join(' / '));
+      const specialtyName = u.specialty?.name?.trim();
+      if (!specialtyName) continue;
+      teamByUserName.set(key, specialtyName);
     }
 
     return rows.map((r) => {
       const attendant = String(r.user_name || '').trim();
-      const dateLabel = new Date(`${r.appointment_date}T12:00:00`).toLocaleDateString(
-        'pt-BR',
-      );
+      const dateLabel = new Date(
+        `${r.appointment_date}T12:00:00`,
+      ).toLocaleDateString('pt-BR');
       const initHHMM = this.formatTimeHHMM(r.init_time);
       const endHHMM = this.formatTimeHHMM(r.end_time);
       const durationMinutes = this.getAppointmentMinutes({
@@ -1802,7 +1955,9 @@ export class ReportsService {
     start: Date;
     end: Date;
     userId?: string | null;
-  }): Promise<Array<{ day: string; user: string; minutes: number; company: string }>> {
+  }): Promise<
+    Array<{ day: string; user: string; minutes: number; company: string }>
+  > {
     const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
       params.userId,
     );
@@ -1815,15 +1970,46 @@ export class ReportsService {
     );
 
     // 1) Tentativa 100% banco (rápida)
-    const dbRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          day: string;
-          user_name: string | null;
-          minutes: number;
-          client_external_id: number;
-        }>
-      >`
+    const dbRows = isTicketsPortalCanonical()
+      ? ((await this.prisma.$queryRaw<
+          Array<{
+            day: string;
+            user_name: string | null;
+            minutes: number;
+            client_external_id: number;
+          }>
+        >`
+        select
+          a.appointment_date::date::text as day,
+          u.name as user_name,
+          t.client_external_id,
+          sum(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from (a.end_time::time + interval '24 hours' - a.init_time::time)) / 60
+            end
+          )::int as minutes
+        from portal_ticket_appointments a
+        inner join portal_tickets t on t.ticket_number = a.ticket_number
+        left join users u on u.id = a.created_by
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+          and (
+            ${collaboratorFilter.portalUserId}::text is null
+            or a.created_by = ${collaboratorFilter.portalUserId}::text
+          )
+        group by a.appointment_date::date, u.name, t.client_external_id
+        order by a.appointment_date::date asc, u.name asc
+      `) ?? [])
+      : ((await this.prisma.$queryRaw<
+          Array<{
+            day: string;
+            user_name: string | null;
+            minutes: number;
+            client_external_id: number;
+          }>
+        >`
         select
           a.appointment_date::date::text as day,
           a.user_name,
@@ -1854,7 +2040,7 @@ export class ReportsService {
           )
         group by a.appointment_date::date, a.user_name, t.client_external_id
         order by a.appointment_date::date asc, a.user_name asc
-      `) ?? [];
+      `) ?? []);
 
     if (dbRows.length) {
       return dbRows.map((r) => ({
@@ -1864,6 +2050,11 @@ export class ReportsService {
         company:
           companyNameByTifluxId.get(Number(r.client_external_id)) ?? 'Empresa',
       }));
+    }
+
+    // Canonical: sem fallback API TiFlux
+    if (isTicketsPortalCanonical()) {
+      return [];
     }
 
     // 2) Fallback: chama API TiFlux e agrega em memória (e as chamadas ficam cacheadas em `external_api_cache`).
@@ -1884,15 +2075,12 @@ export class ReportsService {
         offset: 1,
       });
 
-      const appointmentLists = await mapWithConcurrency(
-        tickets,
-        6,
-        (t) =>
-          this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
-            start_date: startDateOnly,
-            end_date: endDateOnly,
-            limit: 200,
-          }),
+      const appointmentLists = await mapWithConcurrency(tickets, 6, (t) =>
+        this.tiflux.getTicketAppointmentsAll(t.ticket_number, {
+          start_date: startDateOnly,
+          end_date: endDateOnly,
+          limit: 200,
+        }),
       );
 
       for (const appts of appointmentLists) {
@@ -1928,7 +2116,7 @@ export class ReportsService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário CLIENT sem empresa vinculada');
       }
@@ -1986,7 +2174,7 @@ export class ReportsService {
     if (!company) throw new NotFoundException('Empresa não encontrada');
     if (!company.tifluxClientId) {
       throw new BadRequestException(
-        'Empresa sem cliente TiFlux configurado. Não é possível gerar apontamentos por empresa.',
+        'Empresa sem cliente vinculado. Não é possível gerar apontamentos por empresa.',
       );
     }
     return {
@@ -1996,13 +2184,20 @@ export class ReportsService {
     };
   }
 
-  private async resolveCollaboratorAppointmentFilter(userId?: string | null): Promise<{
+  private async resolveCollaboratorAppointmentFilter(
+    userId?: string | null,
+  ): Promise<{
+    portalUserId: string | null;
     tifluxUserExternalId: number | null;
     attendantName: string | null;
   }> {
     const id = userId?.trim();
     if (!id) {
-      return { tifluxUserExternalId: null, attendantName: null };
+      return {
+        portalUserId: null,
+        tifluxUserExternalId: null,
+        attendantName: null,
+      };
     }
 
     const collaborators = await this.rendimento.listCollaboratorsForSelect({
@@ -2017,13 +2212,21 @@ export class ReportsService {
     const attendantName =
       match.tifluxUserName?.trim() || match.name?.trim() || null;
 
-    if (!tifluxUserExternalId && !attendantName) {
+    if (
+      !isTicketsPortalCanonical() &&
+      !tifluxUserExternalId &&
+      !attendantName
+    ) {
       throw new BadRequestException(
-        `Colaborador "${match.name}" sem vínculo com TiFlux para filtrar apontamentos.`,
+        `Colaborador "${match.name}" sem vínculo externo para filtrar apontamentos.`,
       );
     }
 
-    return { tifluxUserExternalId, attendantName };
+    return {
+      portalUserId: match.id,
+      tifluxUserExternalId,
+      attendantName,
+    };
   }
 
   private async getRendimentoAttendantSummaries(params: {
@@ -2048,18 +2251,57 @@ export class ReportsService {
     const endDateOnly = toDateOnlyISO(params.end);
     const tifluxClientIds = params.companies.map((c) => c.tifluxClientId);
 
-    const rawRows =
-      (await this.prisma.$queryRaw<
-        Array<{
-          appointment_id: number;
-          user_name: string | null;
-          appointment_date: string;
-          init_time: string | null;
-          end_time: string | null;
-          minutes: number;
-          valorization_raw: unknown | null;
-        }>
-      >`
+    const rawRows = isTicketsPortalCanonical()
+      ? ((await this.prisma.$queryRaw<
+          Array<{
+            appointment_id: number;
+            user_name: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            minutes: number;
+            valorization_raw: unknown | null;
+          }>
+        >`
+        select
+          coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
+          u.name as user_name,
+          a.appointment_date::date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          jsonb_build_object('name', a.service_name) as valorization_raw,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from portal_ticket_appointments a
+        inner join portal_tickets t on t.ticket_number = a.ticket_number
+        left join users u on u.id = a.created_by
+        where t.client_external_id = any(${tifluxClientIds}::int[])
+          and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
+          and u.name is not null
+          and trim(u.name) <> ''
+          and (
+            ${collaboratorFilter.portalUserId}::text is null
+            or a.created_by = ${collaboratorFilter.portalUserId}::text
+          )
+      `) ?? [])
+      : ((await this.prisma.$queryRaw<
+          Array<{
+            appointment_id: number;
+            user_name: string | null;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            minutes: number;
+            valorization_raw: unknown | null;
+          }>
+        >`
         select
           a.external_id as appointment_id,
           a.user_name,
@@ -2095,7 +2337,7 @@ export class ReportsService {
               and lower(trim(a.user_name)) = lower(trim(${collaboratorFilter.attendantName}))
             )
           )
-      `) ?? [];
+      `) ?? []);
 
     const byAttendant = new Map<
       string,
@@ -2168,7 +2410,10 @@ export class ReportsService {
         description: null,
       }));
       const valorizationById = new Map(
-        dayRows.map((row) => [Number(row.appointment_id) || 0, row.valorization_raw]),
+        dayRows.map((row) => [
+          Number(row.appointment_id) || 0,
+          row.valorization_raw,
+        ]),
       );
       const { insights } = analyzeRendimentoDay(entries, valorizationById);
       alerts += insights.gaps.filter((g) => g.type === 'idle').length;
@@ -2288,12 +2533,12 @@ export class ReportsService {
     if (!company) throw new NotFoundException('Empresa não encontrada');
 
     const collaboratorLabel = params.userId?.trim()
-      ? (
+      ? ((
           await this.prisma.user.findFirst({
             where: { id: params.userId.trim(), deletedAt: null },
             select: { name: true },
           })
-        )?.name ?? 'Colaborador'
+        )?.name ?? 'Colaborador')
       : 'Todos os colaboradores';
 
     const startDateOnly = toDateOnlyISO(params.start);
@@ -2494,168 +2739,6 @@ export class ReportsService {
     return workbook.xlsx.writeBuffer();
   }
 
-  private startOfDay(date = new Date()) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
-  private async loadInventarioReportRows(
-    companyIds: string[],
-  ): Promise<InventarioReportRow[]> {
-    const today = this.startOfDay();
-    const multiCompany = companyIds.length > 1;
-    const rows = await this.prisma.inventoryAsset.findMany({
-      where: { companyId: { in: companyIds }, deletedAt: null },
-      include: {
-        assetType: { select: { name: true } },
-        company: { select: { name: true } },
-      },
-      orderBy: multiCompany
-        ? [
-            { company: { name: 'asc' } },
-            { assetType: { name: 'asc' } },
-            { brand: 'asc' },
-            { name: 'asc' },
-          ]
-        : [
-            { assetType: { name: 'asc' } },
-            { brand: 'asc' },
-            { name: 'asc' },
-          ],
-    });
-
-    return rows.map((row) => {
-      const dueDate = row.dueDate
-        ? row.dueDate.toISOString().slice(0, 10)
-        : null;
-      const overdue = row.dueDate
-        ? this.startOfDay(row.dueDate).getTime() < today.getTime()
-        : false;
-
-      return {
-        ...(multiCompany ? { companyName: row.company.name } : {}),
-        assetTypeName: row.assetType.name,
-        brand: row.brand,
-        quantity: row.quantity,
-        supplier: row.supplier,
-        supplierThirdParty: row.supplierThirdParty,
-        description: row.description,
-        dueDate,
-        reminderDaysBefore: row.reminderDaysBefore,
-        overdue,
-      };
-    });
-  }
-
-  private async resolveInventarioReportScope(
-    user: AuthenticatedRequestUser,
-    payload: { companyId?: string; companyIds?: string[] },
-  ) {
-    const scope = await this.getAccessibleCompanyIds(user);
-    const companyId = payload.companyId?.trim() || '';
-
-    if (companyId === ALL_COMPANIES_REPORT_ID) {
-      const companies = await this.prisma.company.findMany({
-        where: { id: { in: scope }, deletedAt: null },
-        select: { id: true, name: true },
-        orderBy: { name: 'asc' },
-      });
-      return {
-        companyIds: companies.map((c) => c.id),
-        scopeLabel: 'Todas as empresas',
-        allCompanies: true,
-        representativeCompanyId: companies[0]?.id ?? '',
-        logoCompanyId: companies.find((c) =>
-          c.name.trim().toLowerCase().includes('alle'),
-        )?.id,
-      };
-    }
-
-    const rawIds =
-      payload.companyIds?.length && payload.companyIds.length > 0
-        ? payload.companyIds
-        : companyId
-          ? [companyId]
-          : [];
-
-    const unique = [...new Set(rawIds.map((id) => id.trim()).filter(Boolean))];
-    if (!unique.length) {
-      throw new BadRequestException('Selecione ao menos uma empresa.');
-    }
-
-    for (const id of unique) {
-      this.ensureCompanyInScope(id, scope);
-    }
-
-    const companies = await this.prisma.company.findMany({
-      where: { id: { in: unique }, deletedAt: null },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
-    if (companies.length !== unique.length) {
-      throw new BadRequestException('Empresa inválida.');
-    }
-
-    const scopeLabel =
-      companies.length === 1
-        ? companies[0].name
-        : `${companies.length} empresas selecionadas`;
-
-    return {
-      companyIds: companies.map((c) => c.id),
-      scopeLabel,
-      allCompanies: companies.length === scope.length,
-      representativeCompanyId: companies[0].id,
-      logoCompanyId: companies.length === 1 ? companies[0].id : undefined,
-    };
-  }
-
-  private async generateInventarioCsv(params: {
-    companyIds: string[];
-    scopeLabel: string;
-    generatedAt: Date;
-    logoCompanyId?: string;
-  }) {
-    const rows = await this.loadInventarioReportRows(params.companyIds);
-    return buildInventarioReportCsv({
-      scopeLabel: params.scopeLabel,
-      generatedAt: params.generatedAt,
-      rows,
-      multiCompany: params.companyIds.length > 1,
-    });
-  }
-
-  private async generateInventarioXlsx(params: {
-    companyIds: string[];
-    scopeLabel: string;
-    generatedAt: Date;
-    logoCompanyId?: string;
-  }) {
-    let logoPath: string | null = null;
-    let logoMimeType: string | null = null;
-    if (params.logoCompanyId) {
-      const company = await this.prisma.company.findFirst({
-        where: { id: params.logoCompanyId, deletedAt: null },
-        select: {
-          logoFile: { select: { path: true, mimeType: true } },
-        },
-      });
-      logoPath = company?.logoFile?.path ?? null;
-      logoMimeType = company?.logoFile?.mimeType ?? null;
-    }
-
-    const rows = await this.loadInventarioReportRows(params.companyIds);
-    return buildInventarioReportXlsx({
-      scopeLabel: params.scopeLabel,
-      generatedAt: params.generatedAt,
-      rows,
-      multiCompany: params.companyIds.length > 1,
-      logoPath,
-      logoMimeType,
-    });
-  }
-
   async listReports(
     user: AuthenticatedRequestUser,
     query: {
@@ -2782,18 +2865,16 @@ export class ReportsService {
       );
     }
 
+    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     const isInventario = type === '5';
     const inventarioScope = isInventario
-      ? await this.resolveInventarioReportScope(user, {
+      ? await this.inventario.resolveScope(scopeCompanyIds, {
           companyId,
           companyIds: payload.companyIds,
         })
       : null;
 
-    if (
-      type === '4' &&
-      companyId === ALL_COMPANIES_REPORT_ID
-    ) {
+    if (type === '4' && companyId === ALL_COMPANIES_REPORT_ID) {
       throw new BadRequestException(
         'Estatística Geral exige uma empresa específica.',
       );
@@ -2804,7 +2885,6 @@ export class ReportsService {
         ? await this.resolveRendimentoCompanyScope(user, companyId)
         : null;
 
-    const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     if (type === '4') {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
@@ -2837,7 +2917,7 @@ export class ReportsService {
 
     const generatedAt = new Date();
     const range = isInventario
-      ? { start: this.startOfDay(generatedAt), end: generatedAt }
+      ? { start: this.inventario.startOfDay(generatedAt), end: generatedAt }
       : normalizeRange(
           parseDateOrThrow(payload.start ?? '', 'Data inicial'),
           parseDateOrThrow(payload.end ?? '', 'Data final'),
@@ -2860,8 +2940,7 @@ export class ReportsService {
       rendimentoScope?.displayName ??
       company.name;
     const typePart =
-      REPORT_TYPE_SLUGS[type] ??
-      `tipo-${safeFilenamePart(reportType) || 'x'}`;
+      REPORT_TYPE_SLUGS[type] ?? `tipo-${safeFilenamePart(reportType) || 'x'}`;
     const snapshotPart = toDateOnlyISO(generatedAt);
     const startPart = toDateOnlyISO(range.start);
     const endPart = toDateOnlyISO(range.end);
@@ -2877,7 +2956,7 @@ export class ReportsService {
               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             buffer:
               type === '5'
-                ? await this.generateInventarioXlsx({
+                ? await this.inventario.generateXlsx({
                     companyIds: inventarioScope!.companyIds,
                     scopeLabel: inventarioScope!.scopeLabel,
                     generatedAt,
@@ -2906,7 +2985,7 @@ export class ReportsService {
               filename: `${baseName}.csv`,
               mimeType: 'text/csv; charset=utf-8',
               buffer: Buffer.from(
-                await this.generateInventarioCsv({
+                await this.inventario.generateCsv({
                   companyIds: inventarioScope!.companyIds,
                   scopeLabel: inventarioScope!.scopeLabel,
                   generatedAt,

@@ -10,6 +10,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Input } from "@/components/ui/input";
+import { isClientPortalRole } from "@/lib/app-roles";
 import {
   Popover,
   PopoverContent,
@@ -130,7 +131,7 @@ export default function GeradorRelatoriosPage() {
       { value: "", label: "Todos os colaboradores" },
       ...collaborators.map((c) => ({
         value: c.id,
-        label: c.hasTifluxLink === false ? `${c.name} (sem TiFlux)` : c.name,
+        label: c.hasTifluxLink === false ? `${c.name} (sem vínculo)` : c.name,
       })),
     ],
     [collaborators],
@@ -254,7 +255,7 @@ export default function GeradorRelatoriosPage() {
             preferredIds: [
               companyId === ALL_COMPANIES_REPORT_VALUE ? null : companyId,
               alleId,
-              user?.role === "CLIENT" ? user.companyId : null,
+              isClientPortalRole(user?.role) ? user.companyId : null,
             ],
           }) ?? "";
 
@@ -627,7 +628,7 @@ export default function GeradorRelatoriosPage() {
                   Apontamentos: horas dos colaboradores nos tickets da empresa
                   selecionada no período; use &quot;Todas as empresas&quot; para
                   visão geral. Colaborador opcional. Estatística Geral: visão
-                  Zabbix/TiFlux de uma empresa (sem colaborador); CSV com as
+                  Zabbix/chamados de uma empresa (sem colaborador); CSV com as
                   mesmas tabelas do XLSX (gráficos só no XLSX). Inventário:
                   snapshot dos ativos das empresas selecionadas (sem período e
                   sem colaborador), em CSV ou XLSX — use &quot;Selecionar

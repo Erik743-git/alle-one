@@ -1,4 +1,6 @@
 import {
+  IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -7,8 +9,32 @@ import {
   IsUUID,
   Max,
   Min,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ContractStatus } from '@prisma/client';
+
+export class ContractSpecialtyLineDto {
+  @IsUUID()
+  specialtyId!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  monthlyHours!: number;
+
+  @IsOptional()
+  @IsBoolean()
+  unlimited?: boolean;
+
+  /** Decimal(12,2) em string */
+  @IsString()
+  contractValue!: string;
+
+  /** Decimal(10,2) em string — valor hora excedente */
+  @IsString()
+  excessHourPrice!: string;
+}
 
 export class CreateCompanyContractDto {
   @IsString()
@@ -21,14 +47,17 @@ export class CreateCompanyContractDto {
   @IsEnum(ContractStatus)
   status: ContractStatus;
 
+  /** @deprecated Prefer specialties[].monthlyHours */
+  @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100000)
-  monthlyHours: number;
+  monthlyHours?: number;
 
-  /** Decimal(10,2) em string para evitar problemas de locale */
+  /** @deprecated Prefer specialties[].excessHourPrice */
+  @IsOptional()
   @IsString()
-  extraHourPrice: string;
+  extraHourPrice?: string;
 
   @IsDateString()
   startDate: string;
@@ -40,6 +69,12 @@ export class CreateCompanyContractDto {
   @IsOptional()
   @IsUUID()
   classificationId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContractSpecialtyLineDto)
+  specialties?: ContractSpecialtyLineDto[];
 }
 
 export class UpdateCompanyContractDto {
@@ -55,12 +90,14 @@ export class UpdateCompanyContractDto {
   @IsEnum(ContractStatus)
   status?: ContractStatus;
 
+  /** @deprecated Prefer specialties[].monthlyHours */
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(100000)
   monthlyHours?: number;
 
+  /** @deprecated Prefer specialties[].excessHourPrice */
   @IsOptional()
   @IsString()
   extraHourPrice?: string;
@@ -76,6 +113,12 @@ export class UpdateCompanyContractDto {
   @IsOptional()
   @IsUUID()
   classificationId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ContractSpecialtyLineDto)
+  specialties?: ContractSpecialtyLineDto[];
 }
 
 export class CompanyContractParamsDto {

@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, User2 } from "lucide-react";
 
+import { FieldLabel } from "@/components/ui/field-label";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   Sheet,
@@ -20,8 +20,8 @@ import {
   AppointmentDescriptionComposer,
   type AppointmentBlockComposerHandle,
 } from "@/components/tickets/appointment-description-composer";
+import { canChangeTicketStage } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { Textarea } from "@/components/ui/textarea";
 import {
   ticketsService,
   type AppointmentCatalogs,
@@ -32,14 +32,11 @@ import { useAuth } from "@/lib/use-auth";
 
 const SERVICE_TYPES = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
 
-const ATTENDANCE_OPTIONS = [
-  { value: "Remote", label: "Remoto" },
-  { value: "External", label: "Externo" },
-  { value: "Internal", label: "Interno" },
-] as const;
+const DEFAULT_ATTENDANCE = "Remote" as const;
 
-const FIELD_LABEL = "font-sans text-sm font-semibold text-foreground";
 const FIELD_INPUT = "font-sans h-11";
+
+type SaveMode = "save" | "saveAndAnother" | "saveAndClose";
 
 type Props = {
   ticketNumber: number;
@@ -56,6 +53,22 @@ function nowTime() {
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function addMinutesToTime(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(":").map((part) => Number(part));
+  const base =
+    (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+  const total = ((base + minutes) % (24 * 60) + 24 * 60) % (24 * 60);
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map((part) => Number(part));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
+  return h * 60 + m;
+}
+
 export function TicketAppointmentModal({
   ticketNumber,
   open,
@@ -70,37 +83,39 @@ export function TicketAppointmentModal({
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
   const [projectLink, setProjectLink] = useState<AppointmentCatalogs["projectLink"]>(null);
-  const [tifluxAppointmentSyncEnabled, setTifluxAppointmentSyncEnabled] = useState(false);
+  const [ticketClosed, setTicketClosed] = useState(false);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [initTime, setInitTime] = useState(nowTime);
-  const [endTime, setEndTime] = useState(nowTime);
+  const [endTime, setEndTime] = useState(() => addMinutesToTime(nowTime(), 15));
   const [serviceName, setServiceName] = useState("");
-  const [attendance, setAttendance] = useState("Remote");
   const [projectActivityId, setProjectActivityId] = useState("");
-  const [descriptionPlain, setDescriptionPlain] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
+  const saveModeRef = useRef<SaveMode>("save");
 
   const serviceTypeOptions = useMemo(
     () => SERVICE_TYPES.map((s) => ({ value: s, label: s })),
     [],
   );
 
-  const attendanceOptions = useMemo(
-    () => ATTENDANCE_OPTIONS.map((a) => ({ value: a.value, label: a.label })),
-    [],
-  );
+  const canCloseTicket = canChangeTicketStage() && !ticketClosed;
 
   const loadTicketMeta = useCallback(async () => {
     try {
       setLoadingMeta(true);
-      const data = await ticketsService.appointmentCatalogs(ticketNumber);
+      const [data, stages] = await Promise.all([
+        ticketsService.appointmentCatalogs(ticketNumber),
+        canChangeTicketStage()
+          ? ticketsService.listStages(ticketNumber).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       setTicketMeta(data.ticket);
       setProjectLink(data.projectLink ?? null);
-      setTifluxAppointmentSyncEnabled(data.tifluxAppointmentSyncEnabled ?? false);
+      setTicketClosed(Boolean(stages?.isClosed));
     } catch {
       setTicketMeta(null);
+      setTicketClosed(false);
     } finally {
       setLoadingMeta(false);
     }
@@ -113,13 +128,11 @@ export function TicketAppointmentModal({
         setInitTime(editingAppointment.initTime);
         setEndTime(editingAppointment.endTime);
         setServiceName(editingAppointment.serviceName);
-        setAttendance(editingAppointment.attendance);
-        setDescriptionPlain(editingAppointment.descriptionPlain);
         setComposerKey((k) => k + 1);
       } else {
-        setInitTime(nowTime());
-        setEndTime(nowTime());
-        setDescriptionPlain("");
+        const start = nowTime();
+        setInitTime(start);
+        setEndTime(addMinutesToTime(start, 15));
         setProjectActivityId(fixedActivityId ?? "");
         setComposerKey((k) => k + 1);
       }
@@ -138,20 +151,44 @@ export function TicketAppointmentModal({
     [projectLink],
   );
 
+  function resetFormForAnotherAppointment(previousEndTime: string) {
+    setInitTime(previousEndTime);
+    setEndTime(addMinutesToTime(previousEndTime, 15));
+    setComposerKey((k) => k + 1);
+  }
+
+  async function closeTicketAfterAppointment() {
+    const stages = await ticketsService.listStages(ticketNumber);
+    if (stages.isClosed) {
+      setTicketClosed(true);
+      return;
+    }
+    const lastStage =
+      stages.stages.find((stage) => stage.lastStage) ??
+      stages.stages[stages.stages.length - 1];
+    if (!lastStage) {
+      throw new Error("Não há estágio de fechamento configurado para este ticket.");
+    }
+    const result = await ticketsService.updateStage(ticketNumber, lastStage.id);
+    setTicketClosed(true);
+    return result;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (saving) return;
+    const mode = saveModeRef.current;
+    saveModeRef.current = "save";
+
     if (!serviceName.trim()) {
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
-    const exported = isEdit
-      ? {
-          isValid: descriptionPlain.trim().length >= 2,
-          description: descriptionPlain.trim(),
-          files: [] as File[],
-        }
-      : composerRef.current?.exportContent();
+    if (timeToMinutes(endTime) <= timeToMinutes(initTime)) {
+      notifyError("Horário final deve ser maior que o horário inicial.");
+      return;
+    }
+    const exported = composerRef.current?.exportContent();
     if (!exported?.isValid) {
       notifyError("Informe a descrição do apontamento (texto e/ou imagens).");
       return;
@@ -163,8 +200,11 @@ export function TicketAppointmentModal({
       endTime,
       description: exported.description,
       serviceName: serviceName.trim(),
-      attendance: attendance as CreateAppointmentPayload["attendance"],
+      attendance: DEFAULT_ATTENDANCE,
       ...(projectActivityId ? { projectActivityId } : {}),
+      ...(isEdit
+        ? { removeAttachmentFileIds: exported.removeAttachmentFileIds }
+        : {}),
     };
 
     try {
@@ -174,13 +214,46 @@ export function TicketAppointmentModal({
             ticketNumber,
             editingAppointment!.portalAppointmentId,
             payload,
+            exported.files,
           )
         : await ticketsService.createAppointment(
             ticketNumber,
             payload,
             exported.files,
           );
+
+      if (!isEdit && mode === "saveAndClose") {
+        try {
+          const closeRes = await closeTicketAfterAppointment();
+          notifySuccess(
+            closeRes?.message
+              ? `${res.message} ${closeRes.message}`
+              : `${res.message} Ticket fechado.`,
+          );
+        } catch (closeErr) {
+          notifySuccess(res.message);
+          notifyError(
+            closeErr instanceof Error
+              ? `Apontamento salvo, mas não foi possível fechar o ticket: ${closeErr.message}`
+              : "Apontamento salvo, mas não foi possível fechar o ticket.",
+          );
+          onCreated?.();
+          onOpenChange(false);
+          return;
+        }
+        onCreated?.();
+        onOpenChange(false);
+        return;
+      }
+
       notifySuccess(res.message);
+
+      if (!isEdit && mode === "saveAndAnother") {
+        resetFormForAnotherAppointment(endTime);
+        onCreated?.();
+        return;
+      }
+
       if (!isEdit) {
         setServiceName("");
       }
@@ -213,34 +286,8 @@ export function TicketAppointmentModal({
           ) : ticketMeta ? (
             <SheetDescription>
               {ticketMeta.clientName ?? "—"} · {ticketMeta.deskName ?? "—"}
+              {ticketClosed ? " · Ticket fechado" : ""}
             </SheetDescription>
-          ) : null}
-
-          {isEdit ? (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-              {editingAppointment?.existsInTiflux
-                ? "As alterações valem somente no portal. O apontamento no TiFlux não será modificado."
-                : editingAppointment?.canPauseSync
-                  ? "A sincronização com o TiFlux está pausada até você salvar, cancelar ou excluir."
-                  : "As alterações valem somente no portal."}
-            </p>
-          ) : null}
-
-          {tifluxAppointmentSyncEnabled &&
-          ticketMeta &&
-          !ticketMeta.tifluxSyncAvailable ? (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-              Este ticket não é da mesa AlleOne. O apontamento ficará salvo apenas
-              no portal, sem envio ao TiFlux.
-            </p>
-          ) : null}
-
-          {ticketMeta?.tifluxSyncAvailable ? (
-            <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90">
-              Mesa AlleOne: o tipo de atendimento (Hora normal, Extra, Plantão) fica
-              salvo só no portal. No TiFlux vão data, horário e descrição — sem
-              valorização.
-            </p>
           ) : null}
 
           {user ? (
@@ -264,7 +311,9 @@ export function TicketAppointmentModal({
           <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Dia *</Label>
+                <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                  Dia
+                </FieldLabel>
                 <DatePickerField
                   value={date}
                   onChange={setDate}
@@ -273,17 +322,27 @@ export function TicketAppointmentModal({
                 />
               </div>
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Início *</Label>
+                <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                  Início
+                </FieldLabel>
                 <Input
                   type="time"
                   value={initTime}
-                  onChange={(e) => setInitTime(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setInitTime(next);
+                    if (timeToMinutes(endTime) <= timeToMinutes(next)) {
+                      setEndTime(addMinutesToTime(next, 15));
+                    }
+                  }}
                   className={FIELD_INPUT}
                   required
                 />
               </div>
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Fim *</Label>
+                <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                  Fim
+                </FieldLabel>
                 <Input
                   type="time"
                   value={endTime}
@@ -294,28 +353,18 @@ export function TicketAppointmentModal({
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Tipo de atendimento *</Label>
-                <SearchableSelectField
-                  value={serviceName}
-                  onChange={setServiceName}
-                  options={serviceTypeOptions}
-                  placeholder="Selecione"
-                  emptyLabel="Selecione"
-                  modal
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Atendimento *</Label>
-                <SearchableSelectField
-                  value={attendance}
-                  onChange={setAttendance}
-                  options={attendanceOptions}
-                  placeholder="Selecione"
-                  modal
-                />
-              </div>
+            <div className="space-y-2">
+              <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
+                Tipo de atendimento
+              </FieldLabel>
+              <SearchableSelectField
+                value={serviceName}
+                onChange={setServiceName}
+                options={serviceTypeOptions}
+                placeholder="Selecione"
+                emptyLabel="Selecione"
+                modal
+              />
             </div>
 
             {!isEdit && fixedActivityId ? (
@@ -327,9 +376,9 @@ export function TicketAppointmentModal({
 
             {!isEdit && !fixedActivityId && projectLink?.activities.length ? (
               <div className="space-y-2">
-                <Label className={FIELD_LABEL}>
+                <FieldLabel optional className="font-sans text-sm font-semibold text-foreground">
                   Atividade do projeto {projectLink.project.name}
-                </Label>
+                </FieldLabel>
                 <SearchableSelectField
                   value={projectActivityId}
                   onChange={setProjectActivityId}
@@ -346,32 +395,69 @@ export function TicketAppointmentModal({
               </div>
             ) : null}
 
-            {!isEdit ? (
-              <AppointmentDescriptionComposer
-                key={composerKey}
-                ref={composerRef}
-                disabled={saving}
-                labelClassName={FIELD_LABEL}
-              />
-            ) : (
-              <div className="space-y-2">
-                <Label className={FIELD_LABEL}>Descrição *</Label>
-                <Textarea
-                  value={descriptionPlain}
-                  onChange={(e) => setDescriptionPlain(e.target.value)}
-                  disabled={saving}
-                  className="min-h-[160px]"
-                  placeholder="Descreva o apontamento"
-                />
-              </div>
-            )}
+            <AppointmentDescriptionComposer
+              key={composerKey}
+              ref={composerRef}
+              disabled={saving}
+              labelClassName="font-sans text-sm font-semibold text-foreground"
+              hintText=""
+              initialDescription={
+                isEdit ? editingAppointment?.description ?? null : null
+              }
+              initialAttachments={
+                isEdit ? editingAppointment?.attachments ?? [] : []
+              }
+            />
           </div>
 
-          <SheetFooter className="shrink-0 flex-row justify-end gap-2 border-t border-border px-6 py-4">
-            <Button type="button" variant="outline" className="h-11" onClick={() => onOpenChange(false)}>
+          <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 py-4 sm:flex-row sm:flex-wrap sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              disabled={saving}
+              onClick={() => onOpenChange(false)}
+            >
               Cancelar
             </Button>
-            <Button type="submit" className="h-11 min-w-[120px]" disabled={saving}>
+            {!isEdit ? (
+              <>
+                <Button
+                  type="submit"
+                  variant="outline"
+                  className="h-11"
+                  disabled={saving}
+                  onClick={() => {
+                    saveModeRef.current = "saveAndAnother";
+                  }}
+                >
+                  {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Salvar e fazer outro
+                </Button>
+                {canCloseTicket ? (
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    className="h-11"
+                    disabled={saving}
+                    onClick={() => {
+                      saveModeRef.current = "saveAndClose";
+                    }}
+                  >
+                    {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                    Salvar e fechar ticket
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+            <Button
+              type="submit"
+              className="h-11 min-w-[120px]"
+              disabled={saving}
+              onClick={() => {
+                saveModeRef.current = "save";
+              }}
+            >
               {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               {saving
                 ? "Salvando..."

@@ -4,6 +4,7 @@ import { UserRole, UserStatus } from '@prisma/client';
 import { AppService } from '../app.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailboxService } from '../modules/mailbox/mailbox.service';
+import { isTifluxDisconnected } from '../modules/tickets/tickets-portal.config';
 
 @Injectable()
 export class IntegrationsHealthJob {
@@ -20,6 +21,11 @@ export class IntegrationsHealthJob {
   @Cron('0 0 * * * *')
   async checkTifluxSyncHealth(): Promise<void> {
     try {
+      if (isTifluxDisconnected()) {
+        await this.mailbox.clearTifluxSyncStaleAlerts();
+        return;
+      }
+
       const health = await this.appService.getIntegrationsHealth();
 
       if (health.tifluxSync.status !== 'stale') {

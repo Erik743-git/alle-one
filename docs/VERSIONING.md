@@ -26,6 +26,8 @@ Enquanto o produto estiver em **0.x**, APIs e schema podem evoluir com migraçõ
 | `v0.2.0` | Dashboard Zabbix + relatório Tipo 4 | Monitoramento, Excel, date picker |
 | `v0.3.0` | UX portal + GMUD + selects | Tema claro, Consult, selects pesquisáveis |
 | `v0.4.0` | V2 Tickets + Apontamentos empresarial | Tickets admin, apontamento portal, questionamentos |
+| `v0.5.0` | GMUD PDF + apontamentos ricos + outbox | GMUD externa no ticket, HE/justificativas, OAuth opcional |
+| `v0.6.0` | Pré-tickets Graph + 2FA + cutover UX | E-mail→pré-ticket, TOTP, rendimento mídia, portal canônico |
 
 ### Publicar uma nova versão
 
@@ -48,10 +50,19 @@ cat VERSION
 git describe --tags --always
 ```
 
-## Branches
+## Branches e rollback de produção
 
 - **`main`**: linha estável; cada tag `v*` deve apontar para um commit em `main`.
 - **Feature branches**: `feat/nome`, `fix/nome`; merge via PR quando o CI estiver verde.
+- **Produção em commit antigo:** o histórico Git **não some** ao publicar uma versão nova. Enquanto o commit (ou tag) existir no remoto, você pode **redeployar** aquele SHA/tag a qualquer momento.
+- **Recomendação:** antes do deploy da versão nova, marque o commit atual de prod:
+
+```bash
+git tag -a prod-before-v0.6.0 <sha-atual-de-prod> -m "Prod antes de v0.6.0"
+git push origin prod-before-v0.6.0
+```
+
+Para voltar: faça deploy desse tag/SHA (sem `git push --force` em `main` a menos que saiba o impacto).
 
 ## Relação com CI
 

@@ -27,5 +27,18 @@ CREATE INDEX "project_activity_appointments_activity_id_idx" ON "project_activit
 -- AddForeignKey
 ALTER TABLE "project_activity_appointments" ADD CONSTRAINT "project_activity_appointments_activity_id_fkey" FOREIGN KEY ("activity_id") REFERENCES "project_activities"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey
-ALTER TABLE "project_activity_appointments" ADD CONSTRAINT "project_activity_appointments_portal_appointment_id_fkey" FOREIGN KEY ("portal_appointment_id") REFERENCES "portal_ticket_appointments"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+-- FK para portal_ticket_appointments: tabela só existe a partir de 20260810120000.
+-- Em DB limpo (CI) adia; em DB que já tinha a tabela, cria agora.
+DO $$
+BEGIN
+  IF to_regclass('public.portal_ticket_appointments') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conname = 'project_activity_appointments_portal_appointment_id_fkey'
+     ) THEN
+    ALTER TABLE "project_activity_appointments"
+      ADD CONSTRAINT "project_activity_appointments_portal_appointment_id_fkey"
+      FOREIGN KEY ("portal_appointment_id") REFERENCES "portal_ticket_appointments"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

@@ -1,8 +1,8 @@
 const SKIP_KEY = "alle-one.skip-portal-appointment-tiflux-warning";
 
+/** Sempre false: portal-only — sem aviso de dual-write. */
 export function shouldShowTifluxPortalOnlyWarning(): boolean {
-  if (typeof window === "undefined") return true;
-  return window.localStorage.getItem(SKIP_KEY) !== "1";
+  return false;
 }
 
 export function setSkipTifluxPortalOnlyWarning(skip: boolean) {

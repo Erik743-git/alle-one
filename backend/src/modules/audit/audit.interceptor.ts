@@ -10,19 +10,11 @@ import { tap } from 'rxjs/operators';
 import { AuditService } from './audit.service';
 import { AUDIT_META_KEY, type AuditMetaOptions } from './audit.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { resolveAuditClientIp } from './audit-client-ip';
 
 type AuthedRequest = Request & { user?: AuthenticatedRequestUser };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-function getClientIp(req: Request): string | null {
-  const xff = (req.headers['x-forwarded-for'] as string | undefined)?.trim();
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  return (req.socket?.remoteAddress ?? null) as string | null;
-}
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
@@ -41,7 +33,7 @@ export class AuditInterceptor implements NestInterceptor {
     }
 
     const actor = req.user ?? null;
-    if (!actor || actor.role !== 'ADMIN') {
+    if (!actor) {
       return next.handle();
     }
 
@@ -51,8 +43,13 @@ export class AuditInterceptor implements NestInterceptor {
         context.getClass(),
       ]) ?? null;
 
+    // Com @AuditMeta: audita qualquer role autenticada (GMUD approve, ack, import…).
+    // Sem meta: mantém o comportamento amplo só para ADMIN.
+    if (!meta && actor.role !== 'ADMIN') {
+      return next.handle();
+    }
+
     const controllerPath =
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       (Reflect.getMetadata('path', context.getClass()) as string | undefined) ??
       context.getClass().name;
 
@@ -62,7 +59,8 @@ export class AuditInterceptor implements NestInterceptor {
       meta?.entityIdParam && req.params
         ? String((req.params as any)[meta.entityIdParam] ?? '')
         : null;
-    const normalizedEntityId = entityId && entityId !== 'undefined' ? entityId : null;
+    const normalizedEntityId =
+      entityId && entityId !== 'undefined' ? entityId : null;
 
     const action = meta?.action
       ? `${meta.action}`
@@ -71,8 +69,8 @@ export class AuditInterceptor implements NestInterceptor {
     const requestMeta = {
       method,
       path: `${req.baseUrl || ''}${req.path || ''}` || req.originalUrl || '',
-      ip: getClientIp(req),
-      userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+      ip: resolveAuditClientIp(req),
+      userAgent: req.headers['user-agent'] ?? null,
       params: req.params ?? undefined,
       query: req.query ?? undefined,
     };
@@ -98,7 +96,11 @@ export class AuditInterceptor implements NestInterceptor {
         },
         error: (err) => {
           const message =
-            err instanceof Error ? err.message : err ? String(err) : 'unknown_error';
+            err instanceof Error
+              ? err.message
+              : err
+                ? String(err)
+                : 'unknown_error';
           void this.audit.log({
             actor: {
               userId: actor.userId,
@@ -120,4 +122,3 @@ export class AuditInterceptor implements NestInterceptor {
     );
   }
 }
-

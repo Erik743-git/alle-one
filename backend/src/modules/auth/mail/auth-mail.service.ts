@@ -42,7 +42,12 @@ export class AuthMailService {
     `;
 
     try {
-      const sent = await this.mail.sendMail({ to: payload.to, subject, text, html });
+      const sent = await this.mail.sendMail({
+        to: payload.to,
+        subject,
+        text,
+        html,
+      });
       if (!sent) {
         this.logger.error(
           `E-mail de redefinição não enviado (SMTP indisponível) para ${payload.to}.`,

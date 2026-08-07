@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const isProd = process.env.NODE_ENV === "production";
+
+/** Evita Turbopack usar a raiz do monorepo (package-lock da raiz) e falhar ao resolver tailwindcss. */
+const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
@@ -23,7 +29,13 @@ const apiRewriteBase =
   "http://127.0.0.1:3002";
 
 const nextConfig: NextConfig = {
+  // Monorepo: há package-lock na raiz (husky) e em frontend/ — força o root do app.
+  turbopack: {
+    root: frontendRoot,
+  },
   async rewrites() {
+    // /auth/* é tratado por app/auth/[...path]/route.ts (preserva multi Set-Cookie).
+    // Mantém rewrite só como fallback se a rota não existir em builds antigos.
     return [
       {
         source: "/auth/:path*",
@@ -59,4 +71,15 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const sentryEnabled = Boolean(
+  process.env.NEXT_PUBLIC_SENTRY_DSN?.trim() ||
+    process.env.SENTRY_DSN?.trim(),
+);
+
+export default sentryEnabled
+  ? withSentryConfig(nextConfig, {
+      silent: true,
+      widenClientFileUpload: true,
+      disableLogger: true,
+    })
+  : nextConfig;

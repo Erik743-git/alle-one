@@ -37,11 +37,11 @@ function writeCache(status: OAuthProvidersStatus): void {
 }
 
 function providersUrl(): string {
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/oauth/providers`;
   if (typeof window !== "undefined") {
     return `${window.location.origin}/auth/oauth/providers`;
   }
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/oauth/providers`;
   return `${API_URL.replace(/\/$/, "")}/auth/oauth/providers`;
 }
 

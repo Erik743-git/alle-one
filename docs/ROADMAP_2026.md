@@ -10,7 +10,7 @@ Versão do produto: **0.6.0** (estabilização + confiabilidade).
 | Documentação / deploy | Alta | Runbooks, migração Nginx, backup, monitoramento |
 | Segurança | Alta | Cookie-only JWT, tokenVersion, OAuth JWKS, senha unificada |
 | Testes | Média | 68+ specs backend, Vitest frontend, Playwright smoke |
-| Operações | Média-alta | health-check.sh, `/health/integrations`, CI com migrate |
+| Operações | Média-alta | health-check.sh (token), `/health/integrations` protegido, CI com migrate |
 | Escalabilidade | Média | Storage S3 opcional; worker outbox isolável |
 | Observabilidade | Média-alta | Health integrations + alerta sync stale no correio |
 
@@ -38,12 +38,12 @@ Versão do produto: **0.6.0** (estabilização + confiabilidade).
 - [x] **Nginx `/api`** — exemplo + `deploy/MIGRACAO_NGINX_API.md`
 - [x] **Monitoramento** — `deploy/MONITORING.md`, `scripts/health-check.sh`
 - [x] **Backup restore** — `deploy/BACKUP_RESTORE.md`
-- [x] **`GET /health/integrations`** — sync TiFlux + outbox
+- [x] **`GET /health/integrations`** — sync TiFlux + outbox (**protegido**: token interno ou ADMIN)
 
 ### Pendente deploy em prod (não é código)
 
 - [ ] `git pull` + build + `prisma migrate deploy` (token_version)
-- [ ] Migração Nginx `/api` (opcional, janela de manutenção)
+- [ ] Migração Nginx `/api` em **produção** (configs prontas no repo — `deploy/MIGRACAO_NGINX_API.md`)
 - [ ] Cron backup + health-check
 
 ---
@@ -56,17 +56,32 @@ Versão do produto: **0.6.0** (estabilização + confiabilidade).
 - [x] Worker outbox PM2 dedicado (`outbox-runner.ts` + `TIFLUX_OUTBOX_DISABLED`)
 - [x] Object storage local + S3/MinIO opcional (`FILE_STORAGE_DRIVER`)
 - [x] Extrair `dashboard-integrations.service.ts`
+- [x] Extrair `dashboard-hours.service.ts`
+- [x] Extrair `tickets-catalogs.service.ts` + `tickets-appointments.service.ts`
 - [x] Colaborador/PJ apontar ticket com `TICKETS.canCreate`
 
 ---
 
 ## Fase 3 — Escala (planejada)
 
-- [ ] Redis (cache + filas)
-- [ ] Sentry / OpenTelemetry
+- [x] Redis (fila BullMQ e-mail) — opcional; ver [`REDIS.md`](./REDIS.md); cache genérico ainda aberto
+- [x] Sentry básico (init API/Next + captureException 5xx) — OpenTelemetry completo ainda aberto
 - [ ] Secret manager
 - [ ] Coolify/K8s vs VM
-- [ ] **Projetos V2** — integração Ticket ↔ Apontamento ↔ Atividade (ver `docs/V2-PROJETOS.md`): apontamento abate tempo da atividade e define responsável automaticamente
+- [x] **Projetos V2** — ticket ↔ apontamento ↔ atividade (ver `docs/V2-PROJETOS.md`; gaps: N:N / TiFlux-only)
+## Fase Portal canônico (cutover TiFlux) — em andamento
+
+Ver [docs/CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) e o runbook [docs/CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md).
+
+- [x] Tabela `portal_tickets` + migration
+- [x] Dual-write em `POST /tickets`
+- [x] Dual-read via `TICKETS_PORTAL_CANONICAL`
+- [x] Script ETL `prisma/scripts/etl-tiflux-tickets-to-portal.ts`
+- [x] Flags `TICKETS_PORTAL_CANONICAL` / `TICKETS_TIFLUX_WRITE`
+- [x] Runbook operacional + harden hot paths (canonical sem `tiflux.users`/merge)
+- [x] UNIQUE parcial `tiflux_appointment_external_id` + normalização de estágios
+- [ ] Validar dual-read em staging
+- [ ] Desligar `TICKETS_TIFLUX_WRITE` e sync externo em prod
 
 ---
 

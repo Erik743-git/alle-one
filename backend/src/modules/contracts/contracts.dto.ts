@@ -1,12 +1,4 @@
-import {
-  IsIn,
-  IsInt,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { optionalUuidQuery } from '../../common/validators/optional-uuid-query.transform';
 

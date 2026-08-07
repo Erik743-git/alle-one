@@ -21,6 +21,8 @@ npm ci
 ./node_modules/.bin/prisma migrate deploy
 npm run build
 pm2 restart alleone-api
+# Aguardar API subir antes do health (evita falso negativo)
+sleep 5
 pm2 list
 curl -s http://127.0.0.1:3002/health
 ```
@@ -132,7 +134,7 @@ cat /home/alleone/producao/frontend/.env.production
 Deve ter:
 
 ```env
-NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com
+NEXT_PUBLIC_API_URL=https://alleone.alletecnologia.com/api
 ```
 
 Se mudou a URL, **obrigatório** rebuild:

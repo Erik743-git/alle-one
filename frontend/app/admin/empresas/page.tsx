@@ -61,6 +61,7 @@ type EditCompanyForm = {
   tifluxClientId: number | null;
   tifluxClientName: string;
   monitoringPriority: boolean;
+  modules: string[];
 };
 
 function mapCompanyToUI(company: Company): EmpresaUI {
@@ -84,6 +85,8 @@ function EditarEmpresaModal({
   onClose,
   form,
   onChange,
+  onToggleModule,
+  packModuleOptions,
   onSubmit,
   salvando,
   tifluxClients,
@@ -96,6 +99,8 @@ function EditarEmpresaModal({
     field: keyof EditCompanyForm,
     value: string | boolean | number | null,
   ) => void;
+  onToggleModule: (module: string) => void;
+  packModuleOptions: string[];
   onSubmit: () => void;
   salvando: boolean;
   tifluxClients: TifluxClient[];
@@ -330,9 +335,38 @@ function EditarEmpresaModal({
               </button>
             </div>
 
+            <div className="space-y-3 md:col-span-2">
+              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
+                Módulos contratados (portal do cliente)
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Define o que usuários CLIENT_* desta empresa podem acessar.
+                Colaboradores Alle não são afetados.
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {packModuleOptions.map((mod) => {
+                  const checked = form.modules.includes(mod);
+                  return (
+                    <button
+                      key={mod}
+                      type="button"
+                      onClick={() => onToggleModule(mod)}
+                      className={`rounded-lg border px-3 py-2 text-left text-xs font-medium transition ${
+                        checked
+                          ? "border-primary/40 bg-primary/10 text-foreground"
+                          : "border-border text-muted-foreground hover:bg-muted/40"
+                      }`}
+                    >
+                      {mod}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="space-y-2 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
-                Cliente TiFlux
+                Cliente vinculado
               </label>
 
               <TifluxClientSelectField
@@ -344,17 +378,6 @@ function EditarEmpresaModal({
                 }}
                 clients={tifluxClients}
                 loading={carregandoTiflux}
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
-                Nome salvo do cliente TiFlux
-              </label>
-              <Input
-                value={form.tifluxClientName}
-                readOnly
-                className="h-11 font-sans text-sm"
               />
             </div>
 
@@ -498,6 +521,18 @@ export default function AdminEmpresasPage() {
   } | null>(null);
   const [busca, setBusca] = useState("");
   const [empresas, setEmpresas] = useState<EmpresaUI[]>([]);
+  const [packModuleOptions, setPackModuleOptions] = useState<string[]>([
+    "DASHBOARD",
+    "FINANCIAL",
+    "GMUD",
+    "MONITORING",
+    "TICKETS",
+    "INVENTARIO",
+    "PROJECTS",
+    "RENDIMENTO",
+    "REPORTS",
+    "CONTRACTS",
+  ]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
   const [deletandoId, setDeletandoId] = useState<string | null>(null);
@@ -562,6 +597,12 @@ export default function AdminEmpresasPage() {
   useEffect(() => {
     void buscarEmpresas();
     void buscarTifluxClients();
+    void companiesService
+      .listPackModuleOptions()
+      .then((res) => {
+        if (res.modules?.length) setPackModuleOptions(res.modules);
+      })
+      .catch(() => undefined);
   }, []);
 
   const empresasFiltradas = useMemo(() => {
@@ -598,7 +639,13 @@ export default function AdminEmpresasPage() {
 
   async function handleAbrirEdicao(id: string) {
     try {
-      const company = await companiesService.getById(id);
+      const [company, modulesRes] = await Promise.all([
+        companiesService.getById(id),
+        companiesService.getModules(id).catch(() => ({
+          companyId: id,
+          modules: [] as string[],
+        })),
+      ]);
 
       setEmpresaEdicao({
         id: company.id,
@@ -612,6 +659,7 @@ export default function AdminEmpresasPage() {
         tifluxClientId: company.tifluxClientId ?? null,
         tifluxClientName: company.tifluxClientName ?? "",
         monitoringPriority: company.monitoringPriority ?? false,
+        modules: modulesRes.modules ?? [],
       });
 
       setModalEditarEmpresa(true);
@@ -638,6 +686,19 @@ export default function AdminEmpresasPage() {
       return {
         ...prev,
         [field]: value,
+      };
+    });
+  }
+
+  function handleToggleModule(module: string) {
+    setEmpresaEdicao((prev) => {
+      if (!prev) return prev;
+      const has = prev.modules.includes(module);
+      return {
+        ...prev,
+        modules: has
+          ? prev.modules.filter((m) => m !== module)
+          : [...prev.modules, module],
       };
     });
   }
@@ -672,6 +733,10 @@ export default function AdminEmpresasPage() {
         status: empresaEdicao.status,
         monitoringPriority: empresaEdicao.monitoringPriority,
       });
+      await companiesService.replaceModules(
+        empresaEdicao.id,
+        empresaEdicao.modules,
+      );
 
       setModalEditarEmpresa(false);
       setEmpresaEdicao(null);
@@ -868,7 +933,7 @@ export default function AdminEmpresasPage() {
                             Grupos Zabbix
                           </th>
                           <th className="px-4 py-4 font-semibold">
-                            Cliente TiFlux
+                            Cliente vinculado
                           </th>
                           <th className="px-4 py-4 font-semibold">Contratos</th>
                           <th className="px-4 py-4 font-semibold">Status</th>
@@ -1083,6 +1148,8 @@ export default function AdminEmpresasPage() {
           }}
           form={empresaEdicao}
           onChange={handleAlterarCampoEdicao}
+          onToggleModule={handleToggleModule}
+          packModuleOptions={packModuleOptions}
           onSubmit={() => void handleSalvarEdicao()}
           salvando={salvandoEdicao}
           tifluxClients={tifluxClients}

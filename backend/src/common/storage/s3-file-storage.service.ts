@@ -2,10 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  FileStorageService,
-  type StoredFileRef,
-} from './file-storage.service';
+import { FileStorageService, type StoredFileRef } from './file-storage.service';
 
 type S3ClientLike = {
   send(command: unknown): Promise<unknown>;
@@ -31,14 +28,17 @@ export class S3FileStorageService extends FileStorageService {
   private GetObjectCommand: GetObjectCommandLike | null = null;
 
   private readonly bucket = process.env.FILE_STORAGE_S3_BUCKET ?? '';
-  private readonly prefix = (process.env.FILE_STORAGE_S3_PREFIX ?? 'alleone')
-    .replace(/^\/+|\/+$/g, '');
+  private readonly prefix = (
+    process.env.FILE_STORAGE_S3_PREFIX ?? 'alleone'
+  ).replace(/^\/+|\/+$/g, '');
   private readonly cacheRoot = join(process.cwd(), 'uploads', '_s3_cache');
 
   private async ensureClient(): Promise<void> {
     if (this.client) return;
     if (!this.bucket) {
-      throw new Error('FILE_STORAGE_S3_BUCKET é obrigatório com FILE_STORAGE_DRIVER=s3');
+      throw new Error(
+        'FILE_STORAGE_S3_BUCKET é obrigatório com FILE_STORAGE_DRIVER=s3',
+      );
     }
 
     try {
@@ -74,7 +74,10 @@ export class S3FileStorageService extends FileStorageService {
     return `s3://${this.bucket}/${key}`;
   }
 
-  async saveBuffer(relativeKey: string, buffer: Buffer): Promise<StoredFileRef> {
+  async saveBuffer(
+    relativeKey: string,
+    buffer: Buffer,
+  ): Promise<StoredFileRef> {
     await this.ensureClient();
     const key = this.objectKey(relativeKey);
     await this.client!.send(

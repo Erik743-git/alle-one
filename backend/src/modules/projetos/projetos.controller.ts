@@ -87,7 +87,11 @@ export class ProjetosController {
   @Post('companies/:companyId/projects')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canCreate')
-  @AuditMeta({ entity: 'Project', action: 'CREATE', entityIdParam: 'companyId' })
+  @AuditMeta({
+    entity: 'Project',
+    action: 'CREATE',
+    entityIdParam: 'companyId',
+  })
   @UseInterceptors(FilesInterceptor('files', 5, multerMemoryLimits))
   async createProject(
     @CurrentUser() user: AuthenticatedRequestUser,
@@ -115,11 +119,17 @@ export class ProjetosController {
     if (errors.length > 0) {
       const first = errors[0];
       const msg =
-        Object.values(first.constraints ?? {})[0] ?? 'Dados do projeto inválidos.';
+        Object.values(first.constraints ?? {})[0] ??
+        'Dados do projeto inválidos.';
       throw new BadRequestException(msg);
     }
 
-    return this.projetos.createProject(user, params.companyId, dto, files ?? []);
+    return this.projetos.createProject(
+      user,
+      params.companyId,
+      dto,
+      files ?? [],
+    );
   }
 
   @Get('projects/:projectId')
@@ -135,7 +145,11 @@ export class ProjetosController {
   @Patch('projects/:projectId')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'Project', action: 'UPDATE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'Project',
+    action: 'UPDATE',
+    entityIdParam: 'projectId',
+  })
   updateProject(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosProjectIdParamDto,
@@ -147,7 +161,11 @@ export class ProjetosController {
   @Delete('projects/:projectId')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canDelete')
-  @AuditMeta({ entity: 'Project', action: 'DELETE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'Project',
+    action: 'DELETE',
+    entityIdParam: 'projectId',
+  })
   deleteProject(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosProjectIdParamDto,
@@ -164,7 +182,11 @@ export class ProjetosController {
     @Param() params: ProjetosProjectIdParamDto,
     @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.projetos.addProjectDocuments(user, params.projectId, files ?? []);
+    return this.projetos.addProjectDocuments(
+      user,
+      params.projectId,
+      files ?? [],
+    );
   }
 
   @Get('projects/:projectId/documents/:documentId')
@@ -191,7 +213,11 @@ export class ProjetosController {
 
   @Post('projects/:projectId/approve-completion')
   @Roles('ADMIN')
-  @AuditMeta({ entity: 'Project', action: 'UPDATE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'Project',
+    action: 'UPDATE',
+    entityIdParam: 'projectId',
+  })
   approveCompletion(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosProjectIdParamDto,
@@ -217,7 +243,11 @@ export class ProjetosController {
   @Post('activities/:activityId/appointments/link')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'activityId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'UPDATE',
+    entityIdParam: 'activityId',
+  })
   linkActivityAppointment(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosActivityIdParamDto,
@@ -233,7 +263,11 @@ export class ProjetosController {
   @Delete('appointments/links/:linkId')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'linkId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'UPDATE',
+    entityIdParam: 'linkId',
+  })
   unlinkActivityAppointment(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosAppointmentLinkIdParamDto,
@@ -244,7 +278,11 @@ export class ProjetosController {
   @Post('projects/:projectId/phases')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'CREATE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'CREATE',
+    entityIdParam: 'projectId',
+  })
   createPhase(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosProjectIdParamDto,
@@ -274,16 +312,17 @@ export class ProjetosController {
     const { buffer, filename, mimeType } =
       await this.projetos.exportProjectHistoryPdf(user, params.projectId);
     res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return new StreamableFile(buffer);
   }
 
   @Post('projects/:projectId/reopen')
   @Roles('ADMIN')
-  @AuditMeta({ entity: 'Project', action: 'UPDATE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'Project',
+    action: 'UPDATE',
+    entityIdParam: 'projectId',
+  })
   reopenProject(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosProjectIdParamDto,
@@ -294,7 +333,11 @@ export class ProjetosController {
   @Post('projects/:projectId/activities')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'CREATE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'CREATE',
+    entityIdParam: 'projectId',
+  })
   createActivity(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosProjectIdParamDto,
@@ -306,19 +349,31 @@ export class ProjetosController {
   @Post('activities/:activityId/complete')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'activityId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'UPDATE',
+    entityIdParam: 'activityId',
+  })
   completeActivity(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosActivityIdParamDto,
     @Body() body: CompleteProjectActivityDto,
   ) {
-    return this.projetos.completeActivity(user, params.activityId, body.completed);
+    return this.projetos.completeActivity(
+      user,
+      params.activityId,
+      body.completed,
+    );
   }
 
   @Patch('activities/:activityId')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'UPDATE', entityIdParam: 'activityId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'UPDATE',
+    entityIdParam: 'activityId',
+  })
   updateActivity(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosActivityIdParamDto,
@@ -330,7 +385,11 @@ export class ProjetosController {
   @Delete('activities/:activityId')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canDelete')
-  @AuditMeta({ entity: 'ProjectActivity', action: 'DELETE', entityIdParam: 'activityId' })
+  @AuditMeta({
+    entity: 'ProjectActivity',
+    action: 'DELETE',
+    entityIdParam: 'activityId',
+  })
   deleteActivity(
     @CurrentUser() user: AuthenticatedRequestUser,
     @Param() params: ProjetosActivityIdParamDto,
@@ -348,10 +407,7 @@ export class ProjetosController {
     const { buffer, filename, mimeType } =
       await this.projetos.exportImportTemplate(user);
     res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return new StreamableFile(buffer);
   }
 
@@ -371,10 +427,7 @@ export class ProjetosController {
       template,
     );
     res.setHeader('Content-Type', mimeType);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     return new StreamableFile(buffer);
   }
 
@@ -382,7 +435,11 @@ export class ProjetosController {
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.PROJECTS, 'canEdit')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @AuditMeta({ entity: 'Project', action: 'UPDATE', entityIdParam: 'projectId' })
+  @AuditMeta({
+    entity: 'Project',
+    action: 'UPDATE',
+    entityIdParam: 'projectId',
+  })
   @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
   importProject(
     @CurrentUser() user: AuthenticatedRequestUser,

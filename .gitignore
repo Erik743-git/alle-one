@@ -19,6 +19,7 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+node_modules/
 
 # Uploads de runtime (logos, relatórios, anexos)
 backend/uploads/**
@@ -26,3 +27,6 @@ backend/uploads/**
 
 # Scripts/relatórios locais de import TiFlux (não versionar)
 backend/exports/
+
+tmp/
+

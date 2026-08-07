@@ -1,6 +1,12 @@
 import { apiRequest } from "@/lib/api";
 
-export type UserRole = "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+export type UserRole =
+  | "ADMIN"
+  | "COLLABORATOR"
+  | "PJ"
+  | "CLIENT"
+  | "CLIENT_GESTOR"
+  | "CLIENT_MEMBER";
 export type UserStatus = "ACTIVE" | "INACTIVE";
 
 export type UserCompany = {
@@ -8,11 +14,20 @@ export type UserCompany = {
   name: string;
 };
 
-export type ServiceDesk = {
+export type UserCompanyMembership = {
+  companyId: string;
+  companyName: string;
+  clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER";
+};
+
+export type Specialty = {
   id: string;
   name: string;
   externalId: number | null;
 };
+
+/** @deprecated Prefer Specialty */
+export type ServiceDesk = Specialty;
 
 export type User = {
   id: string;
@@ -25,13 +40,18 @@ export type User = {
   firstAccess: boolean;
   responsible: boolean;
   companyId: string | null;
+  specialtyId?: string | null;
+  specialty?: Specialty | null;
+  specialties?: Specialty[];
   googleId: string | null;
   provider: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
   company?: UserCompany | null;
-  serviceDesks: ServiceDesk[];
+  companyMemberships?: UserCompanyMembership[];
+  /** @deprecated Prefer specialty / specialties */
+  serviceDesks: Specialty[];
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;
   rendimentoLunchMinutes?: number | null;
@@ -46,6 +66,8 @@ export type CreateUserPayload = {
   companyId?: string | null;
   firstAccess?: boolean;
   responsible?: boolean;
+  specialtyId?: string | null;
+  /** @deprecated Prefer specialtyId */
   serviceDeskIds?: string[];
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;
@@ -61,6 +83,8 @@ export type UpdateUserPayload = {
   companyId?: string | null;
   firstAccess?: boolean;
   responsible?: boolean;
+  specialtyId?: string | null;
+  /** @deprecated Prefer specialtyId */
   serviceDeskIds?: string[];
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;
@@ -96,7 +120,26 @@ export const usersService = {
     });
   },
 
+  async upsertCompanyMembership(
+    userId: string,
+    payload: { companyId: string; clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER" },
+  ) {
+    return apiRequest<{
+      companyId: string;
+      companyName: string;
+      clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER";
+    }>(`/users/${userId}/memberships`, {
+      method: "PUT",
+      body: payload,
+    });
+  },
+
+  async listSpecialties() {
+    return apiRequest<Specialty[]>("/users/specialties");
+  },
+
+  /** @deprecated Prefer listSpecialties */
   async listServiceDesks() {
-    return apiRequest<ServiceDesk[]>("/users/service-desks");
+    return this.listSpecialties();
   },
 };

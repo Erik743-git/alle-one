@@ -16,7 +16,8 @@
 | `SWAGGER_ENABLED` | `false` (padrão) |
 | `AUTH_COOKIE_SECURE` | `false` só em HTTP sem TLS; em HTTPS use cookie Secure |
 | `TRUST_PROXY` | `1` atrás de Nginx |
-| Uploads | Tipos MIME validados (GMUD, Inventário, contratos, tickets, logos); `backend/uploads/` fora do Git |
+| Uploads | MIME + **magic bytes**; limites por tipo; `backend/uploads/` fora do Git |
+| `HEALTH_INTEGRATIONS_TOKEN` | Token para `GET /health/integrations` (cron); sem token só ADMIN |
 | Backup DB | `deploy/scripts/backup-postgres.sh` + retenção via cron (ver [MAINTENANCE.md](./MAINTENANCE.md)) |
 | Debug | `ENABLE_DEBUG_DUMP` desligado em produção |
 
@@ -25,6 +26,13 @@
 - JWT em cookie httpOnly + validação em guards (`JwtAuthGuard`, `ModulePermissionGuard`).
 - Rate limit global via `@nestjs/throttler`.
 - Endpoints de debug do dashboard bloqueados em produção.
+- `GET /health` público; `GET /health/integrations` exige token interno ou ADMIN.
+
+## Auditoria
+
+- Interceptor global grava mutações `POST|PUT|PATCH|DELETE`.
+- Rotas com `@AuditMeta`: qualquer role autenticada (ex.: GMUD approve, Console ack, import inventário).
+- Demais mutações: somente `ADMIN`.
 
 ## Integrações
 

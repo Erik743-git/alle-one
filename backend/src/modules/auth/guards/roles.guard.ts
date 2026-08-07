@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { isClientPortalRole } from '../../../common/security/client-portal-role';
 import type { AuthenticatedRequestUser } from '../auth-request-user';
 import { ROLES_KEY, type AppRole } from '../decorators/roles.decorator';
 
@@ -26,6 +27,13 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    return roles.includes(user.role);
+    if (roles.includes(user.role)) {
+      return true;
+    }
+    // Decorators que listam CLIENT cobrem CLIENT_GESTOR / CLIENT_MEMBER.
+    if (roles.includes('CLIENT') && isClientPortalRole(user.role)) {
+      return true;
+    }
+    return false;
   }
 }

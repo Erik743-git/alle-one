@@ -3,9 +3,7 @@ import ExcelJS from 'exceljs';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import {
-  INVENTORY_REMINDER_DAYS,
-} from './inventario.dto';
+import { INVENTORY_REMINDER_DAYS } from './inventario.dto';
 import {
   INVENTORY_DEFAULT_SUPPLIER,
   InventarioService,
@@ -113,7 +111,10 @@ export class InventarioImportService {
 
       try {
         const assetType = await this.resolveAssetTypeByName(tipo, typeCache);
-        const thirdPartyRaw = this.cellText(row, columnIndex.fornecedorTerceiro);
+        const thirdPartyRaw = this.cellText(
+          row,
+          columnIndex.fornecedorTerceiro,
+        );
         const supplierRaw = this.cellText(row, columnIndex.fornecedor);
         const { supplierThirdParty, supplier } = this.resolveSupplier(
           thirdPartyRaw,
@@ -146,8 +147,7 @@ export class InventarioImportService {
             quantity,
             supplier,
             supplierThirdParty,
-            description:
-              this.cellText(row, columnIndex.descricao) || null,
+            description: this.cellText(row, columnIndex.descricao) || null,
             dueDate,
             reminderDaysBefore,
             createdBy: params.user.userId,
@@ -212,11 +212,7 @@ export class InventarioImportService {
   }
 
   private normalizeHeader(value: string) {
-    return value
-      .normalize('NFD')
-      .replace(/\p{M}/gu, '')
-      .trim()
-      .toLowerCase();
+    return value.normalize('NFD').replace(/\p{M}/gu, '').trim().toLowerCase();
   }
 
   private cellText(row: ExcelJS.Row, column?: number | null) {
@@ -324,7 +320,11 @@ export class InventarioImportService {
       throw new BadRequestException(`Lembrete inválido: ${trimmed}`);
     }
     const days = Number(match[1]);
-    if (!INVENTORY_REMINDER_DAYS.includes(days as (typeof INVENTORY_REMINDER_DAYS)[number])) {
+    if (
+      !INVENTORY_REMINDER_DAYS.includes(
+        days as (typeof INVENTORY_REMINDER_DAYS)[number],
+      )
+    ) {
       throw new BadRequestException(
         'Lembrete inválido. Use 90, 30, 15 ou 7 dias antes.',
       );

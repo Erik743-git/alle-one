@@ -107,7 +107,11 @@ function tryEmbedImage(
   if (!existsSync(filePath)) return false;
   if (mimeType === 'image/svg+xml') return false;
   try {
-    doc.image(filePath, x, y, { fit: [width, height], align: 'center', valign: 'center' });
+    doc.image(filePath, x, y, {
+      fit: [width, height],
+      align: 'center',
+      valign: 'center',
+    });
     return true;
   } catch {
     return false;
@@ -116,7 +120,9 @@ function tryEmbedImage(
 
 @Injectable()
 export class GmudPdfService {
-  async build(gmud: GmudPdfInput): Promise<{ buffer: Buffer; filename: string }> {
+  async build(
+    gmud: GmudPdfInput,
+  ): Promise<{ buffer: Buffer; filename: string }> {
     const doc = new PDFDocument({
       size: 'A4',
       margins: { top: 48, bottom: 56, left: 48, right: 48 },
@@ -129,7 +135,8 @@ export class GmudPdfService {
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
 
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const pageWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const contentLeft = doc.page.margins.left;
     let y = doc.page.margins.top;
 
@@ -143,11 +150,7 @@ export class GmudPdfService {
 
     const drawSectionTitle = (title: string) => {
       ensureSpace(36);
-      doc
-        .save()
-        .rect(contentLeft, y, 4, 18)
-        .fill(BRAND)
-        .restore();
+      doc.save().rect(contentLeft, y, 4, 18).fill(BRAND).restore();
       doc
         .font('Helvetica-Bold')
         .fontSize(11)
@@ -158,7 +161,11 @@ export class GmudPdfService {
 
     const drawParagraph = (label: string, value: string) => {
       const text = value?.trim() || '—';
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED).text(label, contentLeft, y);
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(9)
+        .fillColor(MUTED)
+        .text(label, contentLeft, y);
       y += 14;
       doc.font('Helvetica').fontSize(10).fillColor(DARK);
       const height = doc.heightOfString(text, { width: pageWidth });
@@ -167,13 +174,26 @@ export class GmudPdfService {
       y += height + 14;
     };
 
-    const drawKeyValueRow = (leftLabel: string, leftValue: string, rightLabel: string, rightValue: string) => {
+    const drawKeyValueRow = (
+      leftLabel: string,
+      leftValue: string,
+      rightLabel: string,
+      rightValue: string,
+    ) => {
       ensureSpace(20);
       const colWidth = pageWidth / 2 - 8;
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(MUTED).text(leftLabel, contentLeft, y, { width: colWidth });
+      doc
+        .font('Helvetica-Bold')
+        .fontSize(8)
+        .fillColor(MUTED)
+        .text(leftLabel, contentLeft, y, { width: colWidth });
       doc.text(rightLabel, contentLeft + colWidth + 16, y, { width: colWidth });
       y += 12;
-      doc.font('Helvetica').fontSize(9).fillColor(DARK).text(leftValue, contentLeft, y, { width: colWidth });
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor(DARK)
+        .text(leftValue, contentLeft, y, { width: colWidth });
       doc.text(rightValue, contentLeft + colWidth + 16, y, { width: colWidth });
       y += 18;
     };
@@ -182,7 +202,17 @@ export class GmudPdfService {
     const headerHeight = 52;
     let alleLogoDrawn = false;
     for (const candidate of alleLogoCandidates()) {
-      if (tryEmbedImage(doc, candidate, 'image/png', contentLeft, y, 120, headerHeight)) {
+      if (
+        tryEmbedImage(
+          doc,
+          candidate,
+          'image/png',
+          contentLeft,
+          y,
+          120,
+          headerHeight,
+        )
+      ) {
         alleLogoDrawn = true;
         break;
       }
@@ -193,7 +223,11 @@ export class GmudPdfService {
         .fontSize(16)
         .fillColor(BRAND)
         .text('Alle Tecnologia', contentLeft, y + 8);
-      doc.font('Helvetica').fontSize(9).fillColor(MUTED).text('Gerenciamento de Mudanças', contentLeft, y + 28);
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor(MUTED)
+        .text('Gerenciamento de Mudanças', contentLeft, y + 28);
     }
 
     const companyLogoX = contentLeft + pageWidth - 120;
@@ -214,11 +248,19 @@ export class GmudPdfService {
         .font('Helvetica-Bold')
         .fontSize(11)
         .fillColor(DARK)
-        .text(gmud.company.name, companyLogoX, y + 16, { width: 120, align: 'right' });
+        .text(gmud.company.name, companyLogoX, y + 16, {
+          width: 120,
+          align: 'right',
+        });
     }
 
     y += headerHeight + 12;
-    doc.moveTo(contentLeft, y).lineTo(contentLeft + pageWidth, y).strokeColor(BRAND).lineWidth(2).stroke();
+    doc
+      .moveTo(contentLeft, y)
+      .lineTo(contentLeft + pageWidth, y)
+      .strokeColor(BRAND)
+      .lineWidth(2)
+      .stroke();
     y += 18;
 
     doc
@@ -240,7 +282,12 @@ export class GmudPdfService {
     y += 22;
 
     drawSectionTitle('Informações gerais');
-    drawKeyValueRow('Empresa', gmud.company.name, 'Responsável', gmud.responsible?.name ?? '—');
+    drawKeyValueRow(
+      'Empresa',
+      gmud.company.name,
+      'Responsável',
+      gmud.responsible?.name ?? '—',
+    );
     drawKeyValueRow(
       'Criador',
       `${gmud.creator.name} (${gmud.creator.email})`,
@@ -263,7 +310,8 @@ export class GmudPdfService {
     if (gmud.description?.trim()) drawParagraph('Descrição', gmud.description);
     if (gmud.reason?.trim()) drawParagraph('Motivo', gmud.reason);
     if (gmud.impact?.trim()) drawParagraph('Impacto', gmud.impact);
-    if (gmud.rollback?.trim()) drawParagraph('Plano de rollback', gmud.rollback);
+    if (gmud.rollback?.trim())
+      drawParagraph('Plano de rollback', gmud.rollback);
 
     drawSectionTitle('Downtime');
     if (gmud.downtime) {
@@ -293,7 +341,9 @@ export class GmudPdfService {
     } else {
       for (const item of gmud.approvers) {
         const status = APPROVER_STATUS_LABELS[item.status];
-        const decided = item.decidedAt ? formatDateTime(item.decidedAt) : 'Sem decisão';
+        const decided = item.decidedAt
+          ? formatDateTime(item.decidedAt)
+          : 'Sem decisão';
         const note = item.decisionNote ? ` — ${item.decisionNote}` : '';
         drawParagraph(
           `${item.user.name} (${status})`,

@@ -29,6 +29,11 @@ CREATE INDEX "portal_ticket_appointments_ticket_number_idx"
 CREATE INDEX "portal_ticket_appointments_tiflux_external_id_idx"
   ON "portal_ticket_appointments"("tiflux_appointment_external_id");
 
+-- Índice único adiado de 20260729140000 (tabela ainda não existia em DB limpo).
+CREATE UNIQUE INDEX IF NOT EXISTS portal_ticket_appointments_tiflux_ext_id_uidx
+  ON portal_ticket_appointments (tiflux_appointment_external_id)
+  WHERE tiflux_appointment_external_id IS NOT NULL;
+
 ALTER TABLE "portal_ticket_appointments"
   ADD CONSTRAINT "portal_ticket_appointments_outbox_id_fkey"
   FOREIGN KEY ("outbox_id") REFERENCES "portal_tiflux_outbox"("id")
@@ -49,3 +54,18 @@ ALTER TABLE "portal_ticket_appointment_attachments"
   ADD CONSTRAINT "portal_ticket_appointment_attachments_portal_appointment_id_fkey"
   FOREIGN KEY ("portal_appointment_id") REFERENCES "portal_ticket_appointments"("id")
   ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- FK adiada de 20260630150000 (tabela ainda não existia em DB limpo).
+DO $$
+BEGIN
+  IF to_regclass('public.project_activity_appointments') IS NOT NULL
+     AND NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+       WHERE conname = 'project_activity_appointments_portal_appointment_id_fkey'
+     ) THEN
+    ALTER TABLE "project_activity_appointments"
+      ADD CONSTRAINT "project_activity_appointments_portal_appointment_id_fkey"
+      FOREIGN KEY ("portal_appointment_id") REFERENCES "portal_ticket_appointments"("id")
+      ON DELETE CASCADE ON UPDATE CASCADE;
+  END IF;
+END $$;

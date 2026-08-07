@@ -91,9 +91,7 @@ export class TicketStageService {
     });
     if (!existing) throw new NotFoundException('Estágio não encontrado.');
     if (existing.isSystem) {
-      throw new ForbiddenException(
-        'Estágios padrão não podem ser alterados.',
-      );
+      throw new ForbiddenException('Estágios padrão não podem ser alterados.');
     }
 
     const name = dto.name?.trim();
@@ -121,9 +119,7 @@ export class TicketStageService {
     });
     if (!existing) throw new NotFoundException('Estágio não encontrado.');
     if (existing.isSystem) {
-      throw new ForbiddenException(
-        'Estágios padrão não podem ser removidos.',
-      );
+      throw new ForbiddenException('Estágios padrão não podem ser removidos.');
     }
 
     await this.prisma.ticketStage.update({

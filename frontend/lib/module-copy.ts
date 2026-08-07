@@ -9,14 +9,20 @@ export const TICKETS_NEW_SUBTITLE =
 export const TICKETS_LIST_SUBTITLE =
   "Por padrão, são exibidos os chamados em que você é o responsável.";
 
+export const TICKETS_CLIENT_LIST_SUBTITLE =
+  "Chamados da sua empresa. Você também pode abrir chamados para a Alle.";
+
 export const TICKETS_CREATE_RESTRICTED =
-  "A abertura de novos chamados é feita pela equipe administrativa. Você pode consultar os chamados existentes.";
+  "Você não tem permissão para abrir novos chamados. Consulte os existentes ou fale com o administrador.";
 
 export const TICKETS_APPOINTMENT_CREATE_RESTRICTED =
   "Você não tem permissão para registrar apontamentos neste módulo. Consulte os chamados existentes ou fale com o administrador.";
 
 export const APONTAMENTOS_ADMIN_SUBTITLE =
   "Consulte a agenda e as horas registradas de cada colaborador.";
+
+export const APONTAMENTOS_GESTOR_SUBTITLE =
+  "Funcionários da sua empresa. Os apontamentos da equipe Alle ficam em Financeiro.";
 
 export const APONTAMENTOS_AGENDA_SUBTITLE =
   "Registros de horas vinculados aos chamados de atendimento.";
@@ -35,6 +41,23 @@ export const APONTAMENTOS_LIST_SETTINGS_DESCRIPTION =
 
 export const APONTAMENTOS_LIST_SETTINGS_LISTED_LABEL =
   "Listar na tela";
+
+export const FINANCEIRO_CLIENT_AGENDA_TITLE =
+  "Atendimento Alle no seu ambiente";
+
+export const FINANCEIRO_CLIENT_AGENDA_SUBTITLE =
+  "Horas e apontamentos dos colaboradores Alle na sua empresa. Você pode questionar registros no calendário.";
+
+export const FINANCEIRO_ADMIN_AGENDA_SUBTITLE =
+  "Agenda por dia, semana ou mês — mesma visão que o cliente vê no portal. Responda questionamentos e abone apontamentos quando necessário.";
+
+export const DASHBOARD_CLIENT_ALLE_LABEL = "Visão Alle";
+export const DASHBOARD_CLIENT_INTERNAL_LABEL = "Visão interna";
+export const DASHBOARD_CLIENT_ALLE_HINT =
+  "O que a Alle registra no seu ambiente (chamados e horas de atendimento).";
+export const DASHBOARD_CLIENT_INTERNAL_HINT =
+  "Chamados abertos pelos seus funcionários no portal.";
+export const DASHBOARD_EDIT_CHART_LABEL = "Editar gráfico";
 
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
   "Informe o período da lacuna detectada pelo sistema. A descrição é opcional; se deixar em branco, o débito será feito no saldo de horas extras (pode ficar negativo). Para horários em outras faixas do dia, use Justificativa voluntária.";
@@ -61,14 +84,27 @@ export const RENDIMENTO_OVERTIME_APPROVED_NOTE =
 export const RENDIMENTO_OVERTIME_REJECTED_NOTE =
   "Não aprovado · não entra no saldo";
 
-export const SYNC_STATUS_PORTAL_ONLY = "Registrado no portal";
+export const SYNC_STATUS_PORTAL_ONLY = "Registrado no Alle One";
 
 export const SYNC_STATUS_PENDING = "Em sincronização";
 
 export const SYNC_STATUS_PAUSED = "Sincronização pausada";
 
 export const TICKET_APPOINTMENT_TIFLUX_PORTAL_ONLY_WARNING =
-  "Este apontamento já existe no TiFlux. O portal não possui permissão na API para alterar ou excluir apontamentos no TiFlux — faça isso diretamente no TiFlux, se necessário. Você pode continuar para alterar somente o registro no portal AlleOne.";
+  "Este apontamento fica registrado no Alle One.";
+
+/** Apontamento listado só pelo espelho externo (sem portalAppointmentId). */
+export const TICKET_APPOINTMENT_TIFLUX_ONLY_HINT =
+  "Registro histórico migrado — edite quando disponível.";
+
+export const TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE = "Histórico";
+export const TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION = "Só leitura";
+
+export const TICKET_SYNC_PENDING_BANNER =
+  "Ticket recém-criado: ainda pode demorar um instante para aparecer na listagem.";
+
+export const TICKET_DELETE_APPOINTMENT_CONFIRM =
+  "O apontamento será removido.";
 
 /** Correio / notificações */
 export const MAILBOX_RENDIMENTO_ALERT_BODY_ONE = (dateLabel: string, monthLabel: string) =>

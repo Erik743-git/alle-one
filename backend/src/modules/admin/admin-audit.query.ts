@@ -20,7 +20,10 @@ function pickQueryValue(raw: Record<string, unknown>, key: string): unknown {
   return value;
 }
 
-function pickOptionalString(raw: Record<string, unknown>, key: string): string | undefined {
+function pickOptionalString(
+  raw: Record<string, unknown>,
+  key: string,
+): string | undefined {
   const value = pickQueryValue(raw, key);
   if (value === undefined || value === null) return undefined;
   const text = String(value).trim();

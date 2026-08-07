@@ -5,7 +5,6 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UsersService } from '../users/users.service';
 import type {
   CreateDeskClassificationDto,
   CreateServiceDeskDto,
@@ -32,36 +31,41 @@ type ClassificationRow = {
   parentId: string | null;
 };
 
+const MAX_CLASSIFICATION_LEVEL = 2;
+
 @Injectable()
 export class DeskClassificationService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly usersService: UsersService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async listDesks() {
-    const desks = await this.usersService.listServiceDesks();
+    const desks = await this.prisma.specialty.findMany({
+      where: { deletedAt: null, active: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, externalId: true },
+    });
     return desks.map((desk) => ({
       ...desk,
-      source: desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+      source: 'portal' as const,
     }));
   }
 
   async createDesk(dto: CreateServiceDeskDto) {
     const name = dto.name.trim();
     if (!name) {
-      throw new BadRequestException('Informe o nome da mesa.');
+      throw new BadRequestException('Informe o nome da especialidade.');
     }
 
-    const duplicate = await this.prisma.serviceDesk.findFirst({
+    const duplicate = await this.prisma.specialty.findFirst({
       where: { name, deletedAt: null },
       select: { id: true },
     });
     if (duplicate) {
-      throw new BadRequestException('Já existe uma mesa com este nome.');
+      throw new BadRequestException(
+        'Já existe uma especialidade com este nome.',
+      );
     }
 
-    const desk = await this.prisma.serviceDesk.create({
+    const desk = await this.prisma.specialty.create({
       data: { name, active: true },
       select: { id: true, name: true, externalId: true },
     });
@@ -70,28 +74,30 @@ export class DeskClassificationService {
   }
 
   async updateDesk(id: string, dto: UpdateServiceDeskDto) {
-    const existing = await this.prisma.serviceDesk.findFirst({
+    const existing = await this.prisma.specialty.findFirst({
       where: { id, deletedAt: null },
       select: { id: true, name: true, externalId: true },
     });
     if (!existing) {
-      throw new NotFoundException('Mesa de serviço não encontrada.');
+      throw new NotFoundException('Especialidade não encontrada.');
     }
 
     const name = dto.name.trim();
     if (!name) {
-      throw new BadRequestException('Informe o nome da mesa.');
+      throw new BadRequestException('Informe o nome da especialidade.');
     }
 
-    const duplicate = await this.prisma.serviceDesk.findFirst({
+    const duplicate = await this.prisma.specialty.findFirst({
       where: { name, deletedAt: null, id: { not: id } },
       select: { id: true },
     });
     if (duplicate) {
-      throw new BadRequestException('Já existe uma mesa com este nome.');
+      throw new BadRequestException(
+        'Já existe uma especialidade com este nome.',
+      );
     }
 
-    const desk = await this.prisma.serviceDesk.update({
+    const desk = await this.prisma.specialty.update({
       where: { id },
       data: { name },
       select: { id: true, name: true, externalId: true },
@@ -99,44 +105,44 @@ export class DeskClassificationService {
 
     return {
       ...desk,
-      source: desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+      source: 'portal' as const,
     };
   }
 
   async removeDesk(id: string) {
-    const existing = await this.prisma.serviceDesk.findFirst({
+    const existing = await this.prisma.specialty.findFirst({
       where: { id, deletedAt: null },
       select: { id: true, externalId: true, name: true },
     });
     if (!existing) {
-      throw new NotFoundException('Mesa de serviço não encontrada.');
+      throw new NotFoundException('Especialidade não encontrada.');
     }
 
-    const linkedUsers = await this.prisma.userServiceDesk.count({
-      where: { serviceDeskId: id },
+    const linkedUsers = await this.prisma.user.count({
+      where: { specialtyId: id, deletedAt: null },
     });
     if (linkedUsers > 0) {
       throw new BadRequestException(
-        'Esta mesa está vinculada a usuários. Remova o vínculo antes de excluir.',
+        'Esta especialidade está vinculada a usuários. Remova o vínculo antes de excluir.',
       );
     }
 
-    await this.prisma.serviceDesk.delete({ where: { id } });
+    await this.prisma.specialty.delete({ where: { id } });
 
     return { ok: true };
   }
 
-  async getTree(serviceDeskId: string) {
-    const desk = await this.prisma.serviceDesk.findFirst({
-      where: { id: serviceDeskId, deletedAt: null },
+  async getTree(specialtyId: string) {
+    const desk = await this.prisma.specialty.findFirst({
+      where: { id: specialtyId, deletedAt: null },
       select: { id: true, name: true, externalId: true },
     });
     if (!desk) {
-      throw new NotFoundException('Mesa de serviço não encontrada.');
+      throw new NotFoundException('Especialidade não encontrada.');
     }
 
-    const rows = await this.prisma.serviceDeskClassification.findMany({
-      where: { serviceDeskId },
+    const rows = await this.prisma.specialtyClassification.findMany({
+      where: { specialtyId },
       orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
     });
 
@@ -145,25 +151,32 @@ export class DeskClassificationService {
     return {
       desk: {
         ...desk,
-        source:
-          desk.externalId != null ? ('tiflux' as const) : ('portal' as const),
+        source: 'portal' as const,
+      },
+      specialty: {
+        ...desk,
+        source: 'portal' as const,
       },
       levelLabels: [
         { level: 1, label: 'Nível 1 — categoria' },
         { level: 2, label: 'Nível 2 — subcategoria' },
-        { level: 3, label: 'Nível 3 — produto/solução' },
       ],
       tree,
     };
   }
 
   async create(dto: CreateDeskClassificationDto) {
-    const desk = await this.prisma.serviceDesk.findFirst({
-      where: { id: dto.serviceDeskId, deletedAt: null, active: true },
+    const specialtyId = dto.specialtyId || dto.serviceDeskId;
+    if (!specialtyId) {
+      throw new BadRequestException('Informe a especialidade.');
+    }
+
+    const desk = await this.prisma.specialty.findFirst({
+      where: { id: specialtyId, deletedAt: null, active: true },
       select: { id: true },
     });
     if (!desk) {
-      throw new NotFoundException('Mesa de serviço não encontrada.');
+      throw new NotFoundException('Especialidade não encontrada.');
     }
 
     const name = dto.name.trim();
@@ -175,33 +188,32 @@ export class DeskClassificationService {
     let parentId: string | null = null;
 
     if (dto.parentId) {
-      const parent = await this.prisma.serviceDeskClassification.findFirst({
-        where: { id: dto.parentId, serviceDeskId: dto.serviceDeskId },
+      const parent = await this.prisma.specialtyClassification.findFirst({
+        where: { id: dto.parentId, specialtyId },
       });
       if (!parent) {
         throw new BadRequestException('Classificação pai não encontrada.');
       }
-      if (parent.level >= 3) {
+      if (parent.level >= MAX_CLASSIFICATION_LEVEL) {
         throw new BadRequestException(
-          'O nível máximo é 3 (produto/solução). Não é possível adicionar filhos.',
+          'O nível máximo é 2 (subcategoria). Não é possível adicionar filhos.',
         );
       }
       level = parent.level + 1;
       parentId = parent.id;
     }
 
-    const lastSibling =
-      await this.prisma.serviceDeskClassification.findFirst({
-        where: { serviceDeskId: dto.serviceDeskId, parentId },
-        orderBy: { sortOrder: 'desc' },
-        select: { sortOrder: true },
-      });
+    const lastSibling = await this.prisma.specialtyClassification.findFirst({
+      where: { specialtyId, parentId },
+      orderBy: { sortOrder: 'desc' },
+      select: { sortOrder: true },
+    });
     const sortOrder = (lastSibling?.sortOrder ?? -1) + 1;
 
     try {
-      return await this.prisma.serviceDeskClassification.create({
+      return await this.prisma.specialtyClassification.create({
         data: {
-          serviceDeskId: dto.serviceDeskId,
+          specialtyId,
           parentId,
           name,
           level,
@@ -222,7 +234,7 @@ export class DeskClassificationService {
   }
 
   async update(id: string, dto: UpdateDeskClassificationDto) {
-    const existing = await this.prisma.serviceDeskClassification.findUnique({
+    const existing = await this.prisma.specialtyClassification.findUnique({
       where: { id },
     });
     if (!existing) {
@@ -235,7 +247,7 @@ export class DeskClassificationService {
     }
 
     try {
-      return await this.prisma.serviceDeskClassification.update({
+      return await this.prisma.specialtyClassification.update({
         where: { id },
         data: {
           ...(name !== undefined ? { name } : {}),
@@ -257,13 +269,13 @@ export class DeskClassificationService {
   }
 
   async remove(id: string) {
-    const existing = await this.prisma.serviceDeskClassification.findUnique({
+    const existing = await this.prisma.specialtyClassification.findUnique({
       where: { id },
     });
     if (!existing) {
       throw new NotFoundException('Classificação não encontrada.');
     }
-    await this.prisma.serviceDeskClassification.delete({ where: { id } });
+    await this.prisma.specialtyClassification.delete({ where: { id } });
     return { ok: true };
   }
 
@@ -272,7 +284,7 @@ export class DeskClassificationService {
       return null;
     }
 
-    const row = await this.prisma.serviceDeskClassification.findFirst({
+    const row = await this.prisma.specialtyClassification.findFirst({
       where: { id: classificationId, active: true },
       select: { id: true },
     });
@@ -308,7 +320,7 @@ export class DeskClassificationService {
       sortOrder: row.sortOrder,
       parentId: row.parentId,
       children:
-        row.level < 3
+        row.level < MAX_CLASSIFICATION_LEVEL
           ? sortRows(byParent.get(row.id) ?? []).map(toNode)
           : [],
     });

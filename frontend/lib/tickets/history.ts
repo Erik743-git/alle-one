@@ -28,13 +28,13 @@ const EVENT_LABELS: Record<string, string> = {
   TICKET_CREATED: "Ticket criado",
   TICKET_UPDATED: "Ticket atualizado",
   APPOINTMENT_CREATED: "Apontamento registrado",
-  APPOINTMENT_TIFLUX: "Apontamento TiFlux",
+  APPOINTMENT_TIFLUX: "Apontamento histórico",
   STAGE_CHANGED: "Estágio alterado",
   GMUD_LINKED: "GMUD vinculada",
   GMUD_UPDATED: "GMUD atualizada",
   PROJECT_LINKED: "Projeto vinculado",
   PROJECT_APPOINTMENT_LINKED: "Apontamento no projeto",
-  TIFLUX_EVENT: "Evento TiFlux",
+  TIFLUX_EVENT: "Evento do ticket",
 };
 
 export function ticketHistoryEventLabel(eventType: string): string {

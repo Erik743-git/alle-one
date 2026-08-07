@@ -2,15 +2,22 @@
 
 ## Decisão de arquitetura — **Opção A** (aprovada)
 
+**Cutover:** ver [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) e [CUTOVER_RUNBOOK.md](./CUTOVER_RUNBOOK.md) — `portal_tickets` + flags `TICKETS_PORTAL_CANONICAL` / `TICKETS_TIFLUX_WRITE`.
+
 | Camada | Estratégia |
 |--------|------------|
-| **Leitura canônica** | `tiflux.tickets` + `tiflux.ticket_appointments` (sync `alleone-tiflux-sync`) |
+| **Leitura canônica (default)** | `tiflux.tickets` + `tiflux.ticket_appointments` (sync `alleone-tiflux-sync`) |
+| **Leitura canônica (flag)** | `portal_tickets` quando `TICKETS_PORTAL_CANONICAL=true` |
 | **Escrita apontamento** | Portal → `portal_ticket_appointments` (`PORTAL_ONLY` por padrão) |
 | **Sync TiFlux apontamento** | Opcional: `TIFLUX_APPOINTMENT_SYNC_ENABLED=true` + outbox |
-| **Escrita ticket** | `POST /tickets` → API TiFlux + outbox `CREATE_TICKET` (auditoria SYNCED) |
-| **Cutover futuro** | ETL único `tiflux.*` → `public` quando divergência = 0 |
+| **Escrita ticket** | Sempre `portal_tickets`; API TiFlux se `TICKETS_TIFLUX_WRITE=true` (default) |
+| **Cutover futuro** | ETL + dual-read → desligar sync/API |
 
-**Criar ticket:** somente ADMIN. **Apontar:** ADMIN ou colaborador/PJ com `TICKETS.canCreate`.
+**Criar ticket / apontar:** ADMIN, COLLABORATOR e PJ com `TICKETS.canCreate` (fallback `true`).  
+**Listar / detalhe:** ADMIN, COLLABORATOR, PJ, CLIENT com `TICKETS.canView` (CLIENT escopado à empresa).  
+**CLIENT:** não cria ticket nem aponta.
+
+Ver matriz completa: [PERMISSIONS_MATRIX.md](./PERMISSIONS_MATRIX.md).
 
 ---
 
@@ -24,7 +31,14 @@
 | `POST /tickets/reconcile` — divergências portal vs espelho (S5) | ✅ |
 | Job outbox (API ou PM2 `alleone-outbox`) | ✅ |
 | Colaborador/PJ apontar com permissão | ✅ |
+| CLIENT listar/detalhar tickets da empresa | ✅ |
 | UI `frontend/app/tickets/` | ✅ |
+| Pré-tickets (Graph) + abrir ticket | ✅ |
+| Edição ticket + anexos (remover/HTML e-mail) | ✅ |
+| Linha clicável na lista de tickets | ✅ |
+| `portal_tickets` + dual-write/dual-read (flags) | ✅ |
+| ETL `tiflux.tickets` → `portal_tickets` | ✅ |
+| Onda 1: create/list/appoint portal-only (`TICKETS_TIFLUX_WRITE=false` + `TICKETS_PORTAL_CANONICAL=true`) | ✅ |
 
 ---
 
@@ -32,14 +46,15 @@
 
 | Método | Rota | Papéis |
 |--------|------|--------|
-| GET | `/tickets` | ADMIN |
-| GET | `/tickets/:ticketNumber` | ADMIN, COLLABORATOR, PJ |
-| POST | `/tickets` | ADMIN |
+| GET | `/tickets` | ADMIN, COLLABORATOR, PJ, CLIENT + canView |
+| GET | `/tickets/:ticketNumber` | ADMIN, COLLABORATOR, PJ, CLIENT + canView |
+| POST | `/tickets` | ADMIN + canCreate |
 | POST | `/tickets/:ticketNumber/appointments` | ADMIN, COLLABORATOR, PJ + canCreate |
 | POST | `/tickets/reconcile?retry=true` | ADMIN + canEdit |
 | POST | `/admin/reprocess-tiflux-outbox` | ADMIN |
 
-Guards: `@Roles` + `@RequirePermission(TICKETS, …)`.
+Guards: `@Roles` + `@RequirePermission(TICKETS, …)`.  
+CLIENT: filtro forçado por `company.tifluxClientId` (tenant).
 
 ---
 
@@ -66,4 +81,4 @@ Worker outbox opcional: `deploy/OUTBOX_WORKER.md`, `deploy/ecosystem.config.exam
 
 ---
 
-*Documento vivo — jun/2026.*
+*Documento vivo — jul/2026.*

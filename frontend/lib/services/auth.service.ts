@@ -6,8 +6,23 @@ export type MeResponse = {
   user: AuthUser;
 };
 
+export type AuthSessionResponse = {
+  message: string;
+  accessToken?: string;
+  user: AuthUser;
+};
+
 export const authService = {
-  async me() {
-    return apiRequest<MeResponse>("/auth/me");
+  async me(opts?: { skipSessionEnd?: boolean }) {
+    return apiRequest<MeResponse>("/auth/me", {
+      skipSessionEnd: opts?.skipSessionEnd,
+    });
+  },
+
+  async switchCompany(companyId: string) {
+    return apiRequest<AuthSessionResponse>("/auth/switch-company", {
+      method: "POST",
+      body: { companyId },
+    });
   },
 };

@@ -15,6 +15,8 @@ import type {
   AuthenticatedRequestUser,
   EffectiveModulePermission,
 } from '../auth/auth-request-user';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
+import { DEFAULT_COMPANY_PACK_MODULES } from './company-pack.constants';
 
 const ALL_MODULES = Object.values(PermissionModule);
 
@@ -56,7 +58,7 @@ const ROLE_FALLBACK: Record<
     },
     TICKETS: {
       canView: true,
-      canCreate: false,
+      canCreate: true,
       canEdit: false,
       canDelete: false,
       canApprove: false,
@@ -121,7 +123,7 @@ const ROLE_FALLBACK: Record<
     },
     TICKETS: {
       canView: true,
-      canCreate: false,
+      canCreate: true,
       canEdit: false,
       canDelete: false,
       canApprove: false,
@@ -149,6 +151,7 @@ const ROLE_FALLBACK: Record<
     },
   },
   CLIENT: {
+    // legado (= GESTOR) até migração
     DASHBOARD: {
       canView: true,
       canCreate: false,
@@ -179,7 +182,7 @@ const ROLE_FALLBACK: Record<
     },
     TICKETS: {
       canView: true,
-      canCreate: false,
+      canCreate: true,
       canEdit: false,
       canDelete: false,
       canApprove: false,
@@ -206,6 +209,94 @@ const ROLE_FALLBACK: Record<
       canApprove: false,
     },
   },
+  CLIENT_GESTOR: {
+    DASHBOARD: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    FINANCIAL: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    GMUD: {
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: false,
+      canApprove: true,
+    },
+    MONITORING: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    TICKETS: {
+      canView: true,
+      canCreate: true,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    INVENTARIO: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    PROJECTS: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    RENDIMENTO: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+  },
+  CLIENT_MEMBER: {
+    DASHBOARD: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    TICKETS: {
+      canView: true,
+      canCreate: true,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    MONITORING: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+    GMUD: {
+      canView: true,
+      canCreate: false,
+      canEdit: false,
+      canDelete: false,
+      canApprove: false,
+    },
+  },
 };
 
 function mapRow(row: Permission): Omit<EffectiveModulePermission, 'module'> {
@@ -224,6 +315,7 @@ export class PermissionsService {
 
   computeEffective(
     user: User & { permissions: Permission[] },
+    enabledPackModules?: Set<PermissionModule> | null,
   ): EffectiveModulePermission[] {
     if (user.role === UserRole.ADMIN) {
       return ALL_MODULES.map((module) => ({
@@ -241,17 +333,46 @@ export class PermissionsService {
       byModule.set(p.module, p);
     }
 
-    return ALL_MODULES.map((module) => {
+    const base = ALL_MODULES.map((module) => {
       const row = byModule.get(module);
       if (row) {
         return { module, ...mapRow(row) };
       }
-      const fallback = ROLE_FALLBACK[user.role][module];
+      const fallback = ROLE_FALLBACK[user.role]?.[module];
       if (fallback) {
         return { module, ...fallback };
       }
       return { module, ...NONE };
     });
+
+    if (!isClientPortalRole(user.role)) {
+      return base;
+    }
+
+    // Pack da empresa: módulo fora do pack → tudo false.
+    const pack =
+      enabledPackModules ??
+      new Set<PermissionModule>(DEFAULT_COMPANY_PACK_MODULES);
+    return base.map((entry) => {
+      if (pack.has(entry.module)) return entry;
+      return { module: entry.module, ...NONE };
+    });
+  }
+
+  async resolveCompanyPackModules(
+    companyId: string | null | undefined,
+  ): Promise<Set<PermissionModule>> {
+    if (!companyId) {
+      return new Set(DEFAULT_COMPANY_PACK_MODULES);
+    }
+    const rows = await this.prisma.companyModule.findMany({
+      where: { companyId, enabled: true },
+      select: { module: true },
+    });
+    if (rows.length === 0) {
+      return new Set(DEFAULT_COMPANY_PACK_MODULES);
+    }
+    return new Set(rows.map((r) => r.module));
   }
 
   async buildRequestUser(
@@ -260,7 +381,14 @@ export class PermissionsService {
   ): Promise<AuthenticatedRequestUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { permissions: true },
+      include: {
+        permissions: true,
+        companyMemberships: {
+          include: {
+            company: { select: { id: true, name: true, deletedAt: true } },
+          },
+        },
+      },
     });
 
     if (!user || user.deletedAt || user.status !== UserStatus.ACTIVE) {
@@ -272,14 +400,51 @@ export class PermissionsService {
       throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
 
-    const permissions = this.computeEffective(user);
+    const companies = (user.companyMemberships ?? [])
+      .filter((m) => !m.company.deletedAt)
+      .map((m) => ({
+        id: m.company.id,
+        name: m.company.name,
+        clientRole: m.clientRole as 'CLIENT_GESTOR' | 'CLIENT_MEMBER',
+      }));
+
+    let effectiveRole = user.role as AuthenticatedRequestUser['role'];
+    let activeCompanyId = user.companyId;
+
+    // Memberships só mandam no papel/empresa ativa de usuários CLIENT_*.
+    // Nunca rebaixar ADMIN/COLLAB/PJ por ter um vínculo residual em user_companies.
+    if (companies.length > 0 && isClientPortalRole(user.role)) {
+      const active =
+        companies.find((c) => c.id === user.companyId) ?? companies[0];
+      activeCompanyId = active.id;
+      effectiveRole = active.clientRole;
+      if (user.companyId !== active.id || user.role !== active.clientRole) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            companyId: active.id,
+            role: active.clientRole as UserRole,
+          },
+        });
+      }
+    }
+
+    const pack = isClientPortalRole(effectiveRole)
+      ? await this.resolveCompanyPackModules(activeCompanyId)
+      : null;
+
+    const permissions = this.computeEffective(
+      { ...user, role: effectiveRole as UserRole },
+      pack,
+    );
 
     return {
       userId: user.id,
       email: user.email,
-      role: user.role as AuthenticatedRequestUser['role'],
-      companyId: user.companyId,
+      role: effectiveRole,
+      companyId: activeCompanyId,
       permissions,
+      companies: companies.length > 0 ? companies : undefined,
     };
   }
 
@@ -293,11 +458,16 @@ export class PermissionsService {
       throw new NotFoundException('Usuário não encontrado');
     }
 
+    const pack = isClientPortalRole(user.role)
+      ? await this.resolveCompanyPackModules(user.companyId)
+      : null;
+
     return {
       userId: user.id,
       role: user.role,
       permissions: user.permissions,
-      effective: this.computeEffective(user),
+      effective: this.computeEffective(user, pack),
+      companyPackModules: pack ? Array.from(pack) : null,
     };
   }
 
@@ -348,9 +518,54 @@ export class PermissionsService {
       include: { permissions: true },
     });
 
+    const pack = isClientPortalRole(updated.role)
+      ? await this.resolveCompanyPackModules(updated.companyId)
+      : null;
+
     return {
       message: 'Permissões atualizadas',
-      effective: this.computeEffective(updated),
+      effective: this.computeEffective(updated, pack),
     };
+  }
+
+  /** Substitui o pack de módulos contratados da empresa. */
+  async replaceCompanyModules(companyId: string, modules: PermissionModule[]) {
+    const company = await this.prisma.company.findFirst({
+      where: { id: companyId, deletedAt: null },
+    });
+    if (!company) {
+      throw new NotFoundException('Empresa não encontrada');
+    }
+
+    const unique = Array.from(new Set(modules));
+    await this.prisma.$transaction(async (tx) => {
+      await tx.companyModule.deleteMany({ where: { companyId } });
+      if (unique.length) {
+        await tx.companyModule.createMany({
+          data: unique.map((module) => ({
+            companyId,
+            module,
+            enabled: true,
+          })),
+        });
+      }
+    });
+
+    return {
+      companyId,
+      modules: unique,
+    };
+  }
+
+  async listCompanyModules(companyId: string) {
+    const rows = await this.prisma.companyModule.findMany({
+      where: { companyId, enabled: true },
+      select: { module: true },
+      orderBy: { module: 'asc' },
+    });
+    if (rows.length === 0) {
+      return DEFAULT_COMPANY_PACK_MODULES;
+    }
+    return rows.map((r) => r.module);
   }
 }

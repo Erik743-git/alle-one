@@ -32,7 +32,11 @@ export function assertMicrosoftTenantAllowed(
   configuredTenantId: string,
 ): void {
   const tenant = configuredTenantId.trim() || 'common';
-  if (tenant === 'common' || tenant === 'organizations' || tenant === 'consumers') {
+  if (
+    tenant === 'common' ||
+    tenant === 'organizations' ||
+    tenant === 'consumers'
+  ) {
     return;
   }
   if (!tokenTenantId || tokenTenantId.toLowerCase() !== tenant.toLowerCase()) {
@@ -62,7 +66,9 @@ export async function verifyMicrosoftIdToken(
   return payload as MicrosoftIdTokenClaims;
 }
 
-export function microsoftEmailVerified(claims: MicrosoftIdTokenClaims): boolean {
+export function microsoftEmailVerified(
+  claims: MicrosoftIdTokenClaims,
+): boolean {
   if (claims.email_verified === true) {
     return true;
   }

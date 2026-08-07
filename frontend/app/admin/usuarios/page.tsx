@@ -33,6 +33,8 @@ import { sortByName } from "@/lib/collections";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { authFetch } from "@/lib/auth-fetch";
+import { getApiErrorPayload } from "@/lib/api";
+import { useConfirm } from "@/lib/confirm";
 import { API_URL } from "@/lib/env";
 import { usersService } from "@/lib/services/users.service";
 import { UserRendimentoScheduleFields } from "@/components/admin/user-rendimento-schedule-fields";
@@ -47,13 +49,24 @@ type ApiUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT" | "CLIENT_GESTOR" | "CLIENT_MEMBER";
   status: "ACTIVE" | "INACTIVE";
   firstAccess: boolean;
   responsible: boolean;
   companyId: string | null;
   isOnline?: boolean;
-  serviceDesks: Array<{
+  specialtyId?: string | null;
+  specialty?: {
+    id: string;
+    name: string;
+    externalId: number | null;
+  } | null;
+  specialties?: Array<{
+    id: string;
+    name: string;
+    externalId: number | null;
+  }>;
+  serviceDesks?: Array<{
     id: string;
     name: string;
     externalId: number | null;
@@ -62,6 +75,11 @@ type ApiUser = {
     id: string;
     name: string;
   } | null;
+  companyMemberships?: Array<{
+    companyId: string;
+    companyName: string;
+    clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER";
+  }>;
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;
   rendimentoLunchMinutes?: number | null;
@@ -79,7 +97,7 @@ type UsuarioUI = {
   id: string;
   nome: string;
   email: string;
-  perfil: "Admin" | "Colaborador" | "Terceiro" | "Cliente";
+  perfil: "Admin" | "Colaborador" | "Terceiro" | "Cliente" | "Cliente gestor" | "Cliente funcionário";
   status: "Ativo" | "Inativo";
   online: boolean;
 };
@@ -93,20 +111,39 @@ type FormEdicao = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT" | "CLIENT_GESTOR" | "CLIENT_MEMBER";
   status: "ACTIVE" | "INACTIVE";
   companyId: string;
   firstAccess: boolean;
   responsible: boolean;
-  serviceDeskIds: string[];
+  specialtyId: string;
   rendimentoSchedule: UserRendimentoScheduleValue;
 };
 
-type ServiceDeskOption = {
+type SpecialtyOption = {
   id: string;
   name: string;
   externalId: number | null;
 };
+
+function resolveUserSpecialtyId(usuario: ApiUser): string {
+  return (
+    usuario.specialtyId ??
+    usuario.specialty?.id ??
+    usuario.specialties?.[0]?.id ??
+    usuario.serviceDesks?.[0]?.id ??
+    ""
+  );
+}
+
+function resolveUserSpecialtyName(usuario: ApiUser): string | null {
+  return (
+    usuario.specialty?.name ??
+    usuario.specialties?.[0]?.name ??
+    usuario.serviceDesks?.[0]?.name ??
+    null
+  );
+}
 
 function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
   switch (role) {
@@ -117,7 +154,10 @@ function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
     case "PJ":
       return "Terceiro";
     case "CLIENT":
-      return "Cliente";
+    case "CLIENT_GESTOR":
+      return "Cliente gestor";
+    case "CLIENT_MEMBER":
+      return "Cliente funcionário";
     default:
       return "Cliente";
   }
@@ -128,6 +168,7 @@ function mapStatus(status: ApiUser["status"]): UsuarioUI["status"] {
 }
 
 export default function AdminUsuariosPage() {
+  const confirm = useConfirm();
   const [modalNovoUsuario, setModalNovoUsuario] = useState(false);
   const [modalPermissoes, setModalPermissoes] = useState(false);
   const [modalEditarUsuario, setModalEditarUsuario] = useState(false);
@@ -146,11 +187,11 @@ export default function AdminUsuariosPage() {
   const [busca, setBusca] = useState("");
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [empresas, setEmpresas] = useState<EmpresaApi[]>([]);
-  const [serviceDesks, setServiceDesks] = useState<ServiceDeskOption[]>([]);
+  const [specialties, setSpecialties] = useState<SpecialtyOption[]>([]);
 
   const [carregando, setCarregando] = useState(true);
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(false);
-  const [carregandoMesas, setCarregandoMesas] = useState(false);
+  const [carregandoEspecialidades, setCarregandoEspecialidades] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [desativandoUsuario, setDesativandoUsuario] = useState(false);
 
@@ -162,12 +203,12 @@ export default function AdminUsuariosPage() {
     id: "",
     name: "",
     email: "",
-    role: "CLIENT",
+    role: "CLIENT_GESTOR",
     status: "ACTIVE",
     companyId: "",
     firstAccess: false,
     responsible: false,
-    serviceDeskIds: [],
+    specialtyId: "",
     rendimentoSchedule: normalizeUserRendimentoSchedule({}),
   });
   const [senhaProvisoriaEdicao, setSenhaProvisoriaEdicao] = useState("");
@@ -228,24 +269,24 @@ export default function AdminUsuariosPage() {
     }
   }
 
-  async function buscarMesasDeServico() {
+  async function buscarEspecialidades() {
     try {
-      setCarregandoMesas(true);
+      setCarregandoEspecialidades(true);
       setErroEdicao("");
 
-      const data = await usersService.listServiceDesks();
-      setServiceDesks(sortByName(data));
+      const data = await usersService.listSpecialties();
+      setSpecialties(sortByName(data));
     } catch {
       setErroEdicao("Erro ao conectar com o backend.");
-      setServiceDesks([]);
+      setSpecialties([]);
     } finally {
-      setCarregandoMesas(false);
+      setCarregandoEspecialidades(false);
     }
   }
 
   useEffect(() => {
     void buscarUsuarios();
-    void buscarMesasDeServico();
+    void buscarEspecialidades();
   }, []);
 
   const usuariosFiltrados = useMemo(() => {
@@ -254,35 +295,61 @@ export default function AdminUsuariosPage() {
     const base = !termo
       ? usuarios
       : usuarios.filter((usuario) => {
-      const empresa = usuario.company?.name ?? "Sem empresa";
-      return (
-        usuario.name.toLowerCase().includes(termo) ||
-        usuario.email.toLowerCase().includes(termo) ||
-        usuario.role.toLowerCase().includes(termo) ||
-        empresa.toLowerCase().includes(termo)
-      );
-    });
+          const empresasNomes = [
+            usuario.company?.name ?? "",
+            ...(usuario.companyMemberships ?? []).map((m) => m.companyName),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return (
+            usuario.name.toLowerCase().includes(termo) ||
+            usuario.email.toLowerCase().includes(termo) ||
+            usuario.role.toLowerCase().includes(termo) ||
+            empresasNomes.includes(termo)
+          );
+        });
     return [...base].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [busca, usuarios]);
 
   const usuariosPorEmpresa = useMemo<GrupoEmpresa[]>(() => {
     const grupos = new Map<string, UsuarioUI[]>();
 
-    usuariosFiltrados.forEach((usuario) => {
-      const nomeEmpresa = usuario.company?.name ?? "Sem empresa";
-
+    const pushInGroup = (
+      nomeEmpresa: string,
+      usuario: ApiUser,
+      perfilRole: ApiUser["role"] | "CLIENT_GESTOR" | "CLIENT_MEMBER",
+    ) => {
       if (!grupos.has(nomeEmpresa)) {
         grupos.set(nomeEmpresa, []);
       }
-
-      grupos.get(nomeEmpresa)?.push({
+      const list = grupos.get(nomeEmpresa)!;
+      if (list.some((u) => u.id === usuario.id)) return;
+      list.push({
         id: usuario.id,
         nome: usuario.name,
         email: usuario.email,
-        perfil: mapRole(usuario.role),
+        perfil: mapRole(perfilRole),
         status: mapStatus(usuario.status),
         online: Boolean(usuario.isOnline),
       });
+    };
+
+    usuariosFiltrados.forEach((usuario) => {
+      const memberships = usuario.companyMemberships ?? [];
+      if (usuario.company?.name) {
+        pushInGroup(usuario.company.name, usuario, usuario.role);
+      }
+      for (const m of memberships) {
+        const name = m.companyName?.trim();
+        if (!name) continue;
+        // Na empresa ativa, o papel global do usuário prevalece.
+        if (m.companyId === usuario.companyId) continue;
+        pushInGroup(name, usuario, m.clientRole);
+      }
+      if (!usuario.company?.name && memberships.length === 0) {
+        pushInGroup("Sem empresa", usuario, usuario.role);
+      }
     });
 
     return Array.from(grupos.entries())
@@ -306,7 +373,7 @@ export default function AdminUsuariosPage() {
   ).length;
 
   const totalClientes = usuariosFiltrados.filter(
-    (usuario) => usuario.role === "CLIENT"
+    (usuario) => usuario.role === "CLIENT" || usuario.role === "CLIENT_GESTOR" || usuario.role === "CLIENT_MEMBER"
   ).length;
 
   async function abrirEdicao(id: string) {
@@ -319,8 +386,8 @@ export default function AdminUsuariosPage() {
     if (empresas.length === 0) {
       await buscarEmpresas();
     }
-    if (serviceDesks.length === 0) {
-      await buscarMesasDeServico();
+    if (specialties.length === 0) {
+      await buscarEspecialidades();
     }
 
     setErroEdicao("");
@@ -333,7 +400,7 @@ export default function AdminUsuariosPage() {
       companyId: usuario.companyId ?? "",
       firstAccess: usuario.firstAccess,
       responsible: usuario.responsible,
-      serviceDeskIds: usuario.serviceDesks.map((desk) => desk.id),
+      specialtyId: resolveUserSpecialtyId(usuario),
       rendimentoSchedule: normalizeUserRendimentoSchedule(usuario),
     });
     setSenhaProvisoriaEdicao("");
@@ -355,6 +422,82 @@ export default function AdminUsuariosPage() {
       nome: usuario.name,
     });
     setModalDesativarUsuario(true);
+  }
+
+  async function offerLinkExistingUser(payload: Record<string, unknown>) {
+    const userId = typeof payload.userId === "string" ? payload.userId : null;
+    const userName =
+      typeof payload.userName === "string" ? payload.userName : "este usuário";
+    const canLink = payload.canLinkCompany === true;
+    const companyIds = Array.isArray(payload.companyIds)
+      ? payload.companyIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const companyNames = Array.isArray(payload.companyNames)
+      ? payload.companyNames.filter(
+          (name): name is string => typeof name === "string",
+        )
+      : [];
+
+    const targetCompanyId = formEdicao.companyId;
+    const targetCompany = empresas.find((c) => c.id === targetCompanyId);
+    const targetName = targetCompany?.name ?? "a empresa selecionada";
+
+    if (!targetCompanyId) {
+      setErroEdicao(
+        "Já existe um usuário com este e-mail. Selecione uma empresa para conceder acesso.",
+      );
+      return;
+    }
+
+    if (!canLink || !userId) {
+      setErroEdicao(
+        "Já existe um usuário com este e-mail, mas ele não é um usuário cliente e não pode receber acesso multi-empresa.",
+      );
+      return;
+    }
+
+    if (companyIds.includes(targetCompanyId)) {
+      setErroEdicao(
+        `O usuário ${userName} já possui acesso à empresa ${targetName}.`,
+      );
+      return;
+    }
+
+    const formatCompanyList = (names: string[]) => {
+      if (names.length === 0) return "";
+      if (names.length === 1) return names[0];
+      if (names.length === 2) return `${names[0]} e ${names[1]}`;
+      return `${names.slice(0, -1).join(", ")} e ${names[names.length - 1]}`;
+    };
+
+    const existingLabel = formatCompanyList(companyNames);
+    const description = existingLabel
+      ? `Já existe um usuário cadastrado com este e-mail (${userName}), com acesso a ${existingLabel}. Deseja que esse usuário também tenha acesso à empresa ${targetName}?`
+      : `Já existe um usuário cadastrado com este e-mail (${userName}). Deseja que esse usuário tenha acesso à empresa ${targetName}?`;
+
+    const ok = await confirm({
+      title: "Usuário já cadastrado",
+      description,
+      confirmText: "Sim, conceder acesso",
+      cancelText: "Não",
+      variant: "warning",
+    });
+
+    if (!ok) return;
+
+    const clientRole =
+      formEdicao.role === "CLIENT_GESTOR" ||
+      formEdicao.role === "CLIENT_MEMBER"
+        ? formEdicao.role
+        : "CLIENT_MEMBER";
+
+    await usersService.upsertCompanyMembership(userId, {
+      companyId: targetCompanyId,
+      clientRole,
+    });
+
+    setModalEditarUsuario(false);
+    await buscarUsuarios();
   }
 
   async function salvarEdicao() {
@@ -400,7 +543,7 @@ export default function AdminUsuariosPage() {
         companyId: formEdicao.companyId || null,
         firstAccess: formEdicao.firstAccess,
         responsible: formEdicao.responsible,
-        serviceDeskIds: formEdicao.serviceDeskIds,
+        specialtyId: formEdicao.specialtyId || null,
       };
 
       if (usesRendimentoScheduleRole(formEdicao.role)) {
@@ -424,6 +567,20 @@ export default function AdminUsuariosPage() {
       setModalEditarUsuario(false);
       await buscarUsuarios();
     } catch (err) {
+      const payload = getApiErrorPayload(err);
+      if (payload?.code === "EMAIL_EXISTS") {
+        try {
+          await offerLinkExistingUser(payload);
+        } catch (linkErr) {
+          setErroEdicao(
+            linkErr instanceof Error
+              ? linkErr.message
+              : "Erro ao conceder acesso à empresa.",
+          );
+        }
+        return;
+      }
+
       setErroEdicao(
         err instanceof Error
           ? err.message
@@ -615,7 +772,7 @@ export default function AdminUsuariosPage() {
                         <div className="border-t border-border">
                           {grupo.usuarios.map((usuario, index) => (
                             <div
-                              key={usuario.id}
+                              key={`${grupo.empresa}-${usuario.id}`}
                               className={`flex flex-col gap-4 px-5 py-4 xl:flex-row xl:items-center xl:justify-between ${
                                 index !== 0 ? "border-t border-border" : ""
                               }`}
@@ -643,11 +800,13 @@ export default function AdminUsuariosPage() {
                                 {(() => {
                                   const full = usuarios.find((u) => u.id === usuario.id);
                                   if (!full) return null;
-                                  const desks = full.serviceDesks.map((d) => d.name).join(", ");
+                                  const specialtyName = resolveUserSpecialtyName(full);
                                   return (
                                     <>
                                       <p className="text-xs text-muted-foreground">
-                                        {desks ? `Mesas: ${desks}` : "Sem mesa vinculada"}
+                                        {specialtyName
+                                          ? `Especialidade: ${specialtyName}`
+                                          : "Sem especialidade"}
                                         {full.responsible ? " • Responsável" : ""}
                                       </p>
                                       {usesRendimentoScheduleRole(full.role) ? (
@@ -898,7 +1057,8 @@ export default function AdminUsuariosPage() {
                     }
                     options={[
                       { value: "ADMIN", label: "Administrador" },
-                      { value: "CLIENT", label: "Cliente" },
+                      { value: "CLIENT_GESTOR", label: "Cliente (gestor)" },
+                      { value: "CLIENT_MEMBER", label: "Cliente (funcionário)" },
                       { value: "COLLABORATOR", label: "Colaborador" },
                       { value: "PJ", label: "Terceiro" },
                     ]}
@@ -973,41 +1133,80 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-2 sm:col-span-2">
                   <Label className="text-sm font-semibold text-foreground">
-                    Mesas de serviço
+                    Especialidade
                   </Label>
-                  <div className="max-h-40 overflow-y-auto rounded-xl border border-input bg-background p-3">
-                    {carregandoMesas ? (
-                      <p className="text-sm text-muted-foreground">Carregando mesas...</p>
-                    ) : serviceDesks.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma mesa disponível.
+                  <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
+                    {carregandoEspecialidades ? (
+                      <p className="px-2 py-3 text-sm text-muted-foreground">
+                        Carregando especialidades...
+                      </p>
+                    ) : specialties.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-muted-foreground">
+                        Nenhuma especialidade disponível.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {serviceDesks.map((desk) => (
-                          <label
-                            key={desk.id}
-                            className="flex items-center gap-2 text-sm text-foreground"
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormEdicao((prev) => ({ ...prev, specialtyId: "" }))
+                          }
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                            !formEdicao.specialtyId
+                              ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
+                              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                          }`}
+                        >
+                          <span
+                            className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                              !formEdicao.specialtyId
+                                ? "border-primary"
+                                : "border-border"
+                            }`}
                           >
-                            <FlipCheckbox
-                              checked={formEdicao.serviceDeskIds.includes(desk.id)}
-                              onChange={(e) =>
+                            {!formEdicao.specialtyId ? (
+                              <span className="size-2 rounded-full bg-primary" />
+                            ) : null}
+                          </span>
+                          Nenhuma
+                        </button>
+                        {specialties.map((item) => {
+                          const selected = formEdicao.specialtyId === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() =>
                                 setFormEdicao((prev) => ({
                                   ...prev,
-                                  serviceDeskIds: e.target.checked
-                                    ? [...prev.serviceDeskIds, desk.id]
-                                    : prev.serviceDeskIds.filter(
-                                        (id) => id !== desk.id,
-                                      ),
+                                  specialtyId: item.id,
                                 }))
                               }
-                            />
-                            <span>{desk.name}</span>
-                          </label>
-                        ))}
-                      </div>
+                              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                                selected
+                                  ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
+                                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                              }`}
+                            >
+                              <span
+                                className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                                  selected ? "border-primary" : "border-border"
+                                }`}
+                              >
+                                {selected ? (
+                                  <span className="size-2 rounded-full bg-primary" />
+                                ) : null}
+                              </span>
+                              <span className="truncate font-medium">{item.name}</span>
+                            </button>
+                          );
+                        })}
+                      </>
                     )}
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Apenas uma especialidade por usuário.
+                  </p>
                 </div>
 
                 <div className="space-y-2 sm:col-span-2">

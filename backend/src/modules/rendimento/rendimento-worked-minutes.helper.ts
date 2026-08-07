@@ -12,7 +12,9 @@ export type AppointmentMinutesInput = {
 
 export type WorkedMinutesFilter = 'ALL' | 'EXTRA' | 'PLANTAO' | 'NORMAL';
 
-export function parseClockToMinutes(value: string | null | undefined): number | null {
+export function parseClockToMinutes(
+  value: string | null | undefined,
+): number | null {
   if (!value?.trim()) return null;
   const parts = value.trim().split(':');
   const h = Number(parts[0]);

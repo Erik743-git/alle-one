@@ -1,3 +1,4 @@
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -222,7 +223,7 @@ export class ConsoleService {
       ? await this.tenantScope.assertZabbixGroupAccess(user, query.group)
       : await this.resolveGroup(user, query.group);
 
-    if (user.role === 'CLIENT' || query.group?.trim()) {
+    if (isClientPortalRole(user.role) || query.group?.trim()) {
       return this.zabbix.getHostItemsSummaryForGroup(group, hostid);
     }
 
@@ -241,7 +242,9 @@ export class ConsoleService {
     const scoped = await this.zabbix.getConsoleAlertsForGroup(group, {
       limit: 1000,
     });
-    if (!scoped.alerts.some((alert: ConsoleAlertDto) => alert.eventId === eventid)) {
+    if (
+      !scoped.alerts.some((alert: ConsoleAlertDto) => alert.eventId === eventid)
+    ) {
       throw new BadRequestException(
         'Evento fora do escopo do grupo selecionado.',
       );
@@ -250,6 +253,11 @@ export class ConsoleService {
     await this.zabbix.acknowledgeEvents(
       [eventid],
       body.message ?? `Reconhecido por ${user.email}`,
+      {
+        close: Boolean(body.close),
+        suppress: Boolean(body.suppress),
+        severity: body.severity,
+      },
     );
 
     return { ok: true, eventId: eventid };

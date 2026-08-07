@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Hooks / shell scripts always LF (Windows CRLF quebra husky)
+.husky/** text eol=lf
+scripts/*.sh text eol=lf

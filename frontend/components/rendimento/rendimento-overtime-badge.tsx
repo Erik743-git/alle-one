@@ -34,7 +34,7 @@ export function RendimentoOvertimeBadge({
         size === "sm" ? "px-1.5 py-0.5 text-[8px]" : "px-2 py-0.5 text-[10px]",
         isPlantao ? "bg-violet-700 ring-1 ring-violet-300/60" : "bg-amber-600",
       )}
-      title={display.serviceName ? `TiFlux: ${display.serviceName}` : display.label}
+      title={display.serviceName ? `Serviço: ${display.serviceName}` : display.label}
     >
       <Icon className={size === "sm" ? "size-2.5" : "size-3"} aria-hidden />
       {display.label}
@@ -57,7 +57,7 @@ export function RendimentoOvertimeServiceLine({
         display.kind === "PLANTAO" ? "text-violet-700 dark:text-violet-300" : "text-amber-800 dark:text-amber-200",
       )}
     >
-      Tipo no TiFlux: {display.serviceName}
+      Tipo de serviço: {display.serviceName}
     </p>
   );
 }

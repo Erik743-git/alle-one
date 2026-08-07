@@ -8,6 +8,7 @@ import { RendimentoCompanyService } from './rendimento-company.service';
 import { RendimentoMailService } from './rendimento-mail.service';
 import { RendimentoService } from './rendimento.service';
 import { RendimentoStoreService } from './rendimento-store.service';
+import { RendimentoOvertimeBalanceService } from './rendimento-overtime-balance.service';
 
 @Module({
   imports: [PrismaModule, TifluxModule, AuditModule, MailModule],
@@ -17,6 +18,7 @@ import { RendimentoStoreService } from './rendimento-store.service';
     RendimentoStoreService,
     RendimentoCompanyService,
     RendimentoMailService,
+    RendimentoOvertimeBalanceService,
   ],
   exports: [RendimentoService, RendimentoCompanyService],
 })

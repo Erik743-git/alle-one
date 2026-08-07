@@ -26,6 +26,14 @@ export class UpdateTicketStageDto {
   stageId!: number;
 }
 
+/** Busca usuários do portal para cópia/seguidores no create. */
+export class SearchTicketUsersQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
+}
+
 export class TicketsListQueryDto {
   @IsOptional()
   @IsBoolean()

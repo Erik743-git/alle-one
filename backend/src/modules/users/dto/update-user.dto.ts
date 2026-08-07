@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   ArrayUnique,
   IsBoolean,
   IsEmail,
@@ -29,9 +30,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsStrongPassword()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   password?: string;
 
   @IsOptional()
@@ -55,9 +54,15 @@ export class UpdateUserDto {
   responsible?: boolean;
 
   @IsOptional()
+  @IsUUID()
+  specialtyId?: string | null;
+
+  /** @deprecated Prefer specialtyId (uma especialidade por usuário). */
+  @IsOptional()
   @IsArray()
   @ArrayUnique()
   @IsUUID('4', { each: true })
+  @ArrayMaxSize(1)
   serviceDeskIds?: string[];
 
   @IsOptional()

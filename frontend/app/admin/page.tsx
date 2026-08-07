@@ -67,7 +67,7 @@ export default function AdminPage() {
     {
       name: "Classificação",
       description:
-        "Cadastre categorias em até 3 níveis sobre as mesas de serviço do TiFlux.",
+        "Cadastre categorias em até 3 níveis sobre as mesas de serviço.",
       icon: FolderTree,
       href: "/admin/classificacao",
     },
@@ -77,6 +77,13 @@ export default function AdminPage() {
         "Parametrize os estágios de ticket. Os estágios padrão são fixos e há mais configurações por vir.",
       icon: Ticket,
       href: "/admin/ticket",
+    },
+    {
+      name: "E-mail",
+      description:
+        "Caixa Microsoft Graph, direcionamentos e abertura de pré-tickets por e-mail.",
+      icon: FileText,
+      href: "/admin/email",
     },
     {
       name: "Auditoria",

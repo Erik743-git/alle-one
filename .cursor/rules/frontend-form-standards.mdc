@@ -1,0 +1,23 @@
+---
+description: Padrão de formulários e labels obrigatórios no frontend Alle One
+globs: frontend/**/*.{tsx,ts}
+alwaysApply: false
+---
+
+# Formulários e UI — padrões Alle One
+
+## Campos obrigatórios
+- Sempre use `FieldLabel` / `RequiredMark` de `frontend/components/ui/field-label.tsx`.
+- Asterisco `*` **obrigatório** = `text-destructive` (vermelho). **Nunca** herdar `text-muted-foreground` no `*`.
+- Não escrever `Descrição *` / `Dia *` como texto solto no Label.
+- Opcional: sufixo `(opcional)` via `FieldLabel optional` — não misturar com `*`.
+
+## Campos que auto-preenchem
+- Controles do tipo “preencher do cadastro / sugerir contato” ficam **acima** dos campos que eles preenchem.
+
+## Imagens em descrição de ticket/apontamento
+- Na visualização: `object-contain`, `h-auto`, `max-w-full` — preservar proporção.
+- Não usar `object-cover` em preview de descrição (corta/distorce o print).
+
+## Ações contextuais
+- Botões de ação da seção (ex.: Apontar) também no cabeçalho da seção relevante, não só no topo da página.

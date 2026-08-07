@@ -12,7 +12,12 @@ import {
 
 export class CreateDeskClassificationDto {
   @IsUUID()
-  serviceDeskId!: string;
+  specialtyId!: string;
+
+  /** @deprecated Use specialtyId */
+  @IsOptional()
+  @IsUUID()
+  serviceDeskId?: string;
 
   @IsOptional()
   @IsUUID()
@@ -31,12 +36,17 @@ export class CreateServiceDeskDto {
   name!: string;
 }
 
+/** Alias tipado para o domínio Specialty */
+export class CreateSpecialtyDto extends CreateServiceDeskDto {}
+
 export class UpdateServiceDeskDto {
   @IsString()
   @MinLength(1)
   @MaxLength(120)
   name!: string;
 }
+
+export class UpdateSpecialtyDto extends UpdateServiceDeskDto {}
 
 export class UpdateDeskClassificationDto {
   @IsOptional()

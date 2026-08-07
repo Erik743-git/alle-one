@@ -135,16 +135,19 @@ export class TicketsOutboxService {
 
     try {
       // Mesa AlleOne no TiFlux não possui valorização: enviamos só data/hora/descrição.
-      const created = await this.tiflux.createTicketAppointment(row.ticketNumber, {
-        date: payload.date,
-        init_time: payload.init_time,
-        end_time: payload.end_time,
-        description: payload.description,
-      });
+      const created = await this.tiflux.createTicketAppointment(
+        row.ticketNumber,
+        {
+          date: payload.date,
+          init_time: payload.init_time,
+          end_time: payload.end_time,
+          description: payload.description,
+        },
+      );
 
       const tifluxId = Number(created?.id);
       if (!Number.isFinite(tifluxId) || tifluxId <= 0) {
-        throw new Error('TiFlux não retornou ID do apontamento.');
+        throw new Error('Integração não retornou ID do apontamento.');
       }
 
       await this.prisma.$transaction(async (tx) => {
@@ -172,7 +175,9 @@ export class TicketsOutboxService {
       return 'synced';
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Falha ao sincronizar com TiFlux.';
+        err instanceof Error
+          ? err.message
+          : 'Falha ao sincronizar apontamento.';
       await this.markFailed(outboxId, message.slice(0, 2000));
       this.logger.warn(`Outbox ${outboxId} falhou: ${message}`);
       return 'failed';

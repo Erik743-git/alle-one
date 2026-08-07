@@ -53,7 +53,7 @@ describe('UsersService.create', () => {
       responsible: false,
       companyId: 'c1',
       company: null,
-      serviceDeskLinks: [],
+      specialty: null,
     });
 
     await service.create(actor, {
@@ -119,7 +119,7 @@ describe('UsersService.update', () => {
       responsible: false,
       companyId: null,
       company: null,
-      serviceDeskLinks: [],
+      specialty: null,
     });
 
     await service.update(actor, 'u1', {

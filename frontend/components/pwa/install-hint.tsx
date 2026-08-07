@@ -41,7 +41,7 @@ export function PwaInstallHint() {
     if (!isMobileUa()) return;
     if (localStorage.getItem(STORAGE_KEY) === "1") return;
 
-    setVisible(true);
+    const showTimer = window.setTimeout(() => setVisible(true), 0);
 
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
@@ -49,7 +49,10 @@ export function PwaInstallHint() {
     };
 
     window.addEventListener("beforeinstallprompt", onBeforeInstall);
-    return () => window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+    return () => {
+      window.clearTimeout(showTimer);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+    };
   }, []);
 
   const dismiss = useCallback(() => {

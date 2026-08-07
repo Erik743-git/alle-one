@@ -24,6 +24,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       NODE_ENV: production
       TRUST_PROXY: "1"
@@ -55,6 +57,17 @@ services:
       TIFLUX_RESUMO_MAX_LINHAS: ${TIFLUX_RESUMO_MAX_LINHAS:-100000}
       TIFLUX_RUNTIME_API: ${TIFLUX_RUNTIME_API:-false}
       TIFLUX_UNSAFE_ENDPOINTS: ${TIFLUX_UNSAFE_ENDPOINTS:-false}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
     networks:
       - internal
 
@@ -80,4 +93,5 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
 

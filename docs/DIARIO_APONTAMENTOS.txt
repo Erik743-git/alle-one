@@ -1,0 +1,73 @@
+================================================================================
+DIÁRIO DE TRABALHO / RASCUNHO DE APONTAMENTOS — Alle One
+================================================================================
+Uso: consultar o que foi feito por dia e copiar texto para apontamento no portal.
+Atualizar ao final de cada sessão (não apagar dias anteriores).
+Branch principal do período: feat/cutover-tiflux-hardening-20260727
+PR: https://github.com/Erik743-git/alle-one/pull/2
+================================================================================
+
+--------------------------------------------------------------------------------
+2026-07-27 (seg) — Cutover TiFlux + hardening + fundação portal
+--------------------------------------------------------------------------------
+APONTAMENTO (sugerido):
+  Título/contexto: Cutover portal-only e fundação tickets/apontamentos
+  Descrição:
+  - Análise do repo e alinhamento com ANALISE/ROADMAP; quick wins segurança
+    (health/integrations protegido, upload magic bytes, auditoria ampliada).
+  - Fundação anti-TiFlux: portal_tickets, dual-write/read, flags
+    TICKETS_PORTAL_CANONICAL / TICKETS_TIFLUX_WRITE / TIFLUX_DISCONNECTED.
+  - Quebra de services grandes, E2E smoke, docs CUTOVER_TIFLUX / RUNBOOK.
+  - Início endurecimento alleone-teste e caminho desvinculação TiFlux.
+
+--------------------------------------------------------------------------------
+2026-07-28 a 2026-07-30 — Ambiente teste, dump, UX tickets, HE
+--------------------------------------------------------------------------------
+APONTAMENTO (sugerido):
+  Título/contexto: Alleone-teste + melhorias tickets/apontamentos/rendimento
+  Descrição:
+  - Restore dump local → portal_teste (gzip válido, nunca migrate em banco vazio).
+  - Script restore-local-dump-to-teste; JWT alinhado no teste; PM2 saudável.
+  - Bloqueio de apontamentos sobrepostos (mesmo user+ticket+dia).
+  - Data do apontamento DD/MM/YYYY na UI do ticket.
+  - Trust 2FA 14 dias (cookie + localStorage; SameSite Lax).
+  - Modal apontamento: Salvar / Salvar e outro / Salvar e fechar ticket.
+  - Novo chamado: campos obrigatórios com * e lista do que falta.
+  - Solicitantes: paginação, dedupe, Alle só @alletecnologia.com; portal-mode.
+  - HE estável por mês do calendário (26→25 ancorado no mês civil; fix dia ≥26).
+
+--------------------------------------------------------------------------------
+2026-07-31 (sex) — CI, permissões tickets, responsáveis, diário
+--------------------------------------------------------------------------------
+APONTAMENTO (sugerido):
+  Título/contexto: CI verde + permissões + select de responsáveis alinhado ao cadastro
+  Descrição:
+  - ESLint/CI e migrations Prisma idempotentes; PR #2 checks verdes.
+  - Liberar criar ticket/apontar para COLLABORATOR e PJ (Roles + fallback canCreate).
+  - Select de responsável do ticket: fonte = users.responsible + ACTIVE
+    (não mais lista aberta do TiFlux/tickets). Sync marcou 33 usuários que já
+    eram attendants/admins ou responsáveis em portal_tickets.
+  - Inativar usuário zera responsible e some do select; marcar/desmarcar no
+    modal reflete na lista. Inativos não entram no catálogo de responsáveis.
+  - UX tickets: FieldLabel/`*` vermelho padrão; cadastro do cliente antes do
+    solicitante; imagens com object-contain; botão Apontar na seção Apontamentos.
+  - Regra Cursor `.cursor/rules/frontend-form-standards.mdc`.
+  - Arquivo docs/DIARIO_APONTAMENTOS.txt para consulta/apontamentos futuros.
+
+PENDENTE OPERACIONAL (não é gap de código da PR):
+  - Merge PR #2 quando quiser.
+  - Deploy alleone-teste (pull + migrate + build + PM2) se ainda não no tip.
+  - Cutover prod: ETL final + flags + parar alleone-tiflux-sync.
+  - Commit das mudanças (permissões + responsáveis) + push.
+  - No teste/prod: rodar sync-ticket-responsibles-flag.ts uma vez após deploy.
+
+================================================================================
+COMO USAR NO PORTAL
+================================================================================
+1. Abrir o ticket de trabalho do dia (ou criar chamado interno Alle).
+2. Copiar o bloco "Descrição" do dia → apontamento (hora início/fim reais).
+3. Se o dia misturou temas, pode fatiar em 2 apontamentos (ex.: CI | permissões).
+4. Neste arquivo: cronológico crescente.
+
+Última atualização: 2026-07-31
+================================================================================

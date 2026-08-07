@@ -51,6 +51,7 @@ import {
   SIDEBAR_WIDTH_EXPANDED,
 } from "./sidebar-context";
 import { useAuth } from "@/lib/use-auth";
+import { SidebarCompanySwitcher } from "./sidebar-company-switcher";
 
 const SessionPanel = dynamic(
   () => import("@/components/layout/session-panel"),
@@ -361,6 +362,7 @@ function DesktopSidebar() {
       }}
     >
       <SidebarBrand collapsed={collapsed} />
+      <SidebarCompanySwitcher collapsed={collapsed} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <SidebarNav collapsed={collapsed} />
       </div>
@@ -418,6 +420,7 @@ function MobileSidebar() {
         <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
         <div className="flex h-dvh max-h-dvh flex-col overflow-hidden">
           <SidebarBrand collapsed={false} />
+          <SidebarCompanySwitcher collapsed={false} />
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <SidebarNav
               collapsed={false}

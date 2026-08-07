@@ -28,10 +28,8 @@ export type RendimentoDayEventStatus =
   | 'REJECTED';
 
 /** Decisões de HE/plantão que o sync nunca deve apagar (soft-delete). */
-export const PROTECTED_OVERTIME_DECISION_STATUSES: RendimentoDayEventStatus[] = [
-  'APPROVED',
-  'REJECTED',
-];
+export const PROTECTED_OVERTIME_DECISION_STATUSES: RendimentoDayEventStatus[] =
+  ['APPROVED', 'REJECTED'];
 
 export function isProtectedOvertimeDecisionStatus(
   status: RendimentoDayEventStatus,
@@ -190,10 +188,7 @@ export function collectDayEventUpserts(params: {
       toTime: entry.endTime,
       minutes: entry.minutes,
       appointmentExternalId: entry.id,
-      label:
-        entry.overtimeKind === 'PLANTAO'
-          ? 'Plantão'
-          : 'Hora extra',
+      label: entry.overtimeKind === 'PLANTAO' ? 'Plantão' : 'Hora extra',
       description: entry.description,
       status: 'PENDING',
     });

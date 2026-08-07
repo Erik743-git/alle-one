@@ -105,7 +105,13 @@ export function getConsoleHosts(query: {
 
 export function acknowledgeConsoleAlert(
   eventId: string,
-  payload: { message?: string; group?: string } = {},
+  payload: {
+    message?: string;
+    group?: string;
+    close?: boolean;
+    suppress?: boolean;
+    severity?: number;
+  } = {},
 ) {
   return apiRequest<{ ok: boolean; eventId: string }>(
     `/console/alerts/${encodeURIComponent(eventId)}/ack`,

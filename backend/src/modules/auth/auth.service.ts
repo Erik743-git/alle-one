@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   ServiceUnavailableException,
   UnauthorizedException,
@@ -8,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { LoginDto } from './dto/login.dto';
 import { FirstAccessDto } from './dto/first-access.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -23,6 +25,12 @@ import {
   hashPasswordResetCode,
   normalizeResetTokenInput,
 } from './password-reset.helper';
+import { TotpService } from './totp.service';
+import {
+  createTotpTrustToken,
+  totpTrustDays,
+  verifyTotpTrustToken,
+} from './totp-trust-cookie.helper';
 
 const RESET_REQUESTS_PER_HOUR = 3;
 
@@ -42,9 +50,10 @@ export class AuthService {
     private readonly authMail: AuthMailService,
     private readonly permissionsService: PermissionsService,
     private readonly presence: PresenceService,
+    private readonly totp: TotpService,
   ) {}
 
-  async login(data: LoginDto) {
+  async login(data: LoginDto, opts?: { trustCookie?: string }) {
     const user = await this.prisma.user.findFirst({
       where: {
         email: { equals: data.email, mode: 'insensitive' },
@@ -76,15 +85,67 @@ export class AuthService {
       throw new UnauthorizedException('Usuário ou senha inválidos');
     }
 
-    return this.createSessionForUser(user);
+    let totpTrustToken: string | undefined;
+
+    if (user.totpEnabledAt) {
+      const trusted = verifyTotpTrustToken(
+        opts?.trustCookie,
+        user.id,
+        user.totpEnabledAt,
+      );
+
+      if (!trusted) {
+        if (!data.totpCode?.trim()) {
+          throw new UnauthorizedException({
+            statusCode: 401,
+            message: '2FA_REQUIRED',
+            error: 'Unauthorized',
+            requires2fa: true,
+            trustDays: totpTrustDays(),
+          });
+        }
+        await this.totp.assertValidCode(user.id, data.totpCode);
+        if (data.rememberDevice) {
+          totpTrustToken = createTotpTrustToken(user.id, user.totpEnabledAt);
+        }
+      } else {
+        // Renova a janela de confiança neste dispositivo
+        totpTrustToken = createTotpTrustToken(user.id, user.totpEnabledAt);
+      }
+    }
+
+    const session = await this.createSessionForUser(user);
+    return { ...session, totpTrustToken };
   }
 
-  async loginWithOAuth(params: {
-    provider: 'google' | 'microsoft';
-    providerId: string;
-    email: string;
-    emailVerified: boolean;
-  }) {
+  async loginWithOAuth(
+    params: {
+      provider: 'google' | 'microsoft';
+      providerId: string;
+      email: string;
+      emailVerified: boolean;
+    },
+    opts?: { trustCookie?: string },
+  ): Promise<
+    | {
+        status: 'authenticated';
+        message: string;
+        accessToken: string;
+        user: {
+          id: string;
+          name: string;
+          email: string;
+          role: UserRole;
+          companyId: string | null;
+          companyName: string | null;
+          firstAccess: boolean;
+          permissions: unknown;
+          totpEnabled: boolean;
+        };
+        totpTrustToken?: string;
+      }
+    | { status: '2fa_required'; userId: string; trustDays: number }
+  > {
     if (!params.emailVerified) {
       throw new UnauthorizedException('oauth_not_verified');
     }
@@ -129,7 +190,47 @@ export class AuthService {
       }
     }
 
-    return this.createSessionForUser(user);
+    if (user.totpEnabledAt) {
+      const trusted = verifyTotpTrustToken(
+        opts?.trustCookie,
+        user.id,
+        user.totpEnabledAt,
+      );
+      if (!trusted) {
+        return {
+          status: '2fa_required',
+          userId: user.id,
+          trustDays: totpTrustDays(),
+        };
+      }
+    }
+
+    const session = await this.createSessionForUser(user);
+    let totpTrustToken: string | undefined;
+    if (user.totpEnabledAt) {
+      totpTrustToken = createTotpTrustToken(user.id, user.totpEnabledAt);
+    }
+    return { status: 'authenticated', ...session, totpTrustToken };
+  }
+
+  async completeOAuth2fa(
+    userId: string,
+    totpCode: string,
+    rememberDevice: boolean,
+  ) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      include: { company: true },
+    });
+    if (!user || user.status !== UserStatus.ACTIVE || !user.totpEnabledAt) {
+      throw new UnauthorizedException('oauth_2fa_expired');
+    }
+    await this.totp.assertValidCode(user.id, totpCode);
+    const session = await this.createSessionForUser(user);
+    const totpTrustToken = rememberDevice
+      ? createTotpTrustToken(user.id, user.totpEnabledAt)
+      : undefined;
+    return { ...session, totpTrustToken };
   }
 
   private async createSessionForUser(user: {
@@ -140,23 +241,31 @@ export class AuthService {
     companyId: string | null;
     firstAccess: boolean;
     tokenVersion?: number;
+    totpEnabledAt?: Date | null;
     company?: { name: string } | null;
   }) {
     const tokenVersion = user.tokenVersion ?? 0;
+    const requestUser = await this.permissionsService.buildRequestUser(
+      user.id,
+      tokenVersion,
+    );
+
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
-      companyId: user.companyId,
+      role: requestUser.role,
+      companyId: requestUser.companyId,
       tv: tokenVersion,
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
     this.presence.touch(user.id);
-    const requestUser = await this.permissionsService.buildRequestUser(
-      user.id,
-      tokenVersion,
-    );
+
+    const activeName =
+      requestUser.companies?.find((c) => c.id === requestUser.companyId)
+        ?.name ??
+      user.company?.name ??
+      null;
 
     return {
       message: 'Login realizado com sucesso',
@@ -165,24 +274,74 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        companyId: user.companyId,
-        companyName: user.company?.name ?? null,
+        role: requestUser.role,
+        companyId: requestUser.companyId,
+        companyName: activeName,
         firstAccess: user.firstAccess,
         permissions: requestUser.permissions,
+        companies: requestUser.companies ?? [],
+        totpEnabled: Boolean(user.totpEnabledAt),
       },
     };
+  }
+
+  async switchCompany(userId: string, companyId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || user.status !== UserStatus.ACTIVE) {
+      throw new UnauthorizedException();
+    }
+    if (!isClientPortalRole(user.role)) {
+      throw new ForbiddenException(
+        'Troca de empresa disponível apenas para usuários do portal cliente.',
+      );
+    }
+
+    const membership = await this.prisma.userCompany.findUnique({
+      where: {
+        userId_companyId: { userId, companyId },
+      },
+      include: {
+        company: { select: { id: true, name: true, deletedAt: true } },
+      },
+    });
+
+    if (!membership || membership.company.deletedAt) {
+      throw new BadRequestException('Empresa não vinculada a este usuário.');
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        companyId: membership.companyId,
+        role: membership.clientRole as UserRole,
+        tokenVersion: { increment: 1 },
+      },
+      include: { company: true },
+    });
+
+    return this.createSessionForUser(updated);
   }
 
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { company: true, permissions: true },
+      include: { company: true },
     });
 
     if (!user || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException();
     }
+
+    const requestUser = await this.permissionsService.buildRequestUser(
+      userId,
+      user.tokenVersion ?? 0,
+    );
+
+    const activeName =
+      requestUser.companies?.find((c) => c.id === requestUser.companyId)
+        ?.name ??
+      user.company?.name ??
+      null;
 
     return {
       message: 'Token válido',
@@ -190,13 +349,28 @@ export class AuthService {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role,
-        companyId: user.companyId,
-        companyName: user.company?.name ?? null,
+        role: requestUser.role,
+        companyId: requestUser.companyId,
+        companyName: activeName,
         firstAccess: user.firstAccess,
-        permissions: this.permissionsService.computeEffective(user),
+        permissions: requestUser.permissions,
+        companies: requestUser.companies ?? [],
+        totpEnabled: Boolean(user.totpEnabledAt),
+        totpAdminMustEnable: this.totp.adminMustEnable(user),
       },
     };
+  }
+
+  beginTotpSetup(userId: string) {
+    return this.totp.beginSetup(userId);
+  }
+
+  confirmTotpSetup(userId: string, code: string) {
+    return this.totp.confirmSetup(userId, code);
+  }
+
+  disableTotp(userId: string, code: string, password: string) {
+    return this.totp.disable(userId, code, password);
   }
 
   async firstAccess(data: FirstAccessDto) {
@@ -207,11 +381,7 @@ export class AuthService {
       },
     });
 
-    if (
-      !user ||
-      user.deletedAt ||
-      user.status !== UserStatus.ACTIVE
-    ) {
+    if (!user || user.deletedAt || user.status !== UserStatus.ACTIVE) {
       throw new UnauthorizedException('Usuário não encontrado');
     }
 

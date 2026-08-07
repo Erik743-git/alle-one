@@ -10,6 +10,7 @@ import {
   Shield,
   XCircle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { RendimentoOvertimeBadge } from "@/components/rendimento/rendimento-overtime-badge";
 import {
@@ -274,15 +275,25 @@ export function RendimentoEntryCard({
   entry: RendimentoEntry;
   dense?: boolean;
 }) {
+  const router = useRouter();
   const overtime = resolveRendimentoOvertimeDisplay(entry);
   return (
     <li
+      role="link"
+      tabIndex={0}
       className={cn(
-        "rounded-md border px-2 py-1 text-[10px]",
+        "cursor-pointer rounded-md border px-2 py-1 text-[10px] transition-colors hover:brightness-110",
         overtime.kind
           ? rendimentoOvertimeCardClass(overtime.kind)
           : "border-primary/20 bg-primary/10 text-foreground",
       )}
+      onClick={() => router.push(`/tickets/${entry.ticketNumber}`)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          router.push(`/tickets/${entry.ticketNumber}`);
+        }
+      }}
     >
       <div className="flex items-center justify-between gap-1">
         <span className="font-semibold">

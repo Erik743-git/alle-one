@@ -65,6 +65,8 @@ export type RendimentoEntry = {
   ticketNumber: number;
   clientName: string | null;
   description: string | null;
+  hasMedia?: boolean;
+  portalAppointmentId?: string | null;
   isOvertime: boolean;
   overtimeKind?: "EXTRA" | "PLANTAO" | null;
   valorizationServiceName?: string | null;
@@ -282,6 +284,19 @@ export const rendimentoService = {
 
   listCollaborators() {
     return apiRequest<RendimentoCollaborator[]>("/rendimento/collaborators");
+  },
+
+  listCompanyEmployees() {
+    return apiRequest<
+      Array<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        clientRole: string;
+        status: string;
+      }>
+    >("/rendimento/company-employees");
   },
 
   listCollaboratorListPreferences() {

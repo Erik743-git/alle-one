@@ -502,10 +502,7 @@ export class ZabbixService {
       return { range, days: period };
     }
 
-    const range = this.getTimeRangeFromDates(
-      period.startDate,
-      period.endDate,
-    );
+    const range = this.getTimeRangeFromDates(period.startDate, period.endDate);
     const diffMs = period.endDate.getTime() - period.startDate.getTime();
     const days = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 
@@ -886,9 +883,7 @@ export class ZabbixService {
     );
 
     if (!allowed) {
-      throw new ForbiddenException(
-        'Host não pertence ao grupo informado.',
-      );
+      throw new ForbiddenException('Host não pertence ao grupo informado.');
     }
 
     return this.getHostItemsSummary(normalizedHostId);
@@ -1038,12 +1033,18 @@ export class ZabbixService {
   ): ZabbixDashboardDetails {
     const hosts = this.dedupeBy(
       packs.flatMap((pack) => pack.hosts),
-      (host, index) => this.recordKey(host, ['hostid', 'host', 'name'], 'host', index),
+      (host, index) =>
+        this.recordKey(host, ['hostid', 'host', 'name'], 'host', index),
     );
     const templates = this.dedupeBy(
       packs.flatMap((pack) => pack.templates),
       (template, index) =>
-        this.recordKey(template, ['templateid', 'host', 'name'], 'template', index),
+        this.recordKey(
+          template,
+          ['templateid', 'host', 'name'],
+          'template',
+          index,
+        ),
     );
     const events = this.dedupeBy(
       packs.flatMap((pack) => pack.events),
@@ -1083,8 +1084,12 @@ export class ZabbixService {
     const eventosMedios = events.filter(
       (event) => Number(event.severity ?? 0) === 3,
     ).length;
-    const eventosProblema = events.filter((event) => event.value === '1').length;
-    const eventosRecuperacao = events.filter((event) => event.value === '0').length;
+    const eventosProblema = events.filter(
+      (event) => event.value === '1',
+    ).length;
+    const eventosRecuperacao = events.filter(
+      (event) => event.value === '0',
+    ).length;
 
     return {
       overview: {
@@ -1317,7 +1322,9 @@ export class ZabbixService {
     const groupNames = parseZabbixGroupNames(groupName);
     if (groupNames.length > 1) {
       const parts = await Promise.all(
-        groupNames.map((group) => this.getConsoleAlertsForGroup(group, options)),
+        groupNames.map((group) =>
+          this.getConsoleAlertsForGroup(group, options),
+        ),
       );
       const merged = this.dedupeBy(
         parts.flatMap((part) => part.alerts),
@@ -1358,7 +1365,14 @@ export class ZabbixService {
     const resolvedGroupName = resolved.name ?? groupName;
 
     const problems = await this.request<ZabbixProblemConsole[]>('problem.get', {
-      output: ['eventid', 'objectid', 'name', 'severity', 'clock', 'acknowledged'],
+      output: [
+        'eventid',
+        'objectid',
+        'name',
+        'severity',
+        'clock',
+        'acknowledged',
+      ],
       groupids: [groupid],
       selectTags: ['tag', 'value'],
       // problem.get só permite sortfield "eventid" (doc Zabbix API)
@@ -1441,14 +1455,42 @@ export class ZabbixService {
     };
   }
 
-  async acknowledgeEvents(eventIds: string[], message: string) {
+  async acknowledgeEvents(
+    eventIds: string[],
+    message: string,
+    options?: {
+      close?: boolean;
+      suppress?: boolean;
+      severity?: number;
+    },
+  ) {
     if (!eventIds.length) {
       throw new BadGatewayException('Nenhum evento informado para reconhecer.');
     }
-    return this.request<{ eventids?: string[] }>('event.acknowledge', {
+
+    // Bitmask Zabbix event.acknowledge:
+    // 1 close | 2 ack | 4 message | 8 severity | 32 suppress
+    let action = 2 | 4; // ack + message
+    if (options?.close) action |= 1;
+    if (options?.suppress) action |= 32;
+    if (
+      options?.severity != null &&
+      Number.isFinite(options.severity) &&
+      options.severity >= 0 &&
+      options.severity <= 5
+    ) {
+      action |= 8;
+    }
+
+    const params: Record<string, unknown> = {
       eventids: eventIds,
-      action: 6,
+      action,
       message: message.trim() || 'Reconhecido via Portal AlleOne',
-    });
+    };
+    if ((action & 8) !== 0) {
+      params.severity = options!.severity;
+    }
+
+    return this.request<{ eventids?: string[] }>('event.acknowledge', params);
   }
 }

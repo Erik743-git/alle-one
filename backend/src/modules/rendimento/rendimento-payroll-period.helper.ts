@@ -53,3 +53,18 @@ export function resolvePayrollPeriodRange(reference: Date): PayrollPeriodRange {
     label: `${formatShortPtBr(start)} a ${formatShortPtBr(end)}`,
   };
 }
+
+/**
+ * Período de HE estável para a agenda (mês/semana/dia).
+ * Usa o dia 15 do mês civil da data de referência para não “pular”
+ * o período ao selecionar dias 26–31 ou trocar Mês ↔ Semana ↔ Dia
+ * (ex.: em julho, permanece 26/06→25/07 mesmo no dia 29).
+ */
+export function resolvePayrollPeriodRangeForCalendarMonth(
+  reference: Date,
+): PayrollPeriodRange {
+  const midMonth = new Date(reference);
+  midMonth.setDate(15);
+  midMonth.setHours(0, 0, 0, 0);
+  return resolvePayrollPeriodRange(midMonth);
+}

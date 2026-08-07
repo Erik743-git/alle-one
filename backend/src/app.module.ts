@@ -32,6 +32,8 @@ import { ProjetosModule } from './modules/projetos/projetos.module';
 import { ConsoleModule } from './modules/console/console.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { IntegrationsHealthJob } from './integrations/integrations-health.job';
+import { RedisModule } from './common/redis/redis.module';
+import { EmailInboundModule } from './modules/email-inbound/email-inbound.module';
 
 @Module({
   imports: [
@@ -45,6 +47,7 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
       },
     ]),
     ScheduleModule.forRoot(),
+    RedisModule,
     SecurityModule,
     PrismaModule,
     PresenceModule,
@@ -68,6 +71,7 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
     ProjetosModule,
     ConsoleModule,
     TicketsModule,
+    EmailInboundModule,
   ],
   controllers: [AppController],
   providers: [

@@ -190,7 +190,7 @@ export function AppointmentImageChip({
         disabled={disabled}
         onClick={() => void handleOpen()}
         className={cn(
-          "relative h-14 w-[4.5rem] shrink-0 overflow-hidden rounded-md border border-border bg-muted/30",
+          "relative h-28 w-44 shrink-0 overflow-hidden rounded-md border border-border bg-muted/30",
           "transition hover:border-primary/50 hover:ring-2 hover:ring-primary/20",
           disabled && "pointer-events-none opacity-50",
           className,
@@ -206,7 +206,7 @@ export function AppointmentImageChip({
           <img
             src={thumbSrc}
             alt={filename || "Print"}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
           />
         ) : (
           <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 text-muted-foreground">

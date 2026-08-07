@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { appointmentDescriptionToPlainText, isAppointmentDoc } from "@/lib/appointment-doc";
 import { resolveRendimentoOvertimeDisplay } from "@/lib/rendimento/entry-overtime";
 import {
   assignTimelineColumns,
@@ -23,6 +24,16 @@ import type {
   RendimentoVoluntaryJustification,
 } from "@/lib/services/rendimento.service";
 import { buildDayTimeline } from "@/components/rendimento/rendimento-calendar-parts";
+
+function entryTooltipSub(description?: string | null): string | undefined {
+  const raw = description?.trim();
+  if (!raw) return undefined;
+  const plain = isAppointmentDoc(raw)
+    ? appointmentDescriptionToPlainText(raw)
+    : raw;
+  const cleaned = plain.replace(/\[imagem\]/gi, "").replace(/\s+/g, " ").trim();
+  return cleaned || undefined;
+}
 
 export {
   DEFAULT_TIMELINE_START_MIN,
@@ -71,7 +82,7 @@ export function buildTimelineBlocks(
           startMin: interval.startMin,
           endMin: interval.endMin,
           label: `#${entry.ticketNumber}${entry.clientName ? ` · ${entry.clientName}` : ""}`,
-          sub: entry.description?.trim() || undefined,
+          sub: entryTooltipSub(entry.description),
           tone,
         };
       }

@@ -2,16 +2,26 @@ import { API_URL, getBrowserApiBase } from "@/lib/env";
 import type { ModulePermission } from "./permission-modules";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 
+export type AuthCompanyMembership = {
+  id: string;
+  name: string;
+  clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER";
+};
+
 export type AuthUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT" | "CLIENT_GESTOR" | "CLIENT_MEMBER";
   companyId: string | null;
   companyName: string | null;
   firstAccess: boolean;
+  /** Empresas do portal cliente (multi-tenant). */
+  companies?: AuthCompanyMembership[];
   /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */
   permissions?: ModulePermission[];
+  totpEnabled?: boolean;
+  totpAdminMustEnable?: boolean;
 };
 
 /** @deprecated Sessão usa apenas cookie httpOnly — chave mantida para limpeza de legado. */
@@ -19,11 +29,11 @@ export const TOKEN_KEY = "alleone.token";
 export const USER_KEY = "alleone.user";
 
 function authLogoutUrl(): string {
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/logout`;
   if (typeof window !== "undefined") {
     return `${window.location.origin}/auth/logout`;
   }
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/logout`;
   return `${API_URL.replace(/\/$/, "")}/auth/logout`;
 }
 
@@ -100,10 +110,29 @@ export function clearSessionSync() {
   window.sessionStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(TOKEN_KEY);
+  try {
+    window.sessionStorage.removeItem("alleone.lastActivityAt");
+  } catch {
+    /* ignore */
+  }
   purgeInvalidPersistedCompanyIds();
 }
 
-/** Encerra sessão na API e limpa dados locais. */
+export type SessionEndReason = "expired" | "idle";
+
+/** Redireciona ao login com motivo (toast/alerta na página). */
+export function redirectToLogin(reason?: SessionEndReason) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  if (window.location.pathname.startsWith("/login")) {
+    return;
+  }
+  const q = reason ? `?reason=${reason}` : "";
+  window.location.replace(`/login${q}`);
+}
+
+/** Encerra sessão na API e limpa dados locais (preserva cookie de trust 2FA no backend). */
 export async function logoutSession(): Promise<void> {
   clearSessionSync();
   if (typeof window === "undefined") {
@@ -119,6 +148,13 @@ export async function logoutSession(): Promise<void> {
   }
 }
 
+/** Encerra sessão e vai ao login com motivo (401 / idle). */
+export async function endSession(reason?: SessionEndReason): Promise<void> {
+  await logoutSession();
+  redirectToLogin(reason);
+}
+
+/** Limpa sessão local + cookie de acesso (sem forçar redirect). */
 export function clearSession() {
   void logoutSession();
 }

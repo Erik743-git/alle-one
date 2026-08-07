@@ -129,11 +129,7 @@ export function buildTipo4ReportCsv(bundle: Tipo4ReportBundle): string {
   }
 
   lines.push(...sectionTitle('Monitoramento'));
-  pushRow([
-    bundle.monitoringUseWeekly ? 'Semana' : 'Mês',
-    'High',
-    'Disaster',
-  ]);
+  pushRow([bundle.monitoringUseWeekly ? 'Semana' : 'Mês', 'High', 'Disaster']);
   for (const r of bundle.alertasMonitoringRows) {
     pushRow([r.periodLabel, r.High, r.Disaster]);
   }
@@ -154,13 +150,7 @@ export function buildTipo4ReportCsv(bundle: Tipo4ReportBundle): string {
     'High',
     'Disaster',
   ]);
-  pushRow([
-    totalHosts,
-    uniqueTriggers,
-    totalAlerts,
-    totalHigh,
-    totalDisaster,
-  ]);
+  pushRow([totalHosts, uniqueTriggers, totalAlerts, totalHigh, totalDisaster]);
 
   lines.push(...sectionTitle('Top Triggers — top 10'));
   pushRow(['#', 'Host', 'Trigger', 'Severidade', 'Alertas']);
@@ -170,7 +160,9 @@ export function buildTipo4ReportCsv(bundle: Tipo4ReportBundle): string {
 
   if (bundle.principaisHosts.length > 0) {
     lines.push(
-      ...sectionTitle('Top Triggers — principais hosts por mês (top 3 por severidade)'),
+      ...sectionTitle(
+        'Top Triggers — principais hosts por mês (top 3 por severidade)',
+      ),
     );
     pushRow(['Mês', 'Host', 'Severidade', 'Posição', 'Alertas']);
     for (const m of bundle.principaisHosts) {

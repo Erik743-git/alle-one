@@ -25,19 +25,19 @@ Principais oportunidades:
 
 | Melhoria | Motivo | Ação |
 |----------|--------|------|
-| Proteger `GET /health/integrations` | Endpoint público expõe estado do sync TiFlux e outbox | Exigir ADMIN ou token interno |
-| Alinhar permissões Tickets (CLIENT vs ADMIN) | Menu visível mas API `GET /tickets` só ADMIN | Definir regra de produto e espelhar front/back |
-| Upload com validação real | MIME vem do cliente | Magic bytes + limite por tipo |
-| Migrar Nginx para `/api` | Whitelist quebra a cada módulo novo | `API_GLOBAL_PREFIX=api` + `NEXT_PUBLIC_API_URL` |
-| Auditoria mais ampla | Só ADMIN em mutações com `@AuditMeta` | Incluir GMUD approve, ack Console, import inventário |
-| Corrigir `ON CONFLICT` no Rendimento | Migration parcial vs código antigo | `WHERE deleted_at IS NULL` no conflito |
+| Proteger `GET /health/integrations` | Endpoint público expõe estado do sync TiFlux e outbox | ✅ Token interno (`HEALTH_INTEGRATIONS_TOKEN`) ou ADMIN |
+| Alinhar permissões Tickets (CLIENT vs ADMIN) | Menu visível mas API `GET /tickets` só ADMIN | ✅ Lista/detalhe com canView; CLIENT escopado |
+| Upload com validação real | MIME vem do cliente | ✅ Magic bytes + limite por tipo (`assertAllowedUpload`) |
+| Migrar Nginx para `/api` | Whitelist quebra a cada módulo novo | ✅ Configs `/api` no repo; aplicar em prod na janela |
+| Auditoria mais ampla | Só ADMIN em mutações com `@AuditMeta` | ✅ `@AuditMeta` audita qualquer role autenticada |
+| Corrigir `ON CONFLICT` no Rendimento | Migration parcial vs código antigo | ✅ Índice parcial + upsert com `WHERE deleted_at IS NULL` |
 
 ### Prioridade média
 
 - Rate limit por usuário/empresa (não só global 200/min)
 - CSRF explícito em mutações sensíveis
 - Rotação documentada de tokens Zabbix/TiFlux
-- Desabilitar `TIFLUX_UNSAFE_ENDPOINTS` em prod no startup
+- Desabilitar `TIFLUX_UNSAFE_ENDPOINTS` em prod no startup ✅
 - S3 obrigatório em prod para anexos
 - 2FA (TOTP) para ADMIN
 
@@ -135,12 +135,11 @@ Principais oportunidades:
 
 | Item | Impacto |
 |------|---------|
-| `dashboard.service.ts` (~3300 linhas) | Manutenção e testes difíceis |
-| `tickets.service.ts` / `rendimento.service.ts` (~3000 linhas) | Idem |
-| Permissões duplicadas front/back | Drift silencioso |
-| Nginx whitelist manual | Quebra produção a cada rota |
-| Poucos testes E2E | Regressão em deploy |
-| Sync TiFlux externo obrigatório | Portal degradado se sync parar |
+| `dashboard.service.ts` (~1150; hours/charts/integrations extraídos) | Continuar fatiar orquestração complete |
+| `tickets.service.ts` (~320; query/catalogs/appointments extraídos) | Create ticket + GMUD restantes |
+| `rendimento.service.ts` / `reports.service.ts` / `projetos.service.ts` | Fatias iniciais extraídas (overtime, inventario reports, docs) |
+| Poucos testes E2E | ✅ Smoke E2E: login + GMUD/apontamento/console/inventário (skip sem API) |
+| Sync TiFlux externo obrigatório | Fundação cutover: `portal_tickets` + flags — ver CUTOVER_TIFLUX.md |
 
 **Sugestão:** extrair services por domínio + 5 fluxos E2E: login, GMUD approve, apontamento, Console ack, import inventário.
 
@@ -150,36 +149,29 @@ Principais oportunidades:
 
 ### Sprints 1–2 — Estabilização produção
 
-1. Nginx `/api` ou validação automática de rotas
-2. Fix Rendimento `ON CONFLICT`
-3. Permissões Tickets CLIENT
-4. Proteger `/health/integrations`
-5. Console ack completo (Zabbix)
-
-### Sprints 3–4 — Usabilidade
-
-1. Busca global
-2. Inventário: alertas vencimento
-3. GMUD timeline + templates
-4. Modo NOC
-5. Ticket a partir do alerta
+1. Nginx `/api` ou validação automática de rotas ✅ (configs; deploy prod pendente)
+2. Fix Rendimento `ON CONFLICT` ✅
+3. Permissões Tickets CLIENT ✅
+4. Proteger `/health/integrations` ✅
+5. Console ack completo (Zabbix) ✅ (close/suppress + message)
 
 ### Sprints 5–6 — Escala e qualidade
 
-1. E2E dos 5 fluxos críticos
-2. Refatorar `tickets.service`
-3. S3 + Sentry em prod
+1. E2E dos 5 fluxos críticos ✅ (smoke + skip sem API)
+2. Refatorar `tickets.service` ✅ (query/catalogs/appointments)
+3. S3 + Sentry em prod (Fase 3)
 4. Projeto ↔ apontamento
 5. Relatório mensal cliente
+6. Cutover TiFlux — `portal_tickets` ✅ fundação; validar staging
 
 ---
 
 ## 6. Quick wins (1–3 dias cada)
 
-1. Aumentar `sleep` no health do pós-deploy
-2. Documentar matriz ROLE × MÓDULO × ação
-3. Badge “sync stale” no header
-4. “Copiar host/problema” no detalhe do Console
+1. Aumentar `sleep` no health do pós-deploy ✅
+2. Documentar matriz ROLE × MÓDULO × ação ✅ (`docs/PERMISSIONS_MATRIX.md`)
+3. Badge “sync stale” no header ✅
+4. “Copiar host/problema” no detalhe do Console ✅
 5. Commit ordenação Console + fix coluna Ações empresas ✅
 
 ---

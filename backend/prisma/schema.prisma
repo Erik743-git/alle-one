@@ -11,7 +11,16 @@ enum UserRole {
   ADMIN
   COLLABORATOR
   PJ
+  /// @deprecated Migrado para CLIENT_GESTOR — mantido para compatibilidade.
   CLIENT
+  CLIENT_GESTOR
+  CLIENT_MEMBER
+}
+
+/// Papel do usuário CLIENT_* em uma empresa (membership multi-tenant).
+enum ClientCompanyRole {
+  CLIENT_GESTOR
+  CLIENT_MEMBER
 }
 
 enum UserStatus {
@@ -98,11 +107,22 @@ model User {
   rendimentoCustomSchedule    Boolean              @default(false) @map("rendimento_custom_schedule")
   rendimentoDailyWorkMinutes  Int?                 @map("rendimento_daily_work_minutes")
   rendimentoLunchMinutes      Int?                 @map("rendimento_lunch_minutes")
+  totpSecretEncrypted String?              @map("totp_secret_encrypted") @db.Text
+  totpEnabledAt       DateTime?            @map("totp_enabled_at")
+  totpBackupCodesHash String?              @map("totp_backup_codes_hash") @db.Text
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   deletedAt           DateTime?            @map("deleted_at")
 
+  specialtyId         String?              @map("specialty_id")
+  specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+
   company             Company?             @relation(fields: [companyId], references: [id])
+  companyMemberships  UserCompany[]
+  dashboardChartPresets DashboardChartPreset[]
+  preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
+  preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
+  emailInboundRoutesCreated EmailInboundRoute[] @relation("EmailInboundRouteCreator")
   permissions         Permission[]
   passwordResetTokens PasswordResetToken[]
   uploadedFiles       File[]               @relation("UserUploadedFiles")
@@ -113,7 +133,6 @@ model User {
   gmudActivityExecutions GmudActivity[]    @relation("GmudActivityExecutor")
   gmudAttachmentUploads GmudAttachment[]   @relation("GmudAttachmentUploader")
   auditLogs           AuditLog[]
-  serviceDeskLinks    UserServiceDesk[]
   mailboxNotifications MailboxNotification[]
   inventoryAssetsCreated InventoryAsset[] @relation("InventoryAssetCreator")
   tifluxOutboxEntries    PortalTifluxOutbox[]
@@ -121,6 +140,7 @@ model User {
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
   portalTicketGmudLinks PortalTicketGmudLink[]
   portalTicketDescriptions PortalTicketDescription[] @relation("PortalTicketDescriptionCreator")
+  portalTickets            PortalTicket[]            @relation("PortalTicketCreator")
   appointmentQuestionsAsked RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAskedBy")
   appointmentQuestionsAnswered RendimentoAppointmentQuestion[] @relation("RendimentoQuestionAnsweredBy")
   rendimentoDayEvents          RendimentoDayEvent[]           @relation("RendimentoDayEvents")
@@ -182,14 +202,75 @@ model Company {
   reports              Report[]
   billingEntries       BillingEntry[]
   zabbixHosts          IntegrationZabbixHost[]
+  preTickets           PreTicket[]
+  emailInboundRoutes   EmailInboundRoute[]
   tifluxAccounts       IntegrationTiFluxAccount[]
   usageAlertRules      UsageAlertRule[]
   inventoryAssets      InventoryAsset[]
   appointmentQuestions RendimentoAppointmentQuestion[]
   projects             Project[]
+  modules              CompanyModule[]
+  userMemberships      UserCompany[]
+  dashboardChartPresets DashboardChartPreset[]
 
   @@unique([cnpj])
   @@map("companies")
+}
+
+/// Vínculo usuário ↔ empresa (mesmo e-mail pode atender mais de um cliente).
+model UserCompany {
+  id         String            @id @default(uuid())
+  userId     String            @map("user_id")
+  companyId  String            @map("company_id")
+  clientRole ClientCompanyRole @map("client_role")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  updatedAt  DateTime          @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId])
+  @@index([companyId])
+  @@map("user_companies")
+}
+
+/// Preset de gráfico do dashboard por usuário+empresa+visão+widget.
+model DashboardChartPreset {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  companyId  String   @map("company_id")
+  /// ALLE | INTERNAL
+  viewMode   String   @default("ALLE") @map("view_mode") @db.VarChar(20)
+  /// CHAMADOS | HORAS | ALERTAS
+  chartKey   String   @default("CHAMADOS") @map("chart_key") @db.VarChar(32)
+  chartType  String   @default("bar") @map("chart_type") @db.VarChar(32)
+  deskNames  String[] @default([]) @map("desk_names")
+  periodDays Int      @default(30) @map("period_days")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, companyId, viewMode, chartKey])
+  @@index([companyId])
+  @@map("dashboard_chart_presets")
+}
+
+/// Módulos contratados (pack vendido) por empresa. Staff Alle ignora; CLIENT_* intersecta.
+model CompanyModule {
+  id        String           @id @default(uuid())
+  companyId String           @map("company_id")
+  module    PermissionModule
+  enabled   Boolean          @default(true)
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, module])
+  @@index([companyId])
+  @@map("company_modules")
 }
 
 model InventoryAssetType {
@@ -235,8 +316,10 @@ model InventoryAsset {
   @@map("inventory_assets")
 }
 
-model ServiceDesk {
+/// Especialidade operacional (ex.: NOC, Infra, Consult). Substitui o antigo conceito de "mesa de serviço".
+model Specialty {
   id           String            @id @default(uuid())
+  /// ID legado externo (integração histórica). Não usar como conceito de produto.
   externalId   Int?              @unique @map("external_id")
   name         String            @unique
   active       Boolean           @default(true)
@@ -244,46 +327,57 @@ model ServiceDesk {
   updatedAt    DateTime          @updatedAt @map("updated_at")
   deletedAt    DateTime?         @map("deleted_at")
 
-  userLinks         UserServiceDesk[]
-  classifications ServiceDeskClassification[]
+  users               User[]
+  classifications     SpecialtyClassification[]
+  contractSpecialties ContractSpecialty[]
+  emailInboundRoutes  EmailInboundRoute[]
+  preTickets          PreTicket[]
+  portalTickets       PortalTicket[]
 
-  @@map("service_desks")
+  @@map("specialties")
 }
 
-/// Hierarquia portal sobre a mesa TiFlux: até 3 níveis (ex.: Software → Antivírus → Bitdefender).
-model ServiceDeskClassification {
-  id            String   @id @default(uuid())
-  serviceDeskId String   @map("service_desk_id")
-  parentId      String?  @map("parent_id")
-  name          String
-  level         Int
-  sortOrder     Int      @default(0) @map("sort_order")
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+/// Hierarquia de classificação sob a especialidade: no máximo 2 níveis.
+model SpecialtyClassification {
+  id          String   @id @default(uuid())
+  specialtyId String   @map("specialty_id")
+  parentId    String?  @map("parent_id")
+  name        String
+  level       Int
+  sortOrder   Int      @default(0) @map("sort_order")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  serviceDesk ServiceDesk                 @relation(fields: [serviceDeskId], references: [id], onDelete: Cascade)
-  parent      ServiceDeskClassification?  @relation("ServiceDeskClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children    ServiceDeskClassification[] @relation("ServiceDeskClassificationTree")
-  contracts   Contract[]
+  specialty Specialty                  @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+  parent    SpecialtyClassification?   @relation("SpecialtyClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  SpecialtyClassification[]  @relation("SpecialtyClassificationTree")
+  contracts Contract[]
 
-  @@unique([serviceDeskId, parentId, name])
-  @@index([serviceDeskId])
+  @@unique([specialtyId, parentId, name])
+  @@index([specialtyId])
   @@index([parentId])
-  @@map("service_desk_classifications")
+  @@map("specialty_classifications")
 }
 
-model UserServiceDesk {
-  userId        String      @map("user_id")
-  serviceDeskId String      @map("service_desk_id")
-  createdAt     DateTime    @default(now()) @map("created_at")
+/// Linha de especialidade dentro de um contrato (N especialidades por contrato).
+model ContractSpecialty {
+  id              String   @id @default(uuid())
+  contractId      String   @map("contract_id")
+  specialtyId     String   @map("specialty_id")
+  monthlyHours    Int      @default(0) @map("monthly_hours")
+  unlimited       Boolean  @default(false)
+  contractValue   Decimal  @default(0) @db.Decimal(12, 2) @map("contract_value")
+  excessHourPrice Decimal  @default(0) @db.Decimal(10, 2) @map("excess_hour_price")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  serviceDesk   ServiceDesk @relation(fields: [serviceDeskId], references: [id], onDelete: Cascade)
+  contract  Contract   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
 
-  @@id([userId, serviceDeskId])
-  @@index([serviceDeskId])
-  @@map("user_service_desks")
+  @@unique([contractId, specialtyId])
+  @@index([specialtyId])
+  @@map("contract_specialties")
 }
 
 model Permission {
@@ -306,11 +400,14 @@ model Permission {
 model Contract {
   id               String           @id @default(uuid())
   companyId        String           @map("company_id")
+  /// @deprecated Preferir contract_specialties; mantido para leitura legada.
   classificationId String?          @map("classification_id")
   title            String
   description      String?
   status           ContractStatus
+  /// @deprecated Preferir horas por linha em contract_specialties.
   monthlyHours     Int              @map("monthly_hours")
+  /// @deprecated Preferir excess_hour_price em contract_specialties.
   extraHourPrice   Decimal          @db.Decimal(10, 2) @map("extra_hour_price")
   startDate        DateTime         @map("start_date")
   endDate          DateTime?        @map("end_date")
@@ -319,7 +416,8 @@ model Contract {
   deletedAt        DateTime?        @map("deleted_at")
 
   company          Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  classification   ServiceDeskClassification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
+  classification   SpecialtyClassification?   @relation(fields: [classificationId], references: [id], onDelete: SetNull)
+  specialties      ContractSpecialty[]
   contractFiles    ContractFile[]
   billingEntries   BillingEntry[]
 
@@ -360,6 +458,7 @@ model File {
   inventoryAssets    InventoryAsset[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
   projectDocuments   ProjectDocument[]
+  preTicketAttachments PreTicketAttachment[]
 
   @@index([uploadedBy])
   @@map("files")
@@ -673,6 +772,50 @@ enum PortalTicketAppointmentSyncStatus {
   PORTAL_ONLY
 }
 
+enum PortalTicketOrigin {
+  TIFLUX
+  PORTAL
+}
+
+/// Ticket canônico do portal (cutover TiFlux). Ver docs/CUTOVER_TIFLUX.md.
+model PortalTicket {
+  id                      String             @id @default(uuid())
+  ticketNumber            Int                @unique @map("ticket_number")
+  title                   String?
+  clientName              String?            @map("client_name")
+  clientExternalId        Int?               @map("client_external_id")
+  createdByWayOf          String?            @map("created_by_way_of") @db.VarChar(120)
+  priorityName            String?            @map("priority_name")
+  statusName              String?            @map("status_name")
+  stageName               String?            @map("stage_name")
+  responsibleExternalId   Int?               @map("responsible_external_id")
+  responsibleName         String?            @map("responsible_name")
+  deskName                String?            @map("desk_name")
+  deskExternalId          Int?               @map("desk_external_id")
+  specialtyId             String?            @map("specialty_id")
+  requestorName           String?            @map("requestor_name")
+  requestorEmail          String?            @map("requestor_email")
+  requestorTelephone      String?            @map("requestor_telephone")
+  isClosed                Boolean            @default(false) @map("is_closed")
+  origin                  PortalTicketOrigin @default(TIFLUX)
+  createdAtSource         DateTime?          @map("created_at_source")
+  updatedAtSource         DateTime?          @map("updated_at_source")
+  createdBy               String?            @map("created_by")
+  createdAt               DateTime           @default(now()) @map("created_at")
+  updatedAt               DateTime           @updatedAt @map("updated_at")
+
+  creator    User?       @relation("PortalTicketCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  specialty  Specialty?  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+
+  @@index([clientExternalId])
+  @@index([isClosed, updatedAtSource])
+  @@index([responsibleExternalId])
+  @@index([isClosed, responsibleExternalId, updatedAtSource])
+  @@index([isClosed, clientExternalId, createdAtSource])
+  @@index([specialtyId])
+  @@map("portal_tickets")
+}
+
 /// Apontamento criado pelo portal (campos completos). TiFlux recebe só data/hora/descrição quando a API permitir.
 model PortalTicketAppointment {
   id                          String                            @id @default(uuid())
@@ -698,6 +841,7 @@ model PortalTicketAppointment {
 
   @@index([ticketNumber])
   @@index([tifluxAppointmentExternalId])
+  /// UNIQUE parcial via migration SQL (WHERE NOT NULL) — Prisma não modela partial unique.
   @@map("portal_ticket_appointments")
 }
 
@@ -749,6 +893,34 @@ model PortalTicketGmudLink {
 
   @@index([externalGmudRef])
   @@map("portal_ticket_gmud_links")
+}
+
+/// E-mails em cópia (seguidores) do chamado.
+model PortalTicketWatcher {
+  id           String   @id @default(uuid())
+  ticketNumber Int      @map("ticket_number")
+  email        String   @db.VarChar(255)
+  createdBy    String?  @map("created_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([ticketNumber, email])
+  @@index([ticketNumber])
+  @@index([email])
+  @@map("portal_ticket_watchers")
+}
+
+/// Templates de e-mail parametrizados (Admin → E-mail).
+model EmailTemplate {
+  id        String   @id @default(uuid())
+  key       String   @unique @db.VarChar(64)
+  name      String   @db.VarChar(120)
+  subject   String   @db.VarChar(500)
+  bodyHtml  String   @map("body_html")
+  bodyText  String   @map("body_text")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("email_templates")
 }
 
 /// Cache de eventos do histórico TiFlux (estágios e interações anteriores ao portal).
@@ -1069,4 +1241,108 @@ model ProjectDocument {
   @@index([projectId])
   @@index([fileId])
   @@map("project_documents")
+}
+
+enum PreTicketStatus {
+  PENDING
+  OPENED
+  DELETED
+  IGNORED
+}
+
+/// Pré-ticket gerado por e-mail (Microsoft Graph) antes de virar portal_tickets.
+model PreTicket {
+  id                String          @id @default(uuid())
+  status            PreTicketStatus @default(PENDING)
+  title             String
+  descriptionHtml   String?         @map("description_html") @db.Text
+  descriptionText   String?         @map("description_text") @db.Text
+  fromName          String?         @map("from_name")
+  fromEmail         String          @map("from_email")
+  toEmails          String[]        @map("to_emails")
+  channel           String          @default("E-mail") @db.VarChar(40)
+  mailboxAddress    String          @map("mailbox_address")
+  messageId         String          @unique @map("message_id")
+  graphMessageId    String?         @map("graph_message_id")
+  companyId         String?         @map("company_id")
+  requestorUserId   String?         @map("requestor_user_id")
+  specialtyId       String?         @map("specialty_id")
+  priorityName      String?         @map("priority_name") @db.VarChar(80)
+  attachmentCount   Int             @default(0) @map("attachment_count")
+  ticketNumber      Int?            @map("ticket_number")
+  openedByUserId    String?         @map("opened_by_user_id")
+  openedAt          DateTime?       @map("opened_at")
+  deletedAt         DateTime?       @map("deleted_at")
+  receivedAt        DateTime        @map("received_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  company       Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  requestorUser User?        @relation("PreTicketRequestor", fields: [requestorUserId], references: [id], onDelete: SetNull)
+  openedByUser  User?        @relation("PreTicketOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  specialty     Specialty?   @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  attachments   PreTicketAttachment[]
+
+  @@index([status, receivedAt])
+  @@index([fromEmail])
+  @@index([mailboxAddress])
+  @@map("pre_tickets")
+}
+
+model PreTicketAttachment {
+  id          String   @id @default(uuid())
+  preTicketId String   @map("pre_ticket_id")
+  fileId      String   @map("file_id")
+  fileName    String   @map("file_name")
+  contentType String?  @map("content_type")
+  sizeBytes   Int?     @map("size_bytes")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  preTicket PreTicket @relation(fields: [preTicketId], references: [id], onDelete: Cascade)
+  file      File      @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@index([preTicketId])
+  @@map("pre_ticket_attachments")
+}
+
+/// Direcionamento de e-mail inbound (estilo TiFlux Recebimento).
+model EmailInboundRoute {
+  id            String   @id @default(uuid())
+  matchEmail    String   @map("match_email")
+  specialtyId   String?  @map("specialty_id")
+  companyId     String?  @map("company_id")
+  priorityName  String?  @map("priority_name") @db.VarChar(80)
+  verified      Boolean  @default(false)
+  active        Boolean  @default(true)
+  createdBy     String?  @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  specialty Specialty? @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  company   Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  creator   User?      @relation("EmailInboundRouteCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([matchEmail])
+  @@index([active])
+  @@map("email_inbound_routes")
+}
+
+/// Config singleton da caixa Microsoft Graph (id fixo "default").
+model EmailInboundSettings {
+  id                    String   @id @default("default")
+  sharedMailboxAddress  String?  @map("shared_mailbox_address")
+  useAsRequester        String   @default("Remetente") @map("use_as_requester") @db.VarChar(40)
+  graphTenantId         String?  @map("graph_tenant_id")
+  graphClientId         String?  @map("graph_client_id")
+  /// Secret fica preferencialmente em env GRAPH_CLIENT_SECRET; campo opcional criptografado.
+  graphClientSecretEnc  String?  @map("graph_client_secret_enc") @db.Text
+  deltaLink             String?  @map("delta_link") @db.Text
+  lastPolledAt          DateTime? @map("last_polled_at")
+  enabled               Boolean  @default(false)
+  /// Remetentes/domínios que não viram pré-ticket (um por linha: email@x.com ou *@dominio.com).
+  blockedSenders        String?  @map("blocked_senders") @db.Text
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("email_inbound_settings")
 }

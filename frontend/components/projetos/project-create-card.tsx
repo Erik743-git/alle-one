@@ -123,7 +123,7 @@ export function ProjectCreateCard({ companyId, onCreated }: Props) {
               className="h-11"
             />
             <p className="text-xs text-muted-foreground">
-              Cada projeto fica ligado a um único chamado TiFlux.
+              Cada projeto fica ligado a um único chamado do portal.
             </p>
           </div>
 

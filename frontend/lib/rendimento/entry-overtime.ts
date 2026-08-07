@@ -30,7 +30,7 @@ export type RendimentoOvertimeEntryInput = Pick<
   description?: string | null;
 };
 
-/** Classificação única para UI: prioriza tipo TiFlux, depois overtimeKind da API. */
+/** Classificação única para UI: prioriza tipo do serviço, depois overtimeKind da API. */
 export function resolveRendimentoOvertimeDisplay(
   entry: RendimentoOvertimeEntryInput,
 ): RendimentoOvertimeDisplay {

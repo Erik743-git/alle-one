@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, FileText, Loader2, Plus, UserRound } from "lucide-react";
+import { Building2, FileText, Loader2, Plus, UserRound, X } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -15,20 +15,28 @@ import {
 } from "@/components/tickets/appointment-description-composer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicket,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
+import { isClientPortalRole } from "@/lib/app-roles";
+import { useAuth } from "@/lib/use-auth";
 import { TICKETS_NEW_SUBTITLE } from "@/lib/module-copy";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  applyClientTitlePrefix,
+  formatBrPhone,
+  isValidBrPhone,
+} from "@/lib/ticket-form";
 import {
   ticketsService,
   type TicketCreateCatalogs,
 } from "@/lib/services/tickets.service";
+import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 
 function FormSkeleton() {
   return (
@@ -51,6 +59,8 @@ function FormSkeleton() {
 
 export default function NewTicketPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isClientUser = isClientPortalRole(user?.role);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [catalogs, setCatalogs] = useState<TicketCreateCatalogs | null>(null);
@@ -70,10 +80,21 @@ export default function NewTicketPage() {
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorTelephone, setRequestorTelephone] = useState("");
   const [externalGmudRef, setExternalGmudRef] = useState("");
+  const [gmudOptions, setGmudOptions] = useState<Gmud[]>([]);
+  const [loadingGmuds, setLoadingGmuds] = useState(false);
+  const [ccPeople, setCcPeople] = useState<
+    Array<{ email: string; name?: string }>
+  >([]);
+  const [ccSelectValue, setCcSelectValue] = useState("");
 
   const selectedDesk = useMemo(
     () => catalogs?.desks.find((d) => String(d.id) === deskId) ?? null,
     [catalogs, deskId],
+  );
+
+  const selectedClient = useMemo(
+    () => catalogs?.clients.find((c) => String(c.id) === clientId) ?? null,
+    [catalogs, clientId],
   );
 
   const hasPortalClassification =
@@ -145,26 +166,69 @@ export default function NewTicketPage() {
     [catalogs],
   );
 
-  const requiresRequestor = Boolean(
-    catalogs?.desk?.requiredFields?.requestor_name ||
-      catalogs?.desk?.requiredFields?.requestor_email,
+  const ccOptions = useMemo(() => {
+    const selected = new Set(ccPeople.map((p) => p.email.toLowerCase()));
+    return (catalogs?.responsibles ?? [])
+      .filter((r) => {
+        const email = r.email?.trim().toLowerCase();
+        return Boolean(email) && !selected.has(email!);
+      })
+      .map((r) => ({
+        value: r.email!.trim().toLowerCase(),
+        label: `${r.name} (${r.email!.trim()})`,
+      }));
+  }, [catalogs, ccPeople]);
+
+  const gmudSelectOptions = useMemo(
+    () =>
+      gmudOptions.map((g) => ({
+        value: String(g.code),
+        label: `#${g.code} — ${g.title}`,
+      })),
+    [gmudOptions],
   );
 
   const catalogBlocked =
     requiresCatalog && deskId !== "" && catalogItemOptions.length === 0;
 
+  const requiresPriority =
+    Boolean(deskId) && !requiresCatalog && !hasPortalClassification;
+
+  const missingRequired = useMemo(() => {
+    const missing: string[] = [];
+    if (!title.trim()) missing.push("Título");
+    if (!clientId) missing.push("Cliente");
+    if (!deskId) missing.push("Mesa de serviço");
+    if (deskId && hasPortalClassification && !classificationId) {
+      missing.push("Classificação");
+    }
+    if (deskId && requiresCatalog && !catalogBlocked && !catalogItemId) {
+      missing.push("Serviço do catálogo");
+    }
+    if (requiresPriority && !priorityId) missing.push("Prioridade");
+    if (!requestorName.trim()) missing.push("Solicitante");
+    if (!requestorEmail.trim()) missing.push("E-mail do solicitante");
+    return missing;
+  }, [
+    title,
+    clientId,
+    deskId,
+    hasPortalClassification,
+    classificationId,
+    requiresCatalog,
+    catalogBlocked,
+    catalogItemId,
+    requiresPriority,
+    priorityId,
+    requestorName,
+    requestorEmail,
+  ]);
+
   const canSubmit =
     !loading &&
     !saving &&
     !catalogBlocked &&
-    !(requiresRequestor && clientId && !requestorId);
-
-  const selectedRequestor = useMemo(
-    () =>
-      (catalogs?.requestors ?? []).find((r) => String(r.id) === requestorId) ??
-      null,
-    [catalogs, requestorId],
-  );
+    missingRequired.length === 0;
 
   const prevDeskIdRef = useRef("");
 
@@ -174,6 +238,19 @@ export default function NewTicketPage() {
         setLoading(true);
         const data = await ticketsService.createCatalogs(params);
         setCatalogs(data);
+        setClientId((prev) => {
+          if (data.clients.length === 1) {
+            return String(data.clients[0].id);
+          }
+          if (
+            isClientUser &&
+            data.clients.length > 0 &&
+            !data.clients.some((c) => String(c.id) === prev)
+          ) {
+            return String(data.clients[0].id);
+          }
+          return prev;
+        });
       } catch (err) {
         notifyError(
           err instanceof Error
@@ -184,7 +261,7 @@ export default function NewTicketPage() {
         setLoading(false);
       }
     },
-    [],
+    [isClientUser],
   );
 
   useEffect(() => {
@@ -214,22 +291,88 @@ export default function NewTicketPage() {
     });
   }, [deskId, clientId, loadCatalogs]);
 
+  useEffect(() => {
+    const companyId = selectedClient?.companyId;
+    if (!companyId) {
+      setGmudOptions([]);
+      setExternalGmudRef("");
+      return;
+    }
+    let cancelled = false;
+    setLoadingGmuds(true);
+    void gmudsService
+      .list({ companyId })
+      .then((rows) => {
+        if (!cancelled) setGmudOptions(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setGmudOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingGmuds(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClient?.companyId]);
+
   function handleClientChange(nextClientId: string) {
+    const nextClient =
+      catalogs?.clients.find((c) => String(c.id) === nextClientId) ?? null;
+    setTitle((prev) =>
+      applyClientTitlePrefix(
+        prev,
+        (catalogs?.clients ?? []).map((c) => c.name),
+        nextClient?.name ?? null,
+      ),
+    );
     setClientId(nextClientId);
     setRequestorId("");
-    setRequestorName("");
-    setRequestorEmail("");
-    setRequestorTelephone("");
+    setExternalGmudRef("");
   }
 
-  function handleRequestorChange(nextRequestorId: string) {
+  function handleRequestorSuggestion(nextRequestorId: string) {
     setRequestorId(nextRequestorId);
+    if (!nextRequestorId) {
+      setRequestorName("");
+      setRequestorEmail("");
+      setRequestorTelephone("");
+      return;
+    }
     const selected = (catalogs?.requestors ?? []).find(
       (row) => String(row.id) === nextRequestorId,
     );
-    setRequestorName(selected?.name ?? "");
-    setRequestorEmail(selected?.email ?? "");
-    setRequestorTelephone(selected?.telephone ?? "");
+    if (!selected) return;
+    setRequestorName(selected.name ?? "");
+    setRequestorEmail(selected.email ?? "");
+    setRequestorTelephone(
+      selected.telephone ? formatBrPhone(selected.telephone) : "",
+    );
+  }
+
+  function addCcPerson(emailRaw: string, name?: string) {
+    const email = emailRaw.trim().toLowerCase();
+    if (!email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      notifyError("E-mail em cópia inválido.");
+      return;
+    }
+    setCcPeople((prev) => {
+      if (prev.some((p) => p.email === email)) return prev;
+      return [...prev, { email, name }];
+    });
+    setCcSelectValue("");
+  }
+
+  function handleCcSelect(nextEmail: string) {
+    if (!nextEmail) {
+      setCcSelectValue("");
+      return;
+    }
+    const selected = (catalogs?.responsibles ?? []).find(
+      (r) => r.email?.trim().toLowerCase() === nextEmail,
+    );
+    addCcPerson(nextEmail, selected?.name);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -256,7 +399,7 @@ export default function NewTicketPage() {
     }
 
     if (requiresCatalog && !catalogItemId) {
-      notifyError("Selecione o serviço do catálogo TiFlux.");
+      notifyError("Selecione o serviço do catálogo.");
       return;
     }
 
@@ -265,12 +408,16 @@ export default function NewTicketPage() {
       return;
     }
 
-    const requiredFields = catalogs?.desk?.requiredFields ?? {};
-    if (
-      (requiredFields.requestor_name || requiredFields.requestor_email) &&
-      !requestorId
-    ) {
-      notifyError("Selecione o solicitante vinculado ao cliente.");
+    if (!requestorName.trim()) {
+      notifyError("Informe o nome do solicitante.");
+      return;
+    }
+    if (!requestorEmail.trim()) {
+      notifyError("Informe o e-mail do solicitante.");
+      return;
+    }
+    if (requestorTelephone.trim() && !isValidBrPhone(requestorTelephone)) {
+      notifyError("Telefone inválido. Use DDD + número.");
       return;
     }
 
@@ -289,10 +436,12 @@ export default function NewTicketPage() {
           classificationId: classificationId ?? undefined,
           responsibleId: responsibleId ? Number(responsibleId) : undefined,
           requestorId: requestorId ? Number(requestorId) : undefined,
-          requestorName: requestorName.trim() || undefined,
-          requestorEmail: requestorEmail.trim() || undefined,
+          requestorName: requestorName.trim(),
+          requestorEmail: requestorEmail.trim(),
           requestorTelephone: requestorTelephone.trim() || undefined,
           externalGmudRef: externalGmudRef.trim() || undefined,
+          ccEmails:
+            ccPeople.length > 0 ? ccPeople.map((p) => p.email) : undefined,
         },
         files,
       );
@@ -337,13 +486,15 @@ export default function NewTicketPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Título
-                      </Label>
+                      <FieldLabel required>Título</FieldLabel>
                       <Input
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Resumo do problema ou solicitação"
+                        placeholder={
+                          selectedClient
+                            ? `${selectedClient.name.toUpperCase()} - Resumo do problema`
+                            : "Resumo do problema ou solicitação"
+                        }
                         className="h-11"
                         required
                       />
@@ -353,8 +504,8 @@ export default function NewTicketPage() {
                       disabled={saving}
                       labelClassName="text-xs font-semibold text-muted-foreground"
                       placeholder="Detalhe o que precisa ser atendido"
-                      hintText="Escreva, cole print (Ctrl+V) ou anexe imagens na descrição"
-                      appendButtonLabel="Anexar imagem na descrição"
+                      hintText="Escreva e cole prints na descrição (Ctrl+V). Arraste a alça para ajustar o tamanho do print. ZIP/PDF em Anexos."
+                      appendButtonLabel="Anexar arquivo"
                     />
                   </CardContent>
                 </Card>
@@ -368,21 +519,27 @@ export default function NewTicketPage() {
                   </CardHeader>
                   <CardContent className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Cliente
-                      </Label>
-                      <SearchableSelectField
-                        value={clientId}
-                        onChange={handleClientChange}
-                        options={clientOptions}
-                        loading={loading}
-                        emptyLabel="Selecione o cliente"
-                      />
+                      <FieldLabel required>Cliente</FieldLabel>
+                      {isClientUser && clientOptions.length <= 1 ? (
+                        <Input
+                          value={clientOptions[0]?.label ?? selectedClient?.name ?? ""}
+                          readOnly
+                          disabled
+                          className="h-11"
+                        />
+                      ) : (
+                        <SearchableSelectField
+                          value={clientId}
+                          onChange={handleClientChange}
+                          options={clientOptions}
+                          loading={loading}
+                          emptyLabel="Selecione o cliente"
+                          disabled={isClientUser && clientOptions.length <= 1}
+                        />
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Mesa de serviço
-                      </Label>
+                      <FieldLabel required>Mesa de serviço</FieldLabel>
                       <SearchableSelectField
                         value={deskId}
                         onChange={setDeskId}
@@ -399,15 +556,14 @@ export default function NewTicketPage() {
                         value={classificationId}
                         onChange={setClassificationId}
                         disabled={loading || saving}
+                        required
                         levelLabels={classificationLevelLabels}
                       />
                     ) : null}
 
                     {deskId && requiresCatalog ? (
                       <div className="space-y-2 sm:col-span-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Serviço do catálogo (TiFlux)
-                        </Label>
+                        <FieldLabel required>Serviço do catálogo</FieldLabel>
                         <SearchableSelectField
                           value={catalogItemId}
                           onChange={setCatalogItemId}
@@ -415,26 +571,24 @@ export default function NewTicketPage() {
                           loading={loading}
                           emptyLabel={
                             catalogItemOptions.length === 0
-                              ? "Nenhum serviço cadastrado no catálogo TiFlux desta mesa"
+                              ? "Nenhum serviço cadastrado no catálogo desta mesa"
                               : "Selecione o serviço"
                           }
                         />
                         {catalogBlocked ? (
                           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-                            Esta mesa exige catálogo no TiFlux, mas não há serviços
-                            cadastrados. Cadastre itens no catálogo da mesa{" "}
+                            Esta mesa exige catálogo de serviços, mas não há itens
+                            cadastrados. Cadastre serviços na mesa{" "}
                             <strong>{catalogs?.desk?.name ?? "selecionada"}</strong>{" "}
-                            no TiFlux antes de abrir chamados.
+                            antes de abrir chamados.
                           </p>
                         ) : null}
                       </div>
                     ) : null}
 
-                    {deskId && !requiresCatalog && !hasPortalClassification ? (
+                    {deskId && requiresPriority ? (
                       <div className="space-y-2 sm:col-span-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Prioridade
-                        </Label>
+                        <FieldLabel required>Prioridade</FieldLabel>
                         <SearchableSelectField
                           value={priorityId}
                           onChange={setPriorityId}
@@ -456,9 +610,7 @@ export default function NewTicketPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Responsável (TiFlux)
-                      </Label>
+                      <FieldLabel optional>Responsável</FieldLabel>
                       <SearchableSelectField
                         value={responsibleId}
                         onChange={setResponsibleId}
@@ -466,68 +618,183 @@ export default function NewTicketPage() {
                         loading={loading}
                         emptyLabel={
                           responsibleOptions.length === 0
-                            ? "Nenhum atendente encontrado no TiFlux"
+                            ? isClientUser
+                              ? "Nenhum usuário na empresa"
+                              : "Nenhum atendente encontrado"
                             : "Selecione o responsável"
                         }
                         placeholder="Selecione o responsável"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Solicitante
-                      </Label>
-                      <SearchableSelectField
-                        value={requestorId}
-                        onChange={handleRequestorChange}
-                        options={requestorOptions}
-                        loading={loading}
-                        disabled={!clientId}
-                        emptyLabel={
-                          !clientId
-                            ? "Selecione o cliente primeiro"
-                            : requestorOptions.length === 0
-                              ? "Nenhum solicitante cadastrado para este cliente"
-                              : "Selecione o solicitante"
-                        }
-                        placeholder="Selecione o solicitante"
-                      />
-                      {selectedRequestor ? (
-                        <p className="text-xs text-muted-foreground">
-                          {selectedRequestor.email ?? "Sem e-mail"}
-                          {selectedRequestor.telephone
-                            ? ` · ${selectedRequestor.telephone}`
-                            : ""}
-                        </p>
+                    <div className="space-y-3">
+                      {requestorOptions.length > 0 ? (
+                        <div className="space-y-2">
+                          <FieldLabel required>Solicitante</FieldLabel>
+                          <SearchableSelectField
+                            value={requestorId}
+                            onChange={handleRequestorSuggestion}
+                            options={requestorOptions}
+                            loading={loading}
+                            emptyLabel="Selecione o solicitante"
+                            placeholder="Selecione o solicitante"
+                          />
+                        </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground">
-                          Solicitantes vêm do cadastro do cliente no TiFlux — não
-                          são as empresas em si.
-                        </p>
+                        <div className="space-y-2">
+                          <FieldLabel required>Solicitante</FieldLabel>
+                          <Input
+                            value={requestorName}
+                            onChange={(e) => {
+                              setRequestorName(e.target.value);
+                              setRequestorId("");
+                            }}
+                            placeholder="Nome de quem está solicitando"
+                            className="h-11"
+                            disabled={saving}
+                            required
+                          />
+                        </div>
                       )}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <FieldLabel required>E-mail do solicitante</FieldLabel>
+                          <Input
+                            type="email"
+                            value={requestorEmail}
+                            onChange={(e) => {
+                              setRequestorEmail(e.target.value);
+                              setRequestorId("");
+                            }}
+                            placeholder="email@empresa.com"
+                            className="h-11"
+                            disabled={saving}
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <FieldLabel optional>Telefone</FieldLabel>
+                          <Input
+                            value={requestorTelephone}
+                            onChange={(e) => {
+                              setRequestorTelephone(formatBrPhone(e.target.value));
+                              setRequestorId("");
+                            }}
+                            placeholder="(00) 00000-0000"
+                            className="h-11"
+                            disabled={saving}
+                            inputMode="tel"
+                          />
+                        </div>
+                      </div>
                     </div>
+
                     <div className="space-y-2">
-                      <Label className="text-xs font-semibold text-muted-foreground">
-                        Referência GMUD do cliente (opcional)
-                      </Label>
-                      <Input
+                      <FieldLabel optional>GMUD do cliente</FieldLabel>
+                      <SearchableSelectField
                         value={externalGmudRef}
-                        onChange={(e) => setExternalGmudRef(e.target.value)}
-                        placeholder="Ex.: GMUD-2024-001 ou número interno do cliente"
-                        className="h-11"
+                        onChange={setExternalGmudRef}
+                        options={gmudSelectOptions}
+                        loading={loadingGmuds}
+                        emptyLabel={
+                          !selectedClient?.companyId
+                            ? "Selecione o cliente para listar GMUDs"
+                            : gmudSelectOptions.length === 0
+                              ? "Nenhuma GMUD cadastrada para este cliente"
+                              : "Selecione a GMUD (opcional)"
+                        }
+                        placeholder="Selecione a GMUD"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Código ou identificador da GMUD no sistema do cliente — não é a GMUD cadastrada no Alle.
+                        Lista das GMUDs cadastradas no portal para a empresa do
+                        cliente. O número fica vinculado ao chamado.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <FieldLabel optional>Pessoas em cópia</FieldLabel>
+                      <SearchableSelectField
+                        value={ccSelectValue}
+                        onChange={handleCcSelect}
+                        options={ccOptions}
+                        loading={loading}
+                        emptyLabel={
+                          ccOptions.length === 0
+                            ? ccPeople.length > 0
+                              ? "Todos os responsáveis já foram adicionados"
+                              : "Nenhum responsável disponível"
+                            : "Selecione um responsável"
+                        }
+                        placeholder="Selecione um responsável"
+                        searchPlaceholder="Buscar responsável..."
+                        alwaysShowSearch
+                        disabled={saving || ccOptions.length === 0}
+                      />
+                      {ccPeople.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {ccPeople.map((person) => (
+                            <span
+                              key={person.email}
+                              className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
+                            >
+                              {person.name
+                                ? `${person.name} (${person.email})`
+                                : person.email}
+                              <button
+                                type="button"
+                                className="text-muted-foreground hover:text-foreground"
+                                onClick={() =>
+                                  setCcPeople((prev) =>
+                                    prev.filter(
+                                      (item) => item.email !== person.email,
+                                    ),
+                                  )
+                                }
+                                aria-label={`Remover ${person.email}`}
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                      <p className="text-xs text-muted-foreground">
+                        Lista dos responsáveis do chamado. Quem estiver na cópia
+                        passa a ver o chamado em Meus chamados.
                       </p>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Button type="submit" size="lg" disabled={!canSubmit}>
-                  {saving ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
+                <div className="space-y-3">
+                  {!canSubmit && !loading && !saving ? (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50/95">
+                      {catalogBlocked ? (
+                        <p>
+                          Não é possível abrir o chamado: a mesa exige catálogo, mas
+                          não há serviços cadastrados.
+                        </p>
+                      ) : missingRequired.length > 0 ? (
+                        <>
+                          <p className="font-semibold">
+                            Preencha os campos obrigatórios para habilitar Abrir chamado:
+                          </p>
+                          <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm">
+                            {missingRequired.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : null}
+                    </div>
                   ) : null}
-                  Abrir chamado
-                </Button>
+
+                  <Button type="submit" size="lg" disabled={!canSubmit}>
+                    {saving ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : null}
+                    Abrir chamado
+                  </Button>
+                </div>
               </form>
             )}
           </div>

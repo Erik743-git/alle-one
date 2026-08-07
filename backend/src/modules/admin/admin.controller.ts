@@ -32,10 +32,7 @@ import {
   UpdateDeskClassificationDto,
   UpdateServiceDeskDto,
 } from './desk-classification.dto';
-import {
-  CreateTicketStageDto,
-  UpdateTicketStageDto,
-} from './ticket-stage.dto';
+import { CreateTicketStageDto, UpdateTicketStageDto } from './ticket-stage.dto';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
@@ -93,26 +90,58 @@ export class AdminController {
     });
   }
 
+  @Get('classifications/specialties')
+  @RequirePermission(PermissionModule.ADMIN, 'canView')
+  listClassificationSpecialties() {
+    return this.deskClassificationService.listDesks();
+  }
+
+  /** @deprecated Prefer /admin/classifications/specialties */
   @Get('classifications/desks')
   @RequirePermission(PermissionModule.ADMIN, 'canView')
   listClassificationDesks() {
     return this.deskClassificationService.listDesks();
   }
 
+  @Post('classifications/specialties')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'Specialty',
+    action: 'CREATE',
+  })
+  createClassificationSpecialty(@Body() body: CreateServiceDeskDto) {
+    return this.deskClassificationService.createDesk(body);
+  }
+
+  /** @deprecated Prefer /admin/classifications/specialties */
   @Post('classifications/desks')
   @RequirePermission(PermissionModule.ADMIN, 'canEdit')
   @AuditMeta({
-    entity: 'ServiceDesk',
+    entity: 'Specialty',
     action: 'CREATE',
   })
   createClassificationDesk(@Body() body: CreateServiceDeskDto) {
     return this.deskClassificationService.createDesk(body);
   }
 
+  @Patch('classifications/specialties/:specialtyId')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'Specialty',
+    action: 'UPDATE',
+  })
+  updateClassificationSpecialty(
+    @Param('specialtyId') specialtyId: string,
+    @Body() body: UpdateServiceDeskDto,
+  ) {
+    return this.deskClassificationService.updateDesk(specialtyId, body);
+  }
+
+  /** @deprecated Prefer /admin/classifications/specialties/:specialtyId */
   @Patch('classifications/desks/:deskId')
   @RequirePermission(PermissionModule.ADMIN, 'canEdit')
   @AuditMeta({
-    entity: 'ServiceDesk',
+    entity: 'Specialty',
     action: 'UPDATE',
   })
   updateClassificationDesk(
@@ -122,10 +151,21 @@ export class AdminController {
     return this.deskClassificationService.updateDesk(deskId, body);
   }
 
+  @Delete('classifications/specialties/:specialtyId')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'Specialty',
+    action: 'DELETE',
+  })
+  deleteClassificationSpecialty(@Param('specialtyId') specialtyId: string) {
+    return this.deskClassificationService.removeDesk(specialtyId);
+  }
+
+  /** @deprecated Prefer /admin/classifications/specialties/:specialtyId */
   @Delete('classifications/desks/:deskId')
   @RequirePermission(PermissionModule.ADMIN, 'canEdit')
   @AuditMeta({
-    entity: 'ServiceDesk',
+    entity: 'Specialty',
     action: 'DELETE',
   })
   deleteClassificationDesk(@Param('deskId') deskId: string) {
@@ -134,14 +174,19 @@ export class AdminController {
 
   @Get('classifications')
   @RequirePermission(PermissionModule.ADMIN, 'canView')
-  getClassificationTree(@Query('serviceDeskId') serviceDeskId: string) {
-    return this.deskClassificationService.getTree(serviceDeskId);
+  getClassificationTree(
+    @Query('specialtyId') specialtyId?: string,
+    @Query('serviceDeskId') serviceDeskId?: string,
+  ) {
+    return this.deskClassificationService.getTree(
+      specialtyId || serviceDeskId || '',
+    );
   }
 
   @Post('classifications')
   @RequirePermission(PermissionModule.ADMIN, 'canEdit')
   @AuditMeta({
-    entity: 'ServiceDeskClassification',
+    entity: 'SpecialtyClassification',
     action: 'CREATE',
   })
   createClassification(@Body() body: CreateDeskClassificationDto) {
@@ -151,7 +196,7 @@ export class AdminController {
   @Patch('classifications/:id')
   @RequirePermission(PermissionModule.ADMIN, 'canEdit')
   @AuditMeta({
-    entity: 'ServiceDeskClassification',
+    entity: 'SpecialtyClassification',
     action: 'UPDATE',
   })
   updateClassification(
@@ -164,7 +209,7 @@ export class AdminController {
   @Delete('classifications/:id')
   @RequirePermission(PermissionModule.ADMIN, 'canEdit')
   @AuditMeta({
-    entity: 'ServiceDeskClassification',
+    entity: 'SpecialtyClassification',
     action: 'DELETE',
   })
   deleteClassification(@Param('id') id: string) {

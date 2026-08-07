@@ -8,8 +8,6 @@ export class ResetPasswordDto {
 
   @IsString()
   @IsStrongPassword()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   newPassword: string;
 }

@@ -77,6 +77,25 @@ export class ReportsController {
     return this.reports.generateReport(user, body);
   }
 
+  @Get('billing-charge')
+  @RequirePermission(PermissionModule.REPORTS, 'canView')
+  billingCharge(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Query('companyIds') companyIds?: string | string[],
+    @Query('specialtyIds') specialtyIds?: string | string[],
+    @Query('mode') mode?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.reports.getBillingChargeReport(user, {
+      companyIds,
+      specialtyIds,
+      mode,
+      start,
+      end,
+    });
+  }
+
   @Get(':id/download')
   @RequirePermission(PermissionModule.REPORTS, 'canView')
   async download(

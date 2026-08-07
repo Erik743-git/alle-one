@@ -1,4 +1,8 @@
 import { expect, test } from '@playwright/test';
+import {
+  expectRedirectToLogin,
+  PROTECTED_APP_ROUTES,
+} from './helpers/protected-routes';
 
 test.describe('Login', () => {
   test('exibe formulário de entrada', async ({ page }) => {
@@ -13,7 +17,9 @@ test.describe('Login', () => {
     test.skip(!process.env.E2E_WITH_API, 'Defina E2E_WITH_API=1 com API rodando');
 
     await page.goto('/login');
-    await page.getByPlaceholder('seu.email@empresa.com').fill('nao-existe@alleone.test');
+    await page
+      .getByPlaceholder('seu.email@empresa.com')
+      .fill('nao-existe@alleone.test');
     await page.getByPlaceholder('Digite sua senha').fill('Senha@Invalida1');
     await page.getByRole('button', { name: /^entrar$/i }).click();
     await expect(page).toHaveURL(/\/login/);
@@ -24,8 +30,9 @@ test.describe('Login', () => {
 });
 
 test.describe('Proteção de rotas', () => {
-  test('redireciona dashboard para login sem sessão', async ({ page }) => {
-    await page.goto('/dashboard');
-    await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
-  });
+  for (const path of PROTECTED_APP_ROUTES) {
+    test(`redireciona ${path} para login sem sessão`, async ({ page }) => {
+      await expectRedirectToLogin(page, path);
+    });
+  }
 });

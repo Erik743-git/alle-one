@@ -54,7 +54,9 @@ export class AuditService {
 
   async log(input: AuditLogInput) {
     const actor = input.actor;
-    const payload = input.payload ? (sanitizeValue(input.payload) as any) : null;
+    const payload = input.payload
+      ? (sanitizeValue(input.payload) as any)
+      : null;
 
     return this.prisma.auditLog.create({
       data: {
@@ -67,4 +69,3 @@ export class AuditService {
     });
   }
 }
-

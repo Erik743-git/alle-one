@@ -1,0 +1,2 @@
+#!/usr/bin/env sh
+sh "$(dirname -- "$0")/../scripts/pre-commit-lint.sh"

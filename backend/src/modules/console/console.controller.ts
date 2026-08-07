@@ -74,16 +74,16 @@ export class ConsoleController {
 
   @Post('alerts/:eventid/ack')
   @RequirePermission(PermissionModule.MONITORING, 'canEdit')
-  @AuditMeta({ entity: 'ZabbixAlert', action: 'UPDATE', entityIdParam: 'eventid' })
+  @AuditMeta({
+    entity: 'ZabbixAlert',
+    action: 'ACKNOWLEDGE',
+    entityIdParam: 'eventid',
+  })
   acknowledgeAlert(
     @Req() req: AuthenticatedRequest,
     @Param() params: ConsoleEventIdParamDto,
     @Body() body: ConsoleAcknowledgeDto,
   ) {
-    return this.consoleService.acknowledgeAlert(
-      req.user,
-      params.eventid,
-      body,
-    );
+    return this.consoleService.acknowledgeAlert(req.user, params.eventid, body);
   }
 }

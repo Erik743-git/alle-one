@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
-  PortalTicketAppointmentSyncStatus,
   PortalTifluxOutboxKind,
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
