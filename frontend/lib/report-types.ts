@@ -19,6 +19,11 @@ export const REPORT_TYPES = [
     label: "Inventário",
     formats: ["CSV", "XLSX"] as const,
   },
+  {
+    value: "6",
+    label: "Fechamento / cobrança",
+    formats: ["CSV", "XLSX"] as const,
+  },
 ] as const;
 
 export type ReportTypeValue = (typeof REPORT_TYPES)[number]["value"];
