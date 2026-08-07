@@ -16,7 +16,7 @@ import {
 } from "@/lib/user-rendimento-schedule";
 
 type UserRendimentoScheduleFieldsProps = {
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  role: string | null | undefined;
   value: UserRendimentoScheduleValue;
   onChange: (value: UserRendimentoScheduleValue) => void;
   disabled?: boolean;
