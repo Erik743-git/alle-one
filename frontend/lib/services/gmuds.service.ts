@@ -228,5 +228,26 @@ export const gmudsService = {
 
     return (await response.json()) as GmudAttachment;
   },
+
+  async downloadAttachment(id: string, attachmentId: string, fallbackName = "anexo") {
+    const response = await authFetch(
+      `${API_URL}/gmuds/${id}/attachments/${attachmentId}`,
+    );
+
+    if (response.status === 401) {
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as { message?: string | string[] } | null;
+      const apiMessage = data?.message
+        ? Array.isArray(data.message)
+          ? data.message[0]
+          : data.message
+        : null;
+      throw new Error(apiMessage || "Falha ao baixar anexo.");
+    }
+
+    return readBlobDownload(response, fallbackName);
+  },
 };
 

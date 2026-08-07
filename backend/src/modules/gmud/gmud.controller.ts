@@ -199,4 +199,22 @@ export class GmudController {
   ) {
     return this.service.addAttachment(user, id, file);
   }
+
+  @Get(':id/attachments/:attachmentId')
+  @RequirePermission(PermissionModule.GMUD, 'canView')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  async downloadAttachment(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const file = await this.service.downloadAttachment(user, id, attachmentId);
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(file.originalName)}"`,
+    );
+    return new StreamableFile(file.stream);
+  }
 }
