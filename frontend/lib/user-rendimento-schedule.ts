@@ -52,7 +52,7 @@ export function formatUserRendimentoScheduleSummary(
 }
 
 export function usesRendimentoScheduleRole(
-  role: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT",
+  role: string | null | undefined,
 ): boolean {
   return role === "ADMIN" || role === "COLLABORATOR" || role === "PJ";
 }
