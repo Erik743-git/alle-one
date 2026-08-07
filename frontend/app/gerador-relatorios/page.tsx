@@ -255,7 +255,7 @@ export default function GeradorRelatoriosPage() {
             preferredIds: [
               companyId === ALL_COMPANIES_REPORT_VALUE ? null : companyId,
               alleId,
-              isClientPortalRole(user?.role) ? user.companyId : null,
+              isClientPortalRole(user?.role) ? user?.companyId : null,
             ],
           }) ?? "";
 
