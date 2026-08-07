@@ -53,3 +53,4 @@ DELETE FROM external_api_cache WHERE expires_at < NOW();
 
 - [REDIS.md](./REDIS.md) — filas BullMQ
 - [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) — portal canônico reduz pressão na API TiFlux
+- [Load k6 (smoke)](../deploy/load/README.md) — script de desempenho: login cookie + dashboard + tickets + GMUD
