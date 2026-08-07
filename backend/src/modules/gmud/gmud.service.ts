@@ -5,7 +5,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GmudStatus, GmudApproverStatus } from '@prisma/client';
-import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ApproveGmudDto,
@@ -22,7 +21,7 @@ import {
   userParticipatesInGmud,
 } from './gmud-access';
 import {
-  assertAllowedUpload,
+  assertAllowedUploadMime,
   UPLOAD_MAX_BYTES,
 } from '../../common/upload.config';
 import { GmudMailService } from './mail/gmud-mail.service';
@@ -53,7 +52,7 @@ export class GmudService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (isClientPortalRole(user.role)) {
+    if (user.role === 'CLIENT') {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada');
       }
@@ -287,7 +286,7 @@ export class GmudService {
     // - CLIENT só pode ser vinculado à própria empresa da GMUD.
     // - ADMIN/COLLABORATOR podem ser vinculados como executores/aprovadores mesmo sendo de outra empresa (ex.: equipe Alle).
     const invalidUser = users.find((u) => {
-      const isClientRole = isClientPortalRole(u.role);
+      const isClientRole = u.role === 'CLIENT';
       if (!isClientRole) {
         return false;
       }
@@ -661,7 +660,7 @@ export class GmudService {
     if (evidence.size > maxBytes) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
-    assertAllowedUpload(evidence);
+    assertAllowedUploadMime(evidence.mimetype);
 
     const uploadsDir = join(
       process.cwd(),
@@ -813,11 +812,12 @@ export class GmudService {
     const q = query.q?.trim();
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
-    const companyId = isClientPortalRole(user.role)
-      ? user.companyId
-      : query.companyId
-        ? query.companyId
-        : null;
+    const companyId =
+      user.role === 'CLIENT'
+        ? user.companyId
+        : query.companyId
+          ? query.companyId
+          : null;
 
     if (companyId) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
@@ -827,7 +827,7 @@ export class GmudService {
       where: {
         deletedAt: null,
         status: 'ACTIVE',
-        ...(isClientPortalRole(user.role)
+        ...(user.role === 'CLIENT'
           ? { companyId: user.companyId }
           : companyId
             ? {
@@ -879,7 +879,7 @@ export class GmudService {
     if (file.size > UPLOAD_MAX_BYTES) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
-    assertAllowedUpload(file);
+    assertAllowedUploadMime(file.mimetype);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'gmud', gmud.id);
 
