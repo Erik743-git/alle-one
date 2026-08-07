@@ -8,7 +8,9 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { isClientPortalRole } from "@/lib/app-roles";
 import {
   Accordion,
   AccordionContent,
@@ -16,10 +18,17 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { sortByName } from "@/lib/collections";
+import { useConfirm } from "@/lib/confirm";
 import { getStoredUser } from "@/lib/session";
 import { type Company } from "@/lib/services/companies.service";
 import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 import { GmudStatusBadge } from "./_components/gmud-status-badge";
+import {
+  canEditGmud,
+  GMUD_REAPPROVAL_WARNING,
+  gmudRequiresReapproval,
+} from "./_components/gmud-edit-rules";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   ClipboardList,
@@ -60,7 +69,7 @@ function companyFromGmudRef(ref: { id: string; name: string }): Company {
 }
 
 function canEdit(gmud: Gmud) {
-  return gmud.status === "DRAFT" || gmud.status === "PENDING_APPROVAL";
+  return canEditGmud(gmud.status);
 }
 
 function canExecute(gmud: Gmud) {
@@ -99,6 +108,22 @@ function getApprovalSummary(gmud: Gmud) {
 
 export default function GmudPage() {
   const user = getStoredUser();
+  const router = useRouter();
+  const confirm = useConfirm();
+
+  async function goEditGmud(gmud: Gmud) {
+    if (gmudRequiresReapproval(gmud.status)) {
+      const ok = await confirm({
+        title: "Editar GMUD aprovada",
+        description: GMUD_REAPPROVAL_WARNING,
+        confirmText: "Continuar edição",
+        cancelText: "Cancelar",
+        variant: "warning",
+      });
+      if (!ok) return;
+    }
+    router.push(`/gmud/${gmud.id}?mode=edit`);
+  }
   const [companies, setCompanies] = useState<Company[]>([]);
   const [gmuds, setGmuds] = useState<Gmud[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +142,7 @@ export default function GmudPage() {
     }
     setError(null);
     try {
-      const isClient = user?.role === "CLIENT";
+      const isClient = isClientPortalRole(user?.role);
       const seesGmudsByParticipation =
         user?.role === "COLLABORATOR" || user?.role === "PJ";
       const [companiesData, gmudsData] = await Promise.all([
@@ -154,7 +179,7 @@ export default function GmudPage() {
   }, [user?.role]);
 
   const scopedCompanies = useMemo<CompanyGroup[]>(() => {
-    const isClient = user?.role === "CLIENT";
+    const isClient = isClientPortalRole(user?.role);
     const seesGmudsByParticipation =
       user?.role === "COLLABORATOR" || user?.role === "PJ";
 
@@ -280,7 +305,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Total</p>
-                  <p className="text-3xl font-bold">{totals.total}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.total}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                   <ClipboardList size={28} />
@@ -291,7 +318,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Abertas</p>
-                  <p className="text-3xl font-bold">{totals.open}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.open}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/12 text-emerald-300">
                   <Building2 size={28} />
@@ -302,7 +331,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Aguardando aprovação</p>
-                  <p className="text-3xl font-bold">{totals.pending}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.pending}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500/12 text-orange-300">
                   <ShieldCheck size={28} />
@@ -313,7 +344,9 @@ export default function GmudPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Em execução</p>
-                  <p className="text-3xl font-bold">{totals.executing}</p>
+                  <p className="text-3xl font-bold">
+                    {loading ? <Skeleton className="inline-block h-9 w-14" /> : totals.executing}
+                  </p>
                 </div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-500/12 text-blue-200">
                   <Play size={28} />
@@ -329,8 +362,10 @@ export default function GmudPage() {
           ) : null}
 
           {loading ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-              Carregando GMUDs...
+            <div className="space-y-4 rounded-xl border border-border bg-card p-6">
+              <Skeleton className="h-11 w-full" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-5 2xl:grid-cols-[1.2fr_0.8fr]">
@@ -370,7 +405,7 @@ export default function GmudPage() {
                       <SearchableSelectField
                         value={selectedCompanyId === "ALL" ? "" : selectedCompanyId}
                         onChange={(value) => setSelectedCompanyId(value || "ALL")}
-                        disabled={user?.role === "CLIENT"}
+                        disabled={isClientPortalRole(user?.role)}
                         options={scopedCompanies.map((g) => ({
                           value: g.company.id,
                           label: g.company.name,
@@ -382,14 +417,36 @@ export default function GmudPage() {
 
                   {filteredGroups.length === 0 ? (
                     <div className="rounded-xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-                      Nenhuma GMUD encontrada com os filtros atuais.
-                      <div className="mt-4">
-                        <Link href="/gmud/new">
-                          <Button>
-                            Criar primeira GMUD
-                          </Button>
-                        </Link>
-                      </div>
+                      {gmuds.length === 0 ? (
+                        <>
+                          Nenhuma GMUD cadastrada ainda.
+                          <div className="mt-4">
+                            <Link href="/gmud/new">
+                              <Button>Criar primeira GMUD</Button>
+                            </Link>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          Nenhuma GMUD encontrada com os filtros atuais.
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setSearch("");
+                                setStatusFilter("OPEN");
+                                setSelectedCompanyId("ALL");
+                              }}
+                            >
+                              Limpar filtros
+                            </Button>
+                            <Link href="/gmud/new">
+                              <Button>Nova GMUD</Button>
+                            </Link>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div className="max-h-[62vh] overflow-y-auto pr-2">
@@ -483,11 +540,12 @@ export default function GmudPage() {
                                         </Button>
                                       </Link>
                                       {canEdit(gmud) ? (
-                                        <Link href={`/gmud/${gmud.id}?mode=edit`}>
-                                          <Button>
-                                            Editar
-                                          </Button>
-                                        </Link>
+                                        <Button
+                                          type="button"
+                                          onClick={() => void goEditGmud(gmud)}
+                                        >
+                                          Editar
+                                        </Button>
                                       ) : null}
                                       {canApprove(gmud, user?.id ?? null) ? (
                                         <Link href={`/gmud/${gmud.id}`}>
