@@ -28,6 +28,7 @@ import {
 import { GmudMailService } from './mail/gmud-mail.service';
 import { GmudPdfService } from './gmud-pdf.service';
 import { randomUUID } from 'crypto';
+import { createReadStream, existsSync } from 'fs';
 import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
 
@@ -671,13 +672,16 @@ export class GmudService {
       'on-behalf',
     );
     const safeName = evidence.originalname.replace(/[^\w.\-() ]+/g, '_');
-    const targetName = `${randomUUID()}-${safeName}`;
+    const displayName = safeName.toLowerCase().startsWith('evidencia')
+      ? safeName
+      : `evidencia-aprovacao-${safeName}`;
+    const targetName = `${randomUUID()}-${displayName}`;
     const targetPath = join(uploadsDir, targetName);
     await writeUploadedBuffer(targetPath, evidence.buffer);
 
     const createdFile = await this.prisma.file.create({
       data: {
-        originalName: evidence.originalname,
+        originalName: displayName,
         mimeType: evidence.mimetype,
         path: targetPath,
         size: evidence.size,
@@ -700,6 +704,7 @@ export class GmudService {
 
     const decisionNote = [
       dto.note?.trim() ? dto.note.trim() : null,
+      // Mantém tokens parseáveis no front (legado + novos).
       `APROVADO_EM_NOME_DE:${targetApprover.user.name}(${targetApprover.user.email})`,
       `POR:${user.email}`,
       `EVIDENCIA_FILE_ID:${createdFile.id}`,
@@ -910,5 +915,30 @@ export class GmudService {
         uploader: { select: { id: true, name: true, email: true } },
       },
     });
+  }
+
+  async downloadAttachment(
+    user: AuthenticatedRequestUser,
+    gmudId: string,
+    attachmentId: string,
+  ) {
+    const gmud = await this.getById(user, gmudId);
+    const attachment = await this.prisma.gmudAttachment.findFirst({
+      where: { id: attachmentId, gmudId: gmud.id },
+      include: { file: true },
+    });
+
+    if (!attachment?.file || attachment.file.deletedAt) {
+      throw new NotFoundException('Anexo não encontrado');
+    }
+    if (!existsSync(attachment.file.path)) {
+      throw new NotFoundException('Arquivo não encontrado no servidor');
+    }
+
+    return {
+      stream: createReadStream(attachment.file.path),
+      originalName: attachment.file.originalName,
+      mimeType: attachment.file.mimeType,
+    };
   }
 }

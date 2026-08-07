@@ -31,6 +31,99 @@ import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { triggerBrowserDownload } from "@/lib/download-blob";
 import { FileDown } from "lucide-react";
+import { parseGmudDecisionNote } from "../_components/gmud-decision-note";
+
+function ApproverDecisionDetails({
+  gmudId,
+  decidedAt,
+  decisionNote,
+  attachments,
+  onDownloadError,
+}: {
+  gmudId: string;
+  decidedAt: string;
+  decisionNote: string | null;
+  attachments: Gmud["attachments"];
+  onDownloadError: (message: string) => void;
+}) {
+  const parsed = parseGmudDecisionNote(decisionNote);
+  const evidenceAttachment =
+    attachments.find((a) => a.file.id === parsed.evidenceFileId) ?? null;
+
+  async function downloadEvidence() {
+    if (!evidenceAttachment) {
+      onDownloadError("Evidência não encontrada nos anexos desta GMUD.");
+      return;
+    }
+    try {
+      const { blob, filename } = await gmudsService.downloadAttachment(
+        gmudId,
+        evidenceAttachment.id,
+        evidenceAttachment.file.originalName,
+      );
+      triggerBrowserDownload(blob, filename);
+    } catch (e) {
+      onDownloadError(e instanceof Error ? e.message : "Falha ao baixar evidência");
+    }
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5 text-xs text-muted-foreground">
+      <div>{new Date(decidedAt).toLocaleString("pt-BR")}</div>
+      {parsed.onBehalfOfName || parsed.actedByEmail ? (
+        <div className="space-y-0.5 text-foreground">
+          {parsed.onBehalfOfName ? (
+            <div>
+              Em nome de{" "}
+              <span className="font-medium">{parsed.onBehalfOfName}</span>
+              {parsed.onBehalfOfEmail ? (
+                <span className="text-muted-foreground">
+                  {" "}
+                  ({parsed.onBehalfOfEmail})
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          {parsed.actedByEmail ? (
+            <div>
+              Registrado por{" "}
+              <span className="font-medium">{parsed.actedByEmail}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {parsed.freeNote ? (
+        <div className="text-foreground">{parsed.freeNote}</div>
+      ) : null}
+      {!parsed.onBehalfOfName &&
+      !parsed.actedByEmail &&
+      !parsed.freeNote &&
+      decisionNote ? (
+        <div className="text-foreground">{decisionNote}</div>
+      ) : null}
+      {parsed.evidenceFileId ? (
+        <div>
+          {evidenceAttachment ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-1 h-8"
+              onClick={() => void downloadEvidence()}
+            >
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+              Baixar evidência
+            </Button>
+          ) : (
+            <span className="text-amber-600 dark:text-amber-400">
+              Evidência referenciada, mas o arquivo não está na lista de anexos.
+            </span>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function approverStatusLabel(status: "PENDING" | "APPROVED" | "REJECTED") {
   if (status === "APPROVED") return "Aprovou";
@@ -502,15 +595,13 @@ export default function GmudDetailPage() {
                             </span>
                           </div>
                           {a.decidedAt ? (
-                            <div className="mt-2 text-xs text-muted-foreground">
-                              {new Date(a.decidedAt).toLocaleString("pt-BR")}
-                              {a.decisionNote ? (
-                                <>
-                                  {" "}
-                                  • <span className="text-foreground">{a.decisionNote}</span>
-                                </>
-                              ) : null}
-                            </div>
+                            <ApproverDecisionDetails
+                              gmudId={gmud.id}
+                              decidedAt={a.decidedAt}
+                              decisionNote={a.decisionNote}
+                              attachments={gmud.attachments ?? []}
+                              onDownloadError={setError}
+                            />
                           ) : (
                             <div className="mt-2 text-xs text-muted-foreground">
                               {gmud.status === "PENDING_APPROVAL" ? "Aguardando decisão" : "Sem decisão"}
@@ -566,13 +657,45 @@ export default function GmudDetailPage() {
                   {(gmud.attachments ?? []).map((a) => (
                     <div
                       key={a.id}
-                      className="rounded-xl border border-border bg-muted/40 p-3"
+                      className="flex items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 p-3"
                     >
-                      <div className="text-sm font-semibold text-foreground">{a.file.originalName}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Enviado por {a.uploader.name} •{" "}
-                        {new Date(a.createdAt).toLocaleString("pt-BR")}
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-semibold text-foreground">
+                          {a.file.originalName}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Enviado por {a.uploader.name} •{" "}
+                          {new Date(a.createdAt).toLocaleString("pt-BR")}
+                        </div>
                       </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => {
+                          void (async () => {
+                            try {
+                              const { blob, filename } =
+                                await gmudsService.downloadAttachment(
+                                  gmud.id,
+                                  a.id,
+                                  a.file.originalName,
+                                );
+                              triggerBrowserDownload(blob, filename);
+                            } catch (e) {
+                              setError(
+                                e instanceof Error
+                                  ? e.message
+                                  : "Falha ao baixar anexo",
+                              );
+                            }
+                          })();
+                        }}
+                      >
+                        <FileDown className="mr-1.5 h-3.5 w-3.5" />
+                        Baixar
+                      </Button>
                     </div>
                   ))}
                 </CardContent>
