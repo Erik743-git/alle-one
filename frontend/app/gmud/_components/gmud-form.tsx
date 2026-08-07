@@ -8,6 +8,8 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { sortByName } from "@/lib/collections";
+import { useConfirm } from "@/lib/confirm";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { getStoredUser } from "@/lib/session";
 import {
   gmudsService,
@@ -20,6 +22,11 @@ import { DateTimePickerField } from "@/components/ui/datetime-picker-field";
 import { UserSearchDialog } from "./user-search-dialog";
 import { GmudStepper } from "./gmud-stepper";
 import { GmudStatusBadge } from "./gmud-status-badge";
+import {
+  canEditGmud,
+  GMUD_REAPPROVAL_WARNING,
+  gmudRequiresReapproval,
+} from "./gmud-edit-rules";
 
 type SelectedUser = GmudUser;
 
@@ -72,8 +79,9 @@ export function GmudForm({
   mode: "create" | "edit" | "view";
 }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const authUser = getStoredUser();
-  const isClient = authUser?.role === "CLIENT";
+  const isClient = isClientPortalRole(authUser?.role);
 
   const [companies, setCompanies] = useState<GmudCompanyOption[]>([]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
@@ -123,11 +131,9 @@ export function GmudForm({
   >("executor");
 
   const readonly = mode === "view";
+  const needsReapproval = gmudRequiresReapproval(initial?.status);
   const canEdit =
-    mode !== "view" &&
-    (!initial ||
-      initial.status === "DRAFT" ||
-      initial.status === "PENDING_APPROVAL");
+    mode !== "view" && (!initial || canEditGmud(initial.status));
 
   useEffect(() => {
     let cancelled = false;
@@ -180,6 +186,17 @@ export function GmudForm({
       if (executors.length < 1) throw new Error("Informe ao menos 1 executor.");
       if (approvers.length < 2) throw new Error("Informe ao menos 2 aprovadores.");
 
+      if (needsReapproval) {
+        const ok = await confirm({
+          title: "Reenviar para aprovação",
+          description: GMUD_REAPPROVAL_WARNING,
+          confirmText: "Salvar e reenviar",
+          cancelText: "Cancelar",
+          variant: "warning",
+        });
+        if (!ok) return;
+      }
+
       const payload: CreateGmudPayload = {
         title: title.trim(),
         companyId,
@@ -205,7 +222,7 @@ export function GmudForm({
               description: a.description,
             }))
           : undefined,
-        submitForApproval,
+        submitForApproval: needsReapproval ? true : submitForApproval,
       };
 
       if (initial?.id) {
@@ -686,25 +703,35 @@ export function GmudForm({
         </CardContent>
       </Card>
 
+      {needsReapproval && mode === "edit" ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50/95">
+          {GMUD_REAPPROVAL_WARNING}
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
         {mode !== "view" ? (
           <>
+            {!needsReapproval ? (
+              <Button
+                type="button"
+                disabled={saving || readonly || !canEdit}
+                variant="outline"
+                className="h-11"
+                onClick={() => void handleSave(false)}
+              >
+                Salvar rascunho
+              </Button>
+            ) : null}
             <Button
               type="button"
               disabled={saving || readonly || !canEdit}
-              variant="outline"
               className="h-11"
-              onClick={() => handleSave(false)}
+              onClick={() => void handleSave(true)}
             >
-              Salvar rascunho
-            </Button>
-            <Button
-              type="button"
-              disabled={saving || readonly || !canEdit}
-              className="h-11"
-              onClick={() => handleSave(true)}
-            >
-              Salvar e enviar para aprovação
+              {needsReapproval
+                ? "Salvar e reenviar para aprovação"
+                : "Salvar e enviar para aprovação"}
             </Button>
           </>
         ) : null}

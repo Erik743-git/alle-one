@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { GmudStatus, GmudApproverStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   ApproveGmudDto,
@@ -21,7 +22,7 @@ import {
   userParticipatesInGmud,
 } from './gmud-access';
 import {
-  assertAllowedUploadMime,
+  assertAllowedUpload,
   UPLOAD_MAX_BYTES,
 } from '../../common/upload.config';
 import { GmudMailService } from './mail/gmud-mail.service';
@@ -52,7 +53,7 @@ export class GmudService {
   private async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === 'CLIENT') {
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada');
       }
@@ -86,8 +87,15 @@ export class GmudService {
 
   private canEditGmudStatus(status: GmudStatus) {
     return (
-      status === GmudStatus.DRAFT || status === GmudStatus.PENDING_APPROVAL
+      status === GmudStatus.DRAFT ||
+      status === GmudStatus.PENDING_APPROVAL ||
+      status === GmudStatus.APPROVED
     );
+  }
+
+  /** Edição de GMUD já aprovada exige novo ciclo de aprovação. */
+  private requiresReapprovalAfterEdit(status: GmudStatus) {
+    return status === GmudStatus.APPROVED;
   }
 
   async list(user: AuthenticatedRequestUser, query: ListGmudsQueryDto) {
@@ -108,10 +116,14 @@ export class GmudService {
           creator: { select: { id: true, name: true, email: true } },
           responsible: { select: { id: true, name: true, email: true } },
           executors: {
-            include: { user: { select: { id: true, name: true, email: true } } },
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
           },
           approvers: {
-            include: { user: { select: { id: true, name: true, email: true } } },
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -275,7 +287,7 @@ export class GmudService {
     // - CLIENT só pode ser vinculado à própria empresa da GMUD.
     // - ADMIN/COLLABORATOR podem ser vinculados como executores/aprovadores mesmo sendo de outra empresa (ex.: equipe Alle).
     const invalidUser = users.find((u) => {
-      const isClientRole = u.role === 'CLIENT';
+      const isClientRole = isClientPortalRole(u.role);
       if (!isClientRole) {
         return false;
       }
@@ -455,6 +467,19 @@ export class GmudService {
       existing.status === GmudStatus.DRAFT &&
       existing.approvers.every((a) => a.status === GmudApproverStatus.PENDING);
 
+    const requiresReapproval = this.requiresReapprovalAfterEdit(
+      existing.status,
+    );
+
+    const nextApproverCreates = (
+      dto.approvers
+        ? dto.approvers.map((a) => a.userId)
+        : existing.approvers.map((a) => a.user.id)
+    ).map((userId) => ({
+      userId,
+      status: GmudApproverStatus.PENDING,
+    }));
+
     const updated = await this.prisma.gmud.update({
       where: { id: existing.id },
       data: {
@@ -472,7 +497,9 @@ export class GmudService {
         ...(dto.reason !== undefined ? { reason: dto.reason } : {}),
         ...(dto.impact !== undefined ? { impact: dto.impact } : {}),
         ...(dto.rollback !== undefined ? { rollback: dto.rollback } : {}),
-        ...(shouldSubmit ? { status: GmudStatus.PENDING_APPROVAL } : {}),
+        ...(shouldSubmit || requiresReapproval
+          ? { status: GmudStatus.PENDING_APPROVAL }
+          : {}),
         ...(dto.executors
           ? {
               executors: {
@@ -481,14 +508,11 @@ export class GmudService {
               },
             }
           : {}),
-        ...(dto.approvers
+        ...(dto.approvers || requiresReapproval
           ? {
               approvers: {
                 deleteMany: {},
-                create: dto.approvers.map((a) => ({
-                  userId: a.userId,
-                  status: GmudApproverStatus.PENDING,
-                })),
+                create: nextApproverCreates,
               },
             }
           : {}),
@@ -514,7 +538,7 @@ export class GmudService {
       },
     });
 
-    if (shouldSubmit) {
+    if (shouldSubmit || requiresReapproval) {
       await this.mail.notifyApproversGmudPendingApproval({
         gmudId: updated.id,
         gmudCode: updated.code,
@@ -599,32 +623,11 @@ export class GmudService {
     dto: ApproveOnBehalfGmudDto,
     evidence?: Express.Multer.File,
   ) {
-    // Regra: ADMIN pode aprovar em nome (inclui admins da Alle Tecnologia).
+    // Qualquer ADMIN AlleOne pode aprovar em nome (evidência obrigatória abaixo).
     if (user.role !== 'ADMIN') {
       throw new ForbiddenException(
         'Apenas administradores podem aprovar em nome de outro usuário',
       );
-    }
-
-    const normalizeCompanyName = (raw: string) =>
-      raw
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-
-    if (user.companyId) {
-      const company = await this.prisma.company.findFirst({
-        where: { id: user.companyId, deletedAt: null },
-        select: { name: true },
-      });
-      const name = normalizeCompanyName(company?.name ?? '');
-      if (name !== 'alle tecnologia') {
-        throw new ForbiddenException(
-          'Apenas administradores da Alle Tecnologia podem aprovar em nome de outro usuário',
-        );
-      }
     }
 
     if (!evidence) {
@@ -658,6 +661,7 @@ export class GmudService {
     if (evidence.size > maxBytes) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
+    assertAllowedUpload(evidence);
 
     const uploadsDir = join(
       process.cwd(),
@@ -809,12 +813,11 @@ export class GmudService {
     const q = query.q?.trim();
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
 
-    const companyId =
-      user.role === 'CLIENT'
-        ? user.companyId
-        : query.companyId
-          ? query.companyId
-          : null;
+    const companyId = isClientPortalRole(user.role)
+      ? user.companyId
+      : query.companyId
+        ? query.companyId
+        : null;
 
     if (companyId) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
@@ -824,7 +827,7 @@ export class GmudService {
       where: {
         deletedAt: null,
         status: 'ACTIVE',
-        ...(user.role === 'CLIENT'
+        ...(isClientPortalRole(user.role)
           ? { companyId: user.companyId }
           : companyId
             ? {
@@ -876,7 +879,7 @@ export class GmudService {
     if (file.size > UPLOAD_MAX_BYTES) {
       throw new BadRequestException('Arquivo excede o limite de 10MB');
     }
-    assertAllowedUploadMime(file.mimetype);
+    assertAllowedUpload(file);
 
     const uploadsDir = join(process.cwd(), 'uploads', 'gmud', gmud.id);
 
