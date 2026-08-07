@@ -40,13 +40,19 @@ import {
 } from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
+import {
+  billingRowsToCsv,
+  billingRowsToXlsx,
+  buildBillingReportRows,
+} from './reports-billing';
 
-const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5']);
+const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5', '6']);
 
 const REPORT_TYPE_SLUGS: Record<string, string> = {
   '1': 'rendimento',
   '4': 'estatistica-geral',
   '5': 'inventario',
+  '6': 'fechamento-cobranca',
 };
 
 function parseDateOrThrow(value: string, label: string) {
@@ -2861,12 +2867,13 @@ export class ReportsService {
     if (!type) throw new BadRequestException('type é obrigatório');
     if (!ALLOWED_REPORT_TYPES.has(type)) {
       throw new BadRequestException(
-        'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4) ou Inventário (5).',
+        'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4), Inventário (5) ou Cobrança (6).',
       );
     }
 
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     const isInventario = type === '5';
+    const isCobranca = type === '6';
     const inventarioScope = isInventario
       ? await this.inventario.resolveScope(scopeCompanyIds, {
           companyId,
@@ -2874,9 +2881,9 @@ export class ReportsService {
         })
       : null;
 
-    if (type === '4' && companyId === ALL_COMPANIES_REPORT_ID) {
+    if ((type === '4' || isCobranca) && companyId === ALL_COMPANIES_REPORT_ID) {
       throw new BadRequestException(
-        'Estatística Geral exige uma empresa específica.',
+        'Este relatório exige uma empresa específica.',
       );
     }
 
@@ -2885,7 +2892,7 @@ export class ReportsService {
         ? await this.resolveRendimentoCompanyScope(user, companyId)
         : null;
 
-    if (type === '4') {
+    if (type === '4' || isCobranca) {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
@@ -2909,7 +2916,7 @@ export class ReportsService {
     const reportType = toReportType(type);
 
     const userId = payload.userId?.trim() || null;
-    if ((type === '4' || isInventario) && userId) {
+    if ((type === '4' || isInventario || isCobranca) && userId) {
       throw new BadRequestException(
         'Este tipo de relatório não utiliza filtro por colaborador.',
       );
@@ -2948,79 +2955,119 @@ export class ReportsService {
       ? `${companyPart}-${typePart}-${snapshotPart}`
       : `${companyPart}-${typePart}-${startPart}-a-${endPart}`;
 
-    const built =
-      format === 'XLSX'
-        ? {
-            filename: `${baseName}.xlsx`,
-            mimeType:
-              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            buffer:
-              type === '5'
-                ? await this.inventario.generateXlsx({
-                    companyIds: inventarioScope!.companyIds,
-                    scopeLabel: inventarioScope!.scopeLabel,
-                    generatedAt,
-                    logoCompanyId: inventarioScope!.logoCompanyId,
-                  })
-                : Buffer.from(
-                    type === '4'
-                      ? await this.generateTipo4Xlsx({
-                          user,
-                          companyId,
-                          start: range.start,
-                          end: range.end,
-                        })
-                      : await this.generateHoursUsageXlsx({
-                          user,
-                          companyId,
-                          start: range.start,
-                          end: range.end,
-                          type,
-                          userId,
-                        }),
-                  ),
-          }
-        : type === '5'
-          ? {
-              filename: `${baseName}.csv`,
-              mimeType: 'text/csv; charset=utf-8',
-              buffer: Buffer.from(
-                await this.inventario.generateCsv({
-                  companyIds: inventarioScope!.companyIds,
-                  scopeLabel: inventarioScope!.scopeLabel,
-                  generatedAt,
-                }),
-                'utf8',
-              ),
-            }
-          : type === '4'
-            ? {
-                filename: `${baseName}.csv`,
-                mimeType: 'text/csv; charset=utf-8',
-                buffer: Buffer.from(
-                  await this.generateTipo4Csv({
-                    user,
-                    companyId,
-                    start: range.start,
-                    end: range.end,
-                  }),
-                  'utf8',
-                ),
-              }
-            : {
-                filename: `${baseName}.csv`,
-                mimeType: 'text/csv; charset=utf-8',
-                buffer: Buffer.from(
-                  await this.generateHoursUsageCsv({
-                    user,
-                    companyId,
-                    start: range.start,
-                    end: range.end,
-                    userId,
-                  }),
-                  'utf8',
-                ),
-              };
+    const billingRows = isCobranca
+      ? await buildBillingReportRows(this.prisma, {
+          companyId,
+          start: range.start,
+          end: range.end,
+        })
+      : null;
+
+    let built: { filename: string; mimeType: string; buffer: Buffer };
+    if (format === 'XLSX') {
+      if (type === '5') {
+        built = {
+          filename: `${baseName}.xlsx`,
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          buffer: await this.inventario.generateXlsx({
+            companyIds: inventarioScope!.companyIds,
+            scopeLabel: inventarioScope!.scopeLabel,
+            generatedAt,
+            logoCompanyId: inventarioScope!.logoCompanyId,
+          }),
+        };
+      } else if (isCobranca) {
+        built = {
+          filename: `${baseName}.xlsx`,
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          buffer: await billingRowsToXlsx(billingRows!, {
+            companyName: companyLabel,
+            start: range.start,
+            end: range.end,
+          }),
+        };
+      } else if (type === '4') {
+        built = {
+          filename: `${baseName}.xlsx`,
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          buffer: Buffer.from(
+            await this.generateTipo4Xlsx({
+              user,
+              companyId,
+              start: range.start,
+              end: range.end,
+            }),
+          ),
+        };
+      } else {
+        built = {
+          filename: `${baseName}.xlsx`,
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          buffer: Buffer.from(
+            await this.generateHoursUsageXlsx({
+              user,
+              companyId,
+              start: range.start,
+              end: range.end,
+              type,
+              userId,
+            }),
+          ),
+        };
+      }
+    } else if (type === '5') {
+      built = {
+        filename: `${baseName}.csv`,
+        mimeType: 'text/csv; charset=utf-8',
+        buffer: Buffer.from(
+          await this.inventario.generateCsv({
+            companyIds: inventarioScope!.companyIds,
+            scopeLabel: inventarioScope!.scopeLabel,
+            generatedAt,
+          }),
+          'utf8',
+        ),
+      };
+    } else if (isCobranca) {
+      built = {
+        filename: `${baseName}.csv`,
+        mimeType: 'text/csv; charset=utf-8',
+        buffer: Buffer.from(billingRowsToCsv(billingRows!), 'utf8'),
+      };
+    } else if (type === '4') {
+      built = {
+        filename: `${baseName}.csv`,
+        mimeType: 'text/csv; charset=utf-8',
+        buffer: Buffer.from(
+          await this.generateTipo4Csv({
+            user,
+            companyId,
+            start: range.start,
+            end: range.end,
+          }),
+          'utf8',
+        ),
+      };
+    } else {
+      built = {
+        filename: `${baseName}.csv`,
+        mimeType: 'text/csv; charset=utf-8',
+        buffer: Buffer.from(
+          await this.generateHoursUsageCsv({
+            user,
+            companyId,
+            start: range.start,
+            end: range.end,
+            userId,
+          }),
+          'utf8',
+        ),
+      };
+    }
 
     const targetPath = join(uploadsDir, built.filename);
     await writeUploadedBuffer(targetPath, built.buffer);

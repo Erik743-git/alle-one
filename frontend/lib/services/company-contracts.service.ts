@@ -21,8 +21,19 @@ export type ContractClassification = {
   id: string;
   name: string;
   level: number;
+  specialty?: { id: string; name: string } | null;
   serviceDesk?: { id: string; name: string } | null;
   parent?: ContractClassification | null;
+};
+
+export type ContractSpecialtyLine = {
+  id: string;
+  specialtyId: string;
+  monthlyHours: number;
+  unlimited: boolean;
+  contractValue: string;
+  excessHourPrice: string;
+  specialty?: { id: string; name: string; externalId?: number | null } | null;
 };
 
 export type CompanyContract = {
@@ -33,13 +44,16 @@ export type CompanyContract = {
   title: string;
   description: string | null;
   status: ContractStatus;
+  /** @deprecated Prefer specialties[].monthlyHours */
   monthlyHours: number;
+  /** @deprecated Prefer specialties[].excessHourPrice */
   extraHourPrice: string;
   startDate: string;
   endDate: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  specialties?: ContractSpecialtyLine[];
   contractFiles?: ContractFile[];
 };
 
@@ -48,14 +62,24 @@ export type ListCompanyContractsResponse = {
   contracts: CompanyContract[];
 };
 
+export type ContractSpecialtyLinePayload = {
+  specialtyId: string;
+  monthlyHours: number;
+  unlimited?: boolean;
+  contractValue: string;
+  excessHourPrice: string;
+};
+
 export type CreateCompanyContractPayload = {
   title: string;
   description?: string;
   status: ContractStatus;
-  monthlyHours: number;
-  extraHourPrice: string;
-  startDate: string; // ISO/date string
+  startDate: string;
   endDate?: string | null;
+  specialties: ContractSpecialtyLinePayload[];
+  /** Legado — preenchido a partir da 1ª linha */
+  monthlyHours?: number;
+  extraHourPrice?: string;
   classificationId?: string | null;
 };
 
@@ -95,8 +119,6 @@ export const companyContractsService = {
     return apiRequest<ContractFile>(`/companies/${companyId}/contracts/${contractId}/file`, {
       method: "POST",
       body: form,
-      // apiRequest precisa respeitar FormData sem JSON stringify
     });
   },
 };
-

@@ -632,7 +632,10 @@ export default function GeradorRelatoriosPage() {
                   mesmas tabelas do XLSX (gráficos só no XLSX). Inventário:
                   snapshot dos ativos das empresas selecionadas (sem período e
                   sem colaborador), em CSV ou XLSX — use &quot;Selecionar
-                  todas&quot; para incluir todas as empresas.
+                  todas&quot; para incluir todas as empresas. Fechamento /
+                  cobrança: horas gastas por especialidade do apontador vs
+                  contrato (valor, excedente, a cobrar) de uma empresa no
+                  período.
                 </p>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

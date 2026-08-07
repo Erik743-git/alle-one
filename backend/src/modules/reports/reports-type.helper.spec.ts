@@ -7,6 +7,7 @@ describe('reports-type.helper', () => {
     expect(toReportType('1')).toBe(ReportType.RENDIMENTO);
     expect(toReportType('4')).toBe(ReportType.ESTATISTICA_GERAL);
     expect(toReportType('5')).toBe(ReportType.INVENTARIO);
+    expect(toReportType('6')).toBe(ReportType.COBRANCA);
   });
 
   it('rejeita tipo de relatório inválido', () => {

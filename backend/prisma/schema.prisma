@@ -484,6 +484,7 @@ enum ReportType {
   RENDIMENTO        @map("1")
   ESTATISTICA_GERAL @map("4")
   INVENTARIO        @map("5")
+  COBRANCA          @map("6")
 }
 
 enum ReportStatus {
