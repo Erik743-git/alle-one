@@ -35,10 +35,17 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  @Get('specialties')
+  @RequirePermission(PermissionModule.USERS, 'canView')
+  listSpecialties() {
+    return this.usersService.listSpecialties();
+  }
+
+  /** @deprecated Prefer /users/specialties */
   @Get('service-desks')
   @RequirePermission(PermissionModule.USERS, 'canView')
   listServiceDesks() {
-    return this.usersService.listServiceDesks();
+    return this.usersService.listSpecialties();
   }
 
   @Get(':id')

@@ -335,7 +335,7 @@ export class RendimentoService {
     if (Number.isNaN(id)) return null;
     return {
       id,
-      name: String(params.name ?? '').trim() || `Usuário TiFlux ${id}`,
+      name: String(params.name ?? '').trim() || `Usuário ${id}`,
     };
   }
 
@@ -2112,7 +2112,7 @@ export class RendimentoService {
 
     if (params.userId && targets.length === 0) {
       throw new NotFoundException(
-        'Colaborador não encontrado ou sem vínculo TiFlux.',
+        'Colaborador não encontrado ou sem vínculo externo.',
       );
     }
 

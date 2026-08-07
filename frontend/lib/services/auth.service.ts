@@ -22,7 +22,7 @@ export const authService = {
   async switchCompany(companyId: string) {
     return apiRequest<AuthSessionResponse>("/auth/switch-company", {
       method: "POST",
-      body: JSON.stringify({ companyId }),
+      body: { companyId },
     });
   },
 };

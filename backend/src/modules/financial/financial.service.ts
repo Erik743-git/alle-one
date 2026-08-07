@@ -254,7 +254,7 @@ export class FinancialService {
             id: true,
             name: true,
             level: true,
-            serviceDesk: { select: { id: true, name: true } },
+            specialty: { select: { id: true, name: true } },
             parent: {
               select: {
                 id: true,

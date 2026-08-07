@@ -81,6 +81,7 @@ export class TicketsController {
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   createCatalogs(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Query('deskId') deskIdRaw?: string,
     @Query('clientId') clientIdRaw?: string,
   ) {
@@ -93,6 +94,7 @@ export class TicketsController {
         ? Number(clientIdRaw)
         : undefined;
     return this.catalogsService.getCreateCatalogs(
+      actor,
       deskId != null && Number.isFinite(deskId) ? deskId : undefined,
       clientId != null && Number.isFinite(clientId) ? clientId : undefined,
     );

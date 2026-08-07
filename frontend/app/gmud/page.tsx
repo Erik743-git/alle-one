@@ -18,10 +18,17 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { sortByName } from "@/lib/collections";
+import { useConfirm } from "@/lib/confirm";
 import { getStoredUser } from "@/lib/session";
 import { type Company } from "@/lib/services/companies.service";
 import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 import { GmudStatusBadge } from "./_components/gmud-status-badge";
+import {
+  canEditGmud,
+  GMUD_REAPPROVAL_WARNING,
+  gmudRequiresReapproval,
+} from "./_components/gmud-edit-rules";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   ClipboardList,
@@ -62,7 +69,7 @@ function companyFromGmudRef(ref: { id: string; name: string }): Company {
 }
 
 function canEdit(gmud: Gmud) {
-  return gmud.status === "DRAFT" || gmud.status === "PENDING_APPROVAL";
+  return canEditGmud(gmud.status);
 }
 
 function canExecute(gmud: Gmud) {
@@ -101,6 +108,22 @@ function getApprovalSummary(gmud: Gmud) {
 
 export default function GmudPage() {
   const user = getStoredUser();
+  const router = useRouter();
+  const confirm = useConfirm();
+
+  async function goEditGmud(gmud: Gmud) {
+    if (gmudRequiresReapproval(gmud.status)) {
+      const ok = await confirm({
+        title: "Editar GMUD aprovada",
+        description: GMUD_REAPPROVAL_WARNING,
+        confirmText: "Continuar edição",
+        cancelText: "Cancelar",
+        variant: "warning",
+      });
+      if (!ok) return;
+    }
+    router.push(`/gmud/${gmud.id}?mode=edit`);
+  }
   const [companies, setCompanies] = useState<Company[]>([]);
   const [gmuds, setGmuds] = useState<Gmud[]>([]);
   const [loading, setLoading] = useState(true);
@@ -517,11 +540,12 @@ export default function GmudPage() {
                                         </Button>
                                       </Link>
                                       {canEdit(gmud) ? (
-                                        <Link href={`/gmud/${gmud.id}?mode=edit`}>
-                                          <Button>
-                                            Editar
-                                          </Button>
-                                        </Link>
+                                        <Button
+                                          type="button"
+                                          onClick={() => void goEditGmud(gmud)}
+                                        >
+                                          Editar
+                                        </Button>
                                       ) : null}
                                       {canApprove(gmud, user?.id ?? null) ? (
                                         <Link href={`/gmud/${gmud.id}`}>

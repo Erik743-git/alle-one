@@ -33,6 +33,8 @@ import { sortByName } from "@/lib/collections";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { authFetch } from "@/lib/auth-fetch";
+import { getApiErrorPayload } from "@/lib/api";
+import { useConfirm } from "@/lib/confirm";
 import { API_URL } from "@/lib/env";
 import { usersService } from "@/lib/services/users.service";
 import { UserRendimentoScheduleFields } from "@/components/admin/user-rendimento-schedule-fields";
@@ -53,7 +55,18 @@ type ApiUser = {
   responsible: boolean;
   companyId: string | null;
   isOnline?: boolean;
-  serviceDesks: Array<{
+  specialtyId?: string | null;
+  specialty?: {
+    id: string;
+    name: string;
+    externalId: number | null;
+  } | null;
+  specialties?: Array<{
+    id: string;
+    name: string;
+    externalId: number | null;
+  }>;
+  serviceDesks?: Array<{
     id: string;
     name: string;
     externalId: number | null;
@@ -62,6 +75,11 @@ type ApiUser = {
     id: string;
     name: string;
   } | null;
+  companyMemberships?: Array<{
+    companyId: string;
+    companyName: string;
+    clientRole: "CLIENT_GESTOR" | "CLIENT_MEMBER";
+  }>;
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;
   rendimentoLunchMinutes?: number | null;
@@ -98,15 +116,34 @@ type FormEdicao = {
   companyId: string;
   firstAccess: boolean;
   responsible: boolean;
-  serviceDeskIds: string[];
+  specialtyId: string;
   rendimentoSchedule: UserRendimentoScheduleValue;
 };
 
-type ServiceDeskOption = {
+type SpecialtyOption = {
   id: string;
   name: string;
   externalId: number | null;
 };
+
+function resolveUserSpecialtyId(usuario: ApiUser): string {
+  return (
+    usuario.specialtyId ??
+    usuario.specialty?.id ??
+    usuario.specialties?.[0]?.id ??
+    usuario.serviceDesks?.[0]?.id ??
+    ""
+  );
+}
+
+function resolveUserSpecialtyName(usuario: ApiUser): string | null {
+  return (
+    usuario.specialty?.name ??
+    usuario.specialties?.[0]?.name ??
+    usuario.serviceDesks?.[0]?.name ??
+    null
+  );
+}
 
 function mapRole(role: ApiUser["role"]): UsuarioUI["perfil"] {
   switch (role) {
@@ -131,12 +168,13 @@ function mapStatus(status: ApiUser["status"]): UsuarioUI["status"] {
 }
 
 export default function AdminUsuariosPage() {
+  const confirm = useConfirm();
   const [modalNovoUsuario, setModalNovoUsuario] = useState(false);
   const [modalPermissoes, setModalPermissoes] = useState(false);
   const [modalEditarUsuario, setModalEditarUsuario] = useState(false);
   const [modalDesativarUsuario, setModalDesativarUsuario] = useState(false);
 
-  const [usuarioSelecionado, setUsuarioSelecionado] = useState("UsuÃ¡rio");
+  const [usuarioSelecionado, setUsuarioSelecionado] = useState("Usuário");
   const [permissoesUserId, setPermissoesUserId] = useState<string | null>(null);
   const [permissoesUserRole, setPermissoesUserRole] = useState<
     ApiUser["role"] | undefined
@@ -149,11 +187,11 @@ export default function AdminUsuariosPage() {
   const [busca, setBusca] = useState("");
   const [usuarios, setUsuarios] = useState<ApiUser[]>([]);
   const [empresas, setEmpresas] = useState<EmpresaApi[]>([]);
-  const [serviceDesks, setServiceDesks] = useState<ServiceDeskOption[]>([]);
+  const [specialties, setSpecialties] = useState<SpecialtyOption[]>([]);
 
   const [carregando, setCarregando] = useState(true);
   const [carregandoEmpresas, setCarregandoEmpresas] = useState(false);
-  const [carregandoMesas, setCarregandoMesas] = useState(false);
+  const [carregandoEspecialidades, setCarregandoEspecialidades] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [desativandoUsuario, setDesativandoUsuario] = useState(false);
 
@@ -170,7 +208,7 @@ export default function AdminUsuariosPage() {
     companyId: "",
     firstAccess: false,
     responsible: false,
-    serviceDeskIds: [],
+    specialtyId: "",
     rendimentoSchedule: normalizeUserRendimentoSchedule({}),
   });
   const [senhaProvisoriaEdicao, setSenhaProvisoriaEdicao] = useState("");
@@ -215,7 +253,7 @@ export default function AdminUsuariosPage() {
         const message =
           !Array.isArray(data) && typeof data.message === "string"
             ? data.message
-            : "NÃ£o foi possÃ­vel carregar as empresas.";
+            : "Não foi possível carregar as empresas.";
 
         setErroEdicao(message);
         setEmpresas([]);
@@ -231,24 +269,24 @@ export default function AdminUsuariosPage() {
     }
   }
 
-  async function buscarMesasDeServico() {
+  async function buscarEspecialidades() {
     try {
-      setCarregandoMesas(true);
+      setCarregandoEspecialidades(true);
       setErroEdicao("");
 
-      const data = await usersService.listServiceDesks();
-      setServiceDesks(sortByName(data));
+      const data = await usersService.listSpecialties();
+      setSpecialties(sortByName(data));
     } catch {
       setErroEdicao("Erro ao conectar com o backend.");
-      setServiceDesks([]);
+      setSpecialties([]);
     } finally {
-      setCarregandoMesas(false);
+      setCarregandoEspecialidades(false);
     }
   }
 
   useEffect(() => {
     void buscarUsuarios();
-    void buscarMesasDeServico();
+    void buscarEspecialidades();
   }, []);
 
   const usuariosFiltrados = useMemo(() => {
@@ -257,35 +295,61 @@ export default function AdminUsuariosPage() {
     const base = !termo
       ? usuarios
       : usuarios.filter((usuario) => {
-      const empresa = usuario.company?.name ?? "Sem empresa";
-      return (
-        usuario.name.toLowerCase().includes(termo) ||
-        usuario.email.toLowerCase().includes(termo) ||
-        usuario.role.toLowerCase().includes(termo) ||
-        empresa.toLowerCase().includes(termo)
-      );
-    });
+          const empresasNomes = [
+            usuario.company?.name ?? "",
+            ...(usuario.companyMemberships ?? []).map((m) => m.companyName),
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return (
+            usuario.name.toLowerCase().includes(termo) ||
+            usuario.email.toLowerCase().includes(termo) ||
+            usuario.role.toLowerCase().includes(termo) ||
+            empresasNomes.includes(termo)
+          );
+        });
     return [...base].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   }, [busca, usuarios]);
 
   const usuariosPorEmpresa = useMemo<GrupoEmpresa[]>(() => {
     const grupos = new Map<string, UsuarioUI[]>();
 
-    usuariosFiltrados.forEach((usuario) => {
-      const nomeEmpresa = usuario.company?.name ?? "Sem empresa";
-
+    const pushInGroup = (
+      nomeEmpresa: string,
+      usuario: ApiUser,
+      perfilRole: ApiUser["role"] | "CLIENT_GESTOR" | "CLIENT_MEMBER",
+    ) => {
       if (!grupos.has(nomeEmpresa)) {
         grupos.set(nomeEmpresa, []);
       }
-
-      grupos.get(nomeEmpresa)?.push({
+      const list = grupos.get(nomeEmpresa)!;
+      if (list.some((u) => u.id === usuario.id)) return;
+      list.push({
         id: usuario.id,
         nome: usuario.name,
         email: usuario.email,
-        perfil: mapRole(usuario.role),
+        perfil: mapRole(perfilRole),
         status: mapStatus(usuario.status),
         online: Boolean(usuario.isOnline),
       });
+    };
+
+    usuariosFiltrados.forEach((usuario) => {
+      const memberships = usuario.companyMemberships ?? [];
+      if (usuario.company?.name) {
+        pushInGroup(usuario.company.name, usuario, usuario.role);
+      }
+      for (const m of memberships) {
+        const name = m.companyName?.trim();
+        if (!name) continue;
+        // Na empresa ativa, o papel global do usuário prevalece.
+        if (m.companyId === usuario.companyId) continue;
+        pushInGroup(name, usuario, m.clientRole);
+      }
+      if (!usuario.company?.name && memberships.length === 0) {
+        pushInGroup("Sem empresa", usuario, usuario.role);
+      }
     });
 
     return Array.from(grupos.entries())
@@ -322,8 +386,8 @@ export default function AdminUsuariosPage() {
     if (empresas.length === 0) {
       await buscarEmpresas();
     }
-    if (serviceDesks.length === 0) {
-      await buscarMesasDeServico();
+    if (specialties.length === 0) {
+      await buscarEspecialidades();
     }
 
     setErroEdicao("");
@@ -336,7 +400,7 @@ export default function AdminUsuariosPage() {
       companyId: usuario.companyId ?? "",
       firstAccess: usuario.firstAccess,
       responsible: usuario.responsible,
-      serviceDeskIds: usuario.serviceDesks.map((desk) => desk.id),
+      specialtyId: resolveUserSpecialtyId(usuario),
       rendimentoSchedule: normalizeUserRendimentoSchedule(usuario),
     });
     setSenhaProvisoriaEdicao("");
@@ -360,6 +424,82 @@ export default function AdminUsuariosPage() {
     setModalDesativarUsuario(true);
   }
 
+  async function offerLinkExistingUser(payload: Record<string, unknown>) {
+    const userId = typeof payload.userId === "string" ? payload.userId : null;
+    const userName =
+      typeof payload.userName === "string" ? payload.userName : "este usuário";
+    const canLink = payload.canLinkCompany === true;
+    const companyIds = Array.isArray(payload.companyIds)
+      ? payload.companyIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const companyNames = Array.isArray(payload.companyNames)
+      ? payload.companyNames.filter(
+          (name): name is string => typeof name === "string",
+        )
+      : [];
+
+    const targetCompanyId = formEdicao.companyId;
+    const targetCompany = empresas.find((c) => c.id === targetCompanyId);
+    const targetName = targetCompany?.name ?? "a empresa selecionada";
+
+    if (!targetCompanyId) {
+      setErroEdicao(
+        "Já existe um usuário com este e-mail. Selecione uma empresa para conceder acesso.",
+      );
+      return;
+    }
+
+    if (!canLink || !userId) {
+      setErroEdicao(
+        "Já existe um usuário com este e-mail, mas ele não é um usuário cliente e não pode receber acesso multi-empresa.",
+      );
+      return;
+    }
+
+    if (companyIds.includes(targetCompanyId)) {
+      setErroEdicao(
+        `O usuário ${userName} já possui acesso à empresa ${targetName}.`,
+      );
+      return;
+    }
+
+    const formatCompanyList = (names: string[]) => {
+      if (names.length === 0) return "";
+      if (names.length === 1) return names[0];
+      if (names.length === 2) return `${names[0]} e ${names[1]}`;
+      return `${names.slice(0, -1).join(", ")} e ${names[names.length - 1]}`;
+    };
+
+    const existingLabel = formatCompanyList(companyNames);
+    const description = existingLabel
+      ? `Já existe um usuário cadastrado com este e-mail (${userName}), com acesso a ${existingLabel}. Deseja que esse usuário também tenha acesso à empresa ${targetName}?`
+      : `Já existe um usuário cadastrado com este e-mail (${userName}). Deseja que esse usuário tenha acesso à empresa ${targetName}?`;
+
+    const ok = await confirm({
+      title: "Usuário já cadastrado",
+      description,
+      confirmText: "Sim, conceder acesso",
+      cancelText: "Não",
+      variant: "warning",
+    });
+
+    if (!ok) return;
+
+    const clientRole =
+      formEdicao.role === "CLIENT_GESTOR" ||
+      formEdicao.role === "CLIENT_MEMBER"
+        ? formEdicao.role
+        : "CLIENT_MEMBER";
+
+    await usersService.upsertCompanyMembership(userId, {
+      companyId: targetCompanyId,
+      clientRole,
+    });
+
+    setModalEditarUsuario(false);
+    await buscarUsuarios();
+  }
+
   async function salvarEdicao() {
     if (!formEdicao.id) {
       return;
@@ -375,7 +515,7 @@ export default function AdminUsuariosPage() {
 
     if (habilitandoPrimeiroAcesso && !senhaProvisoriaEdicao.trim()) {
       setErroEdicao(
-        "Defina a senha provisÃ³ria para o usuÃ¡rio concluir o primeiro acesso.",
+        "Defina a senha provisória para o usuário concluir o primeiro acesso.",
       );
       return;
     }
@@ -386,7 +526,7 @@ export default function AdminUsuariosPage() {
       senhaProvisoriaEdicao.trim().length < 8
     ) {
       setErroEdicao(
-        "A senha provisÃ³ria deve ter pelo menos 8 caracteres, com maiÃºscula, minÃºscula, nÃºmero e caractere especial.",
+        "A senha provisória deve ter pelo menos 8 caracteres, com maiúscula, minúscula, número e caractere especial.",
       );
       return;
     }
@@ -403,7 +543,7 @@ export default function AdminUsuariosPage() {
         companyId: formEdicao.companyId || null,
         firstAccess: formEdicao.firstAccess,
         responsible: formEdicao.responsible,
-        serviceDeskIds: formEdicao.serviceDeskIds,
+        specialtyId: formEdicao.specialtyId || null,
       };
 
       if (usesRendimentoScheduleRole(formEdicao.role)) {
@@ -427,6 +567,20 @@ export default function AdminUsuariosPage() {
       setModalEditarUsuario(false);
       await buscarUsuarios();
     } catch (err) {
+      const payload = getApiErrorPayload(err);
+      if (payload?.code === "EMAIL_EXISTS") {
+        try {
+          await offerLinkExistingUser(payload);
+        } catch (linkErr) {
+          setErroEdicao(
+            linkErr instanceof Error
+              ? linkErr.message
+              : "Erro ao conceder acesso à empresa.",
+          );
+        }
+        return;
+      }
+
       setErroEdicao(
         err instanceof Error
           ? err.message
@@ -453,7 +607,7 @@ export default function AdminUsuariosPage() {
       setErroDesativacao(
         err instanceof Error
           ? err.message
-          : "NÃ£o foi possÃ­vel desativar o usuÃ¡rio.",
+          : "Não foi possível desativar o usuário.",
       );
     } finally {
       setDesativandoUsuario(false);
@@ -467,9 +621,9 @@ export default function AdminUsuariosPage() {
         <div className="font-sans w-full space-y-8">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold text-foreground">UsuÃ¡rios</h1>
+              <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
               <p className="text-muted-foreground">
-                Gerencie usuÃ¡rios, vÃ­nculos por empresa e permissÃµes de acesso.
+                Gerencie usuários, vínculos por empresa e permissões de acesso.
               </p>
             </div>
 
@@ -478,7 +632,7 @@ export default function AdminUsuariosPage() {
               className="h-11 gap-2"
             >
               <Plus size={18} />
-              Novo usuÃ¡rio
+              Novo usuário
             </Button>
           </div>
 
@@ -487,7 +641,7 @@ export default function AdminUsuariosPage() {
               <CardContent className="flex min-h-[132px] items-center justify-between p-6">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">
-                    Total de usuÃ¡rios
+                    Total de usuários
                   </p>
                   <p className="text-3xl font-bold">{totalUsuarios}</p>
                 </div>
@@ -552,10 +706,10 @@ export default function AdminUsuariosPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
                     <h2 className="text-xl font-bold text-foreground">
-                      GestÃ£o de usuÃ¡rios
+                      Gestão de usuários
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                      UsuÃ¡rios organizados por empresa com foco em permissÃµes.
+                      Usuários organizados por empresa com foco em permissões.
                     </p>
                   </div>
 
@@ -567,7 +721,7 @@ export default function AdminUsuariosPage() {
                     <Input
                       value={busca}
                       onChange={(e) => setBusca(e.target.value)}
-                      placeholder="Buscar usuÃ¡rio..."
+                      placeholder="Buscar usuário..."
                       className="h-11 pl-10"
                     />
                   </div>
@@ -575,7 +729,7 @@ export default function AdminUsuariosPage() {
 
                 {carregando ? (
                   <div className="rounded-2xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-                    Carregando usuÃ¡rios...
+                    Carregando usuários...
                   </div>
                 ) : erro ? (
                   <div className="alle-alert-error rounded-2xl p-6 text-sm">
@@ -583,7 +737,7 @@ export default function AdminUsuariosPage() {
                   </div>
                 ) : usuariosPorEmpresa.length === 0 ? (
                   <div className="rounded-2xl border border-border bg-muted/40 p-6 text-sm text-muted-foreground">
-                    Nenhum usuÃ¡rio encontrado.
+                    Nenhum usuário encontrado.
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -604,7 +758,7 @@ export default function AdminUsuariosPage() {
                                 {grupo.empresa}
                               </p>
                               <p className="text-xs text-muted-foreground">
-                                {grupo.usuarios.length} usuÃ¡rio(s)
+                                {grupo.usuarios.length} usuário(s)
                               </p>
                             </div>
                           </div>
@@ -618,7 +772,7 @@ export default function AdminUsuariosPage() {
                         <div className="border-t border-border">
                           {grupo.usuarios.map((usuario, index) => (
                             <div
-                              key={usuario.id}
+                              key={`${grupo.empresa}-${usuario.id}`}
                               className={`flex flex-col gap-4 px-5 py-4 xl:flex-row xl:items-center xl:justify-between ${
                                 index !== 0 ? "border-t border-border" : ""
                               }`}
@@ -633,7 +787,7 @@ export default function AdminUsuariosPage() {
                                     }`}
                                     title={
                                       usuario.online
-                                        ? "Online no portal (Ãºltimos 10 min)"
+                                        ? "Online no portal (últimos 10 min)"
                                         : "Offline"
                                     }
                                     aria-hidden
@@ -646,12 +800,14 @@ export default function AdminUsuariosPage() {
                                 {(() => {
                                   const full = usuarios.find((u) => u.id === usuario.id);
                                   if (!full) return null;
-                                  const desks = full.serviceDesks.map((d) => d.name).join(", ");
+                                  const specialtyName = resolveUserSpecialtyName(full);
                                   return (
                                     <>
                                       <p className="text-xs text-muted-foreground">
-                                        {desks ? `Mesas: ${desks}` : "Sem mesa vinculada"}
-                                        {full.responsible ? " â¢ ResponsÃ¡vel" : ""}
+                                        {specialtyName
+                                          ? `Especialidade: ${specialtyName}`
+                                          : "Sem especialidade"}
+                                        {full.responsible ? " • Responsável" : ""}
                                       </p>
                                       {usesRendimentoScheduleRole(full.role) ? (
                                         <p className="text-xs text-muted-foreground">
@@ -695,14 +851,14 @@ export default function AdminUsuariosPage() {
                                 >
                                   <ShieldCheck size={15} />
                                   <span className="text-xs font-semibold">
-                                    PermissÃµes
+                                    Permissões
                                   </span>
                                 </button>
 
                                 <button
                                   onClick={() => void abrirEdicao(usuario.id)}
                                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
-                                  title="Editar usuÃ¡rio"
+                                  title="Editar usuário"
                                 >
                                   <Pencil size={16} />
                                 </button>
@@ -710,7 +866,7 @@ export default function AdminUsuariosPage() {
                                 <button
                                   onClick={() => abrirDesativacao(usuario.id)}
                                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background/40 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
-                                  title="Desativar usuÃ¡rio"
+                                  title="Desativar usuário"
                                 >
                                   <Trash2 size={16} />
                                 </button>
@@ -738,7 +894,7 @@ export default function AdminUsuariosPage() {
                     </h2>
 
                     <p className="text-sm leading-6 text-muted-foreground">
-                      Organize usuÃ¡rios por empresa e mantenha permissÃµes
+                      Organize usuários por empresa e mantenha permissões
                       centralizadas para cada perfil do portal.
                     </p>
                   </div>
@@ -765,8 +921,8 @@ export default function AdminUsuariosPage() {
                 </div>
 
                 <div className="mt-6 rounded-xl border border-dashed border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                  Ãrea preparada para ediÃ§Ã£o de perfil, vÃ­nculos por empresa e
-                  permissÃµes detalhadas por mÃ³dulo.
+                  Área preparada para edição de perfil, vínculos por empresa e
+                  permissões detalhadas por módulo.
                 </div>
               </CardContent>
             </Card>
@@ -823,10 +979,10 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-1">
                   <DialogTitle className="text-2xl font-bold text-foreground">
-                    Editar usuÃ¡rio
+                    Editar usuário
                   </DialogTitle>
                   <DialogDescription className="text-sm text-muted-foreground">
-                    Atualize os dados, vÃ­nculo e status do usuÃ¡rio selecionado.
+                    Atualize os dados, vínculo e status do usuário selecionado.
                   </DialogDescription>
                 </div>
               </DialogHeader>
@@ -941,20 +1097,20 @@ export default function AdminUsuariosPage() {
                       }))
                     }
                     options={[
-                      { value: "false", label: "NÃ£o" },
+                      { value: "false", label: "Não" },
                       { value: "true", label: "Sim" },
                     ]}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Com &quot;Sim&quot;, o usuÃ¡rio entra com a senha provisÃ³ria e
-                    Ã© direcionado a definir a senha definitiva no primeiro acesso.
+                    Com &quot;Sim&quot;, o usuário entra com a senha provisória e
+                    é direcionado a definir a senha definitiva no primeiro acesso.
                   </p>
                 </div>
 
                 {formEdicao.firstAccess ? (
                   <div className="space-y-2 sm:col-span-2">
                     <Label className="text-sm font-semibold text-foreground">
-                      Senha provisÃ³ria
+                      Senha provisória
                       {formEdicao.firstAccess && !firstAccessInicialEdicao ? (
                         <span className="text-destructive"> *</span>
                       ) : null}
@@ -963,60 +1119,99 @@ export default function AdminUsuariosPage() {
                       type="password"
                       value={senhaProvisoriaEdicao}
                       onChange={(e) => setSenhaProvisoriaEdicao(e.target.value)}
-                      placeholder="MÃ­n. 8 caracteres (A a, 0-9, especial)"
+                      placeholder="Mín. 8 caracteres (A a, 0-9, especial)"
                       autoComplete="new-password"
                       className="h-11"
                     />
                     <p className="text-xs text-muted-foreground">
                       {firstAccessInicialEdicao
-                        ? "Deixe em branco para manter a senha atual. Preencha apenas se quiser gerar uma nova senha provisÃ³ria."
-                        : "ObrigatÃ³ria ao ativar primeiro acesso. O usuÃ¡rio usarÃ¡ esta senha no login e depois criarÃ¡ a senha definitiva."}
+                        ? "Deixe em branco para manter a senha atual. Preencha apenas se quiser gerar uma nova senha provisória."
+                        : "Obrigatória ao ativar primeiro acesso. O usuário usará esta senha no login e depois criará a senha definitiva."}
                     </p>
                   </div>
                 ) : null}
 
                 <div className="space-y-2 sm:col-span-2">
                   <Label className="text-sm font-semibold text-foreground">
-                    Mesas de serviÃ§o
+                    Especialidade
                   </Label>
-                  <div className="max-h-40 overflow-y-auto rounded-xl border border-input bg-background p-3">
-                    {carregandoMesas ? (
-                      <p className="text-sm text-muted-foreground">Carregando mesas...</p>
-                    ) : serviceDesks.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma mesa disponÃ­vel.
+                  <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
+                    {carregandoEspecialidades ? (
+                      <p className="px-2 py-3 text-sm text-muted-foreground">
+                        Carregando especialidades...
+                      </p>
+                    ) : specialties.length === 0 ? (
+                      <p className="px-2 py-3 text-sm text-muted-foreground">
+                        Nenhuma especialidade disponível.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                        {serviceDesks.map((desk) => (
-                          <label
-                            key={desk.id}
-                            className="flex items-center gap-2 text-sm text-foreground"
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormEdicao((prev) => ({ ...prev, specialtyId: "" }))
+                          }
+                          className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                            !formEdicao.specialtyId
+                              ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
+                              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                          }`}
+                        >
+                          <span
+                            className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                              !formEdicao.specialtyId
+                                ? "border-primary"
+                                : "border-border"
+                            }`}
                           >
-                            <FlipCheckbox
-                              checked={formEdicao.serviceDeskIds.includes(desk.id)}
-                              onChange={(e) =>
+                            {!formEdicao.specialtyId ? (
+                              <span className="size-2 rounded-full bg-primary" />
+                            ) : null}
+                          </span>
+                          Nenhuma
+                        </button>
+                        {specialties.map((item) => {
+                          const selected = formEdicao.specialtyId === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() =>
                                 setFormEdicao((prev) => ({
                                   ...prev,
-                                  serviceDeskIds: e.target.checked
-                                    ? [...prev.serviceDeskIds, desk.id]
-                                    : prev.serviceDeskIds.filter(
-                                        (id) => id !== desk.id,
-                                      ),
+                                  specialtyId: item.id,
                                 }))
                               }
-                            />
-                            <span>{desk.name}</span>
-                          </label>
-                        ))}
-                      </div>
+                              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                                selected
+                                  ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
+                                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                              }`}
+                            >
+                              <span
+                                className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                                  selected ? "border-primary" : "border-border"
+                                }`}
+                              >
+                                {selected ? (
+                                  <span className="size-2 rounded-full bg-primary" />
+                                ) : null}
+                              </span>
+                              <span className="truncate font-medium">{item.name}</span>
+                            </button>
+                          );
+                        })}
+                      </>
                     )}
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Apenas uma especialidade por usuário.
+                  </p>
                 </div>
 
                 <div className="space-y-2 sm:col-span-2">
                   <Label className="text-sm font-semibold text-foreground">
-                    ResponsÃ¡vel
+                    Responsável
                   </Label>
                   <label className="flex items-center gap-2 text-sm text-foreground">
                     <FlipCheckbox
@@ -1028,7 +1223,7 @@ export default function AdminUsuariosPage() {
                         }))
                       }
                     />
-                    Marcar usuÃ¡rio como responsÃ¡vel
+                    Marcar usuário como responsável
                   </label>
                 </div>
 
@@ -1068,7 +1263,7 @@ export default function AdminUsuariosPage() {
                   disabled={salvandoEdicao}
                   className="h-11"
                 >
-                  {salvandoEdicao ? "Salvando..." : "Salvar alteraÃ§Ãµes"}
+                  {salvandoEdicao ? "Salvando..." : "Salvar alterações"}
                 </Button>
               </div>
             </div>
@@ -1094,10 +1289,10 @@ export default function AdminUsuariosPage() {
 
                 <div className="space-y-1">
                   <DialogTitle className="text-2xl font-bold text-foreground">
-                    Desativar usuÃ¡rio
+                    Desativar usuário
                   </DialogTitle>
                   <DialogDescription className="text-sm text-muted-foreground">
-                    Essa aÃ§Ã£o irÃ¡ inativar o usuÃ¡rio no sistema, sem excluir os
+                    Essa ação irá inativar o usuário no sistema, sem excluir os
                     dados do cadastro.
                   </DialogDescription>
                 </div>
@@ -1106,9 +1301,9 @@ export default function AdminUsuariosPage() {
 
             <div className="px-6 py-6">
               <div className="rounded-2xl border border-border bg-muted/40 p-4">
-                <p className="text-sm text-muted-foreground">UsuÃ¡rio selecionado</p>
+                <p className="text-sm text-muted-foreground">Usuário selecionado</p>
                 <p className="mt-1 text-base font-bold text-foreground">
-                  {usuarioDesativar?.nome ?? "UsuÃ¡rio"}
+                  {usuarioDesativar?.nome ?? "Usuário"}
                 </p>
               </div>
 
@@ -1137,7 +1332,7 @@ export default function AdminUsuariosPage() {
                   className="h-11"
                   variant="destructive"
                 >
-                  {desativandoUsuario ? "Desativando..." : "Desativar usuÃ¡rio"}
+                  {desativandoUsuario ? "Desativando..." : "Desativar usuário"}
                 </Button>
               </div>
             </div>

@@ -201,9 +201,7 @@ export class TifluxService {
 
   private assertApiAllowed(): void {
     if (isTifluxDisconnected()) {
-      throw new ServiceUnavailableException(
-        'Integração TiFlux desvinculada (TIFLUX_DISCONNECTED / cutover portal-only).',
-      );
+      throw new ServiceUnavailableException('Integração externa desvinculada.');
     }
   }
 
@@ -318,11 +316,12 @@ export class TifluxService {
 
   private formatError(data: unknown) {
     if (typeof data === 'string') {
-      return data || 'Erro ao consultar o TiFlux.';
+      return data || 'Erro ao consultar a integração externa.';
     }
 
     if (isTifluxApiError(data)) {
-      const base = data.message || data.error || 'Erro ao consultar o TiFlux.';
+      const base =
+        data.message || data.error || 'Erro ao consultar a integração externa.';
 
       if (
         data.detail &&
@@ -353,7 +352,7 @@ export class TifluxService {
       return base;
     }
 
-    return 'Erro ao consultar o TiFlux.';
+    return 'Erro ao consultar a integração externa.';
   }
 
   /**
@@ -625,21 +624,23 @@ export class TifluxService {
 
           if (isAbortError) {
             throw new BadGatewayException(
-              `Timeout ao consultar o TiFlux após ${this.requestTimeoutMs}ms.`,
+              `Timeout ao consultar a integração externa após ${this.requestTimeoutMs}ms.`,
             );
           }
 
           this.logger.error(
-            `Falha de rede ao consultar o TiFlux (url=${url})`,
+            `Falha de rede ao consultar a integração externa (url=${url})`,
             error instanceof Error ? error.stack : String(error),
           );
-          throw new BadGatewayException('Falha de rede ao consultar o TiFlux.');
+          throw new BadGatewayException(
+            'Falha de rede ao consultar a integração externa.',
+          );
         } finally {
           clearTimeout(timeoutId);
         }
       }
 
-      throw new BadGatewayException('Erro ao consultar o TiFlux.');
+      throw new BadGatewayException('Erro ao consultar a integração externa.');
     });
   }
 
@@ -741,21 +742,23 @@ export class TifluxService {
 
           if (isAbortError) {
             throw new BadGatewayException(
-              `Timeout ao consultar o TiFlux após ${this.requestTimeoutMs}ms.`,
+              `Timeout ao consultar a integração externa após ${this.requestTimeoutMs}ms.`,
             );
           }
 
           this.logger.error(
-            `Falha de rede ao consultar o TiFlux (url=${url})`,
+            `Falha de rede ao consultar a integração externa (url=${url})`,
             error instanceof Error ? error.stack : String(error),
           );
-          throw new BadGatewayException('Falha de rede ao consultar o TiFlux.');
+          throw new BadGatewayException(
+            'Falha de rede ao consultar a integração externa.',
+          );
         } finally {
           clearTimeout(timeoutId);
         }
       }
 
-      throw new BadGatewayException('Erro ao consultar o TiFlux.');
+      throw new BadGatewayException('Erro ao consultar a integração externa.');
     });
   }
 

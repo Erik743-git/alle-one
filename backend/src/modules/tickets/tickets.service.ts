@@ -27,6 +27,9 @@ import { TicketsCatalogsService } from './tickets-catalogs.service';
 import { isTicketsTifluxWriteEnabled } from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { EmailTemplatesService } from '../mail/email-templates.service';
+import { TenantScopeService } from '../../common/security/tenant-scope.service';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
+import { assertTicketCreateClientScope } from './tickets-client-scope';
 
 @Injectable()
 export class TicketsService {
@@ -37,6 +40,7 @@ export class TicketsService {
     private readonly appointments: TicketsAppointmentsService,
     private readonly portalStore: TicketsPortalStoreService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly tenantScope: TenantScopeService,
   ) {}
 
   /** Autocomplete de usuários do portal para pessoas em cópia (seguidores). */
@@ -175,8 +179,12 @@ export class TicketsService {
     return this.catalogs.getFilterCatalogs(actor);
   }
 
-  getCreateCatalogs(deskId?: number, clientId?: number) {
-    return this.catalogs.getCreateCatalogs(deskId, clientId);
+  getCreateCatalogs(
+    actor: AuthenticatedRequestUser,
+    deskId?: number,
+    clientId?: number,
+  ) {
+    return this.catalogs.getCreateCatalogs(actor, deskId, clientId);
   }
 
   private async resolveDeskMetaForCreate(
@@ -193,7 +201,7 @@ export class TicketsService {
       };
     }
 
-    const portalDesk = await this.prisma.serviceDesk.findFirst({
+    const portalDesk = await this.prisma.specialty.findFirst({
       where: { externalId: deskId, deletedAt: null, active: true },
       select: { name: true },
     });
@@ -218,6 +226,8 @@ export class TicketsService {
     dto: CreateTicketDto,
     files: Express.Multer.File[] = [],
   ) {
+    await assertTicketCreateClientScope(this.tenantScope, actor, dto.clientId);
+
     const writeTiflux = isTicketsTifluxWriteEnabled();
     const deskMeta = await this.resolveDeskMetaForCreate(
       dto.deskId,
@@ -233,7 +243,7 @@ export class TicketsService {
     );
 
     if (requiresCatalog && !dto.servicesCatalogsItemId) {
-      throw new BadRequestException('Selecione o serviço do catálogo TiFlux.');
+      throw new BadRequestException('Selecione o serviço do catálogo.');
     }
     if (writeTiflux && !requiresCatalog && !dto.priorityId) {
       throw new BadRequestException('Esta mesa exige uma prioridade.');
@@ -269,8 +279,11 @@ export class TicketsService {
         ? Number(dto.servicesCatalogsItemId)
         : null;
 
-    const allowedResponsibles =
-      await this.catalogs.listResponsiblesForCatalogs();
+    const allowedResponsibles = isClientPortalRole(actor.role)
+      ? actor.companyId
+        ? await this.catalogs.listCompanyUsersAsResponsibles(actor.companyId)
+        : []
+      : await this.catalogs.listResponsiblesForCatalogs();
 
     let responsibleId = dto.responsibleId ?? null;
     if (responsibleId == null) {
@@ -301,7 +314,9 @@ export class TicketsService {
       !allowedResponsibles.some((row) => row.id === responsibleId)
     ) {
       throw new BadRequestException(
-        'O responsável selecionado não é válido (precisa estar ativo e marcado como responsável no cadastro).',
+        isClientPortalRole(actor.role)
+          ? 'O responsável selecionado não pertence à sua empresa.'
+          : 'O responsável selecionado não é válido (precisa estar ativo e marcado como responsável no cadastro).',
       );
     }
 
@@ -356,7 +371,7 @@ export class TicketsService {
         );
         if (!Number.isFinite(ticketNumber)) {
           throw new BadGatewayException(
-            'TiFlux não retornou o número do ticket criado.',
+            'Não foi possível obter o número do ticket criado.',
           );
         }
         await this.appointments.recordOutbox({
@@ -387,7 +402,7 @@ export class TicketsService {
         statusName: 'Aberto',
         stageName: 'Aberto',
         priorityName: null,
-        createdByWayOf: writeTiflux ? 'TiFlux' : 'Portal',
+        createdByWayOf: writeTiflux ? 'Integração' : 'Portal',
         isClosed: false,
         origin: writeTiflux
           ? PortalTicketOrigin.TIFLUX
@@ -450,9 +465,7 @@ export class TicketsService {
       };
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Falha ao criar ticket no TiFlux.';
+        error instanceof Error ? error.message : 'Falha ao criar ticket.';
 
       if (writeTiflux) {
         await this.appointments.recordOutbox({
@@ -565,7 +578,7 @@ export class TicketsService {
           const message =
             error instanceof Error
               ? error.message
-              : 'Falha ao atualizar ticket no TiFlux.';
+              : 'Falha ao atualizar ticket.';
           throw new BadGatewayException(message);
         }
       }

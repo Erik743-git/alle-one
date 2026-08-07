@@ -400,7 +400,7 @@ export class PermissionsService {
       throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
 
-    const companies = user.companyMemberships
+    const companies = (user.companyMemberships ?? [])
       .filter((m) => !m.company.deletedAt)
       .map((m) => ({
         id: m.company.id,
@@ -411,7 +411,9 @@ export class PermissionsService {
     let effectiveRole = user.role as AuthenticatedRequestUser['role'];
     let activeCompanyId = user.companyId;
 
-    if (companies.length > 0) {
+    // Memberships só mandam no papel/empresa ativa de usuários CLIENT_*.
+    // Nunca rebaixar ADMIN/COLLAB/PJ por ter um vínculo residual em user_companies.
+    if (companies.length > 0 && isClientPortalRole(user.role)) {
       const active =
         companies.find((c) => c.id === user.companyId) ?? companies[0];
       activeCompanyId = active.id;
@@ -427,10 +429,9 @@ export class PermissionsService {
       }
     }
 
-    const pack =
-      isClientPortalRole(effectiveRole) || companies.length > 0
-        ? await this.resolveCompanyPackModules(activeCompanyId)
-        : null;
+    const pack = isClientPortalRole(effectiveRole)
+      ? await this.resolveCompanyPackModules(activeCompanyId)
+      : null;
 
     const permissions = this.computeEffective(
       { ...user, role: effectiveRole as UserRole },

@@ -23,6 +23,8 @@ import {
   canCreateTicket,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
+import { isClientPortalRole } from "@/lib/app-roles";
+import { useAuth } from "@/lib/use-auth";
 import { TICKETS_NEW_SUBTITLE } from "@/lib/module-copy";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
@@ -57,6 +59,8 @@ function FormSkeleton() {
 
 export default function NewTicketPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isClientUser = isClientPortalRole(user?.role);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [catalogs, setCatalogs] = useState<TicketCreateCatalogs | null>(null);
@@ -78,16 +82,10 @@ export default function NewTicketPage() {
   const [externalGmudRef, setExternalGmudRef] = useState("");
   const [gmudOptions, setGmudOptions] = useState<Gmud[]>([]);
   const [loadingGmuds, setLoadingGmuds] = useState(false);
-  const [ccInput, setCcInput] = useState("");
   const [ccPeople, setCcPeople] = useState<
     Array<{ email: string; name?: string }>
   >([]);
-  const [ccSuggestions, setCcSuggestions] = useState<
-    Array<{ id: string; name: string; email: string }>
-  >([]);
-  const [ccSearching, setCcSearching] = useState(false);
-  const [ccSuggestOpen, setCcSuggestOpen] = useState(false);
-  const ccSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [ccSelectValue, setCcSelectValue] = useState("");
 
   const selectedDesk = useMemo(
     () => catalogs?.desks.find((d) => String(d.id) === deskId) ?? null,
@@ -168,6 +166,19 @@ export default function NewTicketPage() {
     [catalogs],
   );
 
+  const ccOptions = useMemo(() => {
+    const selected = new Set(ccPeople.map((p) => p.email.toLowerCase()));
+    return (catalogs?.responsibles ?? [])
+      .filter((r) => {
+        const email = r.email?.trim().toLowerCase();
+        return Boolean(email) && !selected.has(email!);
+      })
+      .map((r) => ({
+        value: r.email!.trim().toLowerCase(),
+        label: `${r.name} (${r.email!.trim()})`,
+      }));
+  }, [catalogs, ccPeople]);
+
   const gmudSelectOptions = useMemo(
     () =>
       gmudOptions.map((g) => ({
@@ -227,6 +238,19 @@ export default function NewTicketPage() {
         setLoading(true);
         const data = await ticketsService.createCatalogs(params);
         setCatalogs(data);
+        setClientId((prev) => {
+          if (data.clients.length === 1) {
+            return String(data.clients[0].id);
+          }
+          if (
+            isClientUser &&
+            data.clients.length > 0 &&
+            !data.clients.some((c) => String(c.id) === prev)
+          ) {
+            return String(data.clients[0].id);
+          }
+          return prev;
+        });
       } catch (err) {
         notifyError(
           err instanceof Error
@@ -237,7 +261,7 @@ export default function NewTicketPage() {
         setLoading(false);
       }
     },
-    [],
+    [isClientUser],
   );
 
   useEffect(() => {
@@ -309,7 +333,12 @@ export default function NewTicketPage() {
 
   function handleRequestorSuggestion(nextRequestorId: string) {
     setRequestorId(nextRequestorId);
-    if (!nextRequestorId) return;
+    if (!nextRequestorId) {
+      setRequestorName("");
+      setRequestorEmail("");
+      setRequestorTelephone("");
+      return;
+    }
     const selected = (catalogs?.requestors ?? []).find(
       (row) => String(row.id) === nextRequestorId,
     );
@@ -332,47 +361,18 @@ export default function NewTicketPage() {
       if (prev.some((p) => p.email === email)) return prev;
       return [...prev, { email, name }];
     });
-    setCcInput("");
-    setCcSuggestions([]);
-    setCcSuggestOpen(false);
+    setCcSelectValue("");
   }
 
-  function addCcEmail() {
-    addCcPerson(ccInput);
-  }
-
-  function onCcInputChange(value: string) {
-    setCcInput(value);
-    if (ccSearchTimer.current) clearTimeout(ccSearchTimer.current);
-    const q = value.trim();
-    if (q.length < 2) {
-      setCcSuggestions([]);
-      setCcSuggestOpen(false);
+  function handleCcSelect(nextEmail: string) {
+    if (!nextEmail) {
+      setCcSelectValue("");
       return;
     }
-    ccSearchTimer.current = setTimeout(() => {
-      void (async () => {
-        try {
-          setCcSearching(true);
-          const rows = await ticketsService.searchUsers(q);
-          const selected = new Set(ccPeople.map((p) => p.email));
-          setCcSuggestions(
-            rows
-              .filter((u) => !selected.has(u.email.toLowerCase()))
-              .map((u) => ({
-                id: u.id,
-                name: u.name,
-                email: u.email.toLowerCase(),
-              })),
-          );
-          setCcSuggestOpen(true);
-        } catch {
-          setCcSuggestions([]);
-        } finally {
-          setCcSearching(false);
-        }
-      })();
-    }, 250);
+    const selected = (catalogs?.responsibles ?? []).find(
+      (r) => r.email?.trim().toLowerCase() === nextEmail,
+    );
+    addCcPerson(nextEmail, selected?.name);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -520,13 +520,23 @@ export default function NewTicketPage() {
                   <CardContent className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                       <FieldLabel required>Cliente</FieldLabel>
-                      <SearchableSelectField
-                        value={clientId}
-                        onChange={handleClientChange}
-                        options={clientOptions}
-                        loading={loading}
-                        emptyLabel="Selecione o cliente"
-                      />
+                      {isClientUser && clientOptions.length <= 1 ? (
+                        <Input
+                          value={clientOptions[0]?.label ?? selectedClient?.name ?? ""}
+                          readOnly
+                          disabled
+                          className="h-11"
+                        />
+                      ) : (
+                        <SearchableSelectField
+                          value={clientId}
+                          onChange={handleClientChange}
+                          options={clientOptions}
+                          loading={loading}
+                          emptyLabel="Selecione o cliente"
+                          disabled={isClientUser && clientOptions.length <= 1}
+                        />
+                      )}
                     </div>
                     <div className="space-y-2">
                       <FieldLabel required>Mesa de serviço</FieldLabel>
@@ -608,7 +618,9 @@ export default function NewTicketPage() {
                         loading={loading}
                         emptyLabel={
                           responsibleOptions.length === 0
-                            ? "Nenhum atendente encontrado"
+                            ? isClientUser
+                              ? "Nenhum usuário na empresa"
+                              : "Nenhum atendente encontrado"
                             : "Selecione o responsável"
                         }
                         placeholder="Selecione o responsável"
@@ -617,33 +629,32 @@ export default function NewTicketPage() {
                     <div className="space-y-3">
                       {requestorOptions.length > 0 ? (
                         <div className="space-y-2">
-                          <FieldLabel optional>
-                            Preencher do cadastro do cliente
-                          </FieldLabel>
+                          <FieldLabel required>Solicitante</FieldLabel>
                           <SearchableSelectField
                             value={requestorId}
                             onChange={handleRequestorSuggestion}
                             options={requestorOptions}
                             loading={loading}
-                            emptyLabel="Escolher contato do cliente"
-                            placeholder="Escolher contato do cliente"
+                            emptyLabel="Selecione o solicitante"
+                            placeholder="Selecione o solicitante"
                           />
                         </div>
-                      ) : null}
-                      <div className="space-y-2">
-                        <FieldLabel required>Solicitante</FieldLabel>
-                        <Input
-                          value={requestorName}
-                          onChange={(e) => {
-                            setRequestorName(e.target.value);
-                            setRequestorId("");
-                          }}
-                          placeholder="Nome de quem está solicitando"
-                          className="h-11"
-                          disabled={saving}
-                          required
-                        />
-                      </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <FieldLabel required>Solicitante</FieldLabel>
+                          <Input
+                            value={requestorName}
+                            onChange={(e) => {
+                              setRequestorName(e.target.value);
+                              setRequestorId("");
+                            }}
+                            placeholder="Nome de quem está solicitando"
+                            className="h-11"
+                            disabled={saving}
+                            required
+                          />
+                        </div>
+                      )}
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <FieldLabel required>E-mail do solicitante</FieldLabel>
@@ -700,80 +711,24 @@ export default function NewTicketPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <FieldLabel optional>Pessoas em cópia (e-mail)</FieldLabel>
-                      <div className="relative">
-                        <div className="flex gap-2">
-                          <Input
-                            type="text"
-                            value={ccInput}
-                            onChange={(e) => onCcInputChange(e.target.value)}
-                            onFocus={() => {
-                              if (ccSuggestions.length > 0) setCcSuggestOpen(true);
-                            }}
-                            onBlur={() => {
-                              // delay para permitir click na sugestão
-                              setTimeout(() => setCcSuggestOpen(false), 150);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                if (ccSuggestions[0]) {
-                                  addCcPerson(
-                                    ccSuggestions[0].email,
-                                    ccSuggestions[0].name,
-                                  );
-                                } else {
-                                  addCcEmail();
-                                }
-                              }
-                            }}
-                            placeholder="Nome ou e-mail (portal ou externo)"
-                            className="h-11"
-                            disabled={saving}
-                            autoComplete="off"
-                          />
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            onClick={addCcEmail}
-                            disabled={saving}
-                          >
-                            Adicionar
-                          </Button>
-                        </div>
-                        {ccSuggestOpen &&
-                        (ccSuggestions.length > 0 || ccSearching) ? (
-                          <div className="absolute z-20 mt-1 w-[calc(100%-6.5rem)] overflow-hidden rounded-md border border-border bg-popover shadow-md">
-                            {ccSearching && ccSuggestions.length === 0 ? (
-                              <p className="px-3 py-2 text-xs text-muted-foreground">
-                                Buscando usuários...
-                              </p>
-                            ) : (
-                              <ul className="max-h-48 overflow-auto py-1">
-                                {ccSuggestions.map((user) => (
-                                  <li key={user.id}>
-                                    <button
-                                      type="button"
-                                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
-                                      onMouseDown={(e) => e.preventDefault()}
-                                      onClick={() =>
-                                        addCcPerson(user.email, user.name)
-                                      }
-                                    >
-                                      <span className="font-medium">
-                                        {user.name}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">
-                                        {user.email}
-                                      </span>
-                                    </button>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
+                      <FieldLabel optional>Pessoas em cópia</FieldLabel>
+                      <SearchableSelectField
+                        value={ccSelectValue}
+                        onChange={handleCcSelect}
+                        options={ccOptions}
+                        loading={loading}
+                        emptyLabel={
+                          ccOptions.length === 0
+                            ? ccPeople.length > 0
+                              ? "Todos os responsáveis já foram adicionados"
+                              : "Nenhum responsável disponível"
+                            : "Selecione um responsável"
+                        }
+                        placeholder="Selecione um responsável"
+                        searchPlaceholder="Buscar responsável..."
+                        alwaysShowSearch
+                        disabled={saving || ccOptions.length === 0}
+                      />
                       {ccPeople.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {ccPeople.map((person) => (
@@ -803,8 +758,8 @@ export default function NewTicketPage() {
                         </div>
                       ) : null}
                       <p className="text-xs text-muted-foreground">
-                        Usuários do portal na cópia passam a ver o chamado em Meus
-                        chamados. E-mails externos só recebem a notificação.
+                        Lista dos responsáveis do chamado. Quem estiver na cópia
+                        passa a ver o chamado em Meus chamados.
                       </p>
                     </div>
                   </CardContent>

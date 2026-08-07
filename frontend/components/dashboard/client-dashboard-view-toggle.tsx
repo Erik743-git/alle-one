@@ -1,70 +1,97 @@
 "use client";
 
-import { Pencil } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Building2, Headphones } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DASHBOARD_CLIENT_ALLE_HINT,
   DASHBOARD_CLIENT_ALLE_LABEL,
   DASHBOARD_CLIENT_INTERNAL_HINT,
   DASHBOARD_CLIENT_INTERNAL_LABEL,
-  DASHBOARD_EDIT_CHART_LABEL,
 } from "@/lib/module-copy";
 import type { DashboardClientViewMode } from "@/lib/services/dashboard-chart-presets.service";
 
 type Props = {
   viewMode: DashboardClientViewMode;
   onChange: (mode: DashboardClientViewMode) => void;
-  onEditChart: () => void;
 };
 
-export function ClientDashboardViewToggle({
-  viewMode,
-  onChange,
-  onEditChart,
-}: Props) {
+export function ClientDashboardViewToggle({ viewMode, onChange }: Props) {
+  const isAlle = viewMode === "ALLE";
+
   return (
-    <div className="flex w-full flex-col gap-3 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Visão do ambiente
-        </p>
-        <div className="inline-flex rounded-lg border border-border p-0.5">
-          <button
-            type="button"
-            onClick={() => onChange("ALLE")}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        Visão
+      </span>
+
+      <div
+        role="tablist"
+        aria-label="Visão do ambiente"
+        className="relative inline-grid grid-cols-2 rounded-lg bg-muted/50 p-0.5 ring-1 ring-border/50"
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(50%-0.125rem)] rounded-md",
+            "bg-gradient-to-r from-primary/25 via-sky-400/20 to-teal-400/15",
+            "ring-1 ring-primary/25 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+            isAlle ? "translate-x-0" : "translate-x-[calc(100%+0.125rem)]",
+          )}
+        />
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isAlle}
+          title={DASHBOARD_CLIENT_ALLE_HINT}
+          onClick={() => onChange("ALLE")}
+          className={cn(
+            "relative z-10 inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium",
+            "transition-colors duration-300",
+            isAlle
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Headphones
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition",
-              viewMode === "ALLE"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
+              "size-3 transition-colors duration-300",
+              isAlle ? "text-primary" : "text-muted-foreground/70",
             )}
-          >
-            {DASHBOARD_CLIENT_ALLE_LABEL}
-          </button>
-          <button
-            type="button"
-            onClick={() => onChange("INTERNAL")}
+          />
+          {DASHBOARD_CLIENT_ALLE_LABEL}
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!isAlle}
+          title={DASHBOARD_CLIENT_INTERNAL_HINT}
+          onClick={() => onChange("INTERNAL")}
+          className={cn(
+            "relative z-10 inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium",
+            "transition-colors duration-300",
+            !isAlle
+              ? "text-foreground"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Building2
             className={cn(
-              "rounded-md px-3 py-1.5 text-sm font-medium transition",
-              viewMode === "INTERNAL"
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
+              "size-3 transition-colors duration-300",
+              !isAlle ? "text-teal-500" : "text-muted-foreground/70",
             )}
-          >
-            {DASHBOARD_CLIENT_INTERNAL_LABEL}
-          </button>
-        </div>
-        <p className="max-w-xl text-xs text-muted-foreground">
-          {viewMode === "ALLE"
-            ? DASHBOARD_CLIENT_ALLE_HINT
-            : DASHBOARD_CLIENT_INTERNAL_HINT}
-        </p>
+          />
+          {DASHBOARD_CLIENT_INTERNAL_LABEL}
+        </button>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={onEditChart}>
-        <Pencil className="mr-2 size-3.5" />
-        {DASHBOARD_EDIT_CHART_LABEL}
-      </Button>
+
+      <p
+        key={viewMode}
+        className="animate-in fade-in-0 text-[11px] text-muted-foreground duration-300 sm:max-w-md"
+      >
+        {isAlle ? DASHBOARD_CLIENT_ALLE_HINT : DASHBOARD_CLIENT_INTERNAL_HINT}
+      </p>
     </div>
   );
 }

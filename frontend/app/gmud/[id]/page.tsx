@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -17,10 +17,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { useConfirm } from "@/lib/confirm";
 import { getStoredUser } from "@/lib/session";
 import { gmudsService, type Gmud } from "@/lib/services/gmuds.service";
 import { GmudStatusBadge } from "../_components/gmud-status-badge";
 import { GmudForm } from "../_components/gmud-form";
+import {
+  canEditGmud,
+  GMUD_REAPPROVAL_WARNING,
+  gmudRequiresReapproval,
+} from "../_components/gmud-edit-rules";
 import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { triggerBrowserDownload } from "@/lib/download-blob";
@@ -35,6 +41,8 @@ function approverStatusLabel(status: "PENDING" | "APPROVED" | "REJECTED") {
 export default function GmudDetailPage() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
+  const router = useRouter();
+  const confirm = useConfirm();
   const modeParam = search.get("mode");
   const mode: "view" | "edit" = modeParam === "edit" ? "edit" : "view";
 
@@ -336,12 +344,34 @@ export default function GmudDetailPage() {
                   {pdfExporting ? "Gerando PDF..." : "Exportar PDF"}
                 </Button>
               ) : null}
-              {gmud && (gmud.status === "DRAFT" || gmud.status === "PENDING_APPROVAL") ? (
-                <Link href={`/gmud/${gmud.id}?mode=${mode === "edit" ? "view" : "edit"}`}>
-                  <Button className="h-11">
-                    {mode === "edit" ? "Ver" : "Editar"}
+              {gmud && canEditGmud(gmud.status) ? (
+                mode === "edit" ? (
+                  <Link href={`/gmud/${gmud.id}`}>
+                    <Button className="h-11">Ver</Button>
+                  </Link>
+                ) : (
+                  <Button
+                    type="button"
+                    className="h-11"
+                    onClick={() => {
+                      void (async () => {
+                        if (gmudRequiresReapproval(gmud.status)) {
+                          const ok = await confirm({
+                            title: "Editar GMUD aprovada",
+                            description: GMUD_REAPPROVAL_WARNING,
+                            confirmText: "Continuar edição",
+                            cancelText: "Cancelar",
+                            variant: "warning",
+                          });
+                          if (!ok) return;
+                        }
+                        router.push(`/gmud/${gmud.id}?mode=edit`);
+                      })();
+                    }}
+                  >
+                    Editar
                   </Button>
-                </Link>
+                )
               ) : null}
             </div>
           </div>

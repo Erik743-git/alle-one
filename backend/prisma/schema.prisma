@@ -114,6 +114,9 @@ model User {
   updatedAt           DateTime             @updatedAt @map("updated_at")
   deletedAt           DateTime?            @map("deleted_at")
 
+  specialtyId         String?              @map("specialty_id")
+  specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+
   company             Company?             @relation(fields: [companyId], references: [id])
   companyMemberships  UserCompany[]
   dashboardChartPresets DashboardChartPreset[]
@@ -130,7 +133,6 @@ model User {
   gmudActivityExecutions GmudActivity[]    @relation("GmudActivityExecutor")
   gmudAttachmentUploads GmudAttachment[]   @relation("GmudAttachmentUploader")
   auditLogs           AuditLog[]
-  serviceDeskLinks    UserServiceDesk[]
   mailboxNotifications MailboxNotification[]
   inventoryAssetsCreated InventoryAsset[] @relation("InventoryAssetCreator")
   tifluxOutboxEntries    PortalTifluxOutbox[]
@@ -232,13 +234,15 @@ model UserCompany {
   @@map("user_companies")
 }
 
-/// Preset de gráfico do dashboard (visão Alle vs interna) por usuário+empresa.
+/// Preset de gráfico do dashboard por usuário+empresa+visão+widget.
 model DashboardChartPreset {
   id         String   @id @default(uuid())
   userId     String   @map("user_id")
   companyId  String   @map("company_id")
   /// ALLE | INTERNAL
   viewMode   String   @default("ALLE") @map("view_mode") @db.VarChar(20)
+  /// CHAMADOS | HORAS | ALERTAS
+  chartKey   String   @default("CHAMADOS") @map("chart_key") @db.VarChar(32)
   chartType  String   @default("bar") @map("chart_type") @db.VarChar(32)
   deskNames  String[] @default([]) @map("desk_names")
   periodDays Int      @default(30) @map("period_days")
@@ -248,7 +252,7 @@ model DashboardChartPreset {
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, companyId, viewMode])
+  @@unique([userId, companyId, viewMode, chartKey])
   @@index([companyId])
   @@map("dashboard_chart_presets")
 }
@@ -312,8 +316,10 @@ model InventoryAsset {
   @@map("inventory_assets")
 }
 
-model ServiceDesk {
+/// Especialidade operacional (ex.: NOC, Infra, Consult). Substitui o antigo conceito de "mesa de serviço".
+model Specialty {
   id           String            @id @default(uuid())
+  /// ID legado externo (integração histórica). Não usar como conceito de produto.
   externalId   Int?              @unique @map("external_id")
   name         String            @unique
   active       Boolean           @default(true)
@@ -321,48 +327,57 @@ model ServiceDesk {
   updatedAt    DateTime          @updatedAt @map("updated_at")
   deletedAt    DateTime?         @map("deleted_at")
 
-  userLinks         UserServiceDesk[]
-  classifications ServiceDeskClassification[]
-  emailInboundRoutes EmailInboundRoute[]
-  preTickets         PreTicket[]
+  users               User[]
+  classifications     SpecialtyClassification[]
+  contractSpecialties ContractSpecialty[]
+  emailInboundRoutes  EmailInboundRoute[]
+  preTickets          PreTicket[]
+  portalTickets       PortalTicket[]
 
-  @@map("service_desks")
+  @@map("specialties")
 }
 
-/// Hierarquia portal sobre a mesa TiFlux: até 3 níveis (ex.: Software → Antivírus → Bitdefender).
-model ServiceDeskClassification {
-  id            String   @id @default(uuid())
-  serviceDeskId String   @map("service_desk_id")
-  parentId      String?  @map("parent_id")
-  name          String
-  level         Int
-  sortOrder     Int      @default(0) @map("sort_order")
-  active        Boolean  @default(true)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+/// Hierarquia de classificação sob a especialidade: no máximo 2 níveis.
+model SpecialtyClassification {
+  id          String   @id @default(uuid())
+  specialtyId String   @map("specialty_id")
+  parentId    String?  @map("parent_id")
+  name        String
+  level       Int
+  sortOrder   Int      @default(0) @map("sort_order")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  serviceDesk ServiceDesk                 @relation(fields: [serviceDeskId], references: [id], onDelete: Cascade)
-  parent      ServiceDeskClassification?  @relation("ServiceDeskClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children    ServiceDeskClassification[] @relation("ServiceDeskClassificationTree")
-  contracts   Contract[]
+  specialty Specialty                  @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+  parent    SpecialtyClassification?   @relation("SpecialtyClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  SpecialtyClassification[]  @relation("SpecialtyClassificationTree")
+  contracts Contract[]
 
-  @@unique([serviceDeskId, parentId, name])
-  @@index([serviceDeskId])
+  @@unique([specialtyId, parentId, name])
+  @@index([specialtyId])
   @@index([parentId])
-  @@map("service_desk_classifications")
+  @@map("specialty_classifications")
 }
 
-model UserServiceDesk {
-  userId        String      @map("user_id")
-  serviceDeskId String      @map("service_desk_id")
-  createdAt     DateTime    @default(now()) @map("created_at")
+/// Linha de especialidade dentro de um contrato (N especialidades por contrato).
+model ContractSpecialty {
+  id              String   @id @default(uuid())
+  contractId      String   @map("contract_id")
+  specialtyId     String   @map("specialty_id")
+  monthlyHours    Int      @default(0) @map("monthly_hours")
+  unlimited       Boolean  @default(false)
+  contractValue   Decimal  @default(0) @db.Decimal(12, 2) @map("contract_value")
+  excessHourPrice Decimal  @default(0) @db.Decimal(10, 2) @map("excess_hour_price")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  serviceDesk   ServiceDesk @relation(fields: [serviceDeskId], references: [id], onDelete: Cascade)
+  contract  Contract   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
 
-  @@id([userId, serviceDeskId])
-  @@index([serviceDeskId])
-  @@map("user_service_desks")
+  @@unique([contractId, specialtyId])
+  @@index([specialtyId])
+  @@map("contract_specialties")
 }
 
 model Permission {
@@ -385,11 +400,14 @@ model Permission {
 model Contract {
   id               String           @id @default(uuid())
   companyId        String           @map("company_id")
+  /// @deprecated Preferir contract_specialties; mantido para leitura legada.
   classificationId String?          @map("classification_id")
   title            String
   description      String?
   status           ContractStatus
+  /// @deprecated Preferir horas por linha em contract_specialties.
   monthlyHours     Int              @map("monthly_hours")
+  /// @deprecated Preferir excess_hour_price em contract_specialties.
   extraHourPrice   Decimal          @db.Decimal(10, 2) @map("extra_hour_price")
   startDate        DateTime         @map("start_date")
   endDate          DateTime?        @map("end_date")
@@ -398,7 +416,8 @@ model Contract {
   deletedAt        DateTime?        @map("deleted_at")
 
   company          Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  classification   ServiceDeskClassification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
+  classification   SpecialtyClassification?   @relation(fields: [classificationId], references: [id], onDelete: SetNull)
+  specialties      ContractSpecialty[]
   contractFiles    ContractFile[]
   billingEntries   BillingEntry[]
 
@@ -773,6 +792,7 @@ model PortalTicket {
   responsibleName         String?            @map("responsible_name")
   deskName                String?            @map("desk_name")
   deskExternalId          Int?               @map("desk_external_id")
+  specialtyId             String?            @map("specialty_id")
   requestorName           String?            @map("requestor_name")
   requestorEmail          String?            @map("requestor_email")
   requestorTelephone      String?            @map("requestor_telephone")
@@ -784,13 +804,15 @@ model PortalTicket {
   createdAt               DateTime           @default(now()) @map("created_at")
   updatedAt               DateTime           @updatedAt @map("updated_at")
 
-  creator User? @relation("PortalTicketCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  creator    User?       @relation("PortalTicketCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  specialty  Specialty?  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
 
   @@index([clientExternalId])
   @@index([isClosed, updatedAtSource])
   @@index([responsibleExternalId])
   @@index([isClosed, responsibleExternalId, updatedAtSource])
   @@index([isClosed, clientExternalId, createdAtSource])
+  @@index([specialtyId])
   @@map("portal_tickets")
 }
 
@@ -1244,7 +1266,7 @@ model PreTicket {
   graphMessageId    String?         @map("graph_message_id")
   companyId         String?         @map("company_id")
   requestorUserId   String?         @map("requestor_user_id")
-  deskId            String?         @map("desk_id")
+  specialtyId       String?         @map("specialty_id")
   priorityName      String?         @map("priority_name") @db.VarChar(80)
   attachmentCount   Int             @default(0) @map("attachment_count")
   ticketNumber      Int?            @map("ticket_number")
@@ -1258,7 +1280,7 @@ model PreTicket {
   company       Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   requestorUser User?        @relation("PreTicketRequestor", fields: [requestorUserId], references: [id], onDelete: SetNull)
   openedByUser  User?        @relation("PreTicketOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
-  desk          ServiceDesk? @relation(fields: [deskId], references: [id], onDelete: SetNull)
+  specialty     Specialty?   @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   attachments   PreTicketAttachment[]
 
   @@index([status, receivedAt])
@@ -1287,7 +1309,7 @@ model PreTicketAttachment {
 model EmailInboundRoute {
   id            String   @id @default(uuid())
   matchEmail    String   @map("match_email")
-  deskId        String?  @map("desk_id")
+  specialtyId   String?  @map("specialty_id")
   companyId     String?  @map("company_id")
   priorityName  String?  @map("priority_name") @db.VarChar(80)
   verified      Boolean  @default(false)
@@ -1297,9 +1319,9 @@ model EmailInboundRoute {
   updatedAt     DateTime @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
 
-  desk      ServiceDesk? @relation(fields: [deskId], references: [id], onDelete: SetNull)
-  company   Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  creator   User?        @relation("EmailInboundRouteCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  specialty Specialty? @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  company   Company?   @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  creator   User?      @relation("EmailInboundRouteCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([matchEmail])
   @@index([active])

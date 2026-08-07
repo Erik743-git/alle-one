@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
@@ -215,6 +216,7 @@ export class TicketsQueryService {
         ? false
         : query.mineOnly !== false;
     const clientExternalIdFilter = clientScope.clientExternalId;
+    const alleClientExternalId = clientScope.alleClientExternalId;
 
     let responsibleFilter: number | null = null;
     let responsibleName: string | null = null;
@@ -283,9 +285,7 @@ export class TicketsQueryService {
           responsibleExternalId: responsibleFilter,
           responsibleName,
           tifluxUserResolved: responsibleFilter != null,
-          message: portalMineFallback
-            ? 'Filtrando pelos seus tickets no portal (sem vínculo TiFlux).'
-            : null,
+          message: portalMineFallback ? 'Filtrando pelos seus tickets.' : null,
           groups: [],
         };
       }
@@ -302,15 +302,57 @@ export class TicketsQueryService {
       });
     }
 
+    let clientWhere: Prisma.PortalTicketWhereInput | undefined;
+    if (clientExternalIdFilter != null) {
+      const includeAlle =
+        alleClientExternalId != null &&
+        Number(alleClientExternalId) !== Number(clientExternalIdFilter) &&
+        isClientPortalRole(actor.role);
+
+      if (includeAlle && mineOnly) {
+        clientWhere = {
+          clientExternalId: {
+            in: [clientExternalIdFilter, alleClientExternalId],
+          },
+        };
+      } else if (includeAlle && !mineOnly && actor.companyId) {
+        const companyUsers = await this.prisma.user.findMany({
+          where: {
+            deletedAt: null,
+            OR: [
+              { companyId: actor.companyId },
+              {
+                companyMemberships: {
+                  some: { companyId: actor.companyId },
+                },
+              },
+            ],
+          },
+          select: { id: true },
+          take: 5000,
+        });
+        const companyUserIds = companyUsers.map((u) => u.id);
+        clientWhere = {
+          OR: [
+            { clientExternalId: clientExternalIdFilter },
+            {
+              clientExternalId: alleClientExternalId,
+              createdBy: { in: companyUserIds },
+            },
+          ],
+        };
+      } else {
+        clientWhere = { clientExternalId: clientExternalIdFilter };
+      }
+    }
+
     const rows = await this.prisma.portalTicket.findMany({
       where: {
         isClosed: false,
         ...(!mineOnly && responsibleFilter != null
           ? { responsibleExternalId: responsibleFilter }
           : {}),
-        ...(clientExternalIdFilter != null
-          ? { clientExternalId: clientExternalIdFilter }
-          : {}),
+        ...(clientWhere ?? {}),
         ...(query.stageName
           ? { stageName: { contains: query.stageName, mode: 'insensitive' } }
           : {}),
@@ -385,9 +427,7 @@ export class TicketsQueryService {
       responsibleExternalId: responsibleFilter,
       responsibleName,
       tifluxUserResolved: responsibleFilter != null || !mineOnly,
-      message: portalMineFallback
-        ? 'Filtrando pelos seus tickets no portal (sem vínculo TiFlux).'
-        : null,
+      message: portalMineFallback ? 'Filtrando pelos seus tickets.' : null,
       groups,
       source: 'portal_tickets',
     };
@@ -416,7 +456,12 @@ export class TicketsQueryService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
-    await this.assertTicketClientScope(actor, apiTicket.client?.id ?? null);
+    await this.assertTicketClientScope(actor, apiTicket.client?.id ?? null, {
+      requestorEmail:
+        typeof apiTicket.requestor?.email === 'string'
+          ? apiTicket.requestor.email
+          : null,
+    });
 
     const [appointments, externalGmudRef, portalDescription] =
       await Promise.all([
@@ -470,12 +515,21 @@ export class TicketsQueryService {
     return ref || null;
   }
 
-  /** CLIENT só acessa tickets do cliente TiFlux da própria empresa. */
+  /** CLIENT só acessa tickets do cliente TiFlux da própria empresa (ou Alle se envolvido). */
   private async assertTicketClientScope(
     actor: AuthenticatedRequestUser,
     clientExternalId: number | null | undefined,
+    involvement?: {
+      createdBy?: string | null;
+      requestorEmail?: string | null;
+    },
   ) {
-    return assertTicketClientScope(this.tenantScope, actor, clientExternalId);
+    return assertTicketClientScope(
+      this.tenantScope,
+      actor,
+      clientExternalId,
+      involvement,
+    );
   }
 
   private async resolveClientListFilter(
@@ -525,7 +579,7 @@ export class TicketsQueryService {
             responsibleName: null,
             tifluxUserResolved: false,
             message:
-              'Seu e-mail não está vinculado a um usuário TiFlux. Use a busca avançada para consultar outros tickets.',
+              'Não foi possível identificar seus tickets automaticamente. Use a busca avançada para consultar outros tickets.',
             groups: [],
           };
         }
@@ -568,8 +622,7 @@ export class TicketsQueryService {
           responsibleExternalId: null,
           responsibleName: actor.email,
           tifluxUserResolved: false,
-          message:
-            'Exibindo chamados em que você está em cópia (sem vínculo TiFlux).',
+          message: 'Exibindo chamados em que você está em cópia.',
           groups: TICKET_STAGE_GROUPS.map((def) => ({
             key: def.key,
             label: def.label,
@@ -730,7 +783,10 @@ export class TicketsQueryService {
       where: { ticketNumber },
     });
     if (portal) {
-      await this.assertTicketClientScope(actor, portal.clientExternalId);
+      await this.assertTicketClientScope(actor, portal.clientExternalId, {
+        createdBy: portal.createdBy,
+        requestorEmail: portal.requestorEmail,
+      });
       const [appointments, externalGmudRef, portalDescription] =
         await Promise.all([
           this.appointments.listMergedAppointments(ticketNumber),
@@ -818,7 +874,9 @@ export class TicketsQueryService {
       return this.getDetailFromTifluxApi(actor, ticketNumber);
     }
 
-    await this.assertTicketClientScope(actor, row.client_external_id);
+    await this.assertTicketClientScope(actor, row.client_external_id, {
+      requestorEmail: row.requestor_email ?? null,
+    });
 
     const [appointments, externalGmudRef, portalDescription] =
       await Promise.all([
@@ -853,7 +911,10 @@ export class TicketsQueryService {
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
-    await this.assertTicketClientScope(actor, ticket.client_external_id);
+    await this.assertTicketClientScope(actor, ticket.client_external_id, {
+      createdBy: ticket.created_by,
+      requestorEmail: ticket.requestor_email,
+    });
 
     if (!isTifluxDisconnected()) {
       await this.syncTifluxTicketHistory(ticketNumber).catch((err) => {
@@ -922,7 +983,7 @@ export class TicketsQueryService {
         eventType: 'TICKET_CREATED',
         summary: isTifluxDisconnected()
           ? 'Ticket registrado no portal'
-          : 'Ticket registrado no TiFlux',
+          : 'Ticket registrado',
         actorName: null,
         createdAt: createdAtSource.toISOString(),
         sortAt: createdAtSource,
@@ -1048,7 +1109,7 @@ export class TicketsQueryService {
       events.push({
         id: `tiflux-appt-${externalId}`,
         eventType: 'APPOINTMENT_TIFLUX',
-        summary: `Apontamento TiFlux ${init ?? '—'}–${end ?? '—'}${
+        summary: `Apontamento ${init ?? '—'}–${end ?? '—'}${
           dateLabel ? ` em ${dateLabel}` : ''
         }`,
         actorName: row.user_name,
@@ -1260,8 +1321,8 @@ export class TicketsQueryService {
     if (!summary) {
       summary =
         eventType === 'STAGE_CHANGED'
-          ? 'Estágio alterado no TiFlux'
-          : 'Evento registrado no TiFlux';
+          ? 'Estágio alterado'
+          : 'Evento registrado';
     }
 
     const externalKey =
@@ -1313,6 +1374,8 @@ export class TicketsQueryService {
         desk_name: portal.deskName,
         stage_name: portal.stageName,
         is_closed: portal.isClosed,
+        created_by: portal.createdBy,
+        requestor_email: portal.requestorEmail,
       };
     }
 
@@ -1327,6 +1390,7 @@ export class TicketsQueryService {
             desk_name: string | null;
             stage_name: string | null;
             is_closed: boolean | null;
+            requestor_email: string | null;
           }>
         >`
           SELECT
@@ -1336,14 +1400,18 @@ export class TicketsQueryService {
             t.desk_external_id,
             t.desk_name,
             t.stage_name,
-            t.is_closed
+            t.is_closed,
+            t.requestor_email
           FROM tiflux.tickets t
           WHERE t.ticket_number = ${ticketNumber}
           LIMIT 1
         `) ?? [];
       const row = rows[0] ?? null;
       if (row) {
-        return row;
+        return {
+          ...row,
+          created_by: null as string | null,
+        };
       }
     } catch {
       // Schema tiflux.* pode estar ausente no cutover local.
@@ -1366,6 +1434,11 @@ export class TicketsQueryService {
       desk_name: apiTicket.desk?.name ?? null,
       stage_name: apiTicket.stage?.name ?? null,
       is_closed: Boolean(apiTicket.is_closed),
+      created_by: null as string | null,
+      requestor_email:
+        typeof apiTicket.requestor?.email === 'string'
+          ? apiTicket.requestor.email
+          : null,
     };
   }
 
@@ -1436,7 +1509,10 @@ export class TicketsQueryService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
-    await this.assertTicketClientScope(actor, ticket.client_external_id);
+    await this.assertTicketClientScope(actor, ticket.client_external_id, {
+      createdBy: ticket.created_by,
+      requestorEmail: ticket.requestor_email,
+    });
 
     const deskExternalId = Number(ticket.desk_external_id);
     const deskOk =
@@ -1581,7 +1657,7 @@ export class TicketsQueryService {
         throw new BadRequestException(
           error instanceof Error
             ? error.message
-            : 'Falha ao atualizar estágio no TiFlux.',
+            : 'Falha ao atualizar estágio.',
         );
       }
     }

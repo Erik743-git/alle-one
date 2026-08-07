@@ -381,17 +381,6 @@ function EditarEmpresaModal({
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
-              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
-                Nome salvo do cliente vinculado
-              </label>
-              <Input
-                value={form.tifluxClientName}
-                readOnly
-                className="h-11 font-sans text-sm"
-              />
-            </div>
-
             <div className="space-y-3 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
                 Status

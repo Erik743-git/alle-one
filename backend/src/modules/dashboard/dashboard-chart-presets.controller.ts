@@ -35,7 +35,12 @@ export class DashboardChartPresetsController {
     @Req() req: AuthenticatedRequest,
     @Query() query: ChartPresetQueryDto,
   ) {
-    return this.presets.getPreset(req.user, query.viewMode, query.companyId);
+    return this.presets.getPreset(
+      req.user,
+      query.viewMode,
+      query.chartKey,
+      query.companyId,
+    );
   }
 
   @Put()
@@ -53,6 +58,11 @@ export class DashboardChartPresetsController {
     @Req() req: AuthenticatedRequest,
     @Query() query: ChartPresetQueryDto,
   ) {
-    return this.presets.deletePreset(req.user, query.viewMode, query.companyId);
+    return this.presets.deletePreset(
+      req.user,
+      query.viewMode,
+      query.chartKey,
+      query.companyId,
+    );
   }
 }

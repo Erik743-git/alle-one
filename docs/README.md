@@ -18,6 +18,8 @@
 | [DEPLOY_PORTAL_CLIENTE_V3_TESTE.md](./DEPLOY_PORTAL_CLIENTE_V3_TESTE.md) | Deploy v3 no ambiente de teste |
 | [ROTEIRO_TESTE_PORTAL_CLIENTE_V3_LOCAL.md](./ROTEIRO_TESTE_PORTAL_CLIENTE_V3_LOCAL.md) | Roteiro de testes local v3 |
 | [SMOKE_PORTAL_CLIENTE_TENANT.md](./SMOKE_PORTAL_CLIENTE_TENANT.md) | Smoke portal cliente (tenant) |
+| [ESPECIALIDADE_COBRANCA.md](./ESPECIALIDADE_COBRANCA.md) | Especialidade + relatório de cobrança (regras) |
+| [ROTEIRO_VALIDACAO_DIA_20260806.md](./ROTEIRO_VALIDACAO_DIA_20260806.md) | Roteiro completo do dia (v3 + especialidade) |
 | [VERSIONING.md](./VERSIONING.md) | SemVer, tags Git, releases no GitHub, rollback de prod |
 | [../CHANGELOG.md](../CHANGELOG.md) | Histórico de releases |
 | [../README.md](../README.md) | Setup local, variáveis de ambiente, operação |

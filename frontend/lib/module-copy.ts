@@ -10,7 +10,7 @@ export const TICKETS_LIST_SUBTITLE =
   "Por padrão, são exibidos os chamados em que você é o responsável.";
 
 export const TICKETS_CLIENT_LIST_SUBTITLE =
-  "Chamados da sua empresa. A abertura de novos chamados é feita pela equipe Alle.";
+  "Chamados da sua empresa. Você também pode abrir chamados para a Alle.";
 
 export const TICKETS_CREATE_RESTRICTED =
   "Você não tem permissão para abrir novos chamados. Consulte os existentes ou fale com o administrador.";
@@ -84,18 +84,18 @@ export const RENDIMENTO_OVERTIME_APPROVED_NOTE =
 export const RENDIMENTO_OVERTIME_REJECTED_NOTE =
   "Não aprovado · não entra no saldo";
 
-export const SYNC_STATUS_PORTAL_ONLY = "Registrado no portal";
+export const SYNC_STATUS_PORTAL_ONLY = "Registrado no Alle One";
 
 export const SYNC_STATUS_PENDING = "Em sincronização";
 
 export const SYNC_STATUS_PAUSED = "Sincronização pausada";
 
 export const TICKET_APPOINTMENT_TIFLUX_PORTAL_ONLY_WARNING =
-  "Este apontamento fica só no portal AlleOne.";
+  "Este apontamento fica registrado no Alle One.";
 
 /** Apontamento listado só pelo espelho externo (sem portalAppointmentId). */
 export const TICKET_APPOINTMENT_TIFLUX_ONLY_HINT =
-  "Registro histórico migrado — edite no portal quando disponível.";
+  "Registro histórico migrado — edite quando disponível.";
 
 export const TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE = "Histórico";
 export const TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION = "Só leitura";
@@ -104,7 +104,7 @@ export const TICKET_SYNC_PENDING_BANNER =
   "Ticket recém-criado: ainda pode demorar um instante para aparecer na listagem.";
 
 export const TICKET_DELETE_APPOINTMENT_CONFIRM =
-  "O apontamento será removido do portal.";
+  "O apontamento será removido.";
 
 /** Correio / notificações */
 export const MAILBOX_RENDIMENTO_ALERT_BODY_ONE = (dateLabel: string, monthLabel: string) =>

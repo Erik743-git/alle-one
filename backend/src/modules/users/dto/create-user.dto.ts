@@ -1,4 +1,5 @@
 import {
+  ArrayMaxSize,
   ArrayUnique,
   IsBoolean,
   IsEmail,
@@ -50,9 +51,15 @@ export class CreateUserDto {
   responsible?: boolean;
 
   @IsOptional()
+  @IsUUID()
+  specialtyId?: string | null;
+
+  /** @deprecated Prefer specialtyId (uma especialidade por usuário). */
+  @IsOptional()
   @IsArray()
   @ArrayUnique()
   @IsUUID('4', { each: true })
+  @ArrayMaxSize(1)
   serviceDeskIds?: string[];
 
   @IsOptional()

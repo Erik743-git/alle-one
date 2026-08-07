@@ -47,8 +47,16 @@ type Props =
       chartType?: "bar" | "line" | "pie";
       deskData?: DashboardDeskRow[];
     }
-  | { kind: "horas"; data: DashboardBarRow[] }
-  | { kind: "alertas"; data: DashboardAlertRow[] };
+  | {
+      kind: "horas";
+      data: DashboardBarRow[];
+      chartType?: "bar" | "line";
+    }
+  | {
+      kind: "alertas";
+      data: DashboardAlertRow[];
+      chartType?: "bar" | "line";
+    };
 
 const BAR_SERIES = [
   { key: "Infraestrutura", fill: "#4f8bd6" },
@@ -104,11 +112,13 @@ export function DashboardLazyChart(props: Props) {
   if (props.kind === "alertas") {
     const data = props.data;
     const tiltLabels = compact || data.length > 4;
+    const alertChartType = props.chartType === "bar" ? "bar" : "line";
+    const ChartCmp = alertChartType === "bar" ? BarChart : LineChart;
 
     return (
       <div className={chartHeight}>
         <DeferredResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={margins}>
+          <ChartCmp data={data} margin={margins}>
             <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} />
             <XAxis
               dataKey="weekLabel"
@@ -130,30 +140,44 @@ export function DashboardLazyChart(props: Props) {
             />
             <Tooltip {...TOOLTIP_PROPS} />
             <Legend {...legend} />
-            <Line
-              type="monotone"
-              dataKey="High"
-              stroke="#4f8bd6"
-              strokeWidth={compact ? 1.5 : 2}
-              dot={{ r: compact ? 3 : 5, strokeWidth: 2, fill: "#4f8bd6" }}
-              activeDot={{ r: compact ? 5 : 6 }}
-            />
-            <Line
-              type="monotone"
-              dataKey="Disaster"
-              stroke="#d85c57"
-              strokeWidth={compact ? 1.5 : 2}
-              dot={{ r: compact ? 3 : 5, strokeWidth: 2, fill: "#d85c57" }}
-              activeDot={{ r: compact ? 5 : 6 }}
-            />
-          </LineChart>
+            {alertChartType === "bar" ? (
+              <>
+                <Bar dataKey="High" fill="#4f8bd6" radius={[4, 4, 0, 0]} maxBarSize={48} />
+                <Bar dataKey="Disaster" fill="#d85c57" radius={[4, 4, 0, 0]} maxBarSize={48} />
+              </>
+            ) : (
+              <>
+                <Line
+                  type="monotone"
+                  dataKey="High"
+                  stroke="#4f8bd6"
+                  strokeWidth={compact ? 1.5 : 2}
+                  dot={{ r: compact ? 3 : 5, strokeWidth: 2, fill: "#4f8bd6" }}
+                  activeDot={{ r: compact ? 5 : 6 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Disaster"
+                  stroke="#d85c57"
+                  strokeWidth={compact ? 1.5 : 2}
+                  dot={{ r: compact ? 3 : 5, strokeWidth: 2, fill: "#d85c57" }}
+                  activeDot={{ r: compact ? 5 : 6 }}
+                />
+              </>
+            )}
+          </ChartCmp>
         </DeferredResponsiveContainer>
       </div>
     );
   }
 
   const data = props.data;
-  const chartType = props.kind === "chamados" ? props.chartType ?? "bar" : "bar";
+  const chartType =
+    props.kind === "chamados"
+      ? props.chartType ?? "bar"
+      : props.chartType === "line"
+        ? "line"
+        : "bar";
   const deskData = props.kind === "chamados" ? props.deskData ?? [] : [];
 
   if (props.kind === "chamados" && chartType === "pie") {
@@ -189,7 +213,10 @@ export function DashboardLazyChart(props: Props) {
     );
   }
 
-  if (props.kind === "chamados" && chartType === "line") {
+  if (
+    (props.kind === "chamados" || props.kind === "horas") &&
+    chartType === "line"
+  ) {
     return (
       <div className={chartHeight}>
         <DeferredResponsiveContainer width="100%" height="100%">

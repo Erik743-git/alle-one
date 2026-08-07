@@ -131,7 +131,7 @@ export const companiesService = {
       `/companies/${companyId}/modules`,
       {
         method: "PUT",
-        body: JSON.stringify({ modules }),
+        body: { modules },
       },
     );
   },

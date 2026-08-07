@@ -22,7 +22,16 @@ export function SidebarCompanySwitcher({
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const companies = user?.companies ?? [];
+  const companies = useMemo(() => {
+    const raw = user?.companies ?? [];
+    const byId = new Map<string, (typeof raw)[number]>();
+    for (const c of raw) {
+      if (c?.id && !byId.has(c.id)) byId.set(c.id, c);
+    }
+    return [...byId.values()];
+  }, [user?.companies]);
+
+  const canSwitch = companies.length >= 2;
   const show =
     !!user && isClientPortalRole(user.role) && companies.length >= 1;
 
@@ -38,7 +47,7 @@ export function SidebarCompanySwitcher({
   if (!show) return null;
 
   async function apply(companyId: string) {
-    if (!user || companyId === user.companyId) {
+    if (!canSwitch || !user || companyId === user.companyId) {
       setOpen(false);
       return;
     }
@@ -52,8 +61,8 @@ export function SidebarCompanySwitcher({
   }
 
   async function toggleOther() {
-    if (companies.length !== 2 || !user?.companyId) {
-      setOpen(true);
+    if (!canSwitch || companies.length !== 2 || !user?.companyId) {
+      if (canSwitch) setOpen(true);
       return;
     }
     const other = companies.find((c) => c.id !== user.companyId);
@@ -61,15 +70,26 @@ export function SidebarCompanySwitcher({
   }
 
   if (collapsed) {
+    if (!canSwitch) {
+      return (
+        <div className="flex w-full justify-center border-b border-sidebar-border py-2">
+          <div
+            title={activeName ?? "Empresa"}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground/80"
+          >
+            <Building2 className="size-4" />
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex w-full justify-center border-b border-sidebar-border py-2">
         <button
           type="button"
-          title={activeName ?? "Empresa"}
-          disabled={busy || companies.length < 2}
-          onClick={() => {
-            if (companies.length >= 2) void toggleOther();
-          }}
+          title={`Trocar empresa (${activeName ?? "Empresa"})`}
+          disabled={busy}
+          onClick={() => void toggleOther()}
           className="flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground disabled:opacity-50"
         >
           <Building2 className="size-4" />
@@ -88,7 +108,7 @@ export function SidebarCompanySwitcher({
           <div className="min-w-0 flex-1 truncate text-xs font-semibold text-sidebar-foreground">
             {activeName}
           </div>
-          {companies.length === 2 ? (
+          {canSwitch && companies.length === 2 ? (
             <Button
               type="button"
               size="sm"
@@ -101,7 +121,7 @@ export function SidebarCompanySwitcher({
               <ArrowLeftRight className="size-3.5" />
             </Button>
           ) : null}
-          {companies.length >= 3 ? (
+          {canSwitch && companies.length >= 3 ? (
             <Button
               type="button"
               size="sm"
@@ -116,36 +136,38 @@ export function SidebarCompanySwitcher({
         </div>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Escolher empresa</DialogTitle>
-          </DialogHeader>
-          <ul className="space-y-1">
-            {companies.map((c) => {
-              const active = c.id === user?.companyId;
-              return (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void apply(c.id)}
-                    className={cn(
-                      "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition",
-                      active
-                        ? "border-primary/40 bg-primary/10"
-                        : "border-border hover:bg-muted/50",
-                    )}
-                  >
-                    <span className="font-medium">{c.name}</span>
-                    {active ? <Check className="size-4 text-primary" /> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </DialogContent>
-      </Dialog>
+      {canSwitch ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Escolher empresa</DialogTitle>
+            </DialogHeader>
+            <ul className="space-y-1">
+              {companies.map((c) => {
+                const active = c.id === user?.companyId;
+                return (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void apply(c.id)}
+                      className={cn(
+                        "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition",
+                        active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-border hover:bg-muted/50",
+                      )}
+                    >
+                      <span className="font-medium">{c.name}</span>
+                      {active ? <Check className="size-4 text-primary" /> : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </>
   );
 }

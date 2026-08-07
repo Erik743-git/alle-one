@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -20,20 +21,49 @@ function toClientCompanyRole(role: UserRole): ClientCompanyRole {
     : ClientCompanyRole.CLIENT_GESTOR;
 }
 
+type SpecialtySummary = {
+  id: string;
+  name: string;
+  externalId: number | null;
+};
+
 type UserWithCompany = User & {
   company: { id: string; name: string } | null;
-  serviceDeskLinks: Array<{
-    serviceDesk: { id: string; name: string; externalId: number | null };
+  specialty: SpecialtySummary | null;
+  companyMemberships?: Array<{
+    companyId: string;
+    clientRole: ClientCompanyRole;
+    company: { id: string; name: string };
   }>;
 };
 
 type PublicUser = Omit<
   UserWithCompany,
-  'passwordHash' | 'serviceDeskLinks' | 'lastSeenAt'
+  'passwordHash' | 'lastSeenAt' | 'companyMemberships'
 > & {
-  serviceDesks: Array<{ id: string; name: string; externalId: number | null }>;
+  /** Compat: array com 0–1 especialidade (substitui serviceDesks). */
+  specialties: SpecialtySummary[];
+  /** @deprecated Prefer specialty / specialties */
+  serviceDesks: SpecialtySummary[];
   isOnline: boolean;
+  companyMemberships: Array<{
+    companyId: string;
+    companyName: string;
+    clientRole: ClientCompanyRole;
+  }>;
 };
+
+const specialtyInclude = {
+  specialty: {
+    select: { id: true, name: true, externalId: true },
+  },
+} as const;
+
+const membershipInclude = {
+  companyMemberships: {
+    include: { company: { select: { id: true, name: true } } },
+  },
+} as const;
 
 @Injectable()
 export class UsersService {
@@ -43,53 +73,79 @@ export class UsersService {
   ) {}
 
   private toPublicUser(user: UserWithCompany): PublicUser {
-    const { passwordHash: _omit, serviceDeskLinks, lastSeenAt, ...rest } = user;
+    const {
+      passwordHash: _omit,
+      lastSeenAt,
+      specialty,
+      companyMemberships,
+      ...rest
+    } = user;
+    const specialties = specialty ? [specialty] : [];
     return {
       ...rest,
+      specialty,
+      specialties,
+      serviceDesks: specialties,
       isOnline: isUserOnline(lastSeenAt),
-      serviceDesks: serviceDeskLinks.map((link) => link.serviceDesk),
+      companyMemberships: (companyMemberships ?? []).map((m) => ({
+        companyId: m.companyId,
+        companyName: m.company.name,
+        clientRole: m.clientRole,
+      })),
     };
   }
 
-  private async validateServiceDeskIds(serviceDeskIds: string[]) {
-    const ids = Array.from(
-      new Set(serviceDeskIds.map((id) => id.trim())),
-    ).filter(Boolean);
-    if (ids.length === 0) return [];
-
-    const existing = await this.prisma.serviceDesk.findMany({
-      where: { id: { in: ids }, deletedAt: null, active: true },
+  private async validateSpecialtyId(specialtyId?: string | null) {
+    if (!specialtyId?.trim()) return null;
+    const id = specialtyId.trim();
+    const existing = await this.prisma.specialty.findFirst({
+      where: { id, deletedAt: null, active: true },
       select: { id: true },
     });
-
-    if (existing.length !== ids.length) {
-      throw new BadRequestException(
-        'Uma ou mais mesas de serviço selecionadas não existem.',
-      );
+    if (!existing) {
+      throw new BadRequestException('Especialidade selecionada não existe.');
     }
-
-    return ids;
+    return id;
   }
 
-  async listServiceDesks() {
-    return this.prisma.serviceDesk.findMany({
+  /** Aceita specialtyId ou o legado serviceDeskIds[0]. */
+  private resolveIncomingSpecialtyId(data: {
+    specialtyId?: string | null;
+    serviceDeskIds?: string[];
+  }) {
+    if (data.serviceDeskIds !== undefined && data.serviceDeskIds.length > 1) {
+      throw new BadRequestException(
+        'Usuário pode ter apenas uma especialidade.',
+      );
+    }
+    if (data.specialtyId !== undefined) {
+      return data.specialtyId;
+    }
+    if (data.serviceDeskIds !== undefined) {
+      return data.serviceDeskIds[0] ?? null;
+    }
+    return undefined;
+  }
+
+  async listSpecialties() {
+    return this.prisma.specialty.findMany({
       where: { deletedAt: null, active: true },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, externalId: true },
     });
   }
 
+  /** @deprecated Prefer listSpecialties */
+  async listServiceDesks() {
+    return this.listSpecialties();
+  }
+
   async findAll() {
     const rows = await this.prisma.user.findMany({
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
+        ...membershipInclude,
       },
       orderBy: {
         name: 'asc',
@@ -104,13 +160,8 @@ export class UsersService {
       where: { id },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
+        ...membershipInclude,
       },
     });
 
@@ -124,10 +175,36 @@ export class UsersService {
   async create(actor: AuthenticatedRequestUser, data: CreateUserDto) {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: data.email },
+      include: {
+        company: { select: { id: true, name: true } },
+        companyMemberships: {
+          include: { company: { select: { id: true, name: true } } },
+        },
+      },
     });
 
     if (existingUser) {
-      throw new BadRequestException('Já existe um usuário com este e-mail');
+      const membershipNames = existingUser.companyMemberships
+        .map((m) => m.company.name)
+        .filter(Boolean);
+      const companyNames =
+        membershipNames.length > 0
+          ? membershipNames
+          : existingUser.company?.name
+            ? [existingUser.company.name]
+            : [];
+
+      throw new ConflictException({
+        code: 'EMAIL_EXISTS',
+        message: 'Já existe um usuário com este e-mail',
+        userId: existingUser.id,
+        userName: existingUser.name,
+        email: existingUser.email,
+        role: existingUser.role,
+        companyIds: existingUser.companyMemberships.map((m) => m.companyId),
+        companyNames,
+        canLinkCompany: isClientPortalRole(existingUser.role),
+      });
     }
 
     if (isClientPortalRole(data.role) && !data.companyId) {
@@ -151,9 +228,8 @@ export class UsersService {
       passwordHash = await bcrypt.hash(plainPassword, 10);
     }
 
-    const serviceDeskIds = await this.validateServiceDeskIds(
-      data.serviceDeskIds ?? [],
-    );
+    const incomingSpecialty = this.resolveIncomingSpecialtyId(data);
+    const specialtyId = await this.validateSpecialtyId(incomingSpecialty);
 
     const schedule = resolveRendimentoSchedule(data);
 
@@ -167,27 +243,12 @@ export class UsersService {
         companyId: data.companyId ?? null,
         firstAccess,
         responsible: data.responsible ?? false,
+        specialtyId,
         ...schedule,
-        serviceDeskLinks:
-          serviceDeskIds.length > 0
-            ? {
-                createMany: {
-                  data: serviceDeskIds.map((serviceDeskId) => ({
-                    serviceDeskId,
-                  })),
-                },
-              }
-            : undefined,
       },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
       },
     });
 
@@ -226,6 +287,7 @@ export class UsersService {
           companyId: created.companyId,
           firstAccess: created.firstAccess,
           responsible: created.responsible,
+          specialtyId: created.specialtyId,
         },
       },
     });
@@ -269,9 +331,10 @@ export class UsersService {
       );
     }
 
-    const serviceDeskIds =
-      data.serviceDeskIds !== undefined
-        ? await this.validateServiceDeskIds(data.serviceDeskIds)
+    const incomingSpecialty = this.resolveIncomingSpecialtyId(data);
+    const specialtyId =
+      incomingSpecialty !== undefined
+        ? await this.validateSpecialtyId(incomingSpecialty)
         : undefined;
 
     const schedule =
@@ -301,6 +364,44 @@ export class UsersService {
           ? data.responsible
           : existingUser.responsible;
 
+    if (data.email !== undefined) {
+      const nextEmail = data.email.trim().toLowerCase();
+      if (nextEmail !== existingUser.email.trim().toLowerCase()) {
+        const emailTaken = await this.prisma.user.findUnique({
+          where: { email: nextEmail },
+          include: {
+            company: { select: { id: true, name: true } },
+            companyMemberships: {
+              include: { company: { select: { id: true, name: true } } },
+            },
+          },
+        });
+        if (emailTaken && emailTaken.id !== id) {
+          const membershipNames = emailTaken.companyMemberships
+            .map((m) => m.company.name)
+            .filter(Boolean);
+          const companyNames =
+            membershipNames.length > 0
+              ? membershipNames
+              : emailTaken.company?.name
+                ? [emailTaken.company.name]
+                : [];
+
+          throw new ConflictException({
+            code: 'EMAIL_EXISTS',
+            message: 'Já existe um usuário com este e-mail',
+            userId: emailTaken.id,
+            userName: emailTaken.name,
+            email: emailTaken.email,
+            role: emailTaken.role,
+            companyIds: emailTaken.companyMemberships.map((m) => m.companyId),
+            companyNames,
+            canLinkCompany: isClientPortalRole(emailTaken.role),
+          });
+        }
+      }
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -315,31 +416,12 @@ export class UsersService {
         companyId: data.companyId,
         firstAccess: data.firstAccess,
         responsible: nextResponsible,
+        ...(specialtyId !== undefined ? { specialtyId } : {}),
         ...(schedule ?? {}),
-        ...(serviceDeskIds !== undefined && {
-          serviceDeskLinks: {
-            deleteMany: {},
-            ...(serviceDeskIds.length > 0
-              ? {
-                  createMany: {
-                    data: serviceDeskIds.map((serviceDeskId) => ({
-                      serviceDeskId,
-                    })),
-                  },
-                }
-              : {}),
-          },
-        }),
       },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
       },
     });
 
@@ -360,6 +442,42 @@ export class UsersService {
           clientRole: toClientCompanyRole(updated.role),
         },
       });
+
+      // Troca de empresa no formulário admin: remove o vínculo antigo
+      // para não sobrar membership fantasma (botão "trocar empresa" indevido).
+      const previousCompanyId = existingUser.companyId;
+      if (
+        previousCompanyId &&
+        previousCompanyId !== updated.companyId &&
+        data.companyId !== undefined
+      ) {
+        await this.prisma.userCompany.deleteMany({
+          where: {
+            userId: updated.id,
+            companyId: previousCompanyId,
+          },
+        });
+      }
+    }
+
+    if (
+      data.companyId !== undefined &&
+      !updated.companyId &&
+      isClientPortalRole(updated.role)
+    ) {
+      await this.prisma.userCompany.deleteMany({
+        where: { userId: updated.id },
+      });
+    }
+
+    if (
+      data.role !== undefined &&
+      !isClientPortalRole(updated.role) &&
+      isClientPortalRole(existingUser.role)
+    ) {
+      await this.prisma.userCompany.deleteMany({
+        where: { userId: updated.id },
+      });
     }
 
     await this.audit.log({
@@ -377,6 +495,7 @@ export class UsersService {
           companyId: existingUser.companyId,
           firstAccess: existingUser.firstAccess,
           responsible: existingUser.responsible,
+          specialtyId: existingUser.specialtyId,
         },
         after: {
           id: updated.id,
@@ -387,6 +506,7 @@ export class UsersService {
           companyId: updated.companyId,
           firstAccess: updated.firstAccess,
           responsible: updated.responsible,
+          specialtyId: updated.specialtyId,
         },
       },
     });
@@ -509,13 +629,7 @@ export class UsersService {
       },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
       },
     });
 

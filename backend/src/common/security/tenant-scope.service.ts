@@ -36,6 +36,24 @@ export class TenantScopeService {
     return company;
   }
 
+  /** Cliente TiFlux da empresa Alle Tecnologia (quando configurado). */
+  async resolveAlleTifluxClientId(): Promise<number | null> {
+    const alle = await this.prisma.company.findFirst({
+      where: {
+        deletedAt: null,
+        tifluxClientId: { not: null },
+        OR: [
+          { email: 'contato@alletecnologia.com' },
+          { name: { equals: 'Alle Tecnologia', mode: 'insensitive' } },
+        ],
+      },
+      select: { tifluxClientId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const id = alle?.tifluxClientId;
+    return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
+  }
+
   /** Força ou valida client_ids do TiFlux para usuários CLIENT. */
   async resolveTifluxClientIds(
     user: AuthenticatedRequestUser,
@@ -47,7 +65,7 @@ export class TenantScopeService {
 
     const company = await this.loadCompanyForClient(user);
     if (!company.tifluxClientId) {
-      throw new ForbiddenException('Empresa sem cliente TiFlux configurado');
+      throw new ForbiddenException('Empresa sem cliente vinculado configurado');
     }
 
     const allowedId = company.tifluxClientId;
@@ -63,6 +81,26 @@ export class TenantScopeService {
     }
 
     return [allowedId];
+  }
+
+  /**
+   * Clientes permitidos na abertura de chamado: empresa do usuário + Alle.
+   * A listagem geral continua no cliente da empresa (ver resolveTifluxClientIds).
+   */
+  async resolveTifluxClientIdsForTicketCreate(
+    user: AuthenticatedRequestUser,
+  ): Promise<number[] | undefined> {
+    if (!isClientPortalRole(user.role)) {
+      return undefined;
+    }
+
+    const own = await this.resolveTifluxClientIds(user);
+    const alleId = await this.resolveAlleTifluxClientId();
+    const ids = [...(own ?? [])];
+    if (alleId != null && !ids.includes(alleId)) {
+      ids.push(alleId);
+    }
+    return ids;
   }
 
   /** Valida que o grupo Zabbix pertence à empresa do CLIENT. */

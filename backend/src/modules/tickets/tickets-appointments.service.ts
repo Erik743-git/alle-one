@@ -692,7 +692,11 @@ export class TicketsAppointmentsService {
 
     const portalTicket = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber: row.ticketNumber },
-      select: { clientExternalId: true },
+      select: {
+        clientExternalId: true,
+        createdBy: true,
+        requestorEmail: true,
+      },
     });
     let clientExternalId = portalTicket?.clientExternalId ?? null;
     if (clientExternalId == null && isClientPortalRole(actor.role)) {
@@ -711,7 +715,10 @@ export class TicketsAppointmentsService {
         // Schema tiflux.* ausente.
       }
     }
-    await assertTicketClientScope(this.tenantScope, actor, clientExternalId);
+    await assertTicketClientScope(this.tenantScope, actor, clientExternalId, {
+      createdBy: portalTicket?.createdBy,
+      requestorEmail: portalTicket?.requestorEmail,
+    });
 
     if (!(await this.fileStorage.exists(row.file.path))) {
       throw new NotFoundException('Arquivo não encontrado no servidor.');
@@ -1081,11 +1088,7 @@ export class TicketsAppointmentsService {
 
     return {
       ok: true,
-      message: syncToTiflux
-        ? 'Apontamento atualizado no portal. Sincronização com TiFlux reiniciada.'
-        : row.syncStatus === PortalTicketAppointmentSyncStatus.SYNCED
-          ? 'Apontamento atualizado somente no portal. O registro no TiFlux não foi alterado.'
-          : 'Apontamento atualizado no portal.',
+      message: 'Apontamento atualizado.',
     };
   }
 
@@ -1120,10 +1123,7 @@ export class TicketsAppointmentsService {
 
     return {
       ok: true,
-      message:
-        row.syncStatus === PortalTicketAppointmentSyncStatus.SYNCED
-          ? 'Apontamento removido do portal. O registro no TiFlux permanece inalterado.'
-          : 'Apontamento excluído do portal.',
+      message: 'Apontamento excluído.',
     };
   }
 
@@ -1250,11 +1250,7 @@ export class TicketsAppointmentsService {
       attachmentsCount: attachments.length,
       tifluxSynced: false,
       portalOnly: !syncToTiflux,
-      message: syncToTiflux
-        ? `Apontamento salvo no portal (com tipo de atendimento). Sincronização com TiFlux em andamento — sem valorização.${attachmentNote}`
-        : isTifluxAppointmentSyncEnabled()
-          ? `Apontamento salvo no portal. Sincronização com TiFlux disponível apenas para tickets da mesa AlleOne.${attachmentNote}`
-          : `Apontamento salvo no portal (sem envio ao TiFlux).${attachmentNote}`,
+      message: `Apontamento salvo.${attachmentNote}`,
     };
   }
 }

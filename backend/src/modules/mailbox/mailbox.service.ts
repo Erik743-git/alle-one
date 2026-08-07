@@ -83,7 +83,7 @@ export class MailboxService {
         create: {
           userId,
           kind: MailboxNotificationKind.TIFLUX_SYNC_STALE,
-          title: 'Sync TiFlux atrasado',
+          title: 'Sincronização atrasada',
           body,
           href: '/admin',
           dedupeKey,
@@ -91,7 +91,7 @@ export class MailboxService {
         },
         update: {
           kind: MailboxNotificationKind.TIFLUX_SYNC_STALE,
-          title: 'Sync TiFlux atrasado',
+          title: 'Sincronização atrasada',
           body,
           href: '/admin',
           readAt: null,

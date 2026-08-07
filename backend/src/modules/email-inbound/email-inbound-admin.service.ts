@@ -47,6 +47,11 @@ export class CreateEmailInboundRouteDto {
 
   @IsOptional()
   @IsString()
+  specialtyId?: string;
+
+  /** @deprecated Prefer specialtyId */
+  @IsOptional()
+  @IsString()
   deskId?: string;
 
   @IsOptional()
@@ -69,6 +74,11 @@ export class UpdateEmailInboundRouteDto {
   @MaxLength(255)
   matchEmail?: string;
 
+  @IsOptional()
+  @IsString()
+  specialtyId?: string | null;
+
+  /** @deprecated Prefer specialtyId */
   @IsOptional()
   @IsString()
   deskId?: string | null;
@@ -135,7 +145,7 @@ export class EmailInboundAdminService {
     return this.prisma.emailInboundRoute.findMany({
       where: { deletedAt: null },
       include: {
-        desk: { select: { id: true, name: true } },
+        specialty: { select: { id: true, name: true } },
         company: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -153,7 +163,7 @@ export class EmailInboundAdminService {
       data: {
         id: randomUUID(),
         matchEmail,
-        deskId: dto.deskId || null,
+        specialtyId: dto.specialtyId || dto.deskId || null,
         companyId: dto.companyId || null,
         priorityName: dto.priorityName?.trim() || null,
         verified: dto.verified ?? false,
@@ -168,11 +178,17 @@ export class EmailInboundAdminService {
     });
     if (!existing)
       throw new NotFoundException('Direcionamento não encontrado.');
+    const specialtyId =
+      dto.specialtyId !== undefined
+        ? dto.specialtyId || null
+        : dto.deskId !== undefined
+          ? dto.deskId || null
+          : undefined;
     return this.prisma.emailInboundRoute.update({
       where: { id },
       data: {
         matchEmail: dto.matchEmail?.trim().toLowerCase(),
-        deskId: dto.deskId === undefined ? undefined : dto.deskId || null,
+        specialtyId,
         companyId:
           dto.companyId === undefined ? undefined : dto.companyId || null,
         priorityName:

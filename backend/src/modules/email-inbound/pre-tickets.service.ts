@@ -30,6 +30,11 @@ export class OpenPreTicketDto {
 
   @IsOptional()
   @IsString()
+  specialtyId?: string;
+
+  /** @deprecated Prefer specialtyId */
+  @IsOptional()
+  @IsString()
   deskId?: string;
 
   @IsOptional()
@@ -83,7 +88,7 @@ export class PreTicketsService {
       },
       include: {
         company: { select: { id: true, name: true } },
-        desk: { select: { id: true, name: true, externalId: true } },
+        specialty: { select: { id: true, name: true, externalId: true } },
       },
       orderBy: { receivedAt: 'desc' },
       take: 200,
@@ -97,7 +102,7 @@ export class PreTicketsService {
       where: { id, deletedAt: null },
       include: {
         company: { select: { id: true, name: true, tifluxClientId: true } },
-        desk: { select: { id: true, name: true, externalId: true } },
+        specialty: { select: { id: true, name: true, externalId: true } },
         requestorUser: { select: { id: true, name: true, email: true } },
         attachments: true,
       },
@@ -173,10 +178,11 @@ export class PreTicketsService {
         })
       : null;
 
-    const deskId = dto.deskId?.trim() || row.deskId;
-    const desk = deskId
-      ? await this.prisma.serviceDesk.findFirst({
-          where: { id: deskId, deletedAt: null },
+    const specialtyId =
+      dto.specialtyId?.trim() || dto.deskId?.trim() || row.specialtyId;
+    const desk = specialtyId
+      ? await this.prisma.specialty.findFirst({
+          where: { id: specialtyId, deletedAt: null },
         })
       : null;
 
@@ -274,7 +280,7 @@ export class PreTicketsService {
         openedAt: new Date(),
         openedByUserId: actor.userId,
         companyId: company?.id ?? row.companyId,
-        deskId: desk?.id ?? row.deskId,
+        specialtyId: desk?.id ?? row.specialtyId,
         priorityName: dto.priorityName?.trim() || row.priorityName,
         title,
       },

@@ -21,9 +21,11 @@ import { ClientDashboardViewToggle } from "@/components/dashboard/client-dashboa
 import { EditChartPresetDialog } from "@/components/dashboard/edit-chart-preset-dialog";
 import {
   dashboardChartPresetsService,
+  type DashboardChartKey,
   type DashboardChartType,
   type DashboardClientViewMode,
 } from "@/lib/services/dashboard-chart-presets.service";
+import { DASHBOARD_EDIT_CHART_LABEL } from "@/lib/module-copy";
 import {
   getPersistedCompanyId,
   isValidCompanyUuid,
@@ -52,10 +54,10 @@ import {
 } from "@/lib/services/dashboard.service";
 import {
   AlertCircle,
-  Building2,
   CalendarRange,
   Clock3,
   Minus,
+  Pencil,
   RefreshCcw,
   Server,
   ShieldAlert,
@@ -363,9 +365,17 @@ export default function DashboardPage() {
 
   const [clientViewMode, setClientViewMode] =
     useState<DashboardClientViewMode>("ALLE");
-  const [chartType, setChartType] = useState<DashboardChartType>("bar");
+  const [chartTypes, setChartTypes] = useState<
+    Record<DashboardChartKey, DashboardChartType>
+  >({
+    CHAMADOS: "bar",
+    HORAS: "bar",
+    ALERTAS: "line",
+  });
   const [deskNamesFilter, setDeskNamesFilter] = useState<string[]>([]);
-  const [editChartOpen, setEditChartOpen] = useState(false);
+  const [editChartKey, setEditChartKey] = useState<DashboardChartKey | null>(
+    null,
+  );
   const [presetPeriodDays, setPresetPeriodDays] = useState(30);
 
   const [initialLoading, setInitialLoading] = useState(true);
@@ -390,28 +400,59 @@ export default function DashboardPage() {
     dashboardSnapshotRef.current = dashboard;
   }, [dashboard]);
 
+  const presetCompanyId = canSelectCompany
+    ? selectedCompanyId
+    : user?.companyId ?? null;
+  const presetViewMode: DashboardClientViewMode = isClientUser
+    ? clientViewMode
+    : "ALLE";
+
   useEffect(() => {
-    if (!isClientUser || !user?.companyId) return;
+    if (!isValidCompanyUuid(presetCompanyId)) return;
     let cancelled = false;
     void (async () => {
+      const keys: DashboardChartKey[] = ["CHAMADOS", "HORAS", "ALERTAS"];
       try {
-        const preset = await dashboardChartPresetsService.get(
-          clientViewMode,
-          user.companyId,
+        const presets = await Promise.all(
+          keys.map((chartKey) =>
+            dashboardChartPresetsService.get(
+              presetViewMode,
+              chartKey,
+              presetCompanyId,
+            ),
+          ),
         );
-        if (cancelled || !preset) return;
-        const type =
-          preset.chartType === "line" || preset.chartType === "pie"
-            ? preset.chartType
-            : "bar";
-        setChartType(type);
-        setDeskNamesFilter(preset.deskNames ?? []);
-        setPresetPeriodDays(preset.periodDays ?? 30);
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - Math.max(6, (preset.periodDays ?? 30) - 1));
-        setStartDate(formatDateInput(start));
-        setEndDate(formatDateInput(end));
+        if (cancelled) return;
+
+        const nextTypes: Record<DashboardChartKey, DashboardChartType> = {
+          CHAMADOS: "bar",
+          HORAS: "bar",
+          ALERTAS: "line",
+        };
+        for (let i = 0; i < keys.length; i++) {
+          const preset = presets[i];
+          const chartKey = keys[i];
+          if (!preset) continue;
+          if (chartKey === "CHAMADOS") {
+            nextTypes.CHAMADOS =
+              preset.chartType === "line" || preset.chartType === "pie"
+                ? preset.chartType
+                : "bar";
+            setDeskNamesFilter(preset.deskNames ?? []);
+            setPresetPeriodDays(preset.periodDays ?? 30);
+            const end = new Date();
+            const start = new Date();
+            start.setDate(
+              end.getDate() - Math.max(6, (preset.periodDays ?? 30) - 1),
+            );
+            setStartDate(formatDateInput(start));
+            setEndDate(formatDateInput(end));
+          } else {
+            nextTypes[chartKey] =
+              preset.chartType === "line" ? "line" : "bar";
+          }
+        }
+        setChartTypes(nextTypes);
       } catch {
         /* preset opcional */
       }
@@ -419,7 +460,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [isClientUser, user?.companyId, clientViewMode]);
+  }, [presetCompanyId, presetViewMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -554,12 +595,8 @@ export default function DashboardPage() {
           start: toRangeDateString(startDate, false),
           end: toRangeDateString(endDate, true),
           companyId: effectiveCompanyId,
-          ...(isClientUser
-            ? {
-                viewMode: clientViewMode,
-                deskNames: deskNamesFilter,
-              }
-            : {}),
+          deskNames: deskNamesFilter,
+          ...(isClientUser ? { viewMode: clientViewMode } : {}),
         };
 
         if (!isValidDateInput(startDate) || !isValidDateInput(endDate)) {
@@ -845,18 +882,24 @@ export default function DashboardPage() {
       <PermissionGate module="DASHBOARD">
       <AppShell>
         <div className="font-sans w-full space-y-6 sm:space-y-8">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="space-y-2">
               <h1 className="text-2xl font-bold sm:text-3xl">Dashboard</h1>
               <p className="text-muted-foreground">Tudo sobre seu ambiente.</p>
+              {isClientUser ? (
+                <ClientDashboardViewToggle
+                  viewMode={clientViewMode}
+                  onChange={setClientViewMode}
+                />
+              ) : null}
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end xl:w-auto">
-              {canSelectCompany ? (
-                <div className="w-full rounded-xl border border-border bg-card px-4 py-3 sm:min-w-[320px]">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Empresa
-                  </p>
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:w-auto xl:justify-end">
+              <div className="w-full rounded-xl border border-border bg-card px-3 py-2.5 sm:min-w-[240px] sm:max-w-[320px]">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Empresa
+                </p>
+                {canSelectCompany ? (
                   <SearchableSelectField
                     value={selectedCompanyId ?? ""}
                     onChange={(next) => {
@@ -867,15 +910,21 @@ export default function DashboardPage() {
                     options={companyOptions}
                     loading={companies.length === 0}
                     emptyLabel={
-                      companies.length === 0 ? "Carregando..." : "Selecione uma empresa"
+                      companies.length === 0
+                        ? "Carregando..."
+                        : "Selecione uma empresa"
                     }
-                    className="h-10"
+                    className="h-9"
                   />
-                </div>
-              ) : null}
+                ) : (
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {companyDisplayName}
+                  </p>
+                )}
+              </div>
 
-              <div className="rounded-xl border border-border bg-card px-4 py-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-xl border border-border bg-card px-3 py-2.5">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Data inicial
                 </p>
                 <DatePickerField
@@ -885,8 +934,8 @@ export default function DashboardPage() {
                 />
               </div>
 
-              <div className="rounded-xl border border-border bg-card px-4 py-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-xl border border-border bg-card px-3 py-2.5">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Data final
                 </p>
                 <DatePickerField
@@ -896,41 +945,19 @@ export default function DashboardPage() {
                   align="end"
                 />
               </div>
+
+              <Button
+                onClick={() => void loadDashboard("manual")}
+                disabled={refreshButtonDisabled}
+                className="h-10 shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:mb-0.5"
+              >
+                <RefreshCcw
+                  size={16}
+                  className={manualRefreshing ? "animate-spin" : ""}
+                />
+                {refreshButtonLabel}
+              </Button>
             </div>
-          </div>
-
-          {isClientUser ? (
-            <ClientDashboardViewToggle
-              viewMode={clientViewMode}
-              onChange={setClientViewMode}
-              onEditChart={() => setEditChartOpen(true)}
-            />
-          ) : null}
-
-          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between">
-            <div className="inline-flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Building2 size={18} />
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {canSelectCompany ? "Empresa selecionada" : "Empresa logada"}
-                </p>
-                <div className="mt-1 flex items-center gap-3">
-                  <p className="text-sm font-bold">{companyDisplayName}</p>
-                </div>
-              </div>
-            </div>
-
-            <Button
-              onClick={() => void loadDashboard("manual")}
-              disabled={refreshButtonDisabled}
-              className="h-10 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCcw size={16} className={manualRefreshing ? "animate-spin" : ""} />
-              {refreshButtonLabel}
-            </Button>
           </div>
 
           {error ? (
@@ -1019,11 +1046,27 @@ export default function DashboardPage() {
 
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle>Chamados por mês</CardTitle>
-              <CardDescription>
-                Gráfico por criação do ticket. Abaixo: apontamentos no período do filtro (totais
-                alinhados aos cartões de tickets/horas quando existirem dados de apontamento).
-              </CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1.5">
+                  <CardTitle>Chamados por mês</CardTitle>
+                  <CardDescription>
+                    Gráfico por criação do ticket. Abaixo: apontamentos no período do filtro (totais
+                    alinhados aos cartões de tickets/horas quando existirem dados de apontamento).
+                  </CardDescription>
+                </div>
+                {isValidCompanyUuid(presetCompanyId) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditChartKey("CHAMADOS")}
+                  >
+                    <Pencil className="mr-2 size-3.5" />
+                    {DASHBOARD_EDIT_CHART_LABEL}
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
               <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
@@ -1060,7 +1103,7 @@ export default function DashboardPage() {
               <DashboardLazyChart
                 kind="chamados"
                 data={chamadosChartData}
-                chartType={isClientUser ? chartType : "bar"}
+                chartType={chartTypes.CHAMADOS}
                 deskData={dashboard?.chamadosPorMesa ?? []}
               />
 
@@ -1140,7 +1183,21 @@ export default function DashboardPage() {
 
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle>Apontamento de horas</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <CardTitle>Apontamento de horas</CardTitle>
+                {isValidCompanyUuid(presetCompanyId) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditChartKey("HORAS")}
+                  >
+                    <Pencil className="mr-2 size-3.5" />
+                    {DASHBOARD_EDIT_CHART_LABEL}
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
               <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
@@ -1174,13 +1231,33 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <DashboardLazyChart kind="horas" data={horasChartData} />
+              <DashboardLazyChart
+                kind="horas"
+                data={horasChartData}
+                chartType={
+                  chartTypes.HORAS === "line" ? "line" : "bar"
+                }
+              />
             </CardContent>
           </Card>
 
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle>Monitoramento</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <CardTitle>Monitoramento</CardTitle>
+                {isValidCompanyUuid(presetCompanyId) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditChartKey("ALERTAS")}
+                  >
+                    <Pencil className="mr-2 size-3.5" />
+                    {DASHBOARD_EDIT_CHART_LABEL}
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="overflow-x-auto rounded-2xl border border-border">
@@ -1226,7 +1303,13 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <DashboardLazyChart kind="alertas" data={alertasMonitoringChartRows} />
+              <DashboardLazyChart
+                kind="alertas"
+                data={alertasMonitoringChartRows}
+                chartType={
+                  chartTypes.ALERTAS === "bar" ? "bar" : "line"
+                }
+              />
             </CardContent>
           </Card>
 
@@ -1341,29 +1424,44 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
-        {isClientUser ? (
+        {isValidCompanyUuid(presetCompanyId) && editChartKey ? (
           <EditChartPresetDialog
-            open={editChartOpen}
-            onOpenChange={setEditChartOpen}
-            viewMode={clientViewMode}
-            companyId={user?.companyId ?? null}
+            open={Boolean(editChartKey)}
+            onOpenChange={(open) => {
+              if (!open) setEditChartKey(null);
+            }}
+            chartKey={editChartKey}
+            chartTitle={
+              editChartKey === "CHAMADOS"
+                ? "Chamados por mês"
+                : editChartKey === "HORAS"
+                  ? "Apontamento de horas"
+                  : "Monitoramento"
+            }
+            viewMode={presetViewMode}
+            companyId={presetCompanyId}
             availableDesks={(dashboard?.chamadosPorMesa ?? []).map(
               (d) => d.deskName,
             )}
-            initialChartType={chartType}
+            initialChartType={chartTypes[editChartKey]}
             initialDeskNames={deskNamesFilter}
             initialPeriodDays={presetPeriodDays}
             onSaved={(next) => {
-              setChartType(next.chartType);
-              setDeskNamesFilter(next.deskNames);
-              setPresetPeriodDays(next.periodDays);
-              const end = new Date();
-              const start = new Date();
-              start.setDate(
-                end.getDate() - Math.max(6, next.periodDays - 1),
-              );
-              setStartDate(formatDateInput(start));
-              setEndDate(formatDateInput(end));
+              setChartTypes((prev) => ({
+                ...prev,
+                [next.chartKey]: next.chartType,
+              }));
+              if (next.chartKey === "CHAMADOS") {
+                setDeskNamesFilter(next.deskNames);
+                setPresetPeriodDays(next.periodDays);
+                const end = new Date();
+                const start = new Date();
+                start.setDate(
+                  end.getDate() - Math.max(6, next.periodDays - 1),
+                );
+                setStartDate(formatDateInput(start));
+                setEndDate(formatDateInput(end));
+              }
             }}
           />
         ) : null}

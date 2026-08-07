@@ -202,7 +202,7 @@ export class EmailInboundIngestService {
 
     const route = await this.matchRoute(fromEmail);
     const companyId = route?.companyId ?? requestor?.companyId ?? null;
-    const deskId = route?.deskId ?? null;
+    const specialtyId = route?.specialtyId ?? null;
     const priorityName = route?.priorityName ?? null;
 
     const systemUploader =
@@ -235,7 +235,7 @@ export class EmailInboundIngestService {
           graphMessageId: params.message.id,
           companyId,
           requestorUserId: requestor?.id ?? null,
-          deskId,
+          specialtyId,
           priorityName,
           receivedAt: params.message.receivedDateTime
             ? new Date(params.message.receivedDateTime)

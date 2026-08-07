@@ -245,11 +245,6 @@ function CompanyEntryCard({
         </div>
         {!dense ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {entry.source === "portal" ? (
-              <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                Só portal
-              </span>
-            ) : null}
             {q?.status === "PENDING" ? (
               <span className="alle-badge-overtime rounded-md border border-amber-500/40 px-2 py-0.5 text-[10px] font-medium">
                 Aguardando

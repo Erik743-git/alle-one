@@ -32,4 +32,4 @@ Ambiente: teste (`alleone-teste`).
 ## Staff Alle
 
 - Sem mudança de menu / cross-company
-- Dashboard sem toggle cliente; seletor de empresa admin/collab intacto
+- Dashboard sem toggle Alle/Interna; **Editar gráfico** disponível (preset por usuário/empresa); seletor de empresa admin/collab intacto

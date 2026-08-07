@@ -212,6 +212,78 @@ export class TicketsCatalogsService {
     return this.listResponsiblesFromPortalUsers();
   }
 
+  /**
+   * Usuários ativos da empresa do cliente (qualquer perfil) —
+   * usados como opções de responsável no portal cliente.
+   */
+  async listCompanyUsersAsResponsibles(
+    companyId: string,
+  ): Promise<Array<{ id: number; name: string; email: string | null }>> {
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+        OR: [{ companyId }, { companyMemberships: { some: { companyId } } }],
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+      take: 500,
+    });
+
+    if (users.length === 0) return [];
+
+    const emailToTifluxId = new Map<string, number>();
+    try {
+      const emails = users.map((u) => u.email.trim().toLowerCase());
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; email: string }>
+        >`
+          SELECT tu.external_id, lower(trim(tu.email)) AS email
+          FROM tiflux.users tu
+          WHERE COALESCE(tu.active, true) = true
+            AND lower(trim(tu.email)) = ANY(${emails}::text[])
+          ORDER BY tu.external_id ASC
+        `) ?? [];
+      for (const row of rows) {
+        const email = String(row.email ?? '').trim();
+        const id = Number(row.external_id);
+        if (!email || !Number.isFinite(id) || id <= 0) continue;
+        if (!emailToTifluxId.has(email)) {
+          emailToTifluxId.set(email, id);
+        }
+      }
+    } catch {
+      // Sem schema tiflux: IDs sintéticos.
+    }
+
+    return users
+      .map((u) => {
+        const email = u.email.trim();
+        const name = u.name.trim();
+        if (!name) return null;
+        const tifluxId = emailToTifluxId.get(email.toLowerCase()) ?? null;
+        return {
+          id: resolveResponsibleExternalId(u.id, tifluxId),
+          name,
+          email: email || null,
+        };
+      })
+      .filter((r): r is { id: number; name: string; email: string | null } =>
+        Boolean(r),
+      );
+  }
+
+  private async resolveResponsiblesForCreateCatalogs(
+    actor: AuthenticatedRequestUser,
+  ): Promise<Array<{ id: number; name: string; email: string | null }>> {
+    if (isClientPortalRole(actor.role)) {
+      if (!actor.companyId) return [];
+      return this.listCompanyUsersAsResponsibles(actor.companyId);
+    }
+    return this.listResponsiblesForCatalogs();
+  }
+
   private buildClassificationTree(
     rows: Array<{
       id: string;
@@ -238,7 +310,7 @@ export class TicketsCatalogsService {
     const toNode = (row: (typeof rows)[number]): TicketClassificationNode => ({
       ...row,
       children:
-        row.level < 3 ? sortRows(byParent.get(row.id) ?? []).map(toNode) : [],
+        row.level < 2 ? sortRows(byParent.get(row.id) ?? []).map(toNode) : [],
     });
 
     return sortRows(byParent.get(null) ?? []).map(toNode);
@@ -250,7 +322,7 @@ export class TicketsCatalogsService {
   ) {
     const candidates: Array<{ id: string; name: string }> = [];
 
-    const byExternalId = await this.prisma.serviceDesk.findFirst({
+    const byExternalId = await this.prisma.specialty.findFirst({
       where: { externalId: tifluxDeskId, deletedAt: null, active: true },
       select: { id: true, name: true },
     });
@@ -258,7 +330,7 @@ export class TicketsCatalogsService {
 
     const normalizedTarget = normalizeDeskName(tifluxDeskName);
     if (normalizedTarget) {
-      const portalDesks = await this.prisma.serviceDesk.findMany({
+      const portalDesks = await this.prisma.specialty.findMany({
         where: { deletedAt: null, active: true },
         select: { id: true, name: true },
       });
@@ -275,8 +347,8 @@ export class TicketsCatalogsService {
     const withCounts = await Promise.all(
       candidates.map(async (desk) => ({
         desk,
-        count: await this.prisma.serviceDeskClassification.count({
-          where: { serviceDeskId: desk.id, active: true },
+        count: await this.prisma.specialtyClassification.count({
+          where: { specialtyId: desk.id, active: true },
         }),
       })),
     );
@@ -298,11 +370,15 @@ export class TicketsCatalogsService {
       tifluxDeskName,
     );
     if (!portalDesk) {
-      return { portalServiceDesk: null, classification: null };
+      return {
+        portalServiceDesk: null,
+        portalSpecialty: null,
+        classification: null,
+      };
     }
 
-    const rows = await this.prisma.serviceDeskClassification.findMany({
-      where: { serviceDeskId: portalDesk.id, active: true },
+    const rows = await this.prisma.specialtyClassification.findMany({
+      where: { specialtyId: portalDesk.id, active: true },
       orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
       select: {
         id: true,
@@ -316,11 +392,11 @@ export class TicketsCatalogsService {
 
     return {
       portalServiceDesk: portalDesk,
+      portalSpecialty: portalDesk,
       classification: {
         levelLabels: [
           { level: 1, label: 'Categoria' },
           { level: 2, label: 'Subcategoria' },
-          { level: 3, label: 'Produto/solução' },
         ],
         tree: this.buildClassificationTree(rows),
       },
@@ -330,7 +406,7 @@ export class TicketsCatalogsService {
   async resolveClassificationPathLabel(
     classificationId: string,
   ): Promise<string | null> {
-    const row = await this.prisma.serviceDeskClassification.findFirst({
+    const row = await this.prisma.specialtyClassification.findFirst({
       where: { id: classificationId, active: true },
       select: { id: true, name: true, parentId: true, level: true },
     });
@@ -339,7 +415,7 @@ export class TicketsCatalogsService {
     const names: string[] = [row.name];
     let parentId = row.parentId;
     while (parentId) {
-      const parent = await this.prisma.serviceDeskClassification.findUnique({
+      const parent = await this.prisma.specialtyClassification.findUnique({
         where: { id: parentId },
         select: { name: true, parentId: true },
       });
@@ -348,15 +424,15 @@ export class TicketsCatalogsService {
       parentId = parent.parentId;
     }
 
-    const desk = await this.prisma.serviceDeskClassification.findUnique({
+    const desk = await this.prisma.specialtyClassification.findUnique({
       where: { id: row.id },
       select: {
-        serviceDesk: { select: { name: true } },
+        specialty: { select: { name: true } },
       },
     });
 
-    if (desk?.serviceDesk?.name) {
-      names.unshift(desk.serviceDesk.name);
+    if (desk?.specialty?.name) {
+      names.unshift(desk.specialty.name);
     }
 
     return names.join(' → ');
@@ -378,23 +454,25 @@ export class TicketsCatalogsService {
 
     if (!classificationId?.trim()) {
       throw new BadRequestException(
-        'Selecione a classificação cadastrada para esta mesa.',
+        'Selecione a classificação cadastrada para esta especialidade.',
       );
     }
 
-    const node = await this.prisma.serviceDeskClassification.findFirst({
+    const node = await this.prisma.specialtyClassification.findFirst({
       where: {
         id: classificationId,
         active: true,
-        serviceDeskId: bundle.portalServiceDesk?.id,
+        specialtyId: bundle.portalServiceDesk?.id,
       },
       select: { id: true, level: true },
     });
     if (!node) {
-      throw new BadRequestException('Classificação inválida para esta mesa.');
+      throw new BadRequestException(
+        'Classificação inválida para esta especialidade.',
+      );
     }
 
-    const hasChildren = await this.prisma.serviceDeskClassification.count({
+    const hasChildren = await this.prisma.specialtyClassification.count({
       where: { parentId: node.id, active: true },
     });
     if (hasChildren > 0) {
@@ -571,18 +649,19 @@ export class TicketsCatalogsService {
   }
 
   async getCreateCatalogs(
+    actor: AuthenticatedRequestUser,
     deskId?: number,
     clientId?: number,
   ): Promise<TicketCreateCatalogs> {
     if (!isTicketsTifluxWriteEnabled()) {
-      return this.getCreateCatalogsFromPortal(deskId, clientId);
+      return this.getCreateCatalogsFromPortal(actor, deskId, clientId);
     }
 
     const [clientsRaw, desksRaw, responsibles, companiesForMap] =
       await Promise.all([
         this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
         this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
-        this.listResponsiblesForCatalogs(),
+        this.resolveResponsiblesForCreateCatalogs(actor),
         this.prisma.company.findMany({
           where: { deletedAt: null, tifluxClientId: { not: null } },
           select: { id: true, tifluxClientId: true },
@@ -590,20 +669,38 @@ export class TicketsCatalogsService {
         }),
       ]);
 
+    const allowedClientIds = isClientPortalRole(actor.role)
+      ? await this.tenantScope.resolveTifluxClientIdsForTicketCreate(actor)
+      : undefined;
+    const allowedSet =
+      allowedClientIds != null ? new Set(allowedClientIds.map(Number)) : null;
+
     let requestors: TicketRequestorOption[] = [];
-    if (clientId != null && Number.isFinite(clientId)) {
-      const clientName =
-        clientsRaw
-          .map((c) => ({
-            id: Number(c.id),
-            name: String(c.name ?? c.social_name ?? ''),
-          }))
-          .find((c) => c.id === clientId)?.name ?? null;
-      const raw = await this.tiflux.getClientRequestors(clientId, {
-        limitPerPage: 200,
-        maxPages: 30,
-      });
-      requestors = sanitizeTicketRequestors(raw, { clientName });
+    const scopedClientId =
+      allowedSet != null
+        ? clientId != null && allowedSet.has(Number(clientId))
+          ? Number(clientId)
+          : allowedClientIds?.[0] != null
+            ? Number(allowedClientIds[0])
+            : undefined
+        : clientId;
+    if (scopedClientId != null && Number.isFinite(scopedClientId)) {
+      if (allowedSet && !allowedSet.has(Number(scopedClientId))) {
+        // Cliente do portal não pode carregar solicitantes de outra empresa.
+      } else {
+        const clientName =
+          clientsRaw
+            .map((c) => ({
+              id: Number(c.id),
+              name: String(c.name ?? c.social_name ?? ''),
+            }))
+            .find((c) => c.id === scopedClientId)?.name ?? null;
+        const raw = await this.tiflux.getClientRequestors(scopedClientId, {
+          limitPerPage: 200,
+          maxPages: 30,
+        });
+        requestors = sanitizeTicketRequestors(raw, { clientName });
+      }
     }
 
     let desk: Record<string, unknown> | null = null;
@@ -646,7 +743,11 @@ export class TicketsCatalogsService {
             companyId: company?.id,
           };
         })
-        .filter((c) => Number.isFinite(c.id)),
+        .filter(
+          (c) =>
+            Number.isFinite(c.id) &&
+            (allowedSet == null || allowedSet.has(c.id)),
+        ),
       desks: desksRaw
         .map((d) => ({
           id: Number(d.id),
@@ -679,6 +780,7 @@ export class TicketsCatalogsService {
 
   /** Catálogos de criação sem API TiFlux (Company + service_desks + mirror users). */
   private async getCreateCatalogsFromPortal(
+    actor: AuthenticatedRequestUser,
     deskId?: number,
     clientId?: number,
   ): Promise<TicketCreateCatalogs> {
@@ -698,13 +800,19 @@ export class TicketsCatalogsService {
         orderBy: { name: 'asc' },
         take: 500,
       }),
-      this.prisma.serviceDesk.findMany({
+      this.prisma.specialty.findMany({
         where: { deletedAt: null, active: true, externalId: { not: null } },
         select: { id: true, externalId: true, name: true },
         orderBy: { name: 'asc' },
       }),
-      this.listResponsiblesForCatalogs(),
+      this.resolveResponsiblesForCreateCatalogs(actor),
     ]);
+
+    const allowedClientIds = isClientPortalRole(actor.role)
+      ? await this.tenantScope.resolveTifluxClientIdsForTicketCreate(actor)
+      : undefined;
+    const allowedSet =
+      allowedClientIds != null ? new Set(allowedClientIds.map(Number)) : null;
 
     const clients = companies
       .map((c) => ({
@@ -712,7 +820,10 @@ export class TicketsCatalogsService {
         name: (c.tifluxClientName?.trim() || c.name).trim(),
         companyId: c.id,
       }))
-      .filter((c) => Number.isFinite(c.id));
+      .filter(
+        (c) =>
+          Number.isFinite(c.id) && (allowedSet == null || allowedSet.has(c.id)),
+      );
 
     const deskOptions = desks
       .map((d) => ({
@@ -743,13 +854,26 @@ export class TicketsCatalogsService {
     }
 
     let requestors: TicketRequestorOption[] = [];
-    if (clientId != null && Number.isFinite(clientId)) {
-      const clientName = clients.find((c) => c.id === clientId)?.name ?? null;
+    const scopedClientId =
+      allowedSet != null
+        ? clientId != null && allowedSet.has(Number(clientId))
+          ? Number(clientId)
+          : allowedClientIds?.[0] != null
+            ? Number(allowedClientIds[0])
+            : undefined
+        : clientId;
+    if (
+      scopedClientId != null &&
+      Number.isFinite(scopedClientId) &&
+      (allowedSet == null || allowedSet.has(Number(scopedClientId)))
+    ) {
+      const clientName =
+        clients.find((c) => c.id === scopedClientId)?.name ?? null;
       const company = companies.find(
-        (c) => Number(c.tifluxClientId) === clientId,
+        (c) => Number(c.tifluxClientId) === scopedClientId,
       );
       requestors = await this.listPortalRequestorsForClient({
-        clientExternalId: clientId,
+        clientExternalId: scopedClientId,
         companyId: company?.id ?? null,
         clientName,
       });

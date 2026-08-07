@@ -130,7 +130,7 @@ export class TicketsReconcileService {
         kind: 'APPOINTMENT_PENDING_SYNC',
         ticketNumber: row.ticketNumber,
         portalAppointmentId: row.id,
-        message: 'Apontamento portal aguardando sincronização com TiFlux',
+        message: 'Apontamento aguardando sincronização',
         createdAt: row.createdAt.toISOString(),
       });
     }
@@ -166,7 +166,7 @@ export class TicketsReconcileService {
           kind: 'APPOINTMENT_MISSING_IN_TIFLUX',
           ticketNumber: row.ticketNumber,
           portalAppointmentId: row.portalId,
-          message: `Apontamento portal marcado SYNCED (id TiFlux ${row.externalId}) ausente em tiflux.ticket_appointments`,
+          message: `Apontamento marcado SYNCED (id ${row.externalId}) ausente no espelho externo`,
           createdAt: row.updatedAt.toISOString(),
         });
       }

@@ -9,6 +9,7 @@ import { assertTicketClientScope } from './tickets-client-scope';
 describe('listTicketStages client scope contract', () => {
   const tenantScope = {
     resolveTifluxClientIds: jest.fn(),
+    resolveAlleTifluxClientId: jest.fn().mockResolvedValue(null),
   };
 
   const client = {

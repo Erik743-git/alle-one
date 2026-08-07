@@ -101,6 +101,72 @@ export class ReportsService {
     private readonly inventario: ReportsInventarioService,
   ) {}
 
+  /**
+   * Stub do relatório de cobrança por especialidade.
+   * Ver docs/ESPECIALIDADE_COBRANCA.md — fórmulas B/C/D/E/F.
+   * TODO: calcular horas gastas (C) a partir de apontamentos do usuário da especialidade.
+   */
+  async getBillingChargeReport(
+    _user: AuthenticatedRequestUser,
+    query: {
+      companyIds?: string | string[];
+      specialtyIds?: string | string[];
+      mode?: string;
+      start?: string;
+      end?: string;
+    },
+  ) {
+    const toArray = (v?: string | string[]) =>
+      (Array.isArray(v) ? v : v ? [v] : [])
+        .flatMap((item) => String(item).split(','))
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const companyIds = toArray(query.companyIds);
+    const specialtyIds = toArray(query.specialtyIds);
+    const mode = query.mode === 'excess' ? 'excess' : 'all';
+    const start = query.start ?? null;
+    const end = query.end ?? null;
+
+    return {
+      filters: { companyIds, specialtyIds, mode, start, end },
+      formulas: {
+        B: 'horas contratadas (linha do contrato)',
+        C: 'horas gastas (apontamentos de usuários da especialidade)',
+        D: 'B - C (saldo; negativo se estourou)',
+        E: 'D × valor hora excedente',
+        F: 'C × valor hora calculado (contractValue / monthlyHours)',
+        amountDue:
+          'ilimitado ou C≤B → valor contrato; C>B → valor contrato + |E|',
+      },
+      rows: [] as Array<{
+        companyId: string;
+        companyName: string;
+        specialtyId: string;
+        specialtyName: string;
+        contractId: string | null;
+        monthlyHours: number; // B
+        spentHours: number; // C
+        balanceHours: number; // D
+        excessValue: number; // E
+        theoreticalCost: number; // F
+        contractValue: number;
+        excessHourPrice: number;
+        hourlyRate: number | null;
+        unlimited: boolean;
+        amountDue: number;
+      }>,
+      totals: {
+        spentHours: 0,
+        balanceHours: 0,
+        excessValue: 0,
+        theoreticalCost: 0,
+        amountDue: 0,
+      },
+      stub: true,
+    };
+  }
+
   private async fetchChartPng(params: {
     chart: unknown;
     plugins?: string[];
@@ -1700,7 +1766,7 @@ export class ReportsService {
 
       if (!withClient.length) {
         throw new BadRequestException(
-          'Nenhuma empresa com cliente TiFlux configurado para gerar apontamentos.',
+          'Nenhuma empresa com cliente vinculado para gerar apontamentos.',
         );
       }
 
@@ -1840,20 +1906,16 @@ export class ReportsService {
       where: { deletedAt: null },
       select: {
         name: true,
-        serviceDeskLinks: {
-          include: { serviceDesk: { select: { name: true } } },
-        },
+        specialty: { select: { name: true } },
       },
     });
     const teamByUserName = new Map<string, string>();
     for (const u of users) {
       const key = normalizeNameKey(u.name);
       if (!key) continue;
-      const desks = u.serviceDeskLinks
-        .map((l) => l.serviceDesk.name)
-        .filter((name) => !!String(name || '').trim());
-      if (desks.length === 0) continue;
-      teamByUserName.set(key, desks.join(' / '));
+      const specialtyName = u.specialty?.name?.trim();
+      if (!specialtyName) continue;
+      teamByUserName.set(key, specialtyName);
     }
 
     return rows.map((r) => {
@@ -2112,7 +2174,7 @@ export class ReportsService {
     if (!company) throw new NotFoundException('Empresa não encontrada');
     if (!company.tifluxClientId) {
       throw new BadRequestException(
-        'Empresa sem cliente TiFlux configurado. Não é possível gerar apontamentos por empresa.',
+        'Empresa sem cliente vinculado. Não é possível gerar apontamentos por empresa.',
       );
     }
     return {
@@ -2156,7 +2218,7 @@ export class ReportsService {
       !attendantName
     ) {
       throw new BadRequestException(
-        `Colaborador "${match.name}" sem vínculo com TiFlux para filtrar apontamentos.`,
+        `Colaborador "${match.name}" sem vínculo externo para filtrar apontamentos.`,
       );
     }
 

@@ -15,6 +15,10 @@ export class UpsertDashboardChartPresetDto {
   @MaxLength(20)
   viewMode!: string;
 
+  @IsString()
+  @MaxLength(32)
+  chartKey!: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(32)
@@ -41,6 +45,10 @@ export class ChartPresetQueryDto {
   @IsString()
   @MaxLength(20)
   viewMode!: string;
+
+  @IsString()
+  @MaxLength(32)
+  chartKey!: string;
 
   @IsOptional()
   @IsUUID()

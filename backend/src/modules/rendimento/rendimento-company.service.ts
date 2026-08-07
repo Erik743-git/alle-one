@@ -421,7 +421,7 @@ export class RendimentoCompanyService {
 
     if (!company.tifluxClientId) {
       throw new BadRequestException(
-        'Empresa sem cliente TiFlux vinculado. Configure tiflux_client_id.',
+        'Empresa sem cliente vinculado. Configure o cliente da empresa.',
       );
     }
 
