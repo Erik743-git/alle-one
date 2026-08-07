@@ -31,7 +31,7 @@ export const contractsService = {
     companyId?: string;
     offset?: number;
     limit?: number;
-    status?: TifluxContractStatus[]; // default do TiFlux: actives
+    status?: TifluxContractStatus[]; // default: actives
   }) {
     const search = new URLSearchParams();
     if (isValidCompanyUuid(params.companyId)) {

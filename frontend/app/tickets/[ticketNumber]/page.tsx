@@ -10,8 +10,11 @@ import {
   History,
   Link2,
   Loader2,
+  MoreVertical,
+  Pencil,
   Paperclip,
   Ticket,
+  Trash2,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -19,6 +22,12 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import { TicketHistoryPanel } from "@/components/tickets/ticket-history-panel";
@@ -28,12 +37,13 @@ import {
   canCreateTicket,
   canCreateTicketAppointment,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
-  TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import {
-  SYNC_STATUS_PAUSED,
-  SYNC_STATUS_PENDING,
-  SYNC_STATUS_PORTAL_ONLY,
+  TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION,
+  TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE,
+  TICKET_APPOINTMENT_TIFLUX_ONLY_HINT,
+  TICKET_DELETE_APPOINTMENT_CONFIRM,
+  TICKET_SYNC_PENDING_BANNER,
 } from "@/lib/module-copy";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -55,6 +65,14 @@ function formatMinutes(minutes: number) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
 
+/** ISO `YYYY-MM-DD` → `DD/MM/YYYY`. */
+function formatAppointmentDate(value: string | null | undefined) {
+  if (!value?.trim()) return "—";
+  const [y, m, d] = value.trim().slice(0, 10).split("-");
+  if (!y || !m || !d) return value;
+  return `${d}/${m}/${y}`;
+}
+
 function appointmentRowKey(row: {
   externalId: number | null;
   portalAppointmentId: string | null;
@@ -66,15 +84,6 @@ function appointmentRowKey(row: {
     (row.externalId != null ? `tiflux-${row.externalId}` : null) ??
     `${row.appointmentDate}-${row.initTime}`
   );
-}
-
-function syncStatusLabel(row: TicketAppointment) {
-  if (row.syncPaused && row.syncStatus === "PENDING_TIFLUX") {
-    return SYNC_STATUS_PAUSED;
-  }
-  if (row.syncStatus === "PORTAL_ONLY") return SYNC_STATUS_PORTAL_ONLY;
-  if (row.syncStatus === "PENDING_TIFLUX") return SYNC_STATUS_PENDING;
-  return null;
 }
 
 function formatFileSize(bytes: number) {
@@ -179,12 +188,8 @@ export default function TicketDetailPage() {
   }, [ticketNumber]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    void loadStages();
-  }, [loadStages]);
+    void Promise.all([load(), loadStages()]);
+  }, [load, loadStages]);
 
   useEffect(() => {
     setExternalGmudRefInput(data?.externalGmudRef ?? "");
@@ -308,7 +313,7 @@ export default function TicketDetailPage() {
       const ok = await confirm({
         title: "Excluir apontamento",
         description:
-          "O apontamento será removido do portal. Se já existir no TiFlux, o registro lá permanece inalterado.",
+          TICKET_DELETE_APPOINTMENT_CONFIRM,
         confirmText: "Excluir",
         variant: "error",
       });
@@ -382,6 +387,14 @@ export default function TicketDetailPage() {
                   Apontar
                 </Button>
               ) : null}
+              {ticket && canChangeTicketStage() ? (
+                <Button type="button" variant="outline" size="sm" asChild>
+                  <Link href={`/tickets/${ticket.ticketNumber}/edit`}>
+                    <Pencil className="mr-2 size-4" />
+                    Editar
+                  </Link>
+                </Button>
+              ) : null}
             </div>
 
             {loading ? (
@@ -394,8 +407,7 @@ export default function TicketDetailPage() {
               <>
                 {data?.syncPending ? (
                   <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
-                    Ticket recém-criado: ainda não aparece na listagem local, mas
-                    já está disponível no TiFlux.
+                    {TICKET_SYNC_PENDING_BANNER}
                   </p>
                 ) : null}
                 <div className="space-y-2">
@@ -452,11 +464,68 @@ export default function TicketDetailPage() {
                       <CardHeader>
                         <CardTitle className="text-base">Descrição do chamado</CardTitle>
                       </CardHeader>
-                      <CardContent>
+                      <CardContent className="space-y-4">
                         <AppointmentDescriptionView
                           description={data.portalDescription.description}
                           attachments={data.portalDescription.attachments ?? []}
                         />
+                        {(data.portalDescription.attachments ?? []).some(
+                          (a) => !(a.mimeType || "").startsWith("image/"),
+                        ) ? (
+                          <div className="space-y-2 border-t border-border pt-4">
+                            <p className="text-sm font-medium">Anexos</p>
+                            <ul className="space-y-1.5">
+                              {(data.portalDescription.attachments ?? [])
+                                .filter(
+                                  (a) =>
+                                    !(a.mimeType || "").startsWith("image/"),
+                                )
+                                .map((attachment) => (
+                                  <li
+                                    key={attachment.fileId}
+                                    className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                                  >
+                                    <span className="min-w-0 flex-1 truncate">
+                                      {attachment.originalName}
+                                      <span className="text-muted-foreground">
+                                        {` · ${attachment.mimeType || "arquivo"}`}
+                                        {attachment.size != null
+                                          ? ` · ${
+                                              attachment.size < 1024
+                                                ? `${attachment.size} B`
+                                                : attachment.size < 1024 * 1024
+                                                  ? `${Math.round(attachment.size / 1024)} KB`
+                                                  : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
+                                            }`
+                                          : ""}
+                                      </span>
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8"
+                                      onClick={() =>
+                                        void openPortalAttachment(
+                                          attachment,
+                                          false,
+                                        ).catch((err) =>
+                                          notifyError(
+                                            err instanceof Error
+                                              ? err.message
+                                              : "Não foi possível baixar o anexo.",
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      <Download className="mr-1.5 size-3.5" />
+                                      Baixar
+                                    </Button>
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </CardContent>
                     </Card>
                   ) : null}
@@ -498,7 +567,7 @@ export default function TicketDetailPage() {
                       {canChangeTicketStage() && (stagesLoading || stagesData) ? (
                         <div className="space-y-2 border-t border-border pt-3">
                           <Label className="text-xs font-semibold text-muted-foreground">
-                            Estágio no TiFlux
+                            Estágio
                           </Label>
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                             <div className="flex-1">
@@ -537,7 +606,7 @@ export default function TicketDetailPage() {
                           <p className="text-xs text-muted-foreground">
                             {stagesData?.isClosed
                               ? "Ticket fechado — o estágio não pode ser alterado."
-                              : "Avance o estágio para permitir apontamentos no TiFlux (a etapa inicial geralmente não aceita horas)."}
+                              : "Altere o estágio do chamado conforme o andamento do atendimento."}
                           </p>
                         </div>
                       ) : null}
@@ -627,12 +696,28 @@ export default function TicketDetailPage() {
                   </Card>
                 ) : (
                 <Card>
-                  <CardHeader className="space-y-2">
-                    <CardTitle className="text-base">Apontamentos</CardTitle>
-                    {!canCreateTicketAppointment() ? (
-                      <p className="text-xs font-normal text-muted-foreground">
-                        {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
-                      </p>
+                  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base">Apontamentos</CardTitle>
+                      {!canCreateTicketAppointment() ? (
+                        <p className="text-xs font-normal text-muted-foreground">
+                          {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
+                        </p>
+                      ) : null}
+                    </div>
+                    {ticket && canCreateTicketAppointment() ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setEditingAppointment(null);
+                          setPendingResumeId(null);
+                          setAppointmentOpen(true);
+                        }}
+                      >
+                        <Clock className="mr-2 size-4" />
+                        Apontar
+                      </Button>
                     ) : null}
                   </CardHeader>
                   <CardContent className="overflow-x-auto p-0">
@@ -644,7 +729,6 @@ export default function TicketDetailPage() {
                           <th className="px-4 py-2">Horário</th>
                           <th className="px-4 py-2">Duração</th>
                           <th className="px-4 py-2">Tipo</th>
-                          <th className="px-4 py-2">Atendimento</th>
                           <th className="px-4 py-2">Descrição</th>
                           {canCreateTicketAppointment() ? (
                             <th className="px-4 py-2">Ações</th>
@@ -655,7 +739,7 @@ export default function TicketDetailPage() {
                         {(data?.appointments ?? []).length === 0 ? (
                           <tr>
                             <td
-                              colSpan={canCreateTicketAppointment() ? 8 : 7}
+                              colSpan={canCreateTicketAppointment() ? 7 : 6}
                               className="px-4 py-8 text-center text-muted-foreground"
                             >
                               Nenhum apontamento neste ticket.
@@ -663,7 +747,6 @@ export default function TicketDetailPage() {
                           </tr>
                         ) : (
                           data?.appointments.map((row) => {
-                            const status = syncStatusLabel(row);
                             return (
                             <tr
                               key={appointmentRowKey(row)}
@@ -671,24 +754,20 @@ export default function TicketDetailPage() {
                             >
                               <td className="px-4 py-2">
                                 <div>{row.userName ?? "—"}</div>
-                                {status ? (
-                                  <span className="alle-badge-overtime mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium">
-                                    {status}
-                                  </span>
-                                ) : null}
                                 {row.attachmentCount > 0 ? (
-                                  <span className="mt-1 ml-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                  <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                                     {row.attachmentCount} anexo(s)
                                   </span>
                                 ) : null}
                               </td>
-                              <td className="px-4 py-2">{row.appointmentDate ?? "—"}</td>
+                              <td className="px-4 py-2">
+                                {formatAppointmentDate(row.appointmentDate)}
+                              </td>
                               <td className="whitespace-nowrap px-4 py-2">
                                 {row.initTime ?? "—"} – {row.endTime ?? "—"}
                               </td>
                               <td className="px-4 py-2">{formatMinutes(row.minutes)}</td>
                               <td className="px-4 py-2">{row.valorizationLabel ?? "—"}</td>
-                              <td className="px-4 py-2">{row.attendanceLabel ?? "—"}</td>
                               <td className="max-w-[360px] px-4 py-2 text-muted-foreground">
                                 <AppointmentDescriptionView
                                   description={row.description}
@@ -736,36 +815,58 @@ export default function TicketDetailPage() {
                               {canCreateTicketAppointment() ? (
                                 <td className="px-4 py-2">
                                   {row.portalAppointmentId ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs"
-                                        onClick={() =>
-                                          void handleEditAppointment(
-                                            row.portalAppointmentId!,
-                                          )
-                                        }
+                                    <DropdownMenu modal={false}>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="size-8"
+                                          aria-label="Ações do apontamento"
+                                        >
+                                          <MoreVertical className="size-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent
+                                        align="end"
+                                        sideOffset={6}
+                                        className="min-w-[9.5rem] w-auto"
                                       >
-                                        Editar
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs text-rose-600 hover:text-rose-600"
-                                        onClick={() =>
-                                          void handleDeleteAppointment(
-                                            row.portalAppointmentId!,
-                                          )
-                                        }
-                                      >
-                                        Excluir
-                                      </Button>
-                                    </div>
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            void handleEditAppointment(
+                                              row.portalAppointmentId!,
+                                            )
+                                          }
+                                        >
+                                          <Pencil className="mr-2 size-4" />
+                                          Editar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          variant="destructive"
+                                          onClick={() =>
+                                            void handleDeleteAppointment(
+                                              row.portalAppointmentId!,
+                                            )
+                                          }
+                                        >
+                                          <Trash2 className="mr-2 size-4" />
+                                          Excluir
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   ) : (
-                                    <span className="text-xs text-muted-foreground">—</span>
+                                    <span
+                                      className="inline-flex max-w-[9rem] flex-col gap-0.5 text-xs text-muted-foreground"
+                                      title={TICKET_APPOINTMENT_TIFLUX_ONLY_HINT}
+                                    >
+                                      <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-800 dark:text-sky-200">
+                                        {TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE}
+                                      </span>
+                                      <span className="leading-snug">
+                                        {TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION}
+                                      </span>
+                                    </span>
                                   )}
                                 </td>
                               ) : null}
@@ -790,6 +891,7 @@ export default function TicketDetailPage() {
                         setEditingAppointment(null);
                         setPendingResumeId(null);
                         void load();
+                        void loadStages();
                       }}
                     />
                     <PortalAppointmentTifluxWarningDialog

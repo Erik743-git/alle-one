@@ -223,7 +223,9 @@ describe('rendimento-day-insights', () => {
     expect(lunch).toBeTruthy();
     expect(lunch!.fromTime).toBe('09:54');
     expect(lunch!.toTime).toBe('11:16');
-    expect(insights.gaps.filter((g) => g.type === 'idle').length).toBeGreaterThan(0);
+    expect(
+      insights.gaps.filter((g) => g.type === 'idle').length,
+    ).toBeGreaterThan(0);
     expect(insights.hasIdleGapAlert).toBe(true);
   });
 
@@ -260,7 +262,8 @@ describe('rendimento-day-insights', () => {
     expect(lunch!.gapMinutes).toBe(90);
 
     const midIdle = insights.gaps.find(
-      (g) => g.type === 'idle' && g.fromTime === '12:00' && g.toTime === '16:30',
+      (g) =>
+        g.type === 'idle' && g.fromTime === '12:00' && g.toTime === '16:30',
     );
     expect(midIdle).toBeTruthy();
     expect(midIdle!.gapMinutes).toBe(270);
@@ -370,7 +373,8 @@ describe('rendimento-day-insights', () => {
     // Gap 05:01–09:30 existe, mas vem *depois* de HE; não deve gerar alerta.
     expect(
       insights.gaps.some(
-        (g) => g.type === 'idle' && g.fromTime === '05:01' && g.toTime === '09:30',
+        (g) =>
+          g.type === 'idle' && g.fromTime === '05:01' && g.toTime === '09:30',
       ),
     ).toBe(false);
   });
@@ -535,11 +539,14 @@ describe('rendimento-day-insights', () => {
     expect(lunch!.toTime).toBe('12:12');
 
     const shortIdle = insights.gaps.find(
-      (g) => g.type === 'idle' && g.fromTime === '12:12' && g.toTime === '12:34',
+      (g) =>
+        g.type === 'idle' && g.fromTime === '12:12' && g.toTime === '12:34',
     );
     expect(shortIdle).toBeUndefined();
     expect(
-      insights.gaps.filter((g) => g.type === 'idle' && g.gapMinutes <= GAP_ALERT_MINUTES),
+      insights.gaps.filter(
+        (g) => g.type === 'idle' && g.gapMinutes <= GAP_ALERT_MINUTES,
+      ),
     ).toHaveLength(0);
   });
 
@@ -593,9 +600,7 @@ describe('rendimento-day-insights', () => {
 
     expect(insights.regularMinutes).toBe(210 + 65 + 120);
     expect(
-      insights.gaps.some(
-        (g) => g.type === 'idle' && g.fromTime === '09:15',
-      ),
+      insights.gaps.some((g) => g.type === 'idle' && g.fromTime === '09:15'),
     ).toBe(false);
     expect(
       insights.gaps.some(
@@ -687,9 +692,9 @@ describe('rendimento-day-insights', () => {
 
     const idles = insights.gaps.filter((g) => g.type === 'idle');
     expect(insights.gaps.some((g) => g.type === 'lunch')).toBe(true);
-    expect(idles.some((g) => g.fromTime === '14:00' && g.toTime === '17:30')).toBe(
-      true,
-    );
+    expect(
+      idles.some((g) => g.fromTime === '14:00' && g.toTime === '17:30'),
+    ).toBe(true);
     expect(idles.filter((g) => g.fromTime >= '17:30')).toHaveLength(0);
   });
 });

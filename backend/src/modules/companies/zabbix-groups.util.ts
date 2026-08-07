@@ -1,4 +1,6 @@
-export function parseZabbixGroupNames(value: string | null | undefined): string[] {
+export function parseZabbixGroupNames(
+  value: string | null | undefined,
+): string[] {
   const seen = new Set<string>();
   const groups: string[] = [];
 
@@ -23,7 +25,9 @@ export function serializeZabbixGroupNames(
   return groups.length ? groups.join(';') : null;
 }
 
-export function firstZabbixGroupName(value: string | null | undefined): string | null {
+export function firstZabbixGroupName(
+  value: string | null | undefined,
+): string | null {
   return parseZabbixGroupNames(value)[0] ?? null;
 }
 

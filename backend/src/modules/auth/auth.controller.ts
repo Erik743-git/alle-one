@@ -24,7 +24,36 @@ import {
   attachAccessTokenCookie,
   clearAccessTokenCookie,
 } from './auth-cookie.helper';
+import {
+  TOTP_TRUST_COOKIE,
+  attachTotpTrustCookie,
+  clearTotpTrustCookie,
+} from './totp-trust-cookie.helper';
 import { Public } from '../../common/decorators/public.decorator';
+import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { SwitchCompanyDto } from './dto/switch-company.dto';
+
+class TotpCodeDto {
+  @IsString()
+  code!: string;
+}
+
+class OAuthComplete2faDto {
+  @IsString()
+  code!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  rememberDevice?: boolean;
+}
+
+class DisableTotpDto {
+  @IsString()
+  code!: string;
+
+  @IsString()
+  password!: string;
+}
 
 type AuthenticatedRequest = Request & {
   user: AuthenticatedRequestUser;
@@ -47,10 +76,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('google')
-  googleLogin(
-    @Res() res: Response,
-    @Query('email') email?: string,
-  ): void {
+  googleLogin(@Res() res: Response, @Query('email') email?: string): void {
     this.authOAuth.startGoogle(res, email);
   }
 
@@ -67,10 +93,7 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('microsoft')
-  microsoftLogin(
-    @Res() res: Response,
-    @Query('email') email?: string,
-  ): void {
+  microsoftLogin(@Res() res: Response, @Query('email') email?: string): void {
     this.authOAuth.startMicrosoft(res, email);
   }
 
@@ -86,15 +109,44 @@ export class AuthController {
 
   @Public()
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('oauth/complete-2fa')
+  async completeOAuth2fa(
+    @Body() body: OAuthComplete2faDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.authOAuth.completeOAuth2fa(req, res, body);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
   async login(
     @Body() data: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.login(data);
+    const headerTrust = req.headers['x-alleone-device-trust'];
+    const trustCookie =
+      (typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+        ? req.cookies[TOTP_TRUST_COOKIE]
+        : undefined) ||
+      (typeof data.deviceTrustToken === 'string' && data.deviceTrustToken
+        ? data.deviceTrustToken
+        : undefined) ||
+      (typeof headerTrust === 'string' && headerTrust.trim()
+        ? headerTrust.trim()
+        : undefined);
+    const result = await this.authService.login(data, { trustCookie });
     attachAccessTokenCookie(res, result.accessToken);
-    const { accessToken: _omit, ...safe } = result;
-    return safe;
+    if (result.totpTrustToken) {
+      attachTotpTrustCookie(res, result.totpTrustToken);
+    }
+    const { accessToken: _omit, totpTrustToken, ...safe } = result;
+    return {
+      ...safe,
+      ...(totpTrustToken ? { deviceTrustToken: totpTrustToken } : {}),
+    };
   }
 
   @Public()
@@ -129,6 +181,7 @@ export class AuthController {
   @HttpCode(200)
   @Post('logout')
   logout(@Res({ passthrough: true }) res: Response) {
+    // Não limpa alleone_totp_trust — “lembrar dispositivo” deve sobreviver ao logout.
     clearAccessTokenCookie(res);
     return { message: 'Sessão encerrada' };
   }
@@ -138,5 +191,60 @@ export class AuthController {
   @Get('me')
   me(@Req() req: AuthenticatedRequest) {
     return this.authService.me(req.user.userId);
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(200)
+  @Post('switch-company')
+  async switchCompany(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: SwitchCompanyDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const session = await this.authService.switchCompany(
+      req.user.userId,
+      body.companyId,
+    );
+    attachAccessTokenCookie(res, session.accessToken);
+    return session;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/setup')
+  setup2fa(@Req() req: AuthenticatedRequest) {
+    return this.authService.beginTotpSetup(req.user.userId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/confirm')
+  async confirm2fa(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: TotpCodeDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.confirmTotpSetup(
+      req.user.userId,
+      body.code,
+    );
+    // Novo totpEnabledAt invalida tokens antigos; limpa cookie residual.
+    clearTotpTrustCookie(res);
+    return result;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa/disable')
+  async disable2fa(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: DisableTotpDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.disableTotp(
+      req.user.userId,
+      body.code,
+      body.password,
+    );
+    clearTotpTrustCookie(res);
+    return result;
   }
 }

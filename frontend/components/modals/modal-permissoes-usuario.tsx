@@ -79,7 +79,13 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   usuarioNome?: string;
   userId: string | null;
-  userRole?: "ADMIN" | "COLLABORATOR" | "PJ" | "CLIENT";
+  userRole?:
+    | "ADMIN"
+    | "COLLABORATOR"
+    | "PJ"
+    | "CLIENT"
+    | "CLIENT_GESTOR"
+    | "CLIENT_MEMBER";
   onSaved?: () => void;
 };
 

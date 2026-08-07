@@ -6,6 +6,49 @@ O versionamento segue [Semantic Versioning](https://semver.org/lang/pt-BR/) (`MA
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-28
+
+### E-mail → pré-tickets (Microsoft Graph)
+
+- Poll da caixa compartilhada M365 → `pre_tickets` (cron ~1 min + BullMQ/Redis opcional).
+- Admin **E-mail** (`/admin/email`): recebimento, rotas, **Buscar**, remetentes bloqueados (`IGNORED`).
+- Lista **Pré-tickets**: linha inteira clicável, badge no menu, anexos (contagem + ações).
+- **Abrir ticket** gera `portal_tickets` (canal E-mail) com anexos/imagens do pré-ticket.
+- Upload ampliado: RAR/7z, Office, TXT (+ magic-bytes / fallback por extensão).
+
+### Auth / segurança
+
+- **2FA TOTP** (setup, login `2FA_REQUIRED`, confiança 14 dias, desativar com senha+código).
+- Guard de sessão ociosa no frontend; integração opcional **Sentry** (API + Next).
+
+### Tickets e apontamentos
+
+- Edição de ticket (`/tickets/.../edit`): HTML de e-mail, remoção de anexos, solicitante livre.
+- Composer de apontamento com imagens/anexos; edição com `edit-context` + PATCH de arquivos.
+- Validação de horário (fim ≠ início; default +15 min); alertas TiFlux removidos do modal.
+- Cutover: flags `TICKETS_PORTAL_CANONICAL` / `TICKETS_TIFLUX_WRITE`, ETL sync final, helper portal appointment.
+
+### Rendimento (apontamentos na agenda)
+
+- Listagem sem JSON/`base64` cru (`hasMedia`, `portalAppointmentId`, texto plano).
+- Ícone de caixa → dialog com imagens/anexos e download.
+- Card do apontamento abre o ticket; ícone de mídia e botões de HE não interferem.
+
+### UX listas
+
+- Linha inteira clicável em **Tickets** e **Pré-tickets**.
+
+### Migrações
+
+- `20260727180000_email_preticket_2fa`
+- `20260728180000_email_blocked_senders`
+- `20260810120100_portal_appointment_sync_paused_ensure`
+
+### Documentação
+
+- [`docs/EMAIL_PRETICKET_GRAPH.md`](docs/EMAIL_PRETICKET_GRAPH.md)
+- Atualizações em cutover, tickets, apontamentos e versionamento.
+
 ## [0.5.0] — 2026-06-02
 
 ### GMUD

@@ -3,10 +3,16 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { mapTicket, type TifluxTicket as MappedTifluxTicket } from './mapper/tiflux.mapper';
+import { cleanupExpiredExternalApiCache } from '../../common/cache/external-api-cache.cleanup';
+import {
+  mapTicket,
+  type TifluxTicket as MappedTifluxTicket,
+} from './mapper/tiflux.mapper';
+import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
 
 type TifluxApiError = {
   message?: string;
@@ -189,13 +195,21 @@ export class TifluxService {
     const n = Number(process.env.EXTERNAL_API_CACHE_LONG_TTL_MS);
     return Number.isFinite(n) && n >= 5_000 ? Math.trunc(n) : 60 * 60 * 1000;
   })();
+  private cacheWriteCount = 0;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private assertApiAllowed(): void {
+    if (isTifluxDisconnected()) {
+      throw new ServiceUnavailableException('Integração externa desvinculada.');
+    }
+  }
 
   private getHeaders(options?: {
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     hasBody?: boolean;
   }): Record<string, string> {
+    this.assertApiAllowed();
     if (!this.token) {
       throw new InternalServerErrorException(
         'TIFLUX_TOKEN não definido no .env',
@@ -262,6 +276,16 @@ export class TifluxService {
           fetched_at = excluded.fetched_at,
           expires_at = excluded.expires_at
       `;
+      this.cacheWriteCount += 1;
+      if (this.cacheWriteCount % 25 === 0) {
+        void cleanupExpiredExternalApiCache(this.prisma, 200).then((n) => {
+          if (n > 0) {
+            this.logger.debug(
+              `external_api_cache: removidas ${n} entradas expiradas`,
+            );
+          }
+        });
+      }
     } catch (e) {
       // Não falha a operação por cache.
       this.logger.warn(
@@ -292,11 +316,12 @@ export class TifluxService {
 
   private formatError(data: unknown) {
     if (typeof data === 'string') {
-      return data || 'Erro ao consultar o TiFlux.';
+      return data || 'Erro ao consultar a integração externa.';
     }
 
     if (isTifluxApiError(data)) {
-      const base = data.message || data.error || 'Erro ao consultar o TiFlux.';
+      const base =
+        data.message || data.error || 'Erro ao consultar a integração externa.';
 
       if (
         data.detail &&
@@ -313,7 +338,9 @@ export class TifluxService {
       }
 
       if (data.detail && typeof data.detail === 'object') {
-        const fieldMessages = Object.values(data.detail as Record<string, unknown>)
+        const fieldMessages = Object.values(
+          data.detail as Record<string, unknown>,
+        )
           .flatMap((value) => (Array.isArray(value) ? value : [value]))
           .map((item) => String(item))
           .filter(Boolean);
@@ -325,7 +352,7 @@ export class TifluxService {
       return base;
     }
 
-    return 'Erro ao consultar o TiFlux.';
+    return 'Erro ao consultar a integração externa.';
   }
 
   /**
@@ -504,6 +531,7 @@ export class TifluxService {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: Record<string, unknown> | FormData,
   ): Promise<T> {
+    this.assertApiAllowed();
     if (!this.baseUrl) {
       throw new InternalServerErrorException(
         'TIFLUX_API_URL não definida no .env',
@@ -533,11 +561,7 @@ export class TifluxService {
           const response = await fetch(url, {
             method,
             headers,
-            body: isFormData
-              ? body
-              : body
-                ? JSON.stringify(body)
-                : undefined,
+            body: isFormData ? body : body ? JSON.stringify(body) : undefined,
             signal: controller.signal,
           });
 
@@ -600,21 +624,23 @@ export class TifluxService {
 
           if (isAbortError) {
             throw new BadGatewayException(
-              `Timeout ao consultar o TiFlux após ${this.requestTimeoutMs}ms.`,
+              `Timeout ao consultar a integração externa após ${this.requestTimeoutMs}ms.`,
             );
           }
 
           this.logger.error(
-            `Falha de rede ao consultar o TiFlux (url=${url})`,
+            `Falha de rede ao consultar a integração externa (url=${url})`,
             error instanceof Error ? error.stack : String(error),
           );
-          throw new BadGatewayException('Falha de rede ao consultar o TiFlux.');
+          throw new BadGatewayException(
+            'Falha de rede ao consultar a integração externa.',
+          );
         } finally {
           clearTimeout(timeoutId);
         }
       }
 
-      throw new BadGatewayException('Erro ao consultar o TiFlux.');
+      throw new BadGatewayException('Erro ao consultar a integração externa.');
     });
   }
 
@@ -623,6 +649,7 @@ export class TifluxService {
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
     body?: Record<string, unknown>,
   ): Promise<{ data: T; headers: Headers }> {
+    this.assertApiAllowed();
     if (!this.baseUrl) {
       throw new InternalServerErrorException(
         'TIFLUX_API_URL não definida no .env',
@@ -715,21 +742,23 @@ export class TifluxService {
 
           if (isAbortError) {
             throw new BadGatewayException(
-              `Timeout ao consultar o TiFlux após ${this.requestTimeoutMs}ms.`,
+              `Timeout ao consultar a integração externa após ${this.requestTimeoutMs}ms.`,
             );
           }
 
           this.logger.error(
-            `Falha de rede ao consultar o TiFlux (url=${url})`,
+            `Falha de rede ao consultar a integração externa (url=${url})`,
             error instanceof Error ? error.stack : String(error),
           );
-          throw new BadGatewayException('Falha de rede ao consultar o TiFlux.');
+          throw new BadGatewayException(
+            'Falha de rede ao consultar a integração externa.',
+          );
         } finally {
           clearTimeout(timeoutId);
         }
       }
 
-      throw new BadGatewayException('Erro ao consultar o TiFlux.');
+      throw new BadGatewayException('Erro ao consultar a integração externa.');
     });
   }
 
@@ -1066,7 +1095,10 @@ export class TifluxService {
     return results;
   }
 
-  async getClientRequestors(clientId: number): Promise<
+  async getClientRequestors(
+    clientId: number,
+    opts?: { limitPerPage?: number; maxPages?: number },
+  ): Promise<
     Array<{
       id: number;
       name: string;
@@ -1074,13 +1106,27 @@ export class TifluxService {
       telephone: string | null;
     }>
   > {
-    const data = await this.request<Array<Record<string, unknown>>>(
-      `/clients/${clientId}/requestors`,
-      'GET',
-    );
-    if (!Array.isArray(data)) return [];
+    const limit = Math.max(1, Math.min(opts?.limitPerPage ?? 200, 200));
+    const maxPages = Math.max(1, opts?.maxPages ?? 30);
+    const all: Array<Record<string, unknown>> = [];
+    let page = 1;
 
-    return data
+    while (page <= maxPages) {
+      const qs = new URLSearchParams({
+        limit: String(limit),
+        offset: String(page),
+      });
+      const data = await this.request<Array<Record<string, unknown>>>(
+        `/clients/${clientId}/requestors?${qs.toString()}`,
+        'GET',
+      );
+      if (!Array.isArray(data) || data.length === 0) break;
+      all.push(...data);
+      if (data.length < limit) break;
+      page += 1;
+    }
+
+    return all
       .map((row) => ({
         id: Number(row.id),
         name: String(row.name ?? '').trim(),
@@ -1107,7 +1153,10 @@ export class TifluxService {
     }
     const query = searchParams.toString();
     const path = query ? `/desks?${query}` : '/desks';
-    const data = await this.request<Array<Record<string, unknown>>>(path, 'GET');
+    const data = await this.request<Array<Record<string, unknown>>>(
+      path,
+      'GET',
+    );
     return Array.isArray(data) ? data : [];
   }
 
@@ -1189,7 +1238,9 @@ export class TifluxService {
     return tickets.find((row) => row.ticket_number === ticketNumber) ?? null;
   }
 
-  async createTicket(fields: Record<string, string | number | undefined | null>) {
+  async createTicket(
+    fields: Record<string, string | number | undefined | null>,
+  ) {
     return this.postMultipart('/tickets', fields);
   }
 
@@ -1243,7 +1294,10 @@ export class TifluxService {
     }
     const query = searchParams.toString();
     const path = query ? `/contracts?${query}` : '/contracts';
-    const data = await this.request<Array<Record<string, unknown>>>(path, 'GET');
+    const data = await this.request<Array<Record<string, unknown>>>(
+      path,
+      'GET',
+    );
     return Array.isArray(data) ? data : [];
   }
 
@@ -1296,13 +1350,7 @@ export class TifluxService {
     }
     if (data && typeof data === 'object') {
       const obj = data as Record<string, unknown>;
-      for (const key of [
-        'histories',
-        'history',
-        'items',
-        'data',
-        'records',
-      ]) {
+      for (const key of ['histories', 'history', 'items', 'data', 'records']) {
         const nested = obj[key];
         if (Array.isArray(nested)) {
           return nested.filter(

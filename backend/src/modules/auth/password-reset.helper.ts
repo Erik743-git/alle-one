@@ -19,7 +19,9 @@ export function getFrontendBaseUrl(): string {
 
   const frontend = process.env.FRONTEND_URL?.trim();
   const rejectLoopbackInProd =
-    process.env.NODE_ENV === 'production' && frontend && isLoopbackOrigin(frontend);
+    process.env.NODE_ENV === 'production' &&
+    frontend &&
+    isLoopbackOrigin(frontend);
 
   if (frontend && !rejectLoopbackInProd) {
     return trimPublicBaseUrl(frontend);

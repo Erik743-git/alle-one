@@ -1,10 +1,11 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { User, UserStatus } from '@prisma/client';
+import { ClientCompanyRole, User, UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isUserOnline } from '../../common/presence/presence.util';
 import { AuditService } from '../audit/audit.service';
@@ -12,26 +13,57 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { resolveRendimentoSchedule } from './user-rendimento-schedule.helper';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
+
+function toClientCompanyRole(role: UserRole): ClientCompanyRole {
+  return role === UserRole.CLIENT_MEMBER
+    ? ClientCompanyRole.CLIENT_MEMBER
+    : ClientCompanyRole.CLIENT_GESTOR;
+}
+
+type SpecialtySummary = {
+  id: string;
+  name: string;
+  externalId: number | null;
+};
 
 type UserWithCompany = User & {
   company: { id: string; name: string } | null;
-  serviceDeskLinks: Array<{
-    serviceDesk: { id: string; name: string; externalId: number | null };
+  specialty: SpecialtySummary | null;
+  companyMemberships?: Array<{
+    companyId: string;
+    clientRole: ClientCompanyRole;
+    company: { id: string; name: string };
   }>;
 };
 
 type PublicUser = Omit<
   UserWithCompany,
-  'passwordHash' | 'serviceDeskLinks' | 'lastSeenAt'
+  'passwordHash' | 'lastSeenAt' | 'companyMemberships'
 > & {
-  serviceDesks: Array<{ id: string; name: string; externalId: number | null }>;
+  /** Compat: array com 0–1 especialidade (substitui serviceDesks). */
+  specialties: SpecialtySummary[];
+  /** @deprecated Prefer specialty / specialties */
+  serviceDesks: SpecialtySummary[];
   isOnline: boolean;
+  companyMemberships: Array<{
+    companyId: string;
+    companyName: string;
+    clientRole: ClientCompanyRole;
+  }>;
 };
 
-type ServiceDeskSourceRow = {
-  desk_external_id: number | null;
-  desk_name: string | null;
-};
+const specialtyInclude = {
+  specialty: {
+    select: { id: true, name: true, externalId: true },
+  },
+} as const;
+
+const membershipInclude = {
+  companyMemberships: {
+    include: { company: { select: { id: true, name: true } } },
+  },
+} as const;
 
 @Injectable()
 export class UsersService {
@@ -43,89 +75,77 @@ export class UsersService {
   private toPublicUser(user: UserWithCompany): PublicUser {
     const {
       passwordHash: _omit,
-      serviceDeskLinks,
       lastSeenAt,
+      specialty,
+      companyMemberships,
       ...rest
     } = user;
+    const specialties = specialty ? [specialty] : [];
     return {
       ...rest,
+      specialty,
+      specialties,
+      serviceDesks: specialties,
       isOnline: isUserOnline(lastSeenAt),
-      serviceDesks: serviceDeskLinks.map((link) => link.serviceDesk),
+      companyMemberships: (companyMemberships ?? []).map((m) => ({
+        companyId: m.companyId,
+        companyName: m.company.name,
+        clientRole: m.clientRole,
+      })),
     };
   }
 
-  private async validateServiceDeskIds(serviceDeskIds: string[]) {
-    const ids = Array.from(new Set(serviceDeskIds.map((id) => id.trim()))).filter(
-      Boolean,
-    );
-    if (ids.length === 0) return [];
-
-    const existing = await this.prisma.serviceDesk.findMany({
-      where: { id: { in: ids }, deletedAt: null, active: true },
+  private async validateSpecialtyId(specialtyId?: string | null) {
+    if (!specialtyId?.trim()) return null;
+    const id = specialtyId.trim();
+    const existing = await this.prisma.specialty.findFirst({
+      where: { id, deletedAt: null, active: true },
       select: { id: true },
     });
+    if (!existing) {
+      throw new BadRequestException('Especialidade selecionada não existe.');
+    }
+    return id;
+  }
 
-    if (existing.length !== ids.length) {
+  /** Aceita specialtyId ou o legado serviceDeskIds[0]. */
+  private resolveIncomingSpecialtyId(data: {
+    specialtyId?: string | null;
+    serviceDeskIds?: string[];
+  }) {
+    if (data.serviceDeskIds !== undefined && data.serviceDeskIds.length > 1) {
       throw new BadRequestException(
-        'Uma ou mais mesas de serviço selecionadas não existem.',
+        'Usuário pode ter apenas uma especialidade.',
       );
     }
-
-    return ids;
-  }
-
-  private async syncServiceDesksFromTifluxTickets() {
-    const rows =
-      (await this.prisma.$queryRaw<ServiceDeskSourceRow[]>`
-      select distinct
-        t.desk_external_id,
-        nullif(trim(t.desk_name), '') as desk_name
-      from tiflux.tickets t
-      where t.desk_name is not null
-    `) ?? [];
-
-    for (const row of rows) {
-      const name = row.desk_name?.trim();
-      if (!name) continue;
-      const externalId =
-        row.desk_external_id == null ? null : Number(row.desk_external_id);
-
-      if (externalId != null && !Number.isNaN(externalId)) {
-        await this.prisma.serviceDesk.upsert({
-          where: { externalId },
-          update: { name, active: true, deletedAt: null },
-          create: { externalId, name, active: true },
-        });
-      } else {
-        await this.prisma.serviceDesk.upsert({
-          where: { name },
-          update: { active: true, deletedAt: null },
-          create: { name, active: true },
-        });
-      }
+    if (data.specialtyId !== undefined) {
+      return data.specialtyId;
     }
+    if (data.serviceDeskIds !== undefined) {
+      return data.serviceDeskIds[0] ?? null;
+    }
+    return undefined;
   }
 
-  async listServiceDesks() {
-    await this.syncServiceDesksFromTifluxTickets();
-    return this.prisma.serviceDesk.findMany({
+  async listSpecialties() {
+    return this.prisma.specialty.findMany({
       where: { deletedAt: null, active: true },
       orderBy: { name: 'asc' },
       select: { id: true, name: true, externalId: true },
     });
   }
 
+  /** @deprecated Prefer listSpecialties */
+  async listServiceDesks() {
+    return this.listSpecialties();
+  }
+
   async findAll() {
     const rows = await this.prisma.user.findMany({
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
+        ...membershipInclude,
       },
       orderBy: {
         name: 'asc',
@@ -140,13 +160,8 @@ export class UsersService {
       where: { id },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
+        ...membershipInclude,
       },
     });
 
@@ -160,10 +175,42 @@ export class UsersService {
   async create(actor: AuthenticatedRequestUser, data: CreateUserDto) {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: data.email },
+      include: {
+        company: { select: { id: true, name: true } },
+        companyMemberships: {
+          include: { company: { select: { id: true, name: true } } },
+        },
+      },
     });
 
     if (existingUser) {
-      throw new BadRequestException('Já existe um usuário com este e-mail');
+      const membershipNames = existingUser.companyMemberships
+        .map((m) => m.company.name)
+        .filter(Boolean);
+      const companyNames =
+        membershipNames.length > 0
+          ? membershipNames
+          : existingUser.company?.name
+            ? [existingUser.company.name]
+            : [];
+
+      throw new ConflictException({
+        code: 'EMAIL_EXISTS',
+        message: 'Já existe um usuário com este e-mail',
+        userId: existingUser.id,
+        userName: existingUser.name,
+        email: existingUser.email,
+        role: existingUser.role,
+        companyIds: existingUser.companyMemberships.map((m) => m.companyId),
+        companyNames,
+        canLinkCompany: isClientPortalRole(existingUser.role),
+      });
+    }
+
+    if (isClientPortalRole(data.role) && !data.companyId) {
+      throw new BadRequestException(
+        'Usuários do portal do cliente precisam de empresa vinculada.',
+      );
     }
 
     const firstAccess = data.firstAccess ?? true;
@@ -181,9 +228,8 @@ export class UsersService {
       passwordHash = await bcrypt.hash(plainPassword, 10);
     }
 
-    const serviceDeskIds = await this.validateServiceDeskIds(
-      data.serviceDeskIds ?? [],
-    );
+    const incomingSpecialty = this.resolveIncomingSpecialtyId(data);
+    const specialtyId = await this.validateSpecialtyId(incomingSpecialty);
 
     const schedule = resolveRendimentoSchedule(data);
 
@@ -197,27 +243,33 @@ export class UsersService {
         companyId: data.companyId ?? null,
         firstAccess,
         responsible: data.responsible ?? false,
+        specialtyId,
         ...schedule,
-        serviceDeskLinks:
-          serviceDeskIds.length > 0
-            ? {
-                createMany: {
-                  data: serviceDeskIds.map((serviceDeskId) => ({ serviceDeskId })),
-                },
-              }
-            : undefined,
       },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
       },
     });
+
+    if (isClientPortalRole(created.role) && created.companyId) {
+      await this.prisma.userCompany.upsert({
+        where: {
+          userId_companyId: {
+            userId: created.id,
+            companyId: created.companyId,
+          },
+        },
+        create: {
+          userId: created.id,
+          companyId: created.companyId,
+          clientRole: toClientCompanyRole(created.role),
+        },
+        update: {
+          clientRole: toClientCompanyRole(created.role),
+        },
+      });
+    }
 
     await this.audit.log({
       actor,
@@ -235,6 +287,7 @@ export class UsersService {
           companyId: created.companyId,
           firstAccess: created.firstAccess,
           responsible: created.responsible,
+          specialtyId: created.specialtyId,
         },
       },
     });
@@ -242,7 +295,11 @@ export class UsersService {
     return this.toPublicUser(created);
   }
 
-  async update(actor: AuthenticatedRequestUser, id: string, data: UpdateUserDto) {
+  async update(
+    actor: AuthenticatedRequestUser,
+    id: string,
+    data: UpdateUserDto,
+  ) {
     const existingUser = await this.prisma.user.findUnique({
       where: { id },
     });
@@ -274,9 +331,10 @@ export class UsersService {
       );
     }
 
-    const serviceDeskIds =
-      data.serviceDeskIds !== undefined
-        ? await this.validateServiceDeskIds(data.serviceDeskIds)
+    const incomingSpecialty = this.resolveIncomingSpecialtyId(data);
+    const specialtyId =
+      incomingSpecialty !== undefined
+        ? await this.validateSpecialtyId(incomingSpecialty)
         : undefined;
 
     const schedule =
@@ -298,45 +356,129 @@ export class UsersService {
           })
         : undefined;
 
+    const nextStatus = data.status ?? existingUser.status;
+    const nextResponsible =
+      nextStatus === UserStatus.INACTIVE
+        ? false
+        : data.responsible !== undefined
+          ? data.responsible
+          : existingUser.responsible;
+
+    if (data.email !== undefined) {
+      const nextEmail = data.email.trim().toLowerCase();
+      if (nextEmail !== existingUser.email.trim().toLowerCase()) {
+        const emailTaken = await this.prisma.user.findUnique({
+          where: { email: nextEmail },
+          include: {
+            company: { select: { id: true, name: true } },
+            companyMemberships: {
+              include: { company: { select: { id: true, name: true } } },
+            },
+          },
+        });
+        if (emailTaken && emailTaken.id !== id) {
+          const membershipNames = emailTaken.companyMemberships
+            .map((m) => m.company.name)
+            .filter(Boolean);
+          const companyNames =
+            membershipNames.length > 0
+              ? membershipNames
+              : emailTaken.company?.name
+                ? [emailTaken.company.name]
+                : [];
+
+          throw new ConflictException({
+            code: 'EMAIL_EXISTS',
+            message: 'Já existe um usuário com este e-mail',
+            userId: emailTaken.id,
+            userName: emailTaken.name,
+            email: emailTaken.email,
+            role: emailTaken.role,
+            companyIds: emailTaken.companyMemberships.map((m) => m.companyId),
+            companyNames,
+            canLinkCompany: isClientPortalRole(emailTaken.role),
+          });
+        }
+      }
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
         ...(data.name !== undefined && { name: data.name.trim() }),
-        ...(data.email !== undefined && { email: data.email.trim().toLowerCase() }),
+        ...(data.email !== undefined && {
+          email: data.email.trim().toLowerCase(),
+        }),
         passwordHash,
         ...(passwordChanging && { tokenVersion: { increment: 1 } }),
         role: data.role,
         status: data.status,
         companyId: data.companyId,
         firstAccess: data.firstAccess,
-        responsible: data.responsible,
+        responsible: nextResponsible,
+        ...(specialtyId !== undefined ? { specialtyId } : {}),
         ...(schedule ?? {}),
-        ...(serviceDeskIds !== undefined && {
-          serviceDeskLinks: {
-            deleteMany: {},
-            ...(serviceDeskIds.length > 0
-              ? {
-                  createMany: {
-                    data: serviceDeskIds.map((serviceDeskId) => ({
-                      serviceDeskId,
-                    })),
-                  },
-                }
-              : {}),
-          },
-        }),
       },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
       },
     });
+
+    if (isClientPortalRole(updated.role) && updated.companyId) {
+      await this.prisma.userCompany.upsert({
+        where: {
+          userId_companyId: {
+            userId: updated.id,
+            companyId: updated.companyId,
+          },
+        },
+        create: {
+          userId: updated.id,
+          companyId: updated.companyId,
+          clientRole: toClientCompanyRole(updated.role),
+        },
+        update: {
+          clientRole: toClientCompanyRole(updated.role),
+        },
+      });
+
+      // Troca de empresa no formulário admin: remove o vínculo antigo
+      // para não sobrar membership fantasma (botão "trocar empresa" indevido).
+      const previousCompanyId = existingUser.companyId;
+      if (
+        previousCompanyId &&
+        previousCompanyId !== updated.companyId &&
+        data.companyId !== undefined
+      ) {
+        await this.prisma.userCompany.deleteMany({
+          where: {
+            userId: updated.id,
+            companyId: previousCompanyId,
+          },
+        });
+      }
+    }
+
+    if (
+      data.companyId !== undefined &&
+      !updated.companyId &&
+      isClientPortalRole(updated.role)
+    ) {
+      await this.prisma.userCompany.deleteMany({
+        where: { userId: updated.id },
+      });
+    }
+
+    if (
+      data.role !== undefined &&
+      !isClientPortalRole(updated.role) &&
+      isClientPortalRole(existingUser.role)
+    ) {
+      await this.prisma.userCompany.deleteMany({
+        where: { userId: updated.id },
+      });
+    }
 
     await this.audit.log({
       actor,
@@ -353,6 +495,7 @@ export class UsersService {
           companyId: existingUser.companyId,
           firstAccess: existingUser.firstAccess,
           responsible: existingUser.responsible,
+          specialtyId: existingUser.specialtyId,
         },
         after: {
           id: updated.id,
@@ -363,11 +506,110 @@ export class UsersService {
           companyId: updated.companyId,
           firstAccess: updated.firstAccess,
           responsible: updated.responsible,
+          specialtyId: updated.specialtyId,
         },
       },
     });
 
     return this.toPublicUser(updated);
+  }
+
+  async listCompanyMemberships(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    const rows = await this.prisma.userCompany.findMany({
+      where: { userId },
+      include: { company: { select: { id: true, name: true } } },
+      orderBy: { company: { name: 'asc' } },
+    });
+    return rows.map((r) => ({
+      companyId: r.companyId,
+      companyName: r.company.name,
+      clientRole: r.clientRole,
+    }));
+  }
+
+  async upsertCompanyMembership(
+    actor: AuthenticatedRequestUser,
+    userId: string,
+    data: { companyId: string; clientRole: ClientCompanyRole },
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+    if (!isClientPortalRole(user.role)) {
+      throw new BadRequestException(
+        'Somente usuários CLIENT_* podem ter memberships multi-empresa.',
+      );
+    }
+    const company = await this.prisma.company.findUnique({
+      where: { id: data.companyId },
+    });
+    if (!company) throw new NotFoundException('Empresa não encontrada');
+
+    const row = await this.prisma.userCompany.upsert({
+      where: {
+        userId_companyId: { userId, companyId: data.companyId },
+      },
+      create: {
+        userId,
+        companyId: data.companyId,
+        clientRole: data.clientRole,
+      },
+      update: { clientRole: data.clientRole },
+      include: { company: { select: { id: true, name: true } } },
+    });
+
+    await this.audit.log({
+      actor,
+      action: 'UPSERT',
+      entity: 'UserCompany',
+      entityId: userId,
+      payload: {
+        companyId: row.companyId,
+        clientRole: row.clientRole,
+      },
+    });
+
+    return {
+      companyId: row.companyId,
+      companyName: row.company.name,
+      clientRole: row.clientRole,
+    };
+  }
+
+  async removeCompanyMembership(
+    actor: AuthenticatedRequestUser,
+    userId: string,
+    companyId: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('Usuário não encontrado');
+
+    const existing = await this.prisma.userCompany.findUnique({
+      where: { userId_companyId: { userId, companyId } },
+    });
+    if (!existing) {
+      throw new NotFoundException('Vínculo empresa não encontrado');
+    }
+    if (user.companyId === companyId) {
+      throw new BadRequestException(
+        'Não remova a empresa ativa do usuário. Troque a empresa ativa antes.',
+      );
+    }
+
+    await this.prisma.userCompany.delete({
+      where: { userId_companyId: { userId, companyId } },
+    });
+
+    await this.audit.log({
+      actor,
+      action: 'DELETE',
+      entity: 'UserCompany',
+      entityId: userId,
+      payload: { companyId },
+    });
+
+    return { ok: true };
   }
 
   async remove(actor: AuthenticatedRequestUser, id: string) {
@@ -383,16 +625,11 @@ export class UsersService {
       where: { id },
       data: {
         status: UserStatus.INACTIVE,
+        responsible: false,
       },
       include: {
         company: true,
-        serviceDeskLinks: {
-          include: {
-            serviceDesk: {
-              select: { id: true, name: true, externalId: true },
-            },
-          },
-        },
+        ...specialtyInclude,
       },
     });
 

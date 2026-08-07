@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 
 type SendMailPayload = {
   to: string[] | string;
+  cc?: string[] | string;
   subject: string;
   text: string;
   html?: string;
@@ -107,6 +108,7 @@ export class MailService {
     const info = await transport.sendMail({
       from,
       to: payload.to,
+      cc: payload.cc,
       subject: payload.subject,
       text: payload.text,
       html: payload.html,

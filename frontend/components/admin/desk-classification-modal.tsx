@@ -276,13 +276,9 @@ export function DeskClassificationModal({
   }
 
   async function handleDeleteDesk() {
-    const tifluxNote =
-      desk!.source === "tiflux"
-        ? " Mesas do TiFlux podem voltar ao usar \"Atualizar do TiFlux\"."
-        : "";
     const ok = await confirm({
       title: "Excluir mesa",
-      description: `Excluir a mesa "${desk!.name}" e todas as classificações vinculadas?${tifluxNote}`,
+      description: `Excluir a mesa "${desk!.name}" e todas as classificações vinculadas?`,
       confirmText: "Excluir",
       variant: "error",
     });
@@ -368,16 +364,6 @@ export function DeskClassificationModal({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-lg font-semibold text-foreground">
                     {desk.name}
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-md px-2 py-0.5 text-xs font-medium",
-                      desk.source === "tiflux"
-                        ? "bg-muted text-muted-foreground"
-                        : "border border-border text-foreground",
-                    )}
-                  >
-                    {desk.source === "tiflux" ? "TiFlux" : "Portal"}
                   </span>
                 </div>
               )}

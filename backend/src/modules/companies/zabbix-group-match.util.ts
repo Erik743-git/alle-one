@@ -66,9 +66,7 @@ export function scoreCompanyToZabbixGroup(
   }
 
   const companyTokens = tokenizeForMatch(companyName);
-  const groupTokens = tokenizeForMatch(
-    groupName.replace(/^grp[_-]/i, ''),
-  );
+  const groupTokens = tokenizeForMatch(groupName.replace(/^grp[_-]/i, ''));
 
   if (!companyTokens.length || !groupTokens.length) {
     return 0;
@@ -102,7 +100,11 @@ export type ZabbixGroupSuggestion = {
 };
 
 export function buildZabbixGroupSuggestions(params: {
-  companies: Array<{ id: string; name: string; zabbixGroupName: string | null }>;
+  companies: Array<{
+    id: string;
+    name: string;
+    zabbixGroupName: string | null;
+  }>;
   groups: Array<{ groupid: string; name: string }>;
   minScore?: number;
   onlyWithoutValidGroup?: boolean;
@@ -129,8 +131,10 @@ export function buildZabbixGroupSuggestions(params: {
       continue;
     }
 
-    let best: { group: { groupid: string; name: string }; score: number } | null =
-      null;
+    let best: {
+      group: { groupid: string; name: string };
+      score: number;
+    } | null = null;
 
     for (const group of params.groups) {
       if (taken.has(group.name.toLowerCase())) {

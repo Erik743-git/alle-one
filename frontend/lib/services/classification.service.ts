@@ -4,7 +4,7 @@ export type ServiceDeskOption = {
   id: string;
   name: string;
   externalId: number | null;
-  source: "tiflux" | "portal";
+  source?: "portal" | "tiflux";
 };
 
 export type ClassificationNode = {

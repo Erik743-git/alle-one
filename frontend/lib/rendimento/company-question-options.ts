@@ -1,7 +1,7 @@
 /** Opções provisórias de justificativa (admin) — refinaremos depois. */
 export const RENDIMENTO_ADMIN_RESPONSE_OPTIONS = [
   { code: "VALID", label: "Apontamento válido" },
-  { code: "CORRECTED", label: "Será corrigido no TiFlux" },
+  { code: "CORRECTED", label: "Será corrigido no portal" },
   { code: "DUPLICATE", label: "Apontamento duplicado" },
   { code: "NOT_BILLABLE", label: "Não faturável / fora do escopo" },
   { code: "OTHER", label: "Outro (com observação)" },

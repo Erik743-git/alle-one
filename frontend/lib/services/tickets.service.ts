@@ -157,7 +157,7 @@ export type TicketClassificationNode = {
 };
 
 export type TicketCreateCatalogs = {
-  clients: Array<{ id: number; name: string }>;
+  clients: Array<{ id: number; name: string; companyId?: string }>;
   desks: Array<{
     id: number;
     name: string;
@@ -197,10 +197,11 @@ export type CreateTicketPayload = {
   classificationId?: string;
   responsibleId?: number;
   requestorId?: number;
-  requestorName?: string;
-  requestorEmail?: string;
+  requestorName: string;
+  requestorEmail: string;
   requestorTelephone?: string;
   externalGmudRef?: string;
+  ccEmails?: string[];
 };
 
 export type AppointmentCatalogs = {
@@ -241,6 +242,7 @@ export type CreateAppointmentPayload = {
   serviceName: string;
   attendance: "Remote" | "External" | "Internal";
   projectActivityId?: string;
+  removeAttachmentFileIds?: string[];
 };
 
 export type CreateTicketResult = {
@@ -268,7 +270,7 @@ export type TicketStageOption = {
 };
 
 export type TicketStagesResponse = {
-  deskExternalId: number;
+  deskExternalId: number | null;
   deskName: string | null;
   currentStageId: number | null;
   currentStageName: string | null;
@@ -281,6 +283,24 @@ export type UpdateTicketStageResult = {
   stageId: number;
   stageName: string;
   stageGroup: TicketStageGroupKey;
+  isClosed?: boolean;
+  message: string;
+};
+
+export type UpdateTicketPayload = {
+  title?: string;
+  description?: string;
+  responsibleId?: number | null;
+  responsibleName?: string | null;
+  stageName?: string;
+  statusName?: string;
+  isClosed?: boolean;
+  removeAttachmentFileIds?: string[];
+};
+
+export type UpdateTicketResult = {
+  ok: boolean;
+  ticketNumber: number;
   message: string;
 };
 
@@ -294,6 +314,14 @@ export type PortalAppointmentEditContext = {
   attendance: string;
   description: string;
   descriptionPlain: string;
+  attachments?: Array<{
+    id: string;
+    fileId: string;
+    originalName: string;
+    mimeType: string;
+    size: number;
+    previewDataUrl: string | null;
+  }>;
   syncStatus: "PENDING_TIFLUX" | "SYNCED" | "PORTAL_ONLY";
   syncPaused: boolean;
   existsInTiflux: boolean;
@@ -321,6 +349,21 @@ export const ticketsService = {
     return apiRequest<TicketCreateCatalogs>(
       `/tickets/catalogs/create${q ? `?${q}` : ""}`,
     );
+  },
+
+  searchUsers(q: string) {
+    const qs = new URLSearchParams();
+    if (q.trim()) qs.set("q", q.trim());
+    const query = qs.toString();
+    return apiRequest<
+      Array<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+        companyId: string | null;
+      }>
+    >(`/tickets/users/search${query ? `?${query}` : ""}`);
   },
 
   createTicket(payload: CreateTicketPayload, files: File[] = []) {
@@ -351,6 +394,22 @@ export const ticketsService = {
     return apiRequest<UpdateTicketStageResult>(`/tickets/${ticketNumber}/stage`, {
       method: "PATCH",
       body: { stageId },
+    });
+  },
+
+  updateTicket(
+    ticketNumber: number,
+    payload: UpdateTicketPayload,
+    files: File[] = [],
+  ) {
+    const body = new FormData();
+    body.append("payload", JSON.stringify(payload));
+    for (const file of files) {
+      body.append("files", file);
+    }
+    return apiRequest<UpdateTicketResult>(`/tickets/${ticketNumber}`, {
+      method: "PATCH",
+      body,
     });
   },
 
@@ -407,9 +466,13 @@ export const ticketsService = {
     ticketNumber: number,
     portalAppointmentId: string,
     payload: CreateAppointmentPayload,
+    files: File[] = [],
   ) {
     const body = new FormData();
     body.append("payload", JSON.stringify(payload));
+    for (const file of files) {
+      body.append("files", file);
+    }
     return apiRequest<{ ok: boolean; message: string }>(
       `/tickets/${ticketNumber}/appointments/${portalAppointmentId}`,
       { method: "PATCH", body },

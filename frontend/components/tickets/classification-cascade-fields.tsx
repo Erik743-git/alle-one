@@ -34,6 +34,7 @@ type Props = {
   value: string | null;
   onChange: (classificationId: string | null) => void;
   disabled?: boolean;
+  required?: boolean;
   levelLabels?: Record<number, string>;
 };
 
@@ -43,6 +44,7 @@ export function ClassificationCascadeFields({
   value,
   onChange,
   disabled = false,
+  required = false,
   levelLabels = DEFAULT_LEVEL_LABELS,
 }: Props) {
   const [tree, setTree] = useState<ClassificationNode[]>([]);
@@ -175,12 +177,19 @@ export function ClassificationCascadeFields({
       <div className="space-y-2 sm:col-span-2">
         <p className="text-xs font-semibold text-muted-foreground">
           Classificação
+          {required ? <span className="text-destructive"> *</span> : null}
         </p>
+        {required ? (
+          <p className="text-xs text-muted-foreground">
+            Selecione até o último nível disponível.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-2">
         <label className="text-xs font-semibold text-muted-foreground">
           {levelLabels[1]}
+          {required ? <span className="text-destructive"> *</span> : null}
         </label>
         <SearchableSelectField
           value={level1Id}
@@ -195,6 +204,7 @@ export function ClassificationCascadeFields({
         <div className="space-y-2">
           <label className="text-xs font-semibold text-muted-foreground">
             {levelLabels[2]}
+            {required ? <span className="text-destructive"> *</span> : null}
           </label>
           <SearchableSelectField
             value={level2Id}
@@ -210,6 +220,7 @@ export function ClassificationCascadeFields({
         <div className="space-y-2 sm:col-span-2">
           <label className="text-xs font-semibold text-muted-foreground">
             {levelLabels[3]}
+            {required ? <span className="text-destructive"> *</span> : null}
           </label>
           <SearchableSelectField
             value={level3Id}

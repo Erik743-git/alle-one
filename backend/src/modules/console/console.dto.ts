@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -8,6 +8,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 
 export class ConsoleAlertsQueryDto {
   @IsOptional()
@@ -78,4 +79,21 @@ export class ConsoleAcknowledgeDto {
   @IsOptional()
   @IsString()
   group?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1)
+  @IsBoolean()
+  close?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1)
+  @IsBoolean()
+  suppress?: boolean;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(5)
+  severity?: number;
 }

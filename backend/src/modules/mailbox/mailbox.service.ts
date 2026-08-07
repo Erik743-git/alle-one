@@ -16,6 +16,7 @@ import {
   CONTRACT_USAGE_HIGH_PCT,
   CONTRACT_USAGE_LOW_PCT,
 } from './mailbox.types';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 
 type TifluxUserMap = Map<string, { id: number; userId: string }>;
 
@@ -82,7 +83,7 @@ export class MailboxService {
         create: {
           userId,
           kind: MailboxNotificationKind.TIFLUX_SYNC_STALE,
-          title: 'Sync TiFlux atrasado',
+          title: 'Sincronização atrasada',
           body,
           href: '/admin',
           dedupeKey,
@@ -90,7 +91,7 @@ export class MailboxService {
         },
         update: {
           kind: MailboxNotificationKind.TIFLUX_SYNC_STALE,
-          title: 'Sync TiFlux atrasado',
+          title: 'Sincronização atrasada',
           body,
           href: '/admin',
           readAt: null,
@@ -231,7 +232,9 @@ export class MailboxService {
           title: draft.title,
           body: draft.body,
           href: draft.href ?? null,
-          payload: (draft.payload ?? undefined) as Prisma.InputJsonValue | undefined,
+          payload: (draft.payload ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
           dedupeKey: draft.dedupeKey,
         },
         update: {
@@ -239,7 +242,9 @@ export class MailboxService {
           title: draft.title,
           body: draft.body,
           href: draft.href ?? null,
-          payload: (draft.payload ?? undefined) as Prisma.InputJsonValue | undefined,
+          payload: (draft.payload ?? undefined) as
+            | Prisma.InputJsonValue
+            | undefined,
         },
       });
     }
@@ -249,9 +254,7 @@ export class MailboxService {
         where: {
           userId,
           kind: { in: kindsToPrune },
-          ...(dedupeKeys.length
-            ? { dedupeKey: { notIn: dedupeKeys } }
-            : {}),
+          ...(dedupeKeys.length ? { dedupeKey: { notIn: dedupeKeys } } : {}),
         },
       });
     }
@@ -304,9 +307,9 @@ export class MailboxService {
 
       if (alertDays.length === 1) {
         const day = alertDays[0];
-        const dateLabel = new Date(`${day.date.slice(0, 10)}T12:00:00`).toLocaleDateString(
-          'pt-BR',
-        );
+        const dateLabel = new Date(
+          `${day.date.slice(0, 10)}T12:00:00`,
+        ).toLocaleDateString('pt-BR');
         return [
           {
             kind: MailboxNotificationKind.RENDIMENTO_ALERT,
@@ -482,29 +485,37 @@ export class MailboxService {
   ): Promise<MailboxDraft[]> {
     const drafts: MailboxDraft[] = [];
     const isAdmin = user.role === UserRole.ADMIN;
+    const ticketsTable = isTicketsPortalCanonical()
+      ? 'portal_tickets'
+      : 'tiflux.tickets';
+    const appointmentsTable = isTicketsPortalCanonical()
+      ? 'portal_ticket_appointments'
+      : 'tiflux.ticket_appointments';
 
     const noApptRows =
-      (await this.prisma.$queryRaw<
+      (await this.prisma.$queryRawUnsafe<
         Array<{
           ticket_number: number;
           title: string | null;
           responsible_external_id: number | null;
           created_at_source: Date | null;
         }>
-      >`
+      >(
+        `
         SELECT t.ticket_number, t.title, t.responsible_external_id, t.created_at_source
-        FROM tiflux.tickets t
+        FROM ${ticketsTable} t
         WHERE COALESCE(t.is_closed, false) = false
           AND t.responsible_external_id IS NOT NULL
           AND t.created_at_source IS NOT NULL
           AND t.created_at_source < NOW() - INTERVAL '24 hours'
           AND NOT EXISTS (
-            SELECT 1 FROM tiflux.ticket_appointments a
+            SELECT 1 FROM ${appointmentsTable} a
             WHERE a.ticket_number = t.ticket_number
           )
         ORDER BY t.created_at_source ASC
         LIMIT 100
-      `) ?? [];
+      `,
+      )) ?? [];
 
     for (const row of noApptRows) {
       const portalUserId = this.portalUserIdForTiflux(
@@ -525,22 +536,24 @@ export class MailboxService {
 
     if (isAdmin) {
       const stalled48 =
-        (await this.prisma.$queryRaw<
+        (await this.prisma.$queryRawUnsafe<
           Array<{
             ticket_number: number;
             title: string | null;
             updated_at_source: Date | null;
           }>
-        >`
+        >(
+          `
           SELECT t.ticket_number, t.title, t.updated_at_source
-          FROM tiflux.tickets t
+          FROM ${ticketsTable} t
           WHERE COALESCE(t.is_closed, false) = false
             AND t.updated_at_source IS NOT NULL
             AND t.updated_at_source < NOW() - INTERVAL '48 hours'
             AND t.updated_at_source >= NOW() - INTERVAL '7 days'
           ORDER BY t.updated_at_source ASC
           LIMIT 80
-        `) ?? [];
+        `,
+        )) ?? [];
 
       for (const row of stalled48) {
         drafts.push({
@@ -554,21 +567,23 @@ export class MailboxService {
       }
 
       const stalled7d =
-        (await this.prisma.$queryRaw<
+        (await this.prisma.$queryRawUnsafe<
           Array<{
             ticket_number: number;
             title: string | null;
             updated_at_source: Date | null;
           }>
-        >`
+        >(
+          `
           SELECT t.ticket_number, t.title, t.updated_at_source
-          FROM tiflux.tickets t
+          FROM ${ticketsTable} t
           WHERE COALESCE(t.is_closed, false) = false
             AND t.updated_at_source IS NOT NULL
             AND t.updated_at_source < NOW() - INTERVAL '7 days'
           ORDER BY t.updated_at_source ASC
           LIMIT 80
-        `) ?? [];
+        `,
+        )) ?? [];
 
       for (const row of stalled7d) {
         drafts.push({
@@ -605,30 +620,61 @@ export class MailboxService {
 
   private async loadTifluxUserPortalMap(): Promise<TifluxUserMap> {
     const map: TifluxUserMap = new Map();
-    const rows =
-      (await this.prisma.$queryRaw<
-        Array<{ external_id: number; email: string }>
-      >`
-        SELECT tu.external_id, lower(trim(tu.email)) AS email
-        FROM tiflux.users tu
-        WHERE tu.email IS NOT NULL AND trim(tu.email) <> ''
-      `) ?? [];
-
     const users = await this.prisma.user.findMany({
       where: { deletedAt: null, status: UserStatus.ACTIVE },
-      select: { id: true, email: true },
+      select: { id: true, email: true, name: true },
     });
     const portalByEmail = new Map(
       users.map((u) => [u.email.trim().toLowerCase(), u.id]),
     );
+    const portalByName = new Map(
+      users.map((u) => [u.name.trim().toLowerCase(), u.id]),
+    );
 
-    for (const row of rows) {
-      const portalId = portalByEmail.get(row.email);
-      if (!portalId) continue;
-      map.set(String(row.external_id), {
-        id: Number(row.external_id),
-        userId: portalId,
+    if (isTicketsPortalCanonical()) {
+      const tickets = await this.prisma.portalTicket.findMany({
+        where: {
+          responsibleExternalId: { not: null },
+          responsibleName: { not: null },
+        },
+        select: { responsibleExternalId: true, responsibleName: true },
+        take: 5000,
       });
+      for (const t of tickets) {
+        const extId = t.responsibleExternalId;
+        const name = t.responsibleName?.trim().toLowerCase();
+        if (extId == null || !name) continue;
+        const key = String(extId);
+        if (map.has(key)) continue;
+        const portalId = portalByName.get(name);
+        if (!portalId) continue;
+        map.set(key, { id: extId, userId: portalId });
+      }
+      if (map.size > 0) return map;
+    }
+
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; email: string }>
+        >`
+          SELECT tu.external_id, lower(trim(tu.email)) AS email
+          FROM tiflux.users tu
+          WHERE tu.email IS NOT NULL AND trim(tu.email) <> ''
+        `) ?? [];
+
+      for (const row of rows) {
+        const portalId = portalByEmail.get(row.email);
+        if (!portalId) continue;
+        map.set(String(row.external_id), {
+          id: Number(row.external_id),
+          userId: portalId,
+        });
+      }
+    } catch {
+      this.logger.warn(
+        'Mailbox: mapa tiflux.users indisponível — alertas de responsável podem ficar incompletos.',
+      );
     }
     return map;
   }

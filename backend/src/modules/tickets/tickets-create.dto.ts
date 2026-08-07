@@ -1,5 +1,9 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEmail,
   IsIn,
   IsInt,
   IsOptional,
@@ -7,9 +11,13 @@ import {
   IsUUID,
   Matches,
   MaxLength,
-  Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+
+/** Telefone BR opcional: 10–11 dígitos (com ou sem máscara). */
+const BR_PHONE_PATTERN =
+  /^(?:\(?\d{2}\)?\s?)?(?:9\d{4}|\d{4})-?\d{4}$|^\d{10,11}$/;
 
 export class CreateTicketDto {
   @IsString()
@@ -54,27 +62,39 @@ export class CreateTicketDto {
   @Type(() => Number)
   requestorId?: number;
 
-  @IsOptional()
   @IsString()
+  @MinLength(2)
   @MaxLength(255)
-  requestorName?: string;
+  requestorName!: string;
+
+  @IsEmail()
+  @MaxLength(255)
+  requestorEmail!: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(255)
-  requestorEmail?: string;
-
-  @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' && !value.trim() ? undefined : value,
+  )
   @IsString()
   @MaxLength(50)
+  @Matches(BR_PHONE_PATTERN, {
+    message: 'Telefone inválido. Use DDD + número (10 ou 11 dígitos).',
+  })
   requestorTelephone?: string;
 
-  /** Referência GMUD externa informada pelo cliente. */
+  /** Referência GMUD (código da lista do cliente ou texto legado). */
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(120)
   externalGmudRef?: string;
+
+  /** E-mails em cópia nas notificações do chamado. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsEmail({}, { each: true })
+  ccEmails?: string[];
 }
 
 export class CreateTicketAppointmentDto {
@@ -110,4 +130,56 @@ export class CreateTicketAppointmentDto {
   attendance!: 'Remote' | 'External' | 'Internal';
 }
 
-export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {}
+export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  removeAttachmentFileIds?: string[];
+}
+
+/** Edição de campos do ticket no portal (e opcionalmente TiFlux). */
+export class UpdateTicketDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(500)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(50_000)
+  description?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Type(() => Number)
+  responsibleId?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(255)
+  responsibleName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  stageName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  statusName?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isClosed?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  removeAttachmentFileIds?: string[];
+}

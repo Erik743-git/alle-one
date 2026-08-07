@@ -8,7 +8,6 @@ import {
   Loader2,
   Pencil,
   Plus,
-  RefreshCw,
   Trash2,
 } from "lucide-react";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -28,7 +27,6 @@ import {
 } from "@/components/ui/dialog";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import {
   classificationService,
   type ServiceDeskOption,
@@ -133,13 +131,9 @@ export default function AdminClassificacaoPage() {
   }
 
   async function handleDeleteDeskFromCard(desk: ServiceDeskOption) {
-    const tifluxNote =
-      desk.source === "tiflux"
-        ? " Mesas do TiFlux podem voltar ao usar \"Atualizar do TiFlux\"."
-        : "";
     const ok = await confirm({
       title: "Excluir mesa",
-      description: `Excluir a mesa "${desk.name}" e todas as classificações vinculadas?${tifluxNote}`,
+      description: `Excluir a mesa "${desk.name}" e todas as classificações vinculadas?`,
       confirmText: "Excluir",
       variant: "error",
     });
@@ -190,26 +184,12 @@ export default function AdminClassificacaoPage() {
                   <FolderTree size={20} />
                   Mesas de serviço
                 </CardTitle>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  disabled={desksLoading}
-                  onClick={() => void loadDesks()}
-                >
-                  <RefreshCw
-                    size={14}
-                    className={desksLoading ? "animate-spin" : ""}
-                  />
-                  Atualizar do TiFlux
-                </Button>
               </CardHeader>
               <CardContent className="space-y-5">
                 <div className="flex flex-wrap items-end gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-4">
                   <div className="min-w-[220px] flex-1 space-y-1">
                     <p className="text-xs font-semibold text-muted-foreground">
-                      Nova mesa (portal)
+                      Nova mesa
                     </p>
                     <Input
                       value={newDeskName}
@@ -289,31 +269,12 @@ export default function AdminClassificacaoPage() {
                             </Button>
                           </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={cn(
-                              "rounded-md px-2 py-0.5 text-xs font-medium",
-                              desk.source === "tiflux"
-                                ? "bg-muted text-muted-foreground"
-                                : "border border-border text-foreground",
-                            )}
-                          >
-                            {desk.source === "tiflux" ? "TiFlux" : "Portal"}
-                          </span>
-                          {desk.externalId != null ? (
-                            <span className="text-xs text-muted-foreground">
-                              ID {desk.externalId}
-                            </span>
-                          ) : null}
-                        </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-amber-400/90">
-                    Nenhuma mesa cadastrada. Use &quot;Atualizar do TiFlux&quot;
-                    para importar as existentes nos tickets ou cadastre uma nova
-                    mesa acima.
+                  <p className="text-sm text-muted-foreground">
+                    Nenhuma mesa cadastrada. Cadastre uma nova mesa acima.
                   </p>
                 )}
               </CardContent>

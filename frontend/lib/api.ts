@@ -1,5 +1,6 @@
 import { API_URL } from "@/lib/env";
-import { clearSession } from "@/lib/session";
+import { isPublicRoute } from "@/lib/auth";
+import { endSession } from "@/lib/session";
 
 export { API_URL };
 
@@ -9,7 +10,57 @@ type RequestOptions = {
   method?: HttpMethod;
   body?: unknown;
   auth?: boolean;
+  /** Se true, 401 não encerra a sessão (ex.: validação pós-login). */
+  skipSessionEnd?: boolean;
 };
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public body: unknown,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
+function extractApiMessage(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+
+  const message = record.message;
+  if (typeof message === "string" && message.trim()) return message;
+  if (Array.isArray(message)) {
+    const joined = message.filter((m) => typeof m === "string").join(", ");
+    return joined || null;
+  }
+  if (message && typeof message === "object") {
+    const nested = message as Record<string, unknown>;
+    if (typeof nested.message === "string" && nested.message.trim()) {
+      return nested.message;
+    }
+  }
+  return null;
+}
+
+/** Corpo útil do erro (objeto aninhado em `message` ou o próprio body). */
+export function getApiErrorPayload(
+  err: unknown,
+): Record<string, unknown> | null {
+  if (!(err instanceof ApiRequestError)) return null;
+  const body = err.body;
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  if (
+    record.message &&
+    typeof record.message === "object" &&
+    !Array.isArray(record.message)
+  ) {
+    return record.message as Record<string, unknown>;
+  }
+  return record;
+}
 
 function resolveApiErrorMessage(
   rawText: string,
@@ -46,7 +97,7 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const { method = "GET", body, auth = true } = options;
+  const { method = "GET", body, auth = true, skipSessionEnd = false } = options;
 
   const isFormData =
     typeof FormData !== "undefined" && body instanceof FormData;
@@ -74,9 +125,11 @@ export async function apiRequest<T>(
   });
 
   if (response.status === 401) {
-    clearSession();
-    if (typeof window !== "undefined") {
-      window.location.replace("/login");
+    const onPublic =
+      typeof window !== "undefined" &&
+      isPublicRoute(window.location.pathname);
+    if (!skipSessionEnd && !onPublic) {
+      void endSession("expired");
     }
     throw new Error("Sessão expirada. Faça login novamente.");
   }
@@ -96,17 +149,15 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
-    const apiMessage =
-      data &&
-      typeof data === "object" &&
-      "message" in data &&
-      data.message
-        ? Array.isArray(data.message)
-          ? data.message.join(", ")
-          : data.message
-        : null;
-    throw new Error(
-      resolveApiErrorMessage(rawText, response.status, apiMessage),
+    const apiMessage = extractApiMessage(data);
+    throw new ApiRequestError(
+      resolveApiErrorMessage(
+        rawText,
+        response.status,
+        typeof apiMessage === "string" ? apiMessage : null,
+      ),
+      response.status,
+      data,
     );
   }
 

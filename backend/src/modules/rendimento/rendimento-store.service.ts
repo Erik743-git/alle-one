@@ -98,11 +98,7 @@ export class RendimentoStoreService {
           lte: params.end,
         },
       },
-      orderBy: [
-        { dateRef: 'asc' },
-        { fromTime: 'asc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ dateRef: 'asc' }, { fromTime: 'asc' }, { createdAt: 'desc' }],
     });
 
     if (!rows.length) return [];

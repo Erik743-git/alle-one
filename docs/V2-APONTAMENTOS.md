@@ -46,6 +46,14 @@ Lista de empresas (admin): **horas no mês** + contagem de **questionamentos pen
 - **ALERT** (lacuna) e **VOLUNTARY**: colaborador com `RENDIMENTO.canView` na própria agenda.
 - Guard `ModulePermissionGuard`: `canEdit` dispensado para `kind` ALERT/VOLUNTARY quando `canView` está ativo.
 
+## Agenda colaborador (UX 0.6.0)
+
+- Descrição do apontamento na timeline vem em **texto plano** (sem `__ALLEONE_DOC_V1__` / base64).
+- Se houver imagem ou anexo: ícone de **caixa** ao lado do horário → dialog com preview e **Baixar**.
+- Clique no **card** do apontamento abre `/tickets/{número}` (botões de HE e o ícone de mídia usam `stopPropagation`).
+
+API listagem rendimento: campos `hasMedia`, `portalAppointmentId` (mídia carregada sob demanda via `edit-context`).
+
 ## Arquivos principais
 
 ```text
@@ -60,6 +68,8 @@ frontend/components/rendimento/
   company-agenda-calendar.tsx
   company-pending-questions-dialog.tsx
   admin-answer-question-dialog.tsx
+  rendimento-timeline-calendar.tsx
+  rendimento-entry-media.tsx
 ```
 
 ## Deploy

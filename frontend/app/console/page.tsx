@@ -10,6 +10,7 @@ import {
 import {
   Activity,
   Clock3,
+  Copy,
   Loader2,
   MonitorDot,
   Pause,
@@ -152,6 +153,8 @@ export default function ConsolePage() {
   const [selectedAlert, setSelectedAlert] = useState<ConsoleAlert | null>(null);
   const [ackTarget, setAckTarget] = useState<ConsoleAlert | null>(null);
   const [ackMessage, setAckMessage] = useState("");
+  const [ackClose, setAckClose] = useState(false);
+  const [ackSuppress, setAckSuppress] = useState(false);
   const [ackSubmitting, setAckSubmitting] = useState(false);
 
   const fetchSeq = useRef(0);
@@ -291,6 +294,8 @@ export default function ConsolePage() {
     try {
       await acknowledgeConsoleAlert(ackTarget.eventId, {
         message: ackMessage.trim() || undefined,
+        close: ackClose || undefined,
+        suppress: ackSuppress || undefined,
         group:
           ackTarget.groupName ||
           data?.group ||
@@ -300,6 +305,8 @@ export default function ConsolePage() {
       notifySuccess("Alerta reconhecido no Zabbix.");
       setAckTarget(null);
       setAckMessage("");
+      setAckClose(false);
+      setAckSuppress(false);
       await fetchAlerts(true);
     } catch (err) {
       notifyError(
@@ -554,8 +561,25 @@ export default function ConsolePage() {
                           )}
                         </div>
 
-                        <p className="text-base font-semibold leading-snug text-foreground">
-                          {selectedAlert.name}
+                        <p className="flex items-start gap-2 text-base font-semibold leading-snug text-foreground">
+                          <span className="min-w-0 flex-1">{selectedAlert.name}</span>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="size-7 shrink-0"
+                            title="Copiar problema"
+                            onClick={() => {
+                              void navigator.clipboard
+                                .writeText(selectedAlert.name)
+                                .then(() => notifySuccess("Problema copiado."))
+                                .catch(() =>
+                                  notifyError("Não foi possível copiar."),
+                                );
+                            }}
+                          >
+                            <Copy className="size-3.5" />
+                          </Button>
                         </p>
                       </div>
                     </div>
@@ -581,11 +605,32 @@ export default function ConsolePage() {
                           <dt className="text-xs uppercase tracking-wide text-muted-foreground">
                             Host
                           </dt>
-                          <dd
-                            className="mt-0.5 break-words font-medium text-foreground"
-                            title={selectedAlert.hostName ?? undefined}
-                          >
-                            {selectedAlert.hostName ?? "—"}
+                          <dd className="mt-0.5 flex items-start gap-2 break-words font-medium text-foreground">
+                            <span
+                              className="min-w-0 flex-1"
+                              title={selectedAlert.hostName ?? undefined}
+                            >
+                              {selectedAlert.hostName ?? "—"}
+                            </span>
+                            {selectedAlert.hostName ? (
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="size-7 shrink-0"
+                                title="Copiar host"
+                                onClick={() => {
+                                  void navigator.clipboard
+                                    .writeText(selectedAlert.hostName!)
+                                    .then(() => notifySuccess("Host copiado."))
+                                    .catch(() =>
+                                      notifyError("Não foi possível copiar."),
+                                    );
+                                }}
+                              >
+                                <Copy className="size-3.5" />
+                              </Button>
+                            ) : null}
                           </dd>
                         </div>
 
@@ -703,6 +748,24 @@ export default function ConsolePage() {
                     rows={3}
                   />
                 </div>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={ackClose}
+                    onChange={(e) => setAckClose(e.target.checked)}
+                    className="size-4 rounded border-border"
+                  />
+                  Fechar problema no Zabbix
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={ackSuppress}
+                    onChange={(e) => setAckSuppress(e.target.checked)}
+                    className="size-4 rounded border-border"
+                  />
+                  Suprimir (suppress) no Zabbix
+                </label>
               </div>
               <DialogFooter>
                 <Button
@@ -711,6 +774,8 @@ export default function ConsolePage() {
                   onClick={() => {
                     setAckTarget(null);
                     setAckMessage("");
+                    setAckClose(false);
+                    setAckSuppress(false);
                   }}
                 >
                   Cancelar

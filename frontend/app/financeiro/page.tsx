@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { CompanyAgendaPanel } from "@/components/financeiro/company-agenda-panel";
 import {
   CompanyPendingQuestionsDialog,
@@ -35,6 +36,11 @@ import {
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { getStoredUser } from "@/lib/session";
+import {
+  FINANCEIRO_ADMIN_AGENDA_SUBTITLE,
+  FINANCEIRO_CLIENT_AGENDA_SUBTITLE,
+  FINANCEIRO_CLIENT_AGENDA_TITLE,
+} from "@/lib/module-copy";
 import { companiesService, type Company } from "@/lib/services/companies.service";
 import {
   companyContractsService,
@@ -59,7 +65,7 @@ import { ensureArray } from "@/lib/utils";
 
 export default function FinanceiroPage() {
   const user = getStoredUser();
-  const isClient = user?.role === "CLIENT";
+  const isClient = isClientPortalRole(user?.role);
   const isAdmin = user?.role === "ADMIN";
 
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -332,7 +338,7 @@ export default function FinanceiroPage() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Financeiro</h1>
               <p className="text-muted-foreground">
-                Resumo contratual (contratos manuais no portal + horas usadas do TiFlux).
+                Resumo contratual (contratos manuais no portal + horas usadas dos apontamentos).
               </p>
             </div>
 
@@ -673,7 +679,7 @@ export default function FinanceiroPage() {
                   <div className="text-sm font-semibold">Observações</div>
                   <div className="mt-1 text-sm text-muted-foreground">
                     - ADMIN/COLLABORATOR escolhem a empresa. CLIENT vê apenas a própria empresa.
-                    <br />- Valores do TiFlux podem aparecer como “--” conforme permissões do TiFlux.
+                    <br />- Alguns valores podem aparecer como “--” conforme permissões.
                   </div>
                 </div>
               </CardContent>
@@ -684,14 +690,14 @@ export default function FinanceiroPage() {
             <Card id="agenda-empresa">
               <CardHeader>
                 <CardTitle className="text-sm text-muted-foreground">
-                  Apontamentos da empresa
+                  {isClient
+                    ? FINANCEIRO_CLIENT_AGENDA_TITLE
+                    : "Apontamentos da empresa"}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Agenda por dia, semana ou mês — mesma visão que o cliente vê no
-                  portal.
                   {isClient
-                    ? " Você pode questionar apontamentos diretamente no calendário."
-                    : " Responda questionamentos e abone apontamentos quando necessário."}
+                    ? FINANCEIRO_CLIENT_AGENDA_SUBTITLE
+                    : FINANCEIRO_ADMIN_AGENDA_SUBTITLE}
                 </p>
               </CardHeader>
               <CardContent>

@@ -5,20 +5,21 @@ import { usePathname, useRouter } from "next/navigation";
 import { isPublicRoute } from "./auth";
 import {
   clearSessionSync,
-  getStoredUser,
   logoutSession,
   setStoredUser,
   type AuthUser,
 } from "./session";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
+import { authService } from "@/lib/services/auth.service";
+import { notifyError } from "@/lib/notify";
 
 function authMeUrl(): string {
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/me`;
   if (typeof window !== "undefined") {
     return `${window.location.origin}/auth/me`;
   }
+  const base = getBrowserApiBase();
+  if (base) return `${base}/auth/me`;
   return `${API_URL.replace(/\/$/, "")}/auth/me`;
 }
 
@@ -29,6 +30,7 @@ type AuthContextValue = {
   refreshUser: () => Promise<void>;
   /** Após POST /auth/login — atualiza estado sem depender só do sessionStorage. */
   establishSession: (user: AuthUser) => void;
+  switchCompany: (companyId: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -58,7 +60,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [hydrated, setHydrated] = React.useState(false);
-  const [user, setUser] = React.useState<AuthUser | null>(() => getStoredUser());
+  // Só confiar no usuário após /auth/me (cookie). Storage é preenchido depois.
+  const [user, setUser] = React.useState<AuthUser | null>(null);
   const refreshInFlight = React.useRef<Promise<void> | null>(null);
 
   const establishSession = React.useCallback((nextUser: AuthUser) => {
@@ -66,6 +69,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     purgeInvalidPersistedCompanyIds();
     setUser(nextUser);
   }, []);
+
+  const switchCompany = React.useCallback(
+    async (companyId: string) => {
+      try {
+        const session = await authService.switchCompany(companyId);
+        establishSession(session.user);
+        // Recarrega dados da empresa ativa (tickets/dashboard).
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+      } catch (err) {
+        notifyError(
+          err instanceof Error ? err.message : "Não foi possível trocar de empresa.",
+        );
+        throw err;
+      }
+    },
+    [establishSession],
+  );
 
   const signOut = React.useCallback(async () => {
     setUser(null);
@@ -85,12 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const stored = getStoredUser();
-      if (stored) {
-        setUser(stored);
-        return;
-      }
-
+      // Cookie inválido/ausente: não confiar em sessionStorage antigo (gera loop
+      // dashboard → 401 → "Sessão expirada").
       clearSessionSync();
       setUser(null);
     })();
@@ -153,9 +171,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       refreshUser,
       establishSession,
+      switchCompany,
       signOut,
     }),
-    [loading, authenticated, user, refreshUser, establishSession, signOut],
+    [
+      loading,
+      authenticated,
+      user,
+      refreshUser,
+      establishSession,
+      switchCompany,
+      signOut,
+    ],
   );
 
   return (

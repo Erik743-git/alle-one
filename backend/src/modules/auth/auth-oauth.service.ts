@@ -8,17 +8,26 @@ import { UserStatus } from '@prisma/client';
 import type { Request, Response } from 'express';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from './auth.service';
-import { attachAccessTokenCookie } from './auth-cookie.helper';
 import {
+  attachOAuth2faPendingCookie,
   attachOAuthStateCookie,
+  clearOAuth2faPendingCookie,
   clearOAuthStateCookie,
+  createOAuth2faPendingToken,
   createOAuthState,
   oauthCallbackUrl,
   oauthLoginRedirect,
+  OAUTH_2FA_PENDING_COOKIE,
   OAUTH_STATE_COOKIE,
+  parseOAuth2faPendingToken,
   parseOAuthState,
   type OAuthProvider,
 } from './auth-oauth.helper';
+import {
+  TOTP_TRUST_COOKIE,
+  attachTotpTrustCookie,
+} from './totp-trust-cookie.helper';
+import { attachAccessTokenCookie } from './auth-cookie.helper';
 import {
   microsoftEmailVerified,
   verifyMicrosoftIdToken,
@@ -62,14 +71,14 @@ export class AuthOAuthService {
   isGoogleConfigured(): boolean {
     return Boolean(
       process.env.GOOGLE_OAUTH_CLIENT_ID?.trim() &&
-        process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim(),
+      process.env.GOOGLE_OAUTH_CLIENT_SECRET?.trim(),
     );
   }
 
   isMicrosoftConfigured(): boolean {
     return Boolean(
       process.env.MICROSOFT_OAUTH_CLIENT_ID?.trim() &&
-        process.env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim(),
+      process.env.MICROSOFT_OAUTH_CLIENT_SECRET?.trim(),
     );
   }
 
@@ -90,7 +99,9 @@ export class AuthOAuthService {
       throw new BadRequestException('Login com Google não está configurado.');
     }
     if (provider === 'microsoft' && !this.isMicrosoftConfigured()) {
-      throw new BadRequestException('Login com Microsoft não está configurado.');
+      throw new BadRequestException(
+        'Login com Microsoft não está configurado.',
+      );
     }
 
     const state = createOAuthState(provider);
@@ -112,8 +123,7 @@ export class AuthOAuthService {
       return;
     }
 
-    const tenant =
-      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+    const tenant = process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
     const params = new URLSearchParams({
       client_id: process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim(),
       redirect_uri: oauthCallbackUrl('microsoft'),
@@ -188,15 +198,35 @@ export class AuthOAuthService {
         throw new UnauthorizedException('oauth_profile');
       }
 
-      const session = await this.authService.loginWithOAuth({
-        provider,
-        providerId: profile.providerId,
-        email: profile.email,
-        emailVerified: profile.emailVerified,
-      });
+      const trustCookie =
+        typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+          ? req.cookies[TOTP_TRUST_COOKIE]
+          : undefined;
 
-      attachAccessTokenCookie(res, session.accessToken);
-      res.redirect(oauthLoginRedirect(undefined, session.user.firstAccess));
+      const result = await this.authService.loginWithOAuth(
+        {
+          provider,
+          providerId: profile.providerId,
+          email: profile.email,
+          emailVerified: profile.emailVerified,
+        },
+        { trustCookie },
+      );
+
+      if (result.status === '2fa_required') {
+        attachOAuth2faPendingCookie(
+          res,
+          createOAuth2faPendingToken(result.userId),
+        );
+        res.redirect(oauthLoginRedirect('oauth_2fa_required'));
+        return;
+      }
+
+      attachAccessTokenCookie(res, result.accessToken);
+      if (result.totpTrustToken) {
+        attachTotpTrustCookie(res, result.totpTrustToken);
+      }
+      res.redirect(oauthLoginRedirect(undefined, result.user.firstAccess));
     } catch (err) {
       this.logger.warn(
         `OAuth ${provider} falhou: ${err instanceof Error ? err.message : String(err)}`,
@@ -210,12 +240,46 @@ export class AuthOAuthService {
     }
   }
 
+  async completeOAuth2fa(
+    req: Request,
+    res: Response,
+    body: { code: string; rememberDevice?: boolean },
+  ) {
+    const pendingRaw =
+      typeof req.cookies?.[OAUTH_2FA_PENDING_COOKIE] === 'string'
+        ? req.cookies[OAUTH_2FA_PENDING_COOKIE]
+        : undefined;
+    const pending = parseOAuth2faPendingToken(pendingRaw);
+    if (!pending) {
+      throw new UnauthorizedException('oauth_2fa_expired');
+    }
+
+    const result = await this.authService.completeOAuth2fa(
+      pending.userId,
+      body.code,
+      Boolean(body.rememberDevice),
+    );
+
+    clearOAuth2faPendingCookie(res);
+    attachAccessTokenCookie(res, result.accessToken);
+    if (result.totpTrustToken) {
+      attachTotpTrustCookie(res, result.totpTrustToken);
+    }
+
+    const { accessToken: _omit, totpTrustToken, ...safe } = result;
+    return {
+      ...safe,
+      ...(totpTrustToken ? { deviceTrustToken: totpTrustToken } : {}),
+    };
+  }
+
   private mapOAuthError(message: string): string {
     if (message === 'oauth_not_registered') return 'oauth_not_registered';
     if (message === 'oauth_not_verified') return 'oauth_not_verified';
     if (message === 'oauth_inactive') return 'oauth_inactive';
     if (message === 'oauth_provider_mismatch') return 'oauth_provider_mismatch';
     if (message === 'oauth_profile') return 'oauth_microsoft_profile';
+    if (message === 'oauth_2fa_expired') return 'oauth_2fa_expired';
     return 'oauth_failed';
   }
 
@@ -251,17 +315,12 @@ export class AuthOAuthService {
       throw new UnauthorizedException('oauth_profile');
     }
 
-    const tenant =
-      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+    const tenant = process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
     const clientId = process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim();
 
     let claims: MicrosoftIdTokenClaims;
     try {
-      claims = await verifyMicrosoftIdToken(
-        token.id_token,
-        tenant,
-        clientId,
-      );
+      claims = await verifyMicrosoftIdToken(token.id_token, tenant, clientId);
     } catch (err) {
       this.logger.warn(
         `Microsoft id_token inválido: ${err instanceof Error ? err.message : String(err)}`,
@@ -320,9 +379,7 @@ export class AuthOAuthService {
       error?: { message?: string };
     };
     if (!response.ok) {
-      throw new Error(
-        data.error?.message || 'microsoft_graph_me_failed',
-      );
+      throw new Error(data.error?.message || 'microsoft_graph_me_failed');
     }
     return data;
   }
@@ -351,7 +408,9 @@ export class AuthOAuthService {
     return data;
   }
 
-  private async fetchGoogleProfile(accessToken: string): Promise<GoogleUserInfo> {
+  private async fetchGoogleProfile(
+    accessToken: string,
+  ): Promise<GoogleUserInfo> {
     const response = await fetch(
       'https://openidconnect.googleapis.com/v1/userinfo',
       {
@@ -365,9 +424,10 @@ export class AuthOAuthService {
     return data;
   }
 
-  private async exchangeMicrosoftCode(code: string): Promise<OAuthTokenResponse> {
-    const tenant =
-      process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
+  private async exchangeMicrosoftCode(
+    code: string,
+  ): Promise<OAuthTokenResponse> {
+    const tenant = process.env.MICROSOFT_OAUTH_TENANT_ID?.trim() || 'common';
     const body = new URLSearchParams({
       code,
       client_id: process.env.MICROSOFT_OAUTH_CLIENT_ID!.trim(),

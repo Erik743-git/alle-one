@@ -12,10 +12,20 @@ import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { useAuth } from "@/lib/use-auth";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { ClientDashboardViewToggle } from "@/components/dashboard/client-dashboard-view-toggle";
+import { EditChartPresetDialog } from "@/components/dashboard/edit-chart-preset-dialog";
+import {
+  dashboardChartPresetsService,
+  type DashboardChartKey,
+  type DashboardChartType,
+  type DashboardClientViewMode,
+} from "@/lib/services/dashboard-chart-presets.service";
+import { DASHBOARD_EDIT_CHART_LABEL } from "@/lib/module-copy";
 import {
   getPersistedCompanyId,
   isValidCompanyUuid,
@@ -44,10 +54,10 @@ import {
 } from "@/lib/services/dashboard.service";
 import {
   AlertCircle,
-  Building2,
   CalendarRange,
   Clock3,
   Minus,
+  Pencil,
   RefreshCcw,
   Server,
   ShieldAlert,
@@ -304,6 +314,12 @@ function normalizeDashboardResponse(
       hostsInativos: Number(raw?.summary?.hostsInativos ?? 0),
     },
     chamadosPorMes: Array.isArray(raw?.chamadosPorMes) ? raw.chamadosPorMes : [],
+    chamadosPorMesa: Array.isArray(
+      (raw as { chamadosPorMesa?: unknown }).chamadosPorMesa,
+    )
+      ? (raw as { chamadosPorMesa: Array<{ deskName: string; totalTickets: number }> })
+          .chamadosPorMesa
+      : [],
     horasPorMes: Array.isArray(raw?.horasPorMes) ? raw.horasPorMes : [],
     alertasPorMes: Array.isArray(raw?.alertasPorMes) ? raw.alertasPorMes : [],
     alertasPorSemana: Array.isArray(raw?.alertasPorSemana)
@@ -341,10 +357,26 @@ export default function DashboardPage() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companiesLoading, setCompaniesLoading] = useState(false);
   const canSelectCompany = user?.role === "ADMIN" || user?.role === "COLLABORATOR";
+  const isClientUser = isClientPortalRole(user?.role);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(() => {
     if (!canSelectCompany) return user?.companyId ?? null;
     return user?.id ? getPersistedCompanyId(user.id) : null;
   });
+
+  const [clientViewMode, setClientViewMode] =
+    useState<DashboardClientViewMode>("ALLE");
+  const [chartTypes, setChartTypes] = useState<
+    Record<DashboardChartKey, DashboardChartType>
+  >({
+    CHAMADOS: "bar",
+    HORAS: "bar",
+    ALERTAS: "line",
+  });
+  const [deskNamesFilter, setDeskNamesFilter] = useState<string[]>([]);
+  const [editChartKey, setEditChartKey] = useState<DashboardChartKey | null>(
+    null,
+  );
+  const [presetPeriodDays, setPresetPeriodDays] = useState(30);
 
   const [initialLoading, setInitialLoading] = useState(true);
   const [manualRefreshing, setManualRefreshing] = useState(false);
@@ -367,6 +399,68 @@ export default function DashboardPage() {
   useEffect(() => {
     dashboardSnapshotRef.current = dashboard;
   }, [dashboard]);
+
+  const presetCompanyId = canSelectCompany
+    ? selectedCompanyId
+    : user?.companyId ?? null;
+  const presetViewMode: DashboardClientViewMode = isClientUser
+    ? clientViewMode
+    : "ALLE";
+
+  useEffect(() => {
+    if (!isValidCompanyUuid(presetCompanyId)) return;
+    let cancelled = false;
+    void (async () => {
+      const keys: DashboardChartKey[] = ["CHAMADOS", "HORAS", "ALERTAS"];
+      try {
+        const presets = await Promise.all(
+          keys.map((chartKey) =>
+            dashboardChartPresetsService.get(
+              presetViewMode,
+              chartKey,
+              presetCompanyId,
+            ),
+          ),
+        );
+        if (cancelled) return;
+
+        const nextTypes: Record<DashboardChartKey, DashboardChartType> = {
+          CHAMADOS: "bar",
+          HORAS: "bar",
+          ALERTAS: "line",
+        };
+        for (let i = 0; i < keys.length; i++) {
+          const preset = presets[i];
+          const chartKey = keys[i];
+          if (!preset) continue;
+          if (chartKey === "CHAMADOS") {
+            nextTypes.CHAMADOS =
+              preset.chartType === "line" || preset.chartType === "pie"
+                ? preset.chartType
+                : "bar";
+            setDeskNamesFilter(preset.deskNames ?? []);
+            setPresetPeriodDays(preset.periodDays ?? 30);
+            const end = new Date();
+            const start = new Date();
+            start.setDate(
+              end.getDate() - Math.max(6, (preset.periodDays ?? 30) - 1),
+            );
+            setStartDate(formatDateInput(start));
+            setEndDate(formatDateInput(end));
+          } else {
+            nextTypes[chartKey] =
+              preset.chartType === "line" ? "line" : "bar";
+          }
+        }
+        setChartTypes(nextTypes);
+      } catch {
+        /* preset opcional */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [presetCompanyId, presetViewMode]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -424,7 +518,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [canSelectCompany, selectedCompanyId, user?.companyId, user?.id, user?.role]);
+  }, [canSelectCompany, user?.companyId, user?.id, user?.role]);
 
   const getEffectiveCompanyId = useCallback(() => {
     const id = canSelectCompany ? selectedCompanyId : user?.companyId ?? null;
@@ -439,7 +533,9 @@ export default function DashboardPage() {
         if (!canSelectCompany && user?.companyId) {
           return;
         }
-        if (canSelectCompany && companiesLoading) {
+        // Não bloqueia o boot se já houver empresa persistida; só espera lista
+        // quando ainda não há companyId efetivo.
+        if (canSelectCompany && companiesLoading && !selectedCompanyId) {
           return;
         }
         setError(
@@ -499,6 +595,8 @@ export default function DashboardPage() {
           start: toRangeDateString(startDate, false),
           end: toRangeDateString(endDate, true),
           companyId: effectiveCompanyId,
+          deskNames: deskNamesFilter,
+          ...(isClientUser ? { viewMode: clientViewMode } : {}),
         };
 
         if (!isValidDateInput(startDate) || !isValidDateInput(endDate)) {
@@ -509,73 +607,90 @@ export default function DashboardPage() {
           return;
         }
 
-        const data =
-          mode === "manual"
-            ? await refreshCompleteDashboard(requestParams)
-            : await getCompleteDashboard(requestParams);
+        const applyNormalized = (data: Awaited<ReturnType<typeof getCompleteDashboard>>) => {
+          if (requestId !== completeRequestIdRef.current) {
+            return;
+          }
+          const normalized = normalizeDashboardResponse(data);
+          if (!normalized.horasPorMes.length) {
+            normalized.horasPorMes = buildEmptyHoursRows(
+              normalized.filters.start,
+              normalized.filters.end,
+            );
+          }
+          setDashboard((previous) => {
+            if (!previous) {
+              return normalized;
+            }
+            const sameCompany =
+              String(previous.filters.companyId ?? "") ===
+              String(normalized.filters.companyId ?? "");
+            const shouldPreserveHours =
+              sameCompany &&
+              Number(normalized.summary.totalHoras ?? 0) === 0 &&
+              Number(previous.summary.totalHoras ?? 0) > 0;
+            const prevResumo = previous.resumoHorasTrabalhadas;
+            const normResumo = normalized.resumoHorasTrabalhadas;
+            const shouldPreserveResumo =
+              sameCompany &&
+              (!normResumo || normResumo.linhas.length === 0) &&
+              (prevResumo?.linhas?.length ?? 0) > 0;
+            if (!shouldPreserveHours && !shouldPreserveResumo) {
+              return normalized;
+            }
+            return {
+              ...normalized,
+              summary: {
+                ...normalized.summary,
+                totalHoras: shouldPreserveHours
+                  ? previous.summary.totalHoras
+                  : normalized.summary.totalHoras,
+                totalHorasFormatadas: shouldPreserveHours
+                  ? previous.summary.totalHorasFormatadas
+                  : normalized.summary.totalHorasFormatadas,
+              },
+              horasPorMes:
+                shouldPreserveHours &&
+                Array.isArray(previous.horasPorMes) &&
+                previous.horasPorMes.length
+                  ? previous.horasPorMes
+                  : normalized.horasPorMes,
+              resumoHorasTrabalhadas: shouldPreserveResumo
+                ? previous.resumoHorasTrabalhadas
+                : normalized.resumoHorasTrabalhadas,
+            };
+          });
+        };
+
+        if (mode === "manual") {
+          applyNormalized(await refreshCompleteDashboard(requestParams));
+        } else if (mode === "initial") {
+          // 1º paint: summary sem charts/horas; 2º: payload completo.
+          const summary = await getCompleteDashboard(requestParams, {
+            includeHours: false,
+            includeCharts: false,
+          });
+          applyNormalized(summary);
+          if (requestId === completeRequestIdRef.current) {
+            setInitialLoading(false);
+          }
+          const full = await getCompleteDashboard(requestParams, {
+            includeHours: true,
+            includeCharts: true,
+          });
+          applyNormalized(full);
+        } else {
+          applyNormalized(
+            await getCompleteDashboard(requestParams, {
+              includeHours: true,
+              includeCharts: true,
+            }),
+          );
+        }
 
         if (requestId !== completeRequestIdRef.current) {
           return;
         }
-
-        const normalized = normalizeDashboardResponse(data);
-
-        if (!normalized.horasPorMes.length) {
-          normalized.horasPorMes = buildEmptyHoursRows(
-            normalized.filters.start,
-            normalized.filters.end,
-          );
-        }
-
-        setDashboard((previous) => {
-          if (!previous) {
-            return normalized;
-          }
-
-          // Se o /complete falhar parcialmente nas horas (ex.: timeout) mas já tínhamos dados,
-          // mantém o último apontamento na mesma empresa para não regredir a UI no auto-refresh.
-          const sameCompany =
-            String(previous.filters.companyId ?? "") ===
-            String(normalized.filters.companyId ?? "");
-
-          const shouldPreserveHours =
-            sameCompany &&
-            Number(normalized.summary.totalHoras ?? 0) === 0 &&
-            Number(previous.summary.totalHoras ?? 0) > 0;
-
-          const prevResumo = previous.resumoHorasTrabalhadas;
-          const normResumo = normalized.resumoHorasTrabalhadas;
-          const shouldPreserveResumo =
-            sameCompany &&
-            (!normResumo || normResumo.linhas.length === 0) &&
-            (prevResumo?.linhas?.length ?? 0) > 0;
-
-          if (!shouldPreserveHours && !shouldPreserveResumo) {
-            return normalized;
-          }
-
-          return {
-            ...normalized,
-            summary: {
-              ...normalized.summary,
-              totalHoras: shouldPreserveHours
-                ? previous.summary.totalHoras
-                : normalized.summary.totalHoras,
-              totalHorasFormatadas: shouldPreserveHours
-                ? previous.summary.totalHorasFormatadas
-                : normalized.summary.totalHorasFormatadas,
-            },
-            horasPorMes:
-              shouldPreserveHours &&
-              Array.isArray(previous.horasPorMes) &&
-              previous.horasPorMes.length
-                ? previous.horasPorMes
-                : normalized.horasPorMes,
-            resumoHorasTrabalhadas: shouldPreserveResumo
-              ? previous.resumoHorasTrabalhadas
-              : normalized.resumoHorasTrabalhadas,
-          };
-        });
       } catch (err) {
         if (requestId !== completeRequestIdRef.current) {
           return;
@@ -599,7 +714,7 @@ export default function DashboardPage() {
         }
       }
     },
-    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, startDate, user?.companyId, user?.role],
+    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, selectedCompanyId, startDate, user?.companyId, user?.role, isClientUser, clientViewMode, deskNamesFilter],
   );
 
   useEffect(() => {
@@ -767,18 +882,24 @@ export default function DashboardPage() {
       <PermissionGate module="DASHBOARD">
       <AppShell>
         <div className="font-sans w-full space-y-6 sm:space-y-8">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
             <div className="space-y-2">
               <h1 className="text-2xl font-bold sm:text-3xl">Dashboard</h1>
               <p className="text-muted-foreground">Tudo sobre seu ambiente.</p>
+              {isClientUser ? (
+                <ClientDashboardViewToggle
+                  viewMode={clientViewMode}
+                  onChange={setClientViewMode}
+                />
+              ) : null}
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end xl:w-auto">
-              {canSelectCompany ? (
-                <div className="w-full rounded-xl border border-border bg-card px-4 py-3 sm:min-w-[320px]">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Empresa
-                  </p>
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:w-auto xl:justify-end">
+              <div className="w-full rounded-xl border border-border bg-card px-3 py-2.5 sm:min-w-[240px] sm:max-w-[320px]">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Empresa
+                </p>
+                {canSelectCompany ? (
                   <SearchableSelectField
                     value={selectedCompanyId ?? ""}
                     onChange={(next) => {
@@ -789,15 +910,21 @@ export default function DashboardPage() {
                     options={companyOptions}
                     loading={companies.length === 0}
                     emptyLabel={
-                      companies.length === 0 ? "Carregando..." : "Selecione uma empresa"
+                      companies.length === 0
+                        ? "Carregando..."
+                        : "Selecione uma empresa"
                     }
-                    className="h-10"
+                    className="h-9"
                   />
-                </div>
-              ) : null}
+                ) : (
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {companyDisplayName}
+                  </p>
+                )}
+              </div>
 
-              <div className="rounded-xl border border-border bg-card px-4 py-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-xl border border-border bg-card px-3 py-2.5">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Data inicial
                 </p>
                 <DatePickerField
@@ -807,8 +934,8 @@ export default function DashboardPage() {
                 />
               </div>
 
-              <div className="rounded-xl border border-border bg-card px-4 py-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="rounded-xl border border-border bg-card px-3 py-2.5">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Data final
                 </p>
                 <DatePickerField
@@ -818,33 +945,19 @@ export default function DashboardPage() {
                   align="end"
                 />
               </div>
+
+              <Button
+                onClick={() => void loadDashboard("manual")}
+                disabled={refreshButtonDisabled}
+                className="h-10 shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:mb-0.5"
+              >
+                <RefreshCcw
+                  size={16}
+                  className={manualRefreshing ? "animate-spin" : ""}
+                />
+                {refreshButtonLabel}
+              </Button>
             </div>
-          </div>
-
-          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 md:flex-row md:items-center md:justify-between">
-            <div className="inline-flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Building2 size={18} />
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {canSelectCompany ? "Empresa selecionada" : "Empresa logada"}
-                </p>
-                <div className="mt-1 flex items-center gap-3">
-                  <p className="text-sm font-bold">{companyDisplayName}</p>
-                </div>
-              </div>
-            </div>
-
-            <Button
-              onClick={() => void loadDashboard("manual")}
-              disabled={refreshButtonDisabled}
-              className="h-10 gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCcw size={16} className={manualRefreshing ? "animate-spin" : ""} />
-              {refreshButtonLabel}
-            </Button>
           </div>
 
           {error ? (
@@ -933,11 +1046,27 @@ export default function DashboardPage() {
 
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle>Chamados por mês</CardTitle>
-              <CardDescription>
-                Gráfico por criação do ticket. Abaixo: apontamentos no período do filtro (totais
-                alinhados aos cartões de tickets/horas quando existirem dados de apontamento).
-              </CardDescription>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1.5">
+                  <CardTitle>Chamados por mês</CardTitle>
+                  <CardDescription>
+                    Gráfico por criação do ticket. Abaixo: apontamentos no período do filtro (totais
+                    alinhados aos cartões de tickets/horas quando existirem dados de apontamento).
+                  </CardDescription>
+                </div>
+                {isValidCompanyUuid(presetCompanyId) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditChartKey("CHAMADOS")}
+                  >
+                    <Pencil className="mr-2 size-3.5" />
+                    {DASHBOARD_EDIT_CHART_LABEL}
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
               <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
@@ -971,7 +1100,12 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <DashboardLazyChart kind="chamados" data={chamadosChartData} />
+              <DashboardLazyChart
+                kind="chamados"
+                data={chamadosChartData}
+                chartType={chartTypes.CHAMADOS}
+                deskData={dashboard?.chamadosPorMesa ?? []}
+              />
 
               {dashboard?.resumoHorasTrabalhadas ? (
                 <div className="space-y-4 border-t border-border pt-6">
@@ -1038,7 +1172,7 @@ export default function DashboardPage() {
                   {dashboard.resumoHorasTrabalhadas.linhasTruncadas ? (
                     <p className="text-xs text-amber-500/90">
                       O resumo considerou no máximo {dashboard.resumoHorasTrabalhadas.limiteLinhas}{" "}
-                      apontamentos na soma. Ajuste TIFLUX_RESUMO_MAX_LINHAS no backend se precisar do
+                      apontamentos na soma. Ajuste o limite de linhas do resumo no backend se precisar do
                       total completo.
                     </p>
                   ) : null}
@@ -1049,7 +1183,21 @@ export default function DashboardPage() {
 
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle>Apontamento de horas</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <CardTitle>Apontamento de horas</CardTitle>
+                {isValidCompanyUuid(presetCompanyId) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditChartKey("HORAS")}
+                  >
+                    <Pencil className="mr-2 size-3.5" />
+                    {DASHBOARD_EDIT_CHART_LABEL}
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 sm:space-y-6">
               <div className="-mx-1 overflow-x-auto rounded-2xl border border-border px-1 sm:mx-0 sm:px-0">
@@ -1083,13 +1231,33 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <DashboardLazyChart kind="horas" data={horasChartData} />
+              <DashboardLazyChart
+                kind="horas"
+                data={horasChartData}
+                chartType={
+                  chartTypes.HORAS === "line" ? "line" : "bar"
+                }
+              />
             </CardContent>
           </Card>
 
           <Card className="border border-border bg-card text-card-foreground">
             <CardHeader>
-              <CardTitle>Monitoramento</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <CardTitle>Monitoramento</CardTitle>
+                {isValidCompanyUuid(presetCompanyId) ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setEditChartKey("ALERTAS")}
+                  >
+                    <Pencil className="mr-2 size-3.5" />
+                    {DASHBOARD_EDIT_CHART_LABEL}
+                  </Button>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="overflow-x-auto rounded-2xl border border-border">
@@ -1135,7 +1303,13 @@ export default function DashboardPage() {
                 </table>
               </div>
 
-              <DashboardLazyChart kind="alertas" data={alertasMonitoringChartRows} />
+              <DashboardLazyChart
+                kind="alertas"
+                data={alertasMonitoringChartRows}
+                chartType={
+                  chartTypes.ALERTAS === "bar" ? "bar" : "line"
+                }
+              />
             </CardContent>
           </Card>
 
@@ -1250,6 +1424,47 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+        {isValidCompanyUuid(presetCompanyId) && editChartKey ? (
+          <EditChartPresetDialog
+            open={Boolean(editChartKey)}
+            onOpenChange={(open) => {
+              if (!open) setEditChartKey(null);
+            }}
+            chartKey={editChartKey}
+            chartTitle={
+              editChartKey === "CHAMADOS"
+                ? "Chamados por mês"
+                : editChartKey === "HORAS"
+                  ? "Apontamento de horas"
+                  : "Monitoramento"
+            }
+            viewMode={presetViewMode}
+            companyId={presetCompanyId}
+            availableDesks={(dashboard?.chamadosPorMesa ?? []).map(
+              (d) => d.deskName,
+            )}
+            initialChartType={chartTypes[editChartKey]}
+            initialDeskNames={deskNamesFilter}
+            initialPeriodDays={presetPeriodDays}
+            onSaved={(next) => {
+              setChartTypes((prev) => ({
+                ...prev,
+                [next.chartKey]: next.chartType,
+              }));
+              if (next.chartKey === "CHAMADOS") {
+                setDeskNamesFilter(next.deskNames);
+                setPresetPeriodDays(next.periodDays);
+                const end = new Date();
+                const start = new Date();
+                start.setDate(
+                  end.getDate() - Math.max(6, next.periodDays - 1),
+                );
+                setStartDate(formatDateInput(start));
+                setEndDate(formatDateInput(end));
+              }
+            }}
+          />
+        ) : null}
       </AppShell>
       </PermissionGate>
     </ProtectedPage>

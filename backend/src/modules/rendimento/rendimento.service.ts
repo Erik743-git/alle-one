@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { isClientGestorRole } from '../../common/security/client-portal-role';
 import type { RendimentoCalendarView } from './rendimento.dto';
 import {
   analyzeRendimentoDay,
@@ -30,13 +31,26 @@ import {
   type RendimentoDayEventStatus,
   type UpsertDayEventInput,
 } from './rendimento-day-events.helper';
-import { computeRawAppointmentMinutes, computeUnionWorkedMinutes } from './rendimento-worked-minutes.helper';
-import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
+import {
+  computeRawAppointmentMinutes,
+  computeUnionWorkedMinutes,
+} from './rendimento-worked-minutes.helper';
+import {
+  resolvePayrollPeriodRange,
+  resolvePayrollPeriodRangeForCalendarMonth,
+} from './rendimento-payroll-period.helper';
 import { AuditService } from '../audit/audit.service';
 import {
   RendimentoStoreService,
   type GapJustificationRow,
 } from './rendimento-store.service';
+import { RendimentoOvertimeBalanceService } from './rendimento-overtime-balance.service';
+import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
+import { serviceNameToValorizationRaw } from '../tickets/portal-appointment.helper';
+import {
+  appointmentDescriptionHasMedia,
+  appointmentDescriptionToPlainText,
+} from '../tickets/appointment-doc.util';
 
 export type { RendimentoDayInsightsDto, RendimentoGapDto };
 
@@ -50,6 +64,9 @@ export type RendimentoEntryDto = {
   ticketNumber: number;
   clientName: string | null;
   description: string | null;
+  /** Há imagem/anexo para abrir no detalhe (evita enviar base64 na listagem). */
+  hasMedia?: boolean;
+  portalAppointmentId?: string | null;
   isOvertime: boolean;
   overtimeKind?: 'EXTRA' | 'PLANTAO' | null;
   valorizationServiceName?: string | null;
@@ -144,6 +161,8 @@ type AppointmentRow = {
   description: string | null;
   minutes: number;
   valorization_raw: unknown | null;
+  portal_appointment_id?: string | null;
+  attachment_count?: number;
 };
 
 type TifluxUserLink = { id: number; name: string };
@@ -174,6 +193,7 @@ export class RendimentoService {
     private readonly tifluxService: TifluxService,
     private readonly audit: AuditService,
     private readonly rendimentoStore: RendimentoStoreService,
+    private readonly overtimeBalance: RendimentoOvertimeBalanceService,
   ) {}
 
   formatMinutes(totalMinutes: number): string {
@@ -274,8 +294,16 @@ export class RendimentoService {
     }
 
     // Mês: grade Dom–Sáb (inclui dias 26–30 do mês anterior na mesma tela)
-    const monthStart = new Date(reference.getFullYear(), reference.getMonth(), 1);
-    const monthEnd = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
+    const monthStart = new Date(
+      reference.getFullYear(),
+      reference.getMonth(),
+      1,
+    );
+    const monthEnd = new Date(
+      reference.getFullYear(),
+      reference.getMonth() + 1,
+      0,
+    );
     start.setTime(monthStart.getTime());
     start.setDate(start.getDate() - start.getDay());
     end.setTime(monthEnd.getTime());
@@ -284,7 +312,10 @@ export class RendimentoService {
   }
 
   /** Limites do mês civil (só o mês exibido no título), para totais da grade. */
-  private resolveCalendarMonthBounds(reference: Date): { start: Date; end: Date } {
+  private resolveCalendarMonthBounds(reference: Date): {
+    start: Date;
+    end: Date;
+  } {
     const start = new Date(reference.getFullYear(), reference.getMonth(), 1);
     const end = new Date(reference.getFullYear(), reference.getMonth() + 1, 0);
     start.setHours(0, 0, 0, 0);
@@ -304,8 +335,7 @@ export class RendimentoService {
     if (Number.isNaN(id)) return null;
     return {
       id,
-      name:
-        String(params.name ?? '').trim() || `Usuário TiFlux ${id}`,
+      name: String(params.name ?? '').trim() || `Usuário ${id}`,
     };
   }
 
@@ -373,7 +403,9 @@ export class RendimentoService {
   }
 
   /** Agenda e-mail → usuário TiFlux (carrega uma vez por instância da API). */
-  private async ensureTifluxUserEmailMap(): Promise<Map<string, TifluxUserLink>> {
+  private async ensureTifluxUserEmailMap(): Promise<
+    Map<string, TifluxUserLink>
+  > {
     if (this.tifluxUserEmailMap) {
       return this.tifluxUserEmailMap;
     }
@@ -421,12 +453,80 @@ export class RendimentoService {
   }
 
   private async fetchAppointments(params: {
-    tifluxUserId: number;
+    portalUserId: string;
+    tifluxUserId: number | null;
     start: Date;
     end: Date;
   }): Promise<AppointmentRow[]> {
     const startDate = this.toDateOnlyString(params.start);
     const endDate = this.toDateOnlyString(params.end);
+
+    if (isTicketsPortalCanonical()) {
+      const portalRows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            appointment_id: number;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            ticket_number: number;
+            client_name: string | null;
+            description: string | null;
+            service_name: string | null;
+            minutes: number;
+            portal_appointment_id: string;
+            attachment_count: number;
+          }>
+        >`
+        select
+          coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
+          a.appointment_date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          a.ticket_number,
+          t.client_name,
+          a.description,
+          a.service_name,
+          a.id as portal_appointment_id,
+          (
+            select count(*)::int
+            from portal_ticket_appointment_attachments att
+            where att.portal_appointment_id = a.id
+          ) as attachment_count,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from portal_ticket_appointments a
+        left join portal_tickets t on t.ticket_number = a.ticket_number
+        where a.created_by = ${params.portalUserId}
+          and a.appointment_date between ${startDate}::date and ${endDate}::date
+        order by a.appointment_date asc, a.init_time asc nulls last, a.id asc
+      `) ?? [];
+
+      return portalRows.map((row) => ({
+        appointment_id: Number(row.appointment_id),
+        appointment_date: row.appointment_date,
+        init_time: row.init_time,
+        end_time: row.end_time,
+        ticket_number: Number(row.ticket_number),
+        client_name: row.client_name,
+        description: row.description,
+        valorization_raw: serviceNameToValorizationRaw(row.service_name),
+        minutes: Number(row.minutes) || 0,
+        portal_appointment_id: row.portal_appointment_id,
+        attachment_count: Number(row.attachment_count) || 0,
+      }));
+    }
+
+    if (params.tifluxUserId == null) {
+      return [];
+    }
 
     const rows =
       (await this.prisma.$queryRaw<AppointmentRow[]>`
@@ -458,11 +558,7 @@ export class RendimentoService {
   }
 
   private async getOvertimeBalanceMinutes(userId: string): Promise<number> {
-    const row = await this.prisma.rendimentoOvertimeBalance.findUnique({
-      where: { userId },
-      select: { minutes: true },
-    });
-    return row?.minutes ?? 0;
+    return this.overtimeBalance.getBalanceMinutes(userId);
   }
 
   private async listJustifications(params: {
@@ -509,10 +605,7 @@ export class RendimentoService {
     return unique.length ? unique : ['PENDING'];
   }
 
-  private gapLabelForType(
-    type: 'idle' | 'lunch',
-    gapMinutes: number,
-  ): string {
+  private gapLabelForType(type: 'idle' | 'lunch', gapMinutes: number): string {
     if (type === 'lunch') {
       const h = Math.floor(gapMinutes / 60);
       const m = gapMinutes % 60;
@@ -555,9 +648,9 @@ export class RendimentoService {
     return Math.max(aFrom, bFrom) < Math.min(aTo, bTo);
   }
 
-  private justificationSuffix(
-    justification?: { status: RendimentoJustificationStatus },
-  ): string {
+  private justificationSuffix(justification?: {
+    status: RendimentoJustificationStatus;
+  }): string {
     if (!justification) return '';
     if (justification.status === 'APPROVED') return ' · justificado';
     if (justification.status === 'PENDING') return ' · justificativa pendente';
@@ -606,7 +699,7 @@ export class RendimentoService {
       Number(row.gap_minutes) > 0
         ? Number(row.gap_minutes)
         : Math.max(0, toMinutes - fromMinutes);
-    const gapType = row.gap_type as 'idle' | 'lunch';
+    const gapType = row.gap_type;
     const justification = this.mapJustificationDto(row);
     const suffix = this.justificationStatusSuffix(row.status);
 
@@ -630,7 +723,9 @@ export class RendimentoService {
         .map((gap) => gap.justification?.id)
         .filter((id): id is string => Boolean(id)),
     );
-    const missing = alertJustifications.filter((row) => !visibleIds.has(row.id));
+    const missing = alertJustifications.filter(
+      (row) => !visibleIds.has(row.id),
+    );
     if (!missing.length) return gaps;
 
     const recovered = missing.map((row) => this.gapFromJustificationRow(row));
@@ -827,12 +922,7 @@ export class RendimentoService {
     if (apptTo <= apptFrom) {
       apptTo += 24 * 60;
     }
-    return this.overlapsMinutes(
-      period.from,
-      period.to,
-      apptFrom,
-      apptTo,
-    );
+    return this.overlapsMinutes(period.from, period.to, apptFrom, apptTo);
   }
 
   private isPeriodContainedInRawGaps(
@@ -863,7 +953,10 @@ export class RendimentoService {
     return { from, to, gapMinutes };
   }
 
-  private assertValidJustificationPeriod(fromTime: string, toTime: string): {
+  private assertValidJustificationPeriod(
+    fromTime: string,
+    toTime: string,
+  ): {
     from: number;
     to: number;
     gapMinutes: number;
@@ -931,7 +1024,8 @@ export class RendimentoService {
     const approvedVoluntaryMinutes = dayJustifications
       .filter((j) => j.kind === 'VOLUNTARY' && j.status === 'APPROVED')
       .reduce(
-        (sum, row) => sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
+        (sum, row) =>
+          sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
         0,
       );
 
@@ -943,7 +1037,8 @@ export class RendimentoService {
     const explainedAlertMinutes = alertJustifications
       .filter((j) => j.status === 'APPROVED' || j.status === 'PENDING')
       .reduce(
-        (sum, row) => sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
+        (sum, row) =>
+          sum + Math.max(0, Math.trunc(Number(row.gap_minutes) || 0)),
         0,
       );
 
@@ -1027,7 +1122,8 @@ export class RendimentoService {
     nextGaps.sort((a, b) => a.fromTime.localeCompare(b.fromTime));
 
     const hasIdleGapAlert = nextGaps.some((gap) => {
-      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
+      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES)
+        return false;
       const justification = gap.justification;
       if (!justification) return true;
       if (justification.kind === 'VOLUNTARY') return false;
@@ -1092,11 +1188,15 @@ export class RendimentoService {
     const dateOnly = this.toDateOnlyString(this.parseDateOnly(params.date));
     const dayDate = this.parseDateOnly(dateOnly);
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
-    const tifluxUser = this.lookupTifluxUser(params.user.email, tifluxUserByEmail);
+    const tifluxUser = this.lookupTifluxUser(
+      params.user.email,
+      tifluxUserByEmail,
+    );
 
-    if (tifluxUser != null) {
+    if (tifluxUser != null || isTicketsPortalCanonical()) {
       const rows = await this.fetchAppointments({
-        tifluxUserId: tifluxUser.id,
+        portalUserId: params.userId,
+        tifluxUserId: tifluxUser?.id ?? null,
         start: dayDate,
         end: dayDate,
       });
@@ -1161,12 +1261,7 @@ export class RendimentoService {
       if (
         rowSpan &&
         newSpan &&
-        this.overlapsMinutes(
-          newSpan.from,
-          newSpan.to,
-          rowSpan.from,
-          rowSpan.to,
-        )
+        this.overlapsMinutes(newSpan.from, newSpan.to, rowSpan.from, rowSpan.to)
       ) {
         throw new BadRequestException(
           'O período coincide com outra justificativa já registrada.',
@@ -1192,7 +1287,7 @@ export class RendimentoService {
 
     const justification = this.mapJustificationDto(matched);
     const suffix = this.justificationStatusSuffix(matched.status);
-    const userGapType = matched.gap_type as 'idle' | 'lunch';
+    const userGapType = matched.gap_type;
     const effectiveType =
       matched.status === 'APPROVED' ? userGapType : gap.type;
 
@@ -1277,10 +1372,7 @@ export class RendimentoService {
         continue;
       }
 
-      if (
-        gap.justification &&
-        gap.justification.kind !== 'VOLUNTARY'
-      ) {
+      if (gap.justification && gap.justification.kind !== 'VOLUNTARY') {
         result.push(gap);
         continue;
       }
@@ -1413,7 +1505,8 @@ export class RendimentoService {
     );
 
     const hasIdleGapAlert = trimmedGaps.some((gap) => {
-      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES) return false;
+      if (gap.type !== 'idle' || gap.gapMinutes <= GAP_ALERT_MINUTES)
+        return false;
       const justification = gap.justification;
       if (!justification) return true;
       if (justification.kind === 'VOLUNTARY') return false;
@@ -1429,20 +1522,32 @@ export class RendimentoService {
   }
 
   private mapEntries(rows: AppointmentRow[]): RendimentoEntryDto[] {
-    return rows.map((row) => ({
-      id: Number(row.appointment_id),
-      date: row.appointment_date,
-      initTime: row.init_time,
-      endTime: row.end_time,
-      minutes: Number(row.minutes) || 0,
-      hoursFormatted: this.formatMinutes(Number(row.minutes) || 0),
-      ticketNumber: Number(row.ticket_number),
-      clientName: row.client_name,
-      description: row.description,
-      isOvertime: false,
-      overtimeKind: null,
-      valorizationServiceName: null,
-    }));
+    return rows.map((row) => {
+      const rawDescription = row.description?.trim() || null;
+      const plain = rawDescription
+        ? appointmentDescriptionToPlainText(rawDescription).trim() || null
+        : null;
+      const hasMedia =
+        appointmentDescriptionHasMedia(rawDescription) ||
+        (Number(row.attachment_count) || 0) > 0;
+
+      return {
+        id: Number(row.appointment_id),
+        date: row.appointment_date,
+        initTime: row.init_time,
+        endTime: row.end_time,
+        minutes: Number(row.minutes) || 0,
+        hoursFormatted: this.formatMinutes(Number(row.minutes) || 0),
+        ticketNumber: Number(row.ticket_number),
+        clientName: row.client_name,
+        description: plain,
+        hasMedia,
+        portalAppointmentId: row.portal_appointment_id ?? null,
+        isOvertime: false,
+        overtimeKind: null,
+        valorizationServiceName: null,
+      };
+    });
   }
 
   private toRendimentoDaySchedule(user: {
@@ -1584,119 +1689,16 @@ export class RendimentoService {
       );
   }
 
-  /** HE aprovada que consome o saldo (plantão aprovado não debita saldo de HE). */
-  private async getProtectedOvertimeMinutes(
-    userId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<number> {
-    const rows =
-      (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
-        `
-        SELECT COALESCE(SUM(minutes), 0)::int AS total
-        FROM rendimento_day_events
-        WHERE user_id = $1
-          AND date_ref BETWEEN $2::date AND $3::date
-          AND event_type = 'OVERTIME'
-          AND status = 'APPROVED'
-          AND debit_protected = true
-          AND deleted_at IS NULL
-      `,
-        userId,
-        this.toDateOnlyString(periodStart),
-        this.toDateOnlyString(periodEnd),
-      )) ?? [];
-    return Number(rows[0]?.total) || 0;
-  }
-
-  private async getDebitedOvertimeMinutes(
-    userId: string,
-    periodStart: Date,
-    periodEnd: Date,
-  ): Promise<number> {
-    const rows =
-      (await this.prisma.$queryRawUnsafe<Array<{ total: number }>>(
-        `
-        SELECT COALESCE(SUM(overtime_minutes), 0)::int AS total
-        FROM rendimento_gap_justifications
-        WHERE user_id = $1
-          AND date_ref BETWEEN $2::date AND $3::date
-          AND status = 'APPROVED'
-          AND debit_overtime = true
-          AND deleted_at IS NULL
-      `,
-        userId,
-        this.toDateOnlyString(periodStart),
-        this.toDateOnlyString(periodEnd),
-      )) ?? [];
-    return Number(rows[0]?.total) || 0;
-  }
-
-  /**
-   * Saldo de HE do período folha (26→25).
-   * Crédito: apontamentos HORA EXTRA (TiFlux).
-   * Débito: HE aprovada + justificativas aprovadas com debit_overtime.
-   * Plantão aprovado não entra no débito.
-   */
-  private getNetOvertimeBalanceMinutes(
-    periodOvertimeMinutes: number,
-    protectedMinutes: number,
-    debitedMinutes: number,
-  ): number {
-    return (
-      Math.trunc(periodOvertimeMinutes) -
-      Math.trunc(protectedMinutes) -
-      Math.trunc(debitedMinutes)
-    );
-  }
-
-  private getDebitableOvertimeMinutes(
-    periodOvertimeMinutes: number,
-    protectedMinutes: number,
-    debitedMinutes: number,
-  ): number {
-    return Math.max(
-      0,
-      this.getNetOvertimeBalanceMinutes(
-        periodOvertimeMinutes,
-        protectedMinutes,
-        debitedMinutes,
-      ),
-    );
-  }
-
   private async refreshOvertimeBalance(
     userId: string,
     periodOvertimeMinutes: number,
     referenceDate: Date,
   ): Promise<number> {
-    const payroll = resolvePayrollPeriodRange(referenceDate);
-    const protectedMinutes = await this.getProtectedOvertimeMinutes(
+    return this.overtimeBalance.refreshBalance(
       userId,
-      payroll.start,
-      payroll.end,
-    );
-    const debitedMinutes = await this.getDebitedOvertimeMinutes(
-      userId,
-      payroll.start,
-      payroll.end,
-    );
-    const available = this.getNetOvertimeBalanceMinutes(
       periodOvertimeMinutes,
-      protectedMinutes,
-      debitedMinutes,
+      referenceDate,
     );
-    await this.prisma.$executeRawUnsafe(
-      `
-      INSERT INTO rendimento_overtime_balances (user_id, minutes, updated_at)
-      VALUES ($1, $2, NOW())
-      ON CONFLICT (user_id)
-      DO UPDATE SET minutes = $2, updated_at = NOW()
-    `,
-      userId,
-      available,
-    );
-    return available;
   }
 
   private async upsertDayEvent(input: UpsertDayEventInput): Promise<string> {
@@ -2096,17 +2098,21 @@ export class RendimentoService {
       : new Date(end.getFullYear(), end.getMonth() - 6, end.getDate());
 
     if (start > end) {
-      throw new BadRequestException('Data inicial não pode ser maior que a final.');
+      throw new BadRequestException(
+        'Data inicial não pode ser maior que a final.',
+      );
     }
 
     const collaborators = await this.listCollaboratorsForSelect();
     const targets = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
-      : collaborators.filter((c) => c.tifluxUserId != null);
+      : isTicketsPortalCanonical()
+        ? collaborators
+        : collaborators.filter((c) => c.tifluxUserId != null);
 
     if (params.userId && targets.length === 0) {
       throw new NotFoundException(
-        'Colaborador não encontrado ou sem vínculo TiFlux.',
+        'Colaborador não encontrado ou sem vínculo externo.',
       );
     }
 
@@ -2124,7 +2130,7 @@ export class RendimentoService {
           collaborator.email,
           tifluxUserByEmail,
         );
-        if (!tifluxUser) continue;
+        if (!tifluxUser && !isTicketsPortalCanonical()) continue;
 
         eventsPurged += await this.purgeAutoGapEventsInRange(
           collaborator.id,
@@ -2133,7 +2139,8 @@ export class RendimentoService {
         );
 
         const rows = await this.fetchAppointments({
-          tifluxUserId: tifluxUser.id,
+          portalUserId: collaborator.id,
+          tifluxUserId: tifluxUser?.id ?? null,
           start,
           end,
         });
@@ -2181,7 +2188,9 @@ export class RendimentoService {
         usersProcessed += 1;
       } catch (err) {
         const msg =
-          err instanceof Error ? err.message : 'Erro desconhecido ao reprocessar.';
+          err instanceof Error
+            ? err.message
+            : 'Erro desconhecido ao reprocessar.';
         errors.push(`${collaborator.name}: ${msg}`);
       }
     }
@@ -2276,7 +2285,7 @@ export class RendimentoService {
       if (event.event_type !== 'OVERTIME' && event.event_type !== 'PLANTAO') {
         continue;
       }
-      const eventType = event.event_type as 'OVERTIME' | 'PLANTAO';
+      const eventType = event.event_type;
       const key = this.dayEventAttachmentKey(
         event.date_ref,
         Number(event.appointment_external_id),
@@ -2318,8 +2327,8 @@ export class RendimentoService {
 
   private async computeOvertimeMinutesForUser(
     userId: string,
-    start: Date,
-    end: Date,
+    _start: Date,
+    _end: Date,
   ): Promise<number> {
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
@@ -2329,11 +2338,12 @@ export class RendimentoService {
 
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
-    if (tifluxUser == null) return 0;
+    if (tifluxUser == null && !isTicketsPortalCanonical()) return 0;
 
     const payroll = resolvePayrollPeriodRange(new Date());
     const rows = await this.fetchAppointments({
-      tifluxUserId: tifluxUser.id,
+      portalUserId: userId,
+      tifluxUserId: tifluxUser?.id ?? null,
       start: payroll.start,
       end: payroll.end,
     });
@@ -2406,9 +2416,10 @@ export class RendimentoService {
       const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
       let monthTotalMinutes = 0;
 
-      if (tifluxUser != null) {
+      if (tifluxUser != null || isTicketsPortalCanonical()) {
         const monthRows = await this.fetchAppointments({
-          tifluxUserId: tifluxUser.id,
+          portalUserId: user.id,
+          tifluxUserId: tifluxUser?.id ?? null,
           start,
           end,
         });
@@ -2432,7 +2443,63 @@ export class RendimentoService {
     return collaborators;
   }
 
-  async listCollaboratorListPreferences(): Promise<RendimentoCollaboratorListPreferenceDto[]> {
+  /**
+   * Gestor do cliente: lista funcionários (CLIENT_MEMBER) da empresa ativa.
+   * Não mistura roster Alle — isso fica em Financeiro.
+   */
+  async listCompanyEmployees(actor: AuthenticatedRequestUser): Promise<
+    Array<{
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      clientRole: string;
+      status: string;
+    }>
+  > {
+    if (!isClientGestorRole(actor.role) || !actor.companyId) {
+      throw new ForbiddenException(
+        'Somente o gestor da empresa pode listar funcionários.',
+      );
+    }
+
+    const companyId = actor.companyId;
+    const memberships = await this.prisma.userCompany.findMany({
+      where: {
+        companyId,
+        clientRole: 'CLIENT_MEMBER',
+        user: {
+          deletedAt: null,
+          status: UserStatus.ACTIVE,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: { user: { name: 'asc' } },
+    });
+
+    return memberships.map((m) => ({
+      id: m.user.id,
+      name: m.user.name,
+      email: m.user.email,
+      role: m.user.role,
+      clientRole: m.clientRole,
+      status: m.user.status,
+    }));
+  }
+
+  async listCollaboratorListPreferences(): Promise<
+    RendimentoCollaboratorListPreferenceDto[]
+  > {
     const collaborators = await this.listCollaboratorsForSelect();
     const prefs = await this.prisma.rendimentoCollaboratorListPref.findMany({
       select: { collaboratorUserId: true, listed: true },
@@ -2508,8 +2575,10 @@ export class RendimentoService {
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
 
-    if (tifluxUser == null) {
-      const overtimeBalanceMinutes = await this.getOvertimeBalanceMinutes(user.id);
+    if (tifluxUser == null && !isTicketsPortalCanonical()) {
+      const overtimeBalanceMinutes = await this.getOvertimeBalanceMinutes(
+        user.id,
+      );
       return {
         userId: user.id,
         userName: user.name,
@@ -2525,19 +2594,23 @@ export class RendimentoService {
         totalRawHoursFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
         periodOvertimeFormatted: this.formatMinutes(0),
-        periodOvertimeRangeLabel: resolvePayrollPeriodRange(reference).label,
+        periodOvertimeRangeLabel:
+          resolvePayrollPeriodRangeForCalendarMonth(reference).label,
         periodPlantaoMinutes: 0,
         periodPlantaoFormatted: this.formatMinutes(0),
         overtimeBalanceMinutes,
-        overtimeBalanceFormatted: this.formatSignedMinutes(overtimeBalanceMinutes),
+        overtimeBalanceFormatted: this.formatSignedMinutes(
+          overtimeBalanceMinutes,
+        ),
         days: [],
       };
     }
 
-    const payrollPeriod = resolvePayrollPeriodRange(reference);
+    const payrollPeriod = resolvePayrollPeriodRangeForCalendarMonth(reference);
 
     const rows = await this.fetchAppointments({
-      tifluxUserId: tifluxUser.id,
+      portalUserId: user.id,
+      tifluxUserId: tifluxUser?.id ?? null,
       start,
       end,
     });
@@ -2586,7 +2659,8 @@ export class RendimentoService {
     this.attachDayEventsToDays(days, dayEvents);
 
     const payrollRows = await this.fetchAppointments({
-      tifluxUserId: tifluxUser.id,
+      portalUserId: user.id,
+      tifluxUserId: tifluxUser?.id ?? null,
       start: payrollPeriod.start,
       end: payrollPeriod.end,
     });
@@ -2642,7 +2716,9 @@ export class RendimentoService {
       periodPlantaoMinutes,
       periodPlantaoFormatted: this.formatMinutes(periodPlantaoMinutes),
       overtimeBalanceMinutes,
-      overtimeBalanceFormatted: this.formatSignedMinutes(overtimeBalanceMinutes),
+      overtimeBalanceFormatted: this.formatSignedMinutes(
+        overtimeBalanceMinutes,
+      ),
       days: timesheetDays,
     };
   }
@@ -2743,9 +2819,7 @@ export class RendimentoService {
         ? Math.trunc(Number(params.gapMinutes))
         : periodSpan.gapMinutes;
     const debitOvertime =
-      params.kind === 'ALERT' && !reason
-        ? true
-        : Boolean(params.debitOvertime);
+      params.kind === 'ALERT' && !reason ? true : Boolean(params.debitOvertime);
     const overtimeMinutes = debitOvertime
       ? Math.max(0, Math.trunc(Number(params.overtimeMinutes) || gapMinutes))
       : 0;
@@ -2866,7 +2940,9 @@ export class RendimentoService {
 
     const isVoluntary = current.kind === 'VOLUNTARY';
     const date = isVoluntary
-      ? this.toDateOnlyString(this.parseDateOnly(params.date ?? current.date_ref))
+      ? this.toDateOnlyString(
+          this.parseDateOnly(params.date ?? current.date_ref),
+        )
       : current.date_ref.slice(0, 10);
     const fromTime = isVoluntary
       ? this.normalizeTimeHHMM(params.fromTime ?? current.from_time)
@@ -3029,7 +3105,7 @@ export class RendimentoService {
         keepEventId: params.eventId,
         userId: current.user_id,
         dateRef: current.date_ref.slice(0, 10),
-        eventType: current.event_type as 'OVERTIME' | 'PLANTAO',
+        eventType: current.event_type,
         appointmentExternalId: Number(current.appointment_external_id),
         sourceKey: current.source_key,
         fromTime: null,
@@ -3270,7 +3346,9 @@ export class RendimentoService {
     const collaborators = await this.listCollaboratorsForSelect();
     const targets = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
-      : collaborators.filter((c) => c.tifluxUserId != null);
+      : isTicketsPortalCanonical()
+        ? collaborators
+        : collaborators.filter((c) => c.tifluxUserId != null);
 
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
 
@@ -3280,7 +3358,7 @@ export class RendimentoService {
           collaborator.email,
           tifluxUserByEmail,
         );
-        if (!tifluxUser) continue;
+        if (!tifluxUser && !isTicketsPortalCanonical()) continue;
 
         const user = await this.prisma.user.findFirst({
           where: { id: collaborator.id, deletedAt: null },
@@ -3293,7 +3371,8 @@ export class RendimentoService {
         if (!user) continue;
 
         const rows = await this.fetchAppointments({
-          tifluxUserId: tifluxUser.id,
+          portalUserId: collaborator.id,
+          tifluxUserId: tifluxUser?.id ?? null,
           start,
           end,
         });
@@ -3420,9 +3499,7 @@ export class RendimentoService {
         toTime: row.to_time?.slice(0, 5) ?? null,
         gapType,
         gapTypeLabel:
-          gapType === 'lunch'
-            ? 'Almoço'
-            : 'Intervalo sem apontamento',
+          gapType === 'lunch' ? 'Almoço' : 'Intervalo sem apontamento',
         gapMinutes,
         gapLabel: this.gapLabelForType(gapType, gapMinutes),
         kind,
@@ -3448,7 +3525,9 @@ export class RendimentoService {
     decision: 'APPROVED' | 'REJECTED';
     note?: string;
   }) {
-    const uniqueIds = [...new Set(params.ids.map((id) => id.trim()).filter(Boolean))];
+    const uniqueIds = [
+      ...new Set(params.ids.map((id) => id.trim()).filter(Boolean)),
+    ];
     const results: Array<{
       id: string;
       ok: boolean;
@@ -3467,7 +3546,9 @@ export class RendimentoService {
         results.push({ id, ok: true, status: res.status });
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : 'Falha ao decidir justificativa.';
+          err instanceof Error
+            ? err.message
+            : 'Falha ao decidir justificativa.';
         results.push({ id, ok: false, error: message });
       }
     }
@@ -3531,8 +3612,8 @@ export class RendimentoService {
           e.label,
           e.description,
           e.appointment_external_id,
-          ta.ticket_number,
-          COALESCE(co_ticket.name, ta.client_name, co_user.name) AS company_name,
+          COALESCE(pa.ticket_number, ta.ticket_number) AS ticket_number,
+          COALESCE(co_ticket.name, ptk.client_name, ta.client_name, co_user.name) AS company_name,
           e.status,
           approver.name AS approved_by_name,
           e.approved_at::text AS approved_at
@@ -3540,11 +3621,18 @@ export class RendimentoService {
         INNER JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
         LEFT JOIN companies co_user ON co_user.id = u.company_id
         LEFT JOIN users approver ON approver.id = e.approved_by
+        LEFT JOIN portal_ticket_appointments pa
+          ON pa.tiflux_appointment_external_id = e.appointment_external_id
+        LEFT JOIN portal_tickets ptk ON ptk.ticket_number = pa.ticket_number
         LEFT JOIN tiflux.ticket_appointments ta
           ON ta.external_id = e.appointment_external_id
         LEFT JOIN tiflux.tickets tk ON tk.ticket_number = ta.ticket_number
         LEFT JOIN companies co_ticket
-          ON co_ticket.tiflux_client_id = COALESCE(tk.client_external_id, ta.client_external_id)
+          ON co_ticket.tiflux_client_id = COALESCE(
+            ptk.client_external_id,
+            tk.client_external_id,
+            ta.client_external_id
+          )
         WHERE e.deleted_at IS NULL
           AND e.event_type IN ('OVERTIME', 'PLANTAO')
           AND e.date_ref >= $1::date
@@ -3591,7 +3679,8 @@ export class RendimentoService {
       const ticketNumber =
         row.ticket_number != null ? Number(row.ticket_number) : null;
       const companyName = row.company_name?.trim() || null;
-      const rawDescription = row.description?.trim() || row.label?.trim() || null;
+      const rawDescription =
+        row.description?.trim() || row.label?.trim() || null;
 
       return {
         id: row.id,
@@ -3621,7 +3710,9 @@ export class RendimentoService {
     ids: string[];
     decision: 'APPROVED' | 'REJECTED';
   }) {
-    const uniqueIds = [...new Set(params.ids.map((id) => id.trim()).filter(Boolean))];
+    const uniqueIds = [
+      ...new Set(params.ids.map((id) => id.trim()).filter(Boolean)),
+    ];
     const results: Array<{
       id: string;
       ok: boolean;

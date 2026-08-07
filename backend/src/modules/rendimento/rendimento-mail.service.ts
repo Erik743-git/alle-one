@@ -16,7 +16,9 @@ export type AppointmentQuestionMailPayload = {
 export class RendimentoMailService {
   constructor(private readonly mail: MailService) {}
 
-  async notifyAdminsAppointmentQuestion(payload: AppointmentQuestionMailPayload) {
+  async notifyAdminsAppointmentQuestion(
+    payload: AppointmentQuestionMailPayload,
+  ) {
     const uniqueEmails = Array.from(
       new Set(payload.adminEmails.map((e) => e.trim().toLowerCase())),
     ).filter(Boolean);

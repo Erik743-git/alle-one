@@ -252,7 +252,7 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
 
             <div className="space-y-2 sm:col-span-2">
               <Label className="font-sans text-sm font-semibold text-foreground">
-                Empresa no TiFlux
+                Cliente vinculado
               </Label>
 
               <TifluxClientSelectField

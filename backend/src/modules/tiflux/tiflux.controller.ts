@@ -18,6 +18,8 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { TifluxService } from './tiflux.service';
+import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
+import { PrismaService } from '../../prisma/prisma.service';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
@@ -33,6 +35,7 @@ export class TifluxController {
   constructor(
     private readonly tifluxService: TifluxService,
     private readonly tenantScope: TenantScopeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   private assertUnsafeTifluxEndpointsEnabled(): void {
@@ -58,7 +61,7 @@ export class TifluxController {
   @Get('clients')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.COMPANIES, 'canView')
-  getClients(
+  async getClients(
     @Query('active') active?: string,
     @Query('name') name?: string,
     @Query('social_revenue') socialRevenue?: string,
@@ -66,6 +69,45 @@ export class TifluxController {
     @Query('offset') offset?: string,
     @Query('all') all?: string,
   ) {
+    // Desvinculado: clientes = empresas do portal com ID externo legado (sem API).
+    if (isTifluxDisconnected()) {
+      const companies = await this.prisma.company.findMany({
+        where: {
+          deletedAt: null,
+          tifluxClientId: { not: null },
+          ...(name?.trim()
+            ? {
+                OR: [
+                  { name: { contains: name.trim(), mode: 'insensitive' } },
+                  {
+                    tifluxClientName: {
+                      contains: name.trim(),
+                      mode: 'insensitive',
+                    },
+                  },
+                ],
+              }
+            : {}),
+        },
+        select: {
+          tifluxClientId: true,
+          tifluxClientName: true,
+          name: true,
+          status: true,
+        },
+        orderBy: { name: 'asc' },
+        take: 500,
+      });
+      return companies
+        .filter((c) => c.tifluxClientId != null)
+        .map((c) => ({
+          id: Number(c.tifluxClientId),
+          name: (c.tifluxClientName?.trim() || c.name).trim(),
+          social_name: c.name,
+          active: c.status,
+        }));
+    }
+
     const wantsAll = all === 'true' || all === '1';
     const parsedLimit = limit ? Number(limit) : undefined;
     const parsedOffset = offset ? Number(offset) : undefined;

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { PermissionModule } from '@prisma/client';
+import { isClientPortalRole } from '../../../common/security/client-portal-role';
 import type { AuthenticatedRequestUser } from '../auth-request-user';
 import {
   REQUIRE_PERMISSION_KEY,
@@ -15,11 +16,12 @@ import {
 
 /**
  * Regras de produto (sobrescrevem a matriz `permissions` do banco):
- * - REPORTS: somente ADMIN
- * - TICKETS canCreate: somente ADMIN
+ * - REPORTS: somente ADMIN (pack CLIENT com REPORTS ainda bloqueado no MVP)
  * - DASHBOARD canView: liberado para autenticados (escopo por empresa no service)
- * - CORREIO canView: não-CLIENT
+ * - CORREIO canView: não-CLIENT_*
  * - INVENTARIO/FINANCIAL/RENDIMENTO: defaults por role documentados abaixo
+ *
+ * Ver também: docs/PERMISSIONS_MATRIX.md
  */
 @Injectable()
 export class ModulePermissionGuard implements CanActivate {
@@ -47,23 +49,12 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
-    if (
-      meta.module === ('TICKETS' as PermissionModule) &&
-      meta.flag === 'canCreate'
-    ) {
-      throw new ForbiddenException(
-        'Criação de tickets e apontamentos disponível apenas para administradores.',
-      );
-    }
-
     if (meta.module === ('REPORTS' as PermissionModule)) {
       throw new ForbiddenException(
         'Relatórios disponíveis apenas para administradores.',
       );
     }
 
-    // Regra de produto: Dashboard é sempre visível para usuários não-admin autenticados.
-    // (O backend ainda aplica o escopo por empresa para CLIENT via DashboardService.)
     if (
       meta.module === ('DASHBOARD' as PermissionModule) &&
       meta.flag === 'canView'
@@ -71,11 +62,10 @@ export class ModulePermissionGuard implements CanActivate {
       return true;
     }
 
-    // Correio: caixa de pendências para colaboradores, PJ e admins.
     if (
       meta.module === ('CORREIO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role !== 'CLIENT'
+      !isClientPortalRole(user.role)
     ) {
       return true;
     }
@@ -83,7 +73,7 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('INVENTARIO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role === 'CLIENT'
+      isClientPortalRole(user.role)
     ) {
       const entry = user.permissions.find(
         (p) => p.module === ('INVENTARIO' as PermissionModule),
@@ -102,7 +92,7 @@ export class ModulePermissionGuard implements CanActivate {
     if (
       meta.module === ('RENDIMENTO' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role === 'CLIENT'
+      isClientPortalRole(user.role)
     ) {
       const entry = user.permissions.find(
         (p) => p.module === ('RENDIMENTO' as PermissionModule),
@@ -110,11 +100,10 @@ export class ModulePermissionGuard implements CanActivate {
       if (!entry || entry.canView) return true;
     }
 
-    // Financeiro: padrão liberado para cliente; matriz explícita pode revogar.
     if (
       meta.module === ('FINANCIAL' as PermissionModule) &&
       meta.flag === 'canView' &&
-      user.role === 'CLIENT'
+      isClientPortalRole(user.role)
     ) {
       const entry = user.permissions.find(
         (p) => p.module === ('FINANCIAL' as PermissionModule),
@@ -122,7 +111,6 @@ export class ModulePermissionGuard implements CanActivate {
       if (!entry || entry.canView) return true;
     }
 
-    // Justificativas na própria agenda (lacuna ou voluntária): colaborador só precisa canView.
     if (
       meta.module === ('RENDIMENTO' as PermissionModule) &&
       meta.flag === 'canEdit' &&

@@ -1,4 +1,4 @@
-import { IsEmail, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsOptional, IsString } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class LoginDto {
@@ -9,8 +9,26 @@ export class LoginDto {
   email: string;
 
   @IsString()
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   password: string;
+
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  totpCode?: string;
+
+  /** Confiar neste dispositivo e não pedir 2FA pelos próximos TOTP_TRUST_DAYS. */
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1)
+  rememberDevice?: boolean;
+
+  /**
+   * Backup do token de confiança (localStorage) quando o cookie httpOnly
+   * não é reenviado após expirar a sessão.
+   */
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  deviceTrustToken?: string;
 }

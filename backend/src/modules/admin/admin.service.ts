@@ -60,8 +60,12 @@ export class AdminService {
 
     const where = {
       ...(query.actorId ? { userId: query.actorId } : {}),
-      ...(query.entity ? { entity: { contains: query.entity, mode: 'insensitive' as const } } : {}),
-      ...(query.action ? { action: { contains: query.action, mode: 'insensitive' as const } } : {}),
+      ...(query.entity
+        ? { entity: { contains: query.entity, mode: 'insensitive' as const } }
+        : {}),
+      ...(query.action
+        ? { action: { contains: query.action, mode: 'insensitive' as const } }
+        : {}),
       ...(from || to
         ? {
             createdAt: {

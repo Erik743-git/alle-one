@@ -28,7 +28,9 @@ function signOAuthState(payload: OAuthStatePayload): string {
   return `${body}.${sig}`;
 }
 
-export function parseOAuthState(raw: string | undefined): OAuthStatePayload | null {
+export function parseOAuthState(
+  raw: string | undefined,
+): OAuthStatePayload | null {
   if (!raw?.includes('.')) return null;
   const [body, sig] = raw.split('.', 2);
   const expected = createHmac('sha256', oauthStateSecret())
@@ -147,7 +149,10 @@ export function oauthEmailsMatch(
   return hint.toLowerCase() === profileEmail.trim().toLowerCase();
 }
 
-export function oauthLoginRedirect(error?: string, firstAccess?: boolean): string {
+export function oauthLoginRedirect(
+  error?: string,
+  firstAccess?: boolean,
+): string {
   const base = getFrontendBaseUrl();
   if (error) {
     return `${base}/login?error=${encodeURIComponent(error)}`;
@@ -156,4 +161,86 @@ export function oauthLoginRedirect(error?: string, firstAccess?: boolean): strin
     return `${base}/primeiro-acesso`;
   }
   return `${base}/dashboard`;
+}
+
+/** Cookie httpOnly: OAuth autenticou, falta confirmar 2FA. */
+export const OAUTH_2FA_PENDING_COOKIE = 'alleone_oauth_2fa';
+
+type OAuth2faPendingPayload = {
+  sub: string;
+  exp: number;
+};
+
+function signOAuth2faPending(body: string): string {
+  return createHmac('sha256', oauthStateSecret())
+    .update(body)
+    .digest('base64url');
+}
+
+export function createOAuth2faPendingToken(userId: string): string {
+  const payload: OAuth2faPendingPayload = {
+    sub: userId,
+    exp: Date.now() + 10 * 60_000,
+  };
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  return `${body}.${signOAuth2faPending(body)}`;
+}
+
+export function parseOAuth2faPendingToken(
+  raw: string | undefined,
+): { userId: string } | null {
+  if (!raw?.includes('.')) return null;
+  const [body, sig] = raw.split('.', 2);
+  const expected = signOAuth2faPending(body);
+  try {
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(
+      Buffer.from(body, 'base64url').toString('utf8'),
+    ) as OAuth2faPendingPayload;
+    if (!payload?.sub || !payload?.exp || Date.now() > payload.exp) {
+      return null;
+    }
+    return { userId: payload.sub };
+  } catch {
+    return null;
+  }
+}
+
+function oauth2faCookieFlags() {
+  const secure =
+    process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase() !== 'false' &&
+    process.env.NODE_ENV === 'production';
+  return { secure } as const;
+}
+
+export function attachOAuth2faPendingCookie(
+  res: Response,
+  token: string,
+): void {
+  const { secure } = oauth2faCookieFlags();
+  res.cookie(OAUTH_2FA_PENDING_COOKIE, token, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 10 * 60_000,
+  });
+}
+
+export function clearOAuth2faPendingCookie(res: Response): void {
+  const { secure } = oauth2faCookieFlags();
+  res.clearCookie(OAUTH_2FA_PENDING_COOKIE, {
+    httpOnly: true,
+    secure,
+    sameSite: 'lax',
+    path: '/',
+  });
 }

@@ -5,12 +5,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ContractFileType, ContractStatus } from '@prisma/client';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import {
   CreateCompanyContractDto,
   UpdateCompanyContractDto,
+  type ContractSpecialtyLineDto,
 } from './dto/company-contract.dto';
 import { randomUUID } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
@@ -20,6 +22,7 @@ import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { StreamableFile } from '@nestjs/common';
 import type { AuthenticatedRequestUser as AuthUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
+import { DEFAULT_COMPANY_PACK_MODULES } from '../permissions/company-pack.constants';
 import { ZabbixService } from '../zabbix/zabbix.service';
 import {
   buildZabbixGroupSuggestions,
@@ -30,7 +33,7 @@ import {
   serializeZabbixGroupNames,
 } from './zabbix-groups.util';
 import type { ApplyZabbixGroupSuggestionItemDto } from './dto/zabbix-group-suggest.dto';
-import { assertAllowedUploadMime } from '../../common/upload.config';
+import { assertAllowedUpload } from '../../common/upload.config';
 
 const contractRelationsInclude = {
   contractFiles: {
@@ -47,12 +50,18 @@ const contractRelationsInclude = {
     },
     orderBy: { id: 'desc' as const },
   },
+  specialties: {
+    include: {
+      specialty: { select: { id: true, name: true, externalId: true } },
+    },
+    orderBy: { createdAt: 'asc' as const },
+  },
   classification: {
     select: {
       id: true,
       name: true,
       level: true,
-      serviceDesk: { select: { id: true, name: true } },
+      specialty: { select: { id: true, name: true } },
       parent: {
         select: {
           id: true,
@@ -80,7 +89,7 @@ export class CompaniesService {
       return null;
     }
 
-    const row = await this.prisma.serviceDeskClassification.findFirst({
+    const row = await this.prisma.specialtyClassification.findFirst({
       where: { id: classificationId, active: true },
       select: { id: true },
     });
@@ -88,6 +97,58 @@ export class CompaniesService {
       throw new BadRequestException('Classificação inválida ou inativa.');
     }
     return row.id;
+  }
+
+  private async validateSpecialtyLines(lines: ContractSpecialtyLineDto[]) {
+    if (lines.length === 0) return [];
+    const ids = lines.map((l) => l.specialtyId);
+    const unique = new Set(ids);
+    if (unique.size !== ids.length) {
+      throw new BadRequestException(
+        'Não é permitido repetir a mesma especialidade no contrato.',
+      );
+    }
+    const existing = await this.prisma.specialty.findMany({
+      where: { id: { in: ids }, deletedAt: null, active: true },
+      select: { id: true },
+    });
+    if (existing.length !== ids.length) {
+      throw new BadRequestException(
+        'Uma ou mais especialidades do contrato não existem.',
+      );
+    }
+    return lines;
+  }
+
+  private async replaceContractSpecialties(
+    contractId: string,
+    lines: ContractSpecialtyLineDto[],
+  ) {
+    await this.prisma.contractSpecialty.deleteMany({ where: { contractId } });
+    if (lines.length === 0) return;
+    await this.prisma.contractSpecialty.createMany({
+      data: lines.map((line) => ({
+        contractId,
+        specialtyId: line.specialtyId,
+        monthlyHours: line.monthlyHours,
+        unlimited: line.unlimited ?? false,
+        contractValue: line.contractValue,
+        excessHourPrice: line.excessHourPrice,
+      })),
+    });
+  }
+
+  /** Horas/preço legados no Contract quando não há linhas de especialidade. */
+  private legacyHoursFromDto(dto: {
+    monthlyHours?: number;
+    extraHourPrice?: string;
+    specialties?: ContractSpecialtyLineDto[];
+  }) {
+    const first = dto.specialties?.[0];
+    return {
+      monthlyHours: first?.monthlyHours ?? dto.monthlyHours ?? 0,
+      extraHourPrice: first?.excessHourPrice ?? dto.extraHourPrice ?? '0',
+    };
   }
 
   private normalizeString(value?: string | null) {
@@ -210,7 +271,7 @@ export class CompaniesService {
 
     if (existing) {
       throw new BadRequestException(
-        'Este cliente do TiFlux já está vinculado a outra empresa',
+        'Este cliente já está vinculado a outra empresa',
       );
     }
   }
@@ -302,6 +363,15 @@ export class CompaniesService {
         status: data.status ?? true,
         monitoringPriority: data.monitoringPriority ?? false,
       },
+    });
+
+    await this.prisma.companyModule.createMany({
+      data: DEFAULT_COMPANY_PACK_MODULES.map((module) => ({
+        companyId: created.id,
+        module,
+        enabled: true,
+      })),
+      skipDuplicates: true,
     });
 
     await this.audit.log({
@@ -540,18 +610,31 @@ export class CompaniesService {
       dto.classificationId,
     );
 
-    return this.prisma.contract.create({
+    const specialtyLines = await this.validateSpecialtyLines(
+      dto.specialties ?? [],
+    );
+    const legacy = this.legacyHoursFromDto(dto);
+
+    const created = await this.prisma.contract.create({
       data: {
         companyId: company.id,
         classificationId,
         title,
         description: dto.description?.trim() || null,
         status: dto.status ?? ContractStatus.ACTIVE,
-        monthlyHours: dto.monthlyHours,
-        extraHourPrice: dto.extraHourPrice,
+        monthlyHours: legacy.monthlyHours,
+        extraHourPrice: legacy.extraHourPrice,
         startDate,
         endDate,
       },
+    });
+
+    if (specialtyLines.length > 0) {
+      await this.replaceContractSpecialties(created.id, specialtyLines);
+    }
+
+    return this.prisma.contract.findUniqueOrThrow({
+      where: { id: created.id },
       include: contractRelationsInclude,
     });
   }
@@ -599,10 +682,29 @@ export class CompaniesService {
 
     let classificationId: string | null | undefined;
     if (dto.classificationId !== undefined) {
-      classificationId = await this.resolveClassificationId(dto.classificationId);
+      classificationId = await this.resolveClassificationId(
+        dto.classificationId,
+      );
     }
 
-    return this.prisma.contract.update({
+    const specialtyLines =
+      dto.specialties !== undefined
+        ? await this.validateSpecialtyLines(dto.specialties)
+        : undefined;
+
+    const legacyPatch =
+      dto.specialties !== undefined ||
+      dto.monthlyHours !== undefined ||
+      dto.extraHourPrice !== undefined
+        ? this.legacyHoursFromDto({
+            monthlyHours: dto.monthlyHours ?? existing.monthlyHours,
+            extraHourPrice:
+              dto.extraHourPrice ?? String(existing.extraHourPrice),
+            specialties: specialtyLines,
+          })
+        : null;
+
+    await this.prisma.contract.update({
       where: { id: existing.id },
       data: {
         ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
@@ -610,16 +712,24 @@ export class CompaniesService {
           ? { description: dto.description?.trim() || null }
           : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
-        ...(dto.monthlyHours !== undefined
-          ? { monthlyHours: dto.monthlyHours }
-          : {}),
-        ...(dto.extraHourPrice !== undefined
-          ? { extraHourPrice: dto.extraHourPrice }
+        ...(legacyPatch
+          ? {
+              monthlyHours: legacyPatch.monthlyHours,
+              extraHourPrice: legacyPatch.extraHourPrice,
+            }
           : {}),
         ...(dto.startDate !== undefined ? { startDate } : {}),
         ...(dto.endDate !== undefined ? { endDate } : {}),
         ...(dto.classificationId !== undefined ? { classificationId } : {}),
       },
+    });
+
+    if (specialtyLines !== undefined) {
+      await this.replaceContractSpecialties(existing.id, specialtyLines);
+    }
+
+    return this.prisma.contract.findUniqueOrThrow({
+      where: { id: existing.id },
       include: contractRelationsInclude,
     });
   }
@@ -647,7 +757,7 @@ export class CompaniesService {
     if (!file) {
       throw new BadRequestException('Arquivo não enviado');
     }
-    assertAllowedUploadMime(file.mimetype);
+    assertAllowedUpload(file);
 
     const company = await this.findOne(companyId);
     const contract = await this.prisma.contract.findFirst({
@@ -717,8 +827,11 @@ export class CompaniesService {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     const mime = (file.mimetype || '').toLowerCase();
     if (!mime.startsWith('image/')) {
-      throw new BadRequestException('Logo deve ser uma imagem (PNG, JPG, etc.).');
+      throw new BadRequestException(
+        'Logo deve ser uma imagem (PNG, JPG, etc.).',
+      );
     }
+    assertAllowedUpload(file);
     const company = await this.findOne(companyId);
 
     const maxBytes = 5 * 1024 * 1024;
@@ -766,7 +879,7 @@ export class CompaniesService {
   async downloadLogo(user: AuthenticatedRequestUser, companyId: string) {
     // ADMIN-only controller already, but keep minimal guard for future use
     if (
-      user.role === 'CLIENT' &&
+      isClientPortalRole(user.role) &&
       user.companyId &&
       user.companyId !== companyId
     ) {
@@ -911,7 +1024,9 @@ export class CompaniesService {
         continue;
       }
 
-      const resolved = await this.zabbix.resolveGroupByName(item.zabbixGroupName);
+      const resolved = await this.zabbix.resolveGroupByName(
+        item.zabbixGroupName,
+      );
       if (!resolved.exists || !resolved.name) {
         results.push({
           companyId: company.id,

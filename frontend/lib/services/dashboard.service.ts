@@ -129,6 +129,7 @@ export type DashboardCompleteResponse = {
   };
   summary: DashboardSummary;
   chamadosPorMes: DashboardChamadosMes[];
+  chamadosPorMesa?: Array<{ deskName: string; totalTickets: number }>;
   horasPorMes: DashboardHorasMes[];
   alertasPorMes: DashboardAlertasMes[];
   alertasPorSemana?: DashboardAlertasSemana[];
@@ -138,7 +139,7 @@ export type DashboardCompleteResponse = {
   hostsDetalhados: unknown[];
   templates: unknown[];
   eventosRecentes: unknown[];
-  /** Resumo estilo TiFlux (apontamentos no período). */
+  /** Resumo de horas trabalhadas (apontamentos no período). */
   resumoHorasTrabalhadas?: WorkHoursTifluxSummary | null;
   monthlyTrends?: DashboardMonthlyTrends | null;
 };
@@ -164,6 +165,8 @@ export type DashboardRequestParams = {
   start?: string;
   end?: string;
   companyId?: string | number | null;
+  viewMode?: "ALLE" | "INTERNAL";
+  deskNames?: string[];
 };
 
 function buildDashboardSearch(params: DashboardRequestParams) {
@@ -187,13 +190,29 @@ function buildDashboardSearch(params: DashboardRequestParams) {
     search.set("companyId", String(params.companyId));
   }
 
+  if (params.viewMode === "ALLE" || params.viewMode === "INTERNAL") {
+    search.set("viewMode", params.viewMode);
+  }
+
+  if (params.deskNames?.length) {
+    for (const desk of params.deskNames) {
+      if (desk.trim()) search.append("deskNames", desk.trim());
+    }
+  }
+
   return search.toString();
 }
 
-export function getCompleteDashboard(params: DashboardRequestParams) {
+export function getCompleteDashboard(
+  params: DashboardRequestParams,
+  options?: { includeHours?: boolean; includeCharts?: boolean },
+) {
   const query = buildDashboardSearch(params);
-
-  return apiRequest<DashboardCompleteResponse>(`/dashboard/complete?${query}&includeHours=true`);
+  const includeHours = options?.includeHours !== false;
+  const includeCharts = options?.includeCharts !== false;
+  return apiRequest<DashboardCompleteResponse>(
+    `/dashboard/complete?${query}&includeHours=${includeHours ? "true" : "false"}&includeCharts=${includeCharts ? "true" : "false"}`,
+  );
 }
 
 export function getDashboardHours(params: DashboardRequestParams) {

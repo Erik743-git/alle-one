@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { initSentry } from './common/sentry/sentry';
 
 async function listenWithFallback(
   app: { listen: (port: number) => Promise<unknown> },
@@ -34,6 +35,7 @@ async function listenWithFallback(
 }
 
 async function bootstrap() {
+  initSentry();
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';
 
@@ -44,13 +46,22 @@ async function bootstrap() {
     adapter.set?.('trust proxy', 1);
   }
 
-  const apiPrefix = process.env.API_GLOBAL_PREFIX?.trim().replace(/^\/+|\/+$/g, '');
+  const apiPrefix = process.env.API_GLOBAL_PREFIX?.trim().replace(
+    /^\/+|\/+$/g,
+    '',
+  );
   if (apiPrefix) {
     app.setGlobalPrefix(apiPrefix);
   }
 
   app.use(cookieParser());
-  app.use(helmet());
+  // CORP same-origin (default do helmet) bloqueia o front em outra origem/porta
+  // (ex.: localhost:3000 → API :3002) de ler a resposta no browser.
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const corsOriginsRaw =
@@ -91,6 +102,12 @@ async function bootstrap() {
 
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document);
+  }
+
+  if (isProd && process.env.TIFLUX_UNSAFE_ENDPOINTS === 'true') {
+    throw new Error(
+      'TIFLUX_UNSAFE_ENDPOINTS=true é proibido em produção. Remova ou defina false.',
+    );
   }
 
   const basePort = Number(process.env.PORT) || 3003;

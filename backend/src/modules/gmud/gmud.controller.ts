@@ -136,7 +136,11 @@ export class GmudController {
   @RequirePermission(PermissionModule.GMUD, 'canApprove')
   @Roles('ADMIN')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  @AuditMeta({ entity: 'Gmud', action: 'APPROVE_ON_BEHALF', entityIdParam: 'id' })
+  @AuditMeta({
+    entity: 'Gmud',
+    action: 'APPROVE_ON_BEHALF',
+    entityIdParam: 'id',
+  })
   @UseInterceptors(FileInterceptor('evidence', multerMemoryLimits))
   approveOnBehalf(
     @CurrentUser() user: AuthenticatedRequestUser,
@@ -182,7 +186,11 @@ export class GmudController {
   @RequirePermission(PermissionModule.GMUD, 'canEdit')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
-  @AuditMeta({ entity: 'GmudAttachment', action: 'CREATE', entityIdParam: 'id' })
+  @AuditMeta({
+    entity: 'GmudAttachment',
+    action: 'CREATE',
+    entityIdParam: 'id',
+  })
   @UseInterceptors(FileInterceptor('file', multerMemoryLimits))
   addAttachment(
     @CurrentUser() user: AuthenticatedRequestUser,

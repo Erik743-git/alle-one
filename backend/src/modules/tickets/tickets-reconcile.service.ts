@@ -4,6 +4,7 @@ import {
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isTifluxDisconnected } from './tickets-portal.config';
 import { TicketsOutboxService } from './tickets-outbox.service';
 
 export type TicketReconcileIssueKind =
@@ -48,7 +49,9 @@ export class TicketsReconcileService {
     private readonly outbox: TicketsOutboxService,
   ) {}
 
-  async reconcile(options?: { autoRetry?: boolean }): Promise<TicketReconcileResult> {
+  async reconcile(options?: {
+    autoRetry?: boolean;
+  }): Promise<TicketReconcileResult> {
     const pendingStaleMinutes = Number(
       process.env.TIFLUX_OUTBOX_PENDING_STALE_MINUTES ?? 30,
     );
@@ -104,25 +107,30 @@ export class TicketsReconcileService {
       });
     }
 
-    const pendingAppointments = await this.prisma.portalTicketAppointment.findMany({
-      where: {
-        syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
-      },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
-      select: {
-        id: true,
-        ticketNumber: true,
-        createdAt: true,
-      },
-    });
+    const pendingAppointments =
+      await this.prisma.portalTicketAppointment.findMany({
+        where: {
+          syncStatus: PortalTicketAppointmentSyncStatus.PENDING_TIFLUX,
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        select: {
+          id: true,
+          ticketNumber: true,
+          createdAt: true,
+        },
+      });
 
     for (const row of pendingAppointments) {
+      if (isTifluxDisconnected()) {
+        // Portal-only: pending sync não é mais um problema operacional.
+        continue;
+      }
       issues.push({
         kind: 'APPOINTMENT_PENDING_SYNC',
         ticketNumber: row.ticketNumber,
         portalAppointmentId: row.id,
-        message: 'Apontamento portal aguardando sincronização com TiFlux',
+        message: 'Apontamento aguardando sincronização',
         createdAt: row.createdAt.toISOString(),
       });
     }
@@ -142,7 +150,7 @@ export class TicketsReconcileService {
       },
     });
 
-    if (syncedWithId.length > 0) {
+    if (syncedWithId.length > 0 && !isTifluxDisconnected()) {
       const pairs = syncedWithId
         .map((row) => ({
           portalId: row.id,
@@ -158,7 +166,7 @@ export class TicketsReconcileService {
           kind: 'APPOINTMENT_MISSING_IN_TIFLUX',
           ticketNumber: row.ticketNumber,
           portalAppointmentId: row.portalId,
-          message: `Apontamento portal marcado SYNCED (id TiFlux ${row.externalId}) ausente em tiflux.ticket_appointments`,
+          message: `Apontamento marcado SYNCED (id ${row.externalId}) ausente no espelho externo`,
           createdAt: row.updatedAt.toISOString(),
         });
       }
@@ -167,8 +175,9 @@ export class TicketsReconcileService {
     const summary = {
       total: issues.length,
       outboxFailed: issues.filter((i) => i.kind === 'OUTBOX_FAILED').length,
-      outboxPendingStale: issues.filter((i) => i.kind === 'OUTBOX_PENDING_STALE')
-        .length,
+      outboxPendingStale: issues.filter(
+        (i) => i.kind === 'OUTBOX_PENDING_STALE',
+      ).length,
       appointmentPendingSync: issues.filter(
         (i) => i.kind === 'APPOINTMENT_PENDING_SYNC',
       ).length,

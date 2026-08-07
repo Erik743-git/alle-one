@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Filter } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,10 +36,12 @@ export function MailboxKindFilterModal({
   countsByKind = {},
 }: MailboxKindFilterModalProps) {
   const [draft, setDraft] = useState<MailboxNotificationKind[]>(selected);
+  const [wasOpen, setWasOpen] = useState(open);
 
-  useEffect(() => {
+  if (open !== wasOpen) {
+    setWasOpen(open);
     if (open) setDraft(selected);
-  }, [open, selected]);
+  }
 
   const allSelected = draft.length === ALL_MAILBOX_KINDS.length;
 

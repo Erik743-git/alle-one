@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { MailService } from '../../mail/mail.service';
+import { EmailTemplatesService } from '../../mail/email-templates.service';
 
 export type GmudPendingApprovalMailPayload = {
   gmudId: string;
@@ -11,7 +11,7 @@ export type GmudPendingApprovalMailPayload = {
 
 @Injectable()
 export class GmudMailService {
-  constructor(private readonly mail: MailService) {}
+  constructor(private readonly templates: EmailTemplatesService) {}
 
   async notifyApproversGmudPendingApproval(
     payload: GmudPendingApprovalMailPayload,
@@ -24,17 +24,11 @@ export class GmudMailService {
       return;
     }
 
-    const subject = `GMUD #${payload.gmudCode} aguardando aprovação`;
-    const portalUrl = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
-    const link = `${portalUrl}/gmud/${payload.gmudId}`;
-
-    const text = `A GMUD #${payload.gmudCode} está aguardando sua aprovação.\n\nEmpresa: ${payload.companyName}\n\nAcesse: ${link}\n`;
-
-    await this.mail.sendMail({
+    await this.templates.sendGmudNotify({
       to: uniqueEmails,
-      subject,
-      text,
-      html: `<p>A GMUD <strong>#${payload.gmudCode}</strong> está aguardando sua aprovação.</p><p><strong>Empresa:</strong> ${payload.companyName}</p><p><a href="${link}">Acessar GMUD no portal</a></p>`,
+      gmudCode: payload.gmudCode,
+      gmudId: payload.gmudId,
+      companyName: payload.companyName,
     });
   }
 }

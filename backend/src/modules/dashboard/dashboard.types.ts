@@ -44,11 +44,18 @@ export type AppointmentLike = {
   [key: string]: unknown;
 };
 
+/** Visão do cliente no dashboard: Alle (ambiente) vs tickets internos dos funcionários. */
+export type DashboardClientViewMode = 'ALLE' | 'INTERNAL';
+
 export type DashboardFilters = {
   group: string;
   start?: string;
   end?: string;
   companyId?: string;
+  /** CLIENT_*: filtra tickets Alle vs criados por funcionários do portal. */
+  viewMode?: DashboardClientViewMode;
+  /** Filtra mesas (desk_name). Vazio = todas. */
+  deskNames?: string[];
 };
 
 export type DashboardSummary = {
@@ -123,6 +130,8 @@ export type DashboardResponse = {
     start: string;
     end: string;
     companyId: string | null;
+    viewMode?: string | null;
+    deskNames?: string[];
   };
   summary: DashboardSummary;
   chamadosPorMes: MonthlyTicketRow[];

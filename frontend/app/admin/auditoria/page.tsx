@@ -110,7 +110,7 @@ export default function AdminAuditoriaPage() {
               <CardContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">
                   Recalcula lacunas e almoço persistidos com as regras atuais (últimos 6 meses,
-                  todos os colaboradores com TiFlux). Não altera HE/plantão já aprovados.
+                  todos os colaboradores ativos). Não altera HE/plantão já aprovados.
                 </p>
                 <Button
                   type="button"

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarDays, Search, Settings2, Users } from "lucide-react";
+import { CalendarDays, Search, Settings2, Ticket, Users } from "lucide-react";
 
 import { ApontamentosAdminHub } from "@/components/apontamentos/apontamentos-admin-hub";
 import { ApontamentosCollaboratorListSettingsSheet } from "@/components/apontamentos/apontamentos-collaborator-list-settings-sheet";
@@ -18,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getStoredUser } from "@/lib/session";
 import {
+  isClientGestorRole,
+  isClientMemberRole,
   isCollaboratorRole,
   isPjRole,
   roleDisplayLabel,
@@ -25,6 +27,7 @@ import {
 import { isClient } from "@/lib/access-control";
 import {
   APONTAMENTOS_ADMIN_SUBTITLE,
+  APONTAMENTOS_GESTOR_SUBTITLE,
   APONTAMENTOS_MONTH_HOURS_NOTE,
 } from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
@@ -35,11 +38,21 @@ import {
   type RendimentoCollaboratorListPreference,
 } from "@/lib/services/rendimento.service";
 
+type CompanyEmployee = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  clientRole: string;
+  status: string;
+};
+
 export default function ApontamentosPage() {
   const router = useRouter();
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
   const isClientUser = isClient();
+  const isGestor = isClientGestorRole(authUser?.role);
 
   const [loading, setLoading] = useState(true);
   const [pendingOvertimeCount, setPendingOvertimeCount] = useState<
@@ -55,6 +68,7 @@ export default function ApontamentosPage() {
   const [collaborators, setCollaborators] = useState<RendimentoCollaborator[]>(
     [],
   );
+  const [employees, setEmployees] = useState<CompanyEmployee[]>([]);
   const [listPreferences, setListPreferences] = useState<
     RendimentoCollaboratorListPreference[] | null
   >(null);
@@ -75,8 +89,18 @@ export default function ApontamentosPage() {
           router.replace(`/apontamentos/${authUser.id}`);
           return;
         }
-        if (isClientUser) {
+        if (isClientUser && isClientMemberRole(authUser?.role)) {
           router.replace("/financeiro");
+          return;
+        }
+        if (isClientUser && !isGestor) {
+          router.replace("/financeiro");
+          return;
+        }
+        if (isGestor) {
+          setLoading(true);
+          const data = await rendimentoService.listCompanyEmployees();
+          setEmployees(ensureArray(data));
           return;
         }
         if (!isAdmin) {
@@ -102,7 +126,7 @@ export default function ApontamentosPage() {
         setLoading(false);
       }
     })();
-  }, [authUser?.id, authUser?.role, isAdmin, isClientUser, router]);
+  }, [authUser?.id, authUser?.role, isAdmin, isClientUser, isGestor, router]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -169,6 +193,123 @@ export default function ApontamentosPage() {
       return haystack.includes(term);
     });
   }, [visibleCollaborators, search]);
+
+  const filteredEmployees = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return employees;
+    return employees.filter((item) => {
+      const haystack = [item.name, item.email].join(" ").toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [employees, search]);
+
+  if (isGestor) {
+    return (
+      <ProtectedPage>
+        <PermissionGate module="RENDIMENTO">
+          <AppShell>
+            <div className="font-sans w-full space-y-8">
+              <PageHeader
+                icon={<Users size={24} />}
+                title="Apontamentos"
+                description={APONTAMENTOS_GESTOR_SUBTITLE}
+              />
+              <Card>
+                <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <CardTitle className="text-lg">Funcionários</CardTitle>
+                  <div className="relative w-full sm:max-w-xs">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Buscar nome ou e-mail..."
+                      className="h-11 pl-9"
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="space-y-3">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <Skeleton key={i} className="h-12 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="overflow-x-scroll rounded-xl border border-border [scrollbar-gutter:stable]">
+                      <table className="w-full min-w-[640px] text-left font-sans text-sm">
+                        <thead className="bg-muted/40 text-muted-foreground">
+                          <tr>
+                            <th className="px-4 py-3 text-xs font-semibold uppercase">
+                              Nome
+                            </th>
+                            <th className="px-4 py-3 text-xs font-semibold uppercase">
+                              E-mail
+                            </th>
+                            <th className="px-4 py-3 text-xs font-semibold uppercase">
+                              Perfil
+                            </th>
+                            <th className="px-4 py-3 text-right text-xs font-semibold uppercase">
+                              Chamados
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredEmployees.length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={4}
+                                className="px-4 py-8 text-center text-muted-foreground"
+                              >
+                                Nenhum funcionário vinculado a esta empresa.
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredEmployees.map((item) => (
+                              <tr
+                                key={item.id}
+                                className="border-t border-border hover:bg-muted/20"
+                              >
+                                <td className="px-4 py-3 font-medium">
+                                  {item.name}
+                                </td>
+                                <td className="px-4 py-3 text-muted-foreground">
+                                  {item.email}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {roleDisplayLabel(item.role)}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <Button asChild size="sm" variant="outline">
+                                    <Link
+                                      href={`/tickets?q=${encodeURIComponent(item.email)}`}
+                                    >
+                                      <Ticket className="mr-2 size-4" />
+                                      Ver chamados
+                                    </Link>
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Horas da equipe Alle:{" "}
+                    <Link href="/financeiro" className="underline">
+                      Financeiro
+                    </Link>
+                    .
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </AppShell>
+        </PermissionGate>
+      </ProtectedPage>
+    );
+  }
 
   return (
     <ProtectedPage>

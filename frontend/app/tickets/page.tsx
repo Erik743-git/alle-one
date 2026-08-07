@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Filter, Loader2, Plus, RefreshCw, Search, Ticket } from "lucide-react";
+import { Filter, Plus, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
+import { PreTicketsBadge, refreshPreTicketsBadge } from "@/components/layout/pre-tickets-badge";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
@@ -18,9 +19,12 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   canCreateTicket,
+  isClient,
+  isClientGestor,
+  isClientMember,
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
-import { TICKETS_LIST_SUBTITLE } from "@/lib/module-copy";
+import { TICKETS_LIST_SUBTITLE, TICKETS_CLIENT_LIST_SUBTITLE } from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -29,6 +33,7 @@ import {
   type TicketListResponse,
   type TicketsListParams,
 } from "@/lib/services/tickets.service";
+import { useRouter } from "next/navigation";
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -44,12 +49,15 @@ function formatWhen(iso: string | null) {
 }
 
 export default function TicketsPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<TicketListResponse | null>(null);
   const [catalogs, setCatalogs] = useState<TicketFilterCatalogs | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [includeAllResponsibles, setIncludeAllResponsibles] = useState(false);
+  const [includeAllResponsibles, setIncludeAllResponsibles] = useState(
+    () => isClientGestor(),
+  );
 
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
@@ -108,6 +116,7 @@ export default function TicketsPage() {
       ]);
       setData(list);
       if (!catalogs) setCatalogs(cats);
+      refreshPreTicketsBadge();
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível carregar os tickets.",
@@ -177,9 +186,13 @@ export default function TicketsPage() {
               icon={<Ticket size={24} />}
               title="Chamados"
               description={
-                canCreateTicket()
-                  ? TICKETS_LIST_SUBTITLE
-                  : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
+                isClientMember()
+                  ? "Chamados em que você é solicitante, criador ou está em cópia."
+                  : isClientGestor()
+                    ? TICKETS_CLIENT_LIST_SUBTITLE
+                    : canCreateTicket()
+                      ? TICKETS_LIST_SUBTITLE
+                      : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
               }
               actions={
                 <>
@@ -188,6 +201,14 @@ export default function TicketsPage() {
                       <Link href="/tickets/new">
                         <Plus className="mr-2 size-4" />
                         Novo chamado
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {!isClient() ? (
+                    <Button asChild variant="outline" className="relative">
+                      <Link href="/tickets/pre-tickets" className="inline-flex items-center">
+                        Pré-tickets
+                        <PreTicketsBadge />
                       </Link>
                     </Button>
                   ) : null}
@@ -208,11 +229,42 @@ export default function TicketsPage() {
 
             <Card className="overflow-visible">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="text-lg">
-                  {mineOnly
-                    ? "Meus chamados"
-                    : "Busca ampliada"}
-                </CardTitle>
+                <div className="space-y-2">
+                  <CardTitle className="text-lg">
+                    {isClientMember()
+                      ? "Meus chamados"
+                      : isClientGestor()
+                        ? "Chamados da empresa"
+                        : mineOnly
+                          ? "Meus chamados"
+                          : "Todos os chamados abertos"}
+                  </CardTitle>
+                  {!isClient() ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={mineOnly ? "default" : "outline"}
+                        className="h-8"
+                        onClick={() => {
+                          setIncludeAllResponsibles(false);
+                          setResponsibleExternalId("");
+                        }}
+                      >
+                        Meus tickets
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={!mineOnly ? "default" : "outline"}
+                        className="h-8"
+                        onClick={() => setIncludeAllResponsibles(true)}
+                      >
+                        Todos os tickets
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
                 <Button
                   type="button"
                   size="sm"
@@ -241,17 +293,19 @@ export default function TicketsPage() {
 
                 {showAdvanced ? (
                   <div className="space-y-4">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                      <FlipCheckbox
-                        checked={includeAllResponsibles}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setIncludeAllResponsibles(checked);
-                          if (!checked) setResponsibleExternalId("");
-                        }}
-                      />
-                      Incluir chamados de outros responsáveis
-                    </label>
+                    {!isClient() ? (
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                        <FlipCheckbox
+                          checked={includeAllResponsibles}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setIncludeAllResponsibles(checked);
+                            if (!checked) setResponsibleExternalId("");
+                          }}
+                        />
+                        Incluir chamados de outros responsáveis
+                      </label>
+                    ) : null}
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
@@ -415,15 +469,13 @@ export default function TicketsPage() {
                           {group.tickets.map((ticket) => (
                             <tr
                               key={`${group.key}-${ticket.ticketNumber}`}
-                              className="border-b border-border/60 hover:bg-muted/20"
+                              className="cursor-pointer border-b border-border/60 hover:bg-muted/20"
+                              onClick={() =>
+                                router.push(`/tickets/${ticket.ticketNumber}`)
+                              }
                             >
-                              <td className="px-4 py-2">
-                                <Link
-                                  href={`/tickets/${ticket.ticketNumber}`}
-                                  className="font-semibold text-primary hover:underline"
-                                >
-                                  #{ticket.ticketNumber}
-                                </Link>
+                              <td className="px-4 py-2 font-semibold text-primary">
+                                #{ticket.ticketNumber}
                               </td>
                               <td className="max-w-[280px] truncate px-4 py-2">
                                 {ticket.title ?? "—"}
