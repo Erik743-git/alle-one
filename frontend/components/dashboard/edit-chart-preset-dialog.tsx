@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { notifyError, notifySuccess } from "@/lib/notify";
@@ -123,21 +122,18 @@ export function EditChartPresetDialog({
   onSaved,
 }: Props) {
   const [chartType, setChartType] = useState<string>(initialChartType);
-  const [periodDays, setPeriodDays] = useState(String(initialPeriodDays));
   const [selectedDesks, setSelectedDesks] = useState<string[]>(initialDeskNames);
   const [saving, setSaving] = useState(false);
 
   const showDesks = chartKey === "CHAMADOS";
-  const showPeriod = chartKey === "CHAMADOS";
   const chartOptions =
     chartKey === "CHAMADOS" ? CHART_OPTIONS_FULL : CHART_OPTIONS_BASIC;
 
   useEffect(() => {
     if (!open) return;
     setChartType(initialChartType);
-    setPeriodDays(String(initialPeriodDays));
     setSelectedDesks(initialDeskNames);
-  }, [open, initialChartType, initialPeriodDays, initialDeskNames, chartKey]);
+  }, [open, initialChartType, initialDeskNames, chartKey]);
 
   const deskOptions = useMemo(
     () => availableDesks.map((d) => ({ value: d, label: d })),
@@ -154,11 +150,6 @@ export function EditChartPresetDialog({
       notifyError("Selecione uma empresa antes de salvar o gráfico.");
       return;
     }
-    const days = Number(periodDays);
-    if (showPeriod && (!Number.isFinite(days) || days < 7 || days > 365)) {
-      notifyError("Período deve ser entre 7 e 365 dias.");
-      return;
-    }
     try {
       setSaving(true);
       await dashboardChartPresetsService.upsert({
@@ -166,7 +157,7 @@ export function EditChartPresetDialog({
         chartKey,
         chartType,
         deskNames: showDesks ? selectedDesks : [],
-        periodDays: showPeriod ? Math.round(days) : initialPeriodDays,
+        periodDays: initialPeriodDays,
         companyId,
       });
       notifySuccess(`Preferência de “${chartTitle}” salva.`);
@@ -174,7 +165,7 @@ export function EditChartPresetDialog({
         chartKey,
         chartType: (chartType as DashboardChartType) || "bar",
         deskNames: showDesks ? selectedDesks : [],
-        periodDays: showPeriod ? Math.round(days) : initialPeriodDays,
+        periodDays: initialPeriodDays,
       });
       onOpenChange(false);
     } catch (err) {
@@ -189,11 +180,11 @@ export function EditChartPresetDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg gap-0 overflow-hidden p-0 sm:max-w-xl">
-        <DialogHeader className="border-b border-border px-6 py-4">
+        <DialogHeader className="border-b border-border px-5 py-4 sm:px-6">
           <DialogTitle>Editar gráfico — {chartTitle}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-5 px-6 py-5 sm:grid-cols-[1fr_160px]">
+        <div className="grid gap-5 px-5 py-5 sm:grid-cols-[1fr_160px] sm:px-6">
           <div className="space-y-4">
             <div>
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -208,20 +199,6 @@ export function EditChartPresetDialog({
                 preserveOrder
               />
             </div>
-            {showPeriod ? (
-              <div>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Período (dias)
-                </p>
-                <Input
-                  type="number"
-                  min={7}
-                  max={365}
-                  value={periodDays}
-                  onChange={(e) => setPeriodDays(e.target.value)}
-                />
-              </div>
-            ) : null}
             {showDesks ? (
               <div>
                 <div className="mb-1.5 flex items-center justify-between gap-2">
@@ -239,8 +216,8 @@ export function EditChartPresetDialog({
                 <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
                   {deskOptions.length === 0 ? (
                     <p className="px-2 py-3 text-xs text-muted-foreground">
-                      Nenhuma mesa no período atual. Salve o tipo/período e
-                      atualize o dashboard.
+                      Nenhuma mesa disponível no momento. Atualize o dashboard e
+                      tente de novo.
                     </p>
                   ) : (
                     deskOptions.map((desk) => {
@@ -297,7 +274,7 @@ export function EditChartPresetDialog({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-border bg-muted/20 px-6 py-4">
+        <DialogFooter className="!mx-0 !mb-0 shrink-0 gap-2 border-t border-border bg-card px-5 pt-4 pb-6 sm:flex-row sm:justify-end sm:px-6 sm:pb-6">
           <Button
             type="button"
             variant="ghost"
