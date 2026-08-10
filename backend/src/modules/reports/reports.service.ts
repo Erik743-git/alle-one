@@ -43,7 +43,7 @@ import { toReportFormat, toReportType } from './reports-type.helper';
 import {
   billingRowsToCsv,
   billingRowsToXlsx,
-  buildBillingReportRows,
+  buildBillingReportRowsForCompanies,
 } from './reports-billing';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5', '6']);
@@ -2858,6 +2858,8 @@ export class ReportsService {
       end?: string;
       userId?: string | null;
       companyIds?: string[];
+      specialtyIds?: string[];
+      onlyExcess?: boolean;
     },
   ) {
     const companyId = payload.companyId?.trim();
@@ -2874,14 +2876,17 @@ export class ReportsService {
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
     const isInventario = type === '5';
     const isCobranca = type === '6';
-    const inventarioScope = isInventario
-      ? await this.inventario.resolveScope(scopeCompanyIds, {
-          companyId,
-          companyIds: payload.companyIds,
-        })
-      : null;
+    const multiCompanyScope =
+      isInventario || isCobranca
+        ? await this.inventario.resolveScope(scopeCompanyIds, {
+            companyId,
+            companyIds: payload.companyIds,
+          })
+        : null;
+    const inventarioScope = isInventario ? multiCompanyScope : null;
+    const cobrancaScope = isCobranca ? multiCompanyScope : null;
 
-    if ((type === '4' || isCobranca) && companyId === ALL_COMPANIES_REPORT_ID) {
+    if (type === '4' && companyId === ALL_COMPANIES_REPORT_ID) {
       throw new BadRequestException(
         'Este relatório exige uma empresa específica.',
       );
@@ -2892,13 +2897,22 @@ export class ReportsService {
         ? await this.resolveRendimentoCompanyScope(user, companyId)
         : null;
 
-    if (type === '4' || isCobranca) {
+    if (type === '4') {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
+    const specialtyIds = [
+      ...new Set(
+        (payload.specialtyIds ?? [])
+          .map((id) => String(id).trim())
+          .filter(Boolean),
+      ),
+    ];
+    const onlyExcess = Boolean(payload.onlyExcess);
+
     const reportCompanyId =
       rendimentoScope?.representativeCompanyId ??
-      inventarioScope?.representativeCompanyId ??
+      multiCompanyScope?.representativeCompanyId ??
       (companyId === ALL_COMPANIES_REPORT_ID ? '' : companyId);
     if (!reportCompanyId) {
       throw new BadRequestException(
@@ -2933,17 +2947,17 @@ export class ReportsService {
     const reportId = randomUUID();
     const uploadsDir = join(process.cwd(), 'uploads', 'reports', reportId);
 
-    const companyPart = isInventario
-      ? inventarioScope!.allCompanies
+    const companyPart = multiCompanyScope
+      ? multiCompanyScope.allCompanies
         ? 'todas-empresas'
-        : inventarioScope!.companyIds.length > 1
+        : multiCompanyScope.companyIds.length > 1
           ? 'multiplas-empresas'
-          : safeFilenamePart(inventarioScope!.scopeLabel) || 'empresa'
+          : safeFilenamePart(multiCompanyScope.scopeLabel) || 'empresa'
       : rendimentoScope?.allCompanies
         ? 'todas-empresas'
         : safeFilenamePart(company.name) || 'empresa';
     const companyLabel =
-      inventarioScope?.scopeLabel ??
+      multiCompanyScope?.scopeLabel ??
       rendimentoScope?.displayName ??
       company.name;
     const typePart =
@@ -2956,10 +2970,12 @@ export class ReportsService {
       : `${companyPart}-${typePart}-${startPart}-a-${endPart}`;
 
     const billingRows = isCobranca
-      ? await buildBillingReportRows(this.prisma, {
-          companyId,
+      ? await buildBillingReportRowsForCompanies(this.prisma, {
+          companyIds: cobrancaScope!.companyIds,
           start: range.start,
           end: range.end,
+          onlyExcess,
+          specialtyIds: specialtyIds.length ? specialtyIds : undefined,
         })
       : null;
 
@@ -3095,16 +3111,22 @@ export class ReportsService {
           companyId,
           companyLabel,
           ...(rendimentoScope?.allCompanies ? { allCompanies: true } : {}),
-          ...(inventarioScope?.allCompanies ? { allCompanies: true } : {}),
-          ...(inventarioScope &&
-          inventarioScope.companyIds.length > 1 &&
-          !inventarioScope.allCompanies
+          ...(multiCompanyScope?.allCompanies ? { allCompanies: true } : {}),
+          ...(multiCompanyScope &&
+          multiCompanyScope.companyIds.length > 1 &&
+          !multiCompanyScope.allCompanies
             ? {
-                companyIds: inventarioScope.companyIds,
+                companyIds: multiCompanyScope.companyIds,
                 multiCompany: true,
               }
             : {}),
           ...(isInventario ? { noPeriod: true } : {}),
+          ...(isCobranca
+            ? {
+                onlyExcess,
+                ...(specialtyIds.length ? { specialtyIds } : {}),
+              }
+            : {}),
           type,
           format,
           start: range.start.toISOString(),

@@ -90,6 +90,8 @@ export const reportsService = {
     end?: string;
     userId?: string;
     companyIds?: string[];
+    specialtyIds?: string[];
+    onlyExcess?: boolean;
   }) {
     return apiRequest<ReportRow>("/reports/generate", {
       method: "POST",

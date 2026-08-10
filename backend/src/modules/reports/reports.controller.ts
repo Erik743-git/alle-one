@@ -72,6 +72,8 @@ export class ReportsController {
       end?: string;
       userId?: string | null;
       companyIds?: string[];
+      specialtyIds?: string[];
+      onlyExcess?: boolean;
     },
   ) {
     return this.reports.generateReport(user, body);
