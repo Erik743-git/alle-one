@@ -1,12 +1,12 @@
 /**
  * k6 — smoke/load Alle One (rotas reais autenticadas)
  *
- * Fluxo por VU:
- *  1) login 1x (cookie `alleone_access`) — evita throttle 10/min
- *  2) GET /api/auth/me
+ * Fluxo:
+ *  1) setup(): health + login **1x** (cookie `alleone_access`) — evita throttle 10/min
+ *  2) cada VU reutiliza o cookie do setup (sem novo login por iteração)
  *  3) GET /api/tickets (+ catalogs/filters)
  *  4) GET /api/gmuds (+ companies)
- *  5) GET /api/dashboard/complete (se ZABBIX_GROUP ou COMPANY_ID+group resolvido)
+ *  5) GET /api/dashboard/complete (se ZABBIX_GROUP)
  *
  * Uso (teste — não rode carga pesada em produção):
  *
@@ -71,12 +71,179 @@ function jsonHeaders() {
   return { 'Content-Type': 'application/json', Accept: 'application/json' };
 }
 
+function authHeaders(accessCookie) {
+  return {
+    Accept: 'application/json',
+    Cookie: `alleone_access=${accessCookie}`,
+  };
+}
+
+function extractCookieValue(res, name) {
+  const jarCookies = res.cookies && res.cookies[name];
+  if (jarCookies) {
+    const entry = Array.isArray(jarCookies) ? jarCookies[0] : jarCookies;
+    if (entry && entry.value) return String(entry.value);
+  }
+  const raw = res.headers['Set-Cookie'] || res.headers['set-cookie'];
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  for (const line of list) {
+    const m = String(line).match(new RegExp(`${name}=([^;]+)`));
+    if (m) return decodeURIComponent(m[1]);
+  }
+  return '';
+}
+
+function hitTickets(accessCookie) {
+  group('tickets', () => {
+    const list = http.get(`${API}/tickets?limit=50`, {
+      headers: authHeaders(accessCookie),
+      tags: { name: 'GET /api/tickets' },
+    });
+    ticketsMs.add(list.timings.duration);
+    const ok = check(list, { 'tickets list 200': (r) => r.status === 200 });
+    authedFail.add(ok ? 0 : 1);
+
+    const catalogs = http.get(`${API}/tickets/catalogs/filters`, {
+      headers: authHeaders(accessCookie),
+      tags: { name: 'GET /api/tickets/catalogs/filters' },
+    });
+    check(catalogs, {
+      'tickets catalogs 200': (r) => r.status === 200,
+    });
+
+    try {
+      const data = list.json();
+      const groups = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.groups)
+          ? data.groups
+          : Array.isArray(data?.items)
+            ? data.items
+            : [];
+      let ticketNumber = null;
+      for (const g of groups) {
+        const tickets = Array.isArray(g?.tickets)
+          ? g.tickets
+          : Array.isArray(g?.items)
+            ? g.items
+            : Array.isArray(g)
+              ? g
+              : [];
+        const first = tickets[0] || g;
+        const n =
+          first?.ticketNumber ??
+          first?.ticket_number ??
+          first?.number ??
+          null;
+        if (n != null) {
+          ticketNumber = n;
+          break;
+        }
+      }
+      if (ticketNumber != null) {
+        const detail = http.get(`${API}/tickets/${ticketNumber}`, {
+          headers: authHeaders(accessCookie),
+          tags: { name: 'GET /api/tickets/:number' },
+        });
+        check(detail, {
+          'ticket detail 200': (r) => r.status === 200,
+        });
+      }
+    } catch (_) {
+      /* ignore parse */
+    }
+  });
+}
+
+function hitGmud(accessCookie, companyId) {
+  group('gmud', () => {
+    const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
+    const list = http.get(`${API}/gmuds${qs}`, {
+      headers: authHeaders(accessCookie),
+      tags: { name: 'GET /api/gmuds' },
+    });
+    gmudMs.add(list.timings.duration);
+    const ok = check(list, { 'gmuds list 200': (r) => r.status === 200 });
+    authedFail.add(ok ? 0 : 1);
+
+    const companies = http.get(`${API}/gmuds/companies`, {
+      headers: authHeaders(accessCookie),
+      tags: { name: 'GET /api/gmuds/companies' },
+    });
+    check(companies, {
+      'gmuds companies 200': (r) => r.status === 200,
+    });
+
+    try {
+      const data = list.json();
+      const items = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.data)
+            ? data.data
+            : [];
+      const first = items[0];
+      const id = first?.id;
+      if (id) {
+        const detail = http.get(`${API}/gmuds/${id}`, {
+          headers: authHeaders(accessCookie),
+          tags: { name: 'GET /api/gmuds/:id' },
+        });
+        check(detail, { 'gmud detail 200': (r) => r.status === 200 });
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  });
+}
+
+function hitDashboard(accessCookie, companyId, state) {
+  const groupName = ZABBIX_GROUP;
+  if (!groupName) {
+    if (!state.warnedDashboard) {
+      console.warn(
+        '[k6] Dashboard pulado: defina -e ZABBIX_GROUP="..." (nome do grupo Zabbix da empresa).',
+      );
+      state.warnedDashboard = true;
+    }
+    return;
+  }
+
+  group('dashboard', () => {
+    const start = isoDateDaysAgo(30);
+    const end = isoDateDaysAgo(0);
+    const params = new URLSearchParams();
+    params.set('group', groupName);
+    params.set('start', start);
+    params.set('end', end);
+    params.set('includeHours', 'true');
+    params.set('includeCharts', 'true');
+    if (companyId) params.set('companyId', companyId);
+
+    const res = http.get(`${API}/dashboard/complete?${params.toString()}`, {
+      headers: authHeaders(accessCookie),
+      tags: { name: 'GET /api/dashboard/complete' },
+    });
+    dashboardMs.add(res.timings.duration);
+    const ok = check(res, {
+      'dashboard complete 200': (r) => r.status === 200,
+    });
+    authedFail.add(ok ? 0 : 1);
+  });
+}
+
 /**
- * Login uma vez por VU. k6 guarda Set-Cookie no jar do VU.
- * @returns {{ companyId: string|null, ok: boolean }}
+ * Login uma única vez no setup; VUs reutilizam o cookie.
+ * Evita estourar rate-limit de login (ex.: 10/min).
  */
-function ensureSession(state) {
-  if (state.loggedIn) return state;
+export function setup() {
+  requireEnv();
+
+  const health = http.get(`${API}/health`, {
+    tags: { name: 'GET /api/health' },
+  });
+  check(health, { 'health 200': (r) => r.status === 200 });
 
   const payload = {
     email: USER_EMAIL,
@@ -113,9 +280,14 @@ function ensureSession(state) {
     fail(`login falhou HTTP ${res.status}: ${String(res.body).slice(0, 300)}`);
   }
 
-  // Cookie alleone_access deve estar no jar. Confirma com /me.
+  const accessCookie = extractCookieValue(res, 'alleone_access');
+  if (!accessCookie) {
+    loginFail.add(1);
+    fail('Login OK mas cookie alleone_access não veio no Set-Cookie.');
+  }
+
   const me = http.get(`${API}/auth/me`, {
-    headers: { Accept: 'application/json' },
+    headers: authHeaders(accessCookie),
     tags: { name: 'GET /api/auth/me' },
   });
   const meOk = check(me, { 'auth/me 200': (r) => r.status === 200 });
@@ -131,181 +303,30 @@ function ensureSession(state) {
     meBody = null;
   }
 
-  state.loggedIn = true;
-  state.companyId =
+  const companyId =
     COMPANY_ID ||
     (meBody && (meBody.companyId || meBody.user?.companyId)) ||
     null;
-  return state;
-}
 
-function hitTickets(state) {
-  group('tickets', () => {
-    const list = http.get(`${API}/tickets?limit=50`, {
-      headers: { Accept: 'application/json' },
-      tags: { name: 'GET /api/tickets' },
-    });
-    ticketsMs.add(list.timings.duration);
-    const ok = check(list, { 'tickets list 200': (r) => r.status === 200 });
-    authedFail.add(ok ? 0 : 1);
-
-    const catalogs = http.get(`${API}/tickets/catalogs/filters`, {
-      headers: { Accept: 'application/json' },
-      tags: { name: 'GET /api/tickets/catalogs/filters' },
-    });
-    check(catalogs, {
-      'tickets catalogs 200': (r) => r.status === 200,
-    });
-
-    // Detalhe do 1º ticket (se houver)
-    try {
-      const data = list.json();
-      const groups = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.groups)
-          ? data.groups
-          : Array.isArray(data?.items)
-            ? data.items
-            : [];
-      let ticketNumber = null;
-      for (const g of groups) {
-        const tickets = Array.isArray(g?.tickets)
-          ? g.tickets
-          : Array.isArray(g?.items)
-            ? g.items
-            : Array.isArray(g)
-              ? g
-              : [];
-        const first = tickets[0] || g;
-        const n =
-          first?.ticketNumber ??
-          first?.ticket_number ??
-          first?.number ??
-          null;
-        if (n != null) {
-          ticketNumber = n;
-          break;
-        }
-      }
-      if (ticketNumber != null) {
-        const detail = http.get(`${API}/tickets/${ticketNumber}`, {
-          headers: { Accept: 'application/json' },
-          tags: { name: 'GET /api/tickets/:number' },
-        });
-        check(detail, {
-          'ticket detail 200': (r) => r.status === 200,
-        });
-      }
-    } catch (_) {
-      /* ignore parse */
-    }
-  });
-}
-
-function hitGmud(state) {
-  group('gmud', () => {
-    const qs = state.companyId
-      ? `?companyId=${encodeURIComponent(state.companyId)}`
-      : '';
-    const list = http.get(`${API}/gmuds${qs}`, {
-      headers: { Accept: 'application/json' },
-      tags: { name: 'GET /api/gmuds' },
-    });
-    gmudMs.add(list.timings.duration);
-    const ok = check(list, { 'gmuds list 200': (r) => r.status === 200 });
-    authedFail.add(ok ? 0 : 1);
-
-    const companies = http.get(`${API}/gmuds/companies`, {
-      headers: { Accept: 'application/json' },
-      tags: { name: 'GET /api/gmuds/companies' },
-    });
-    check(companies, {
-      'gmuds companies 200': (r) => r.status === 200,
-    });
-
-    try {
-      const data = list.json();
-      const items = Array.isArray(data)
-        ? data
-        : Array.isArray(data?.items)
-          ? data.items
-          : Array.isArray(data?.data)
-            ? data.data
-            : [];
-      const first = items[0];
-      const id = first?.id;
-      if (id) {
-        const detail = http.get(`${API}/gmuds/${id}`, {
-          headers: { Accept: 'application/json' },
-          tags: { name: 'GET /api/gmuds/:id' },
-        });
-        check(detail, { 'gmud detail 200': (r) => r.status === 200 });
-      }
-    } catch (_) {
-      /* ignore */
-    }
-  });
-}
-
-function hitDashboard(state) {
-  const groupName = ZABBIX_GROUP;
-  if (!groupName) {
-    // Sem grupo Zabbix o endpoint exige `group` — pula com aviso uma vez.
-    if (!state.warnedDashboard) {
-      console.warn(
-        '[k6] Dashboard pulado: defina -e ZABBIX_GROUP="..." (nome do grupo Zabbix da empresa).',
-      );
-      state.warnedDashboard = true;
-    }
-    return;
-  }
-
-  group('dashboard', () => {
-    const start = isoDateDaysAgo(30);
-    const end = isoDateDaysAgo(0);
-    const params = new URLSearchParams();
-    params.set('group', groupName);
-    params.set('start', start);
-    params.set('end', end);
-    params.set('includeHours', 'true');
-    params.set('includeCharts', 'true');
-    if (state.companyId) params.set('companyId', state.companyId);
-
-    const res = http.get(`${API}/dashboard/complete?${params.toString()}`, {
-      headers: { Accept: 'application/json' },
-      tags: { name: 'GET /api/dashboard/complete' },
-    });
-    dashboardMs.add(res.timings.duration);
-    const ok = check(res, {
-      'dashboard complete 200': (r) => r.status === 200,
-    });
-    authedFail.add(ok ? 0 : 1);
-  });
-}
-
-export function setup() {
-  requireEnv();
-  const health = http.get(`${API}/health`, {
-    tags: { name: 'GET /api/health' },
-  });
-  check(health, { 'health 200': (r) => r.status === 200 });
   return {
     startedAt: new Date().toISOString(),
+    accessCookie,
+    companyId,
   };
 }
 
-/** Estado por VU (cada VU tem runtime JS isolado no k6). */
+/** Aviso de dashboard: uma vez por VU. */
 const vuState = {
-  loggedIn: false,
-  companyId: null,
   warnedDashboard: false,
 };
 
-export default function () {
-  ensureSession(vuState);
-  hitTickets(vuState);
-  hitGmud(vuState);
-  hitDashboard(vuState);
+export default function (data) {
+  if (!data || !data.accessCookie) {
+    fail('setup não retornou accessCookie');
+  }
+  hitTickets(data.accessCookie);
+  hitGmud(data.accessCookie, data.companyId);
+  hitDashboard(data.accessCookie, data.companyId, vuState);
 
   sleep(Number(__ENV.SLEEP || 1));
 }

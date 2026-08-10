@@ -26,6 +26,7 @@ import {
   getFormatsForReportType,
   getReportTypeLabel,
   reportTypeRequiresPeriod,
+  reportTypeSupportsBillingFilters,
   reportTypeSupportsCollaborator,
   reportTypeSupportsMultiCompany,
   REPORT_TYPES,
@@ -34,6 +35,8 @@ import {
 import { reportsService } from "@/lib/services/reports.service";
 import type { ReportRow } from "@/lib/services/reports.service";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { Switch } from "@/components/ui/switch";
+import { usersService, type Specialty } from "@/lib/services/users.service";
 
 function getReportCompanyLabel(report: ReportRow): string {
   if (report.filters?.allCompanies) {
@@ -64,6 +67,10 @@ export default function GeradorRelatoriosPage() {
   const [companyId, setCompanyId] = useState<string>("");
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<string[]>([]);
   const [companySearch, setCompanySearch] = useState("");
+  const [specialties, setSpecialties] = useState<Specialty[]>([]);
+  const [selectedSpecialtyIds, setSelectedSpecialtyIds] = useState<string[]>([]);
+  const [specialtySearch, setSpecialtySearch] = useState("");
+  const [onlyExcess, setOnlyExcess] = useState(false);
   const [collaboratorId, setCollaboratorId] = useState<string>("");
   const [collaborators, setCollaborators] = useState<
     Array<{ id: string; name: string; hasTifluxLink?: boolean }>
@@ -86,7 +93,8 @@ export default function GeradorRelatoriosPage() {
     [type],
   );
   const isRendimento = type === "1";
-  const isInventario = reportTypeSupportsMultiCompany(type);
+  const isCobranca = reportTypeSupportsBillingFilters(type);
+  const isMultiCompany = reportTypeSupportsMultiCompany(type);
   const requiresPeriod = reportTypeRequiresPeriod(type);
   const supportsCollaborator = reportTypeSupportsCollaborator(type);
   const alleCompanyId = useMemo(
@@ -95,12 +103,12 @@ export default function GeradorRelatoriosPage() {
     [companies],
   );
   const effectiveCompanyId = companyId;
-  const allInventarioCompaniesSelected =
-    isInventario &&
+  const allMultiCompaniesSelected =
+    isMultiCompany &&
     companies.length > 0 &&
     selectedCompanyIds.length === companies.length;
-  const listCompanyFilter = isInventario
-    ? allInventarioCompaniesSelected
+  const listCompanyFilter = isMultiCompany
+    ? allMultiCompaniesSelected
       ? ALL_COMPANIES_REPORT_VALUE
       : selectedCompanyIds.length === 1
         ? selectedCompanyIds[0]
@@ -136,16 +144,16 @@ export default function GeradorRelatoriosPage() {
     ],
     [collaborators],
   );
-  const filteredInventarioCompanies = useMemo(() => {
+  const filteredMultiCompanies = useMemo(() => {
     const term = companySearch.trim().toLowerCase();
     if (!term) return companies;
     return companies.filter((company) =>
       company.name.toLowerCase().includes(term),
     );
   }, [companies, companySearch]);
-  const inventarioCompanySummary = useMemo(() => {
+  const multiCompanySummary = useMemo(() => {
     if (selectedCompanyIds.length === 0) return "Selecione empresas";
-    if (allInventarioCompaniesSelected) return "Todas as empresas";
+    if (allMultiCompaniesSelected) return "Todas as empresas";
     if (selectedCompanyIds.length === 1) {
       return (
         companies.find((company) => company.id === selectedCompanyIds[0])
@@ -153,10 +161,27 @@ export default function GeradorRelatoriosPage() {
       );
     }
     return `${selectedCompanyIds.length} empresas selecionadas`;
-  }, [allInventarioCompaniesSelected, companies, selectedCompanyIds]);
+  }, [allMultiCompaniesSelected, companies, selectedCompanyIds]);
+  const filteredSpecialties = useMemo(() => {
+    const term = specialtySearch.trim().toLowerCase();
+    if (!term) return specialties;
+    return specialties.filter((item) =>
+      item.name.toLowerCase().includes(term),
+    );
+  }, [specialties, specialtySearch]);
+  const specialtySummary = useMemo(() => {
+    if (selectedSpecialtyIds.length === 0) return "Todas as especialidades";
+    if (selectedSpecialtyIds.length === 1) {
+      return (
+        specialties.find((item) => item.id === selectedSpecialtyIds[0])?.name ??
+        "1 especialidade"
+      );
+    }
+    return `${selectedSpecialtyIds.length} especialidades`;
+  }, [selectedSpecialtyIds, specialties]);
 
   useEffect(() => {
-    if (isInventario) {
+    if (isMultiCompany) {
       setSelectedCompanyIds((prev) => {
         if (prev.length > 0 && prev.every((id) => companies.some((c) => c.id === id))) {
           return prev;
@@ -184,7 +209,32 @@ export default function GeradorRelatoriosPage() {
       setCompanyId(alleCompanyId || companies[0]?.id || "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRendimento, isInventario, canSelectAllCompanies, type, companies.length]);
+  }, [isRendimento, isMultiCompany, canSelectAllCompanies, type, companies.length]);
+
+  useEffect(() => {
+    if (!isCobranca) {
+      setSelectedSpecialtyIds([]);
+      setOnlyExcess(false);
+      return;
+    }
+    let cancelled = false;
+    void usersService
+      .listSpecialties()
+      .then((items) => {
+        if (cancelled) return;
+        setSpecialties(
+          [...(items ?? [])].sort((a, b) =>
+            a.name.localeCompare(b.name, "pt-BR"),
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSpecialties([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isCobranca]);
 
   useEffect(() => {
     const allowed = getFormatsForReportType(type);
@@ -300,18 +350,28 @@ export default function GeradorRelatoriosPage() {
     }
   }
 
-  function toggleInventarioCompany(id: string) {
+  function toggleMultiCompany(id: string) {
     setSelectedCompanyIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
     );
   }
 
-  function selectAllInventarioCompanies() {
+  function selectAllMultiCompanies() {
     setSelectedCompanyIds(companies.map((c) => c.id));
   }
 
-  function clearInventarioCompanies() {
+  function clearMultiCompanies() {
     setSelectedCompanyIds([]);
+  }
+
+  function toggleSpecialty(id: string) {
+    setSelectedSpecialtyIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  }
+
+  function clearSpecialties() {
+    setSelectedSpecialtyIds([]);
   }
 
   async function handleGenerate() {
@@ -320,7 +380,7 @@ export default function GeradorRelatoriosPage() {
     const isAllCompanies =
       isRendimento && effectiveCompanyId === ALL_COMPANIES_REPORT_VALUE;
 
-    if (isInventario) {
+    if (isMultiCompany) {
       if (selectedCompanyIds.length === 0) {
         setErro("Selecione ao menos uma empresa.");
         return;
@@ -353,8 +413,8 @@ export default function GeradorRelatoriosPage() {
     try {
       setGerando(true);
       await reportsService.generate({
-        companyId: isInventario
-          ? allInventarioCompaniesSelected
+        companyId: isMultiCompany
+          ? allMultiCompaniesSelected
             ? ALL_COMPANIES_REPORT_VALUE
             : selectedCompanyIds[0]
           : isAllCompanies
@@ -364,11 +424,15 @@ export default function GeradorRelatoriosPage() {
         format,
         ...(requiresPeriod ? { start, end } : {}),
         ...(supportsCollaborator && collaboratorId ? { userId: collaboratorId } : {}),
-        ...(isInventario &&
+        ...(isMultiCompany &&
         selectedCompanyIds.length > 1 &&
-        !allInventarioCompaniesSelected
+        !allMultiCompaniesSelected
           ? { companyIds: selectedCompanyIds }
           : {}),
+        ...(isCobranca && selectedSpecialtyIds.length > 0
+          ? { specialtyIds: selectedSpecialtyIds }
+          : {}),
+        ...(isCobranca && onlyExcess ? { onlyExcess: true } : {}),
       });
       await refreshList();
     } catch (e) {
@@ -461,9 +525,9 @@ export default function GeradorRelatoriosPage() {
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
-                    Empresa{isInventario ? "s" : ""}
+                    Empresa{isMultiCompany ? "s" : ""}
                   </label>
-                  {isInventario ? (
+                  {isMultiCompany ? (
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button
@@ -473,7 +537,7 @@ export default function GeradorRelatoriosPage() {
                           className="h-11 w-full justify-between px-3 font-normal"
                         >
                           <span className="min-w-0 truncate text-left">
-                            {inventarioCompanySummary}
+                            {multiCompanySummary}
                           </span>
                           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-70" />
                         </Button>
@@ -489,7 +553,7 @@ export default function GeradorRelatoriosPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={selectAllInventarioCompanies}
+                                onClick={selectAllMultiCompanies}
                                 disabled={companies.length === 0}
                                 className="h-8"
                               >
@@ -499,7 +563,7 @@ export default function GeradorRelatoriosPage() {
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={clearInventarioCompanies}
+                                onClick={clearMultiCompanies}
                                 disabled={selectedCompanyIds.length === 0}
                                 className="h-8"
                               >
@@ -517,12 +581,12 @@ export default function GeradorRelatoriosPage() {
                           />
 
                           <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
-                            {filteredInventarioCompanies.length === 0 ? (
+                            {filteredMultiCompanies.length === 0 ? (
                               <p className="px-2 py-3 text-sm text-muted-foreground">
                                 Nenhuma empresa encontrada.
                               </p>
                             ) : (
-                              filteredInventarioCompanies.map((company) => {
+                              filteredMultiCompanies.map((company) => {
                                 const checked = selectedCompanyIds.includes(
                                   company.id,
                                 );
@@ -534,7 +598,7 @@ export default function GeradorRelatoriosPage() {
                                     <FlipCheckbox
                                       checked={checked}
                                       onChange={() =>
-                                        toggleInventarioCompany(company.id)
+                                        toggleMultiCompany(company.id)
                                       }
                                       aria-label={company.name}
                                     />
@@ -576,6 +640,85 @@ export default function GeradorRelatoriosPage() {
                     />
                   )}
                 </div>
+
+                {isCobranca ? (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Especialidade(s)
+                    </label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={carregando}
+                          className="h-11 w-full justify-between px-3 font-normal"
+                        >
+                          <span className="min-w-0 truncate text-left">
+                            {specialtySummary}
+                          </span>
+                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-70" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[min(92vw,380px)] p-3">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {selectedSpecialtyIds.length === 0
+                                ? "Todas"
+                                : `${selectedSpecialtyIds.length} de ${specialties.length}`}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={clearSpecialties}
+                              disabled={selectedSpecialtyIds.length === 0}
+                              className="h-8"
+                            >
+                              Todas
+                            </Button>
+                          </div>
+                          <Input
+                            value={specialtySearch}
+                            onChange={(event) =>
+                              setSpecialtySearch(event.target.value)
+                            }
+                            placeholder="Buscar especialidade..."
+                          />
+                          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                            {filteredSpecialties.length === 0 ? (
+                              <p className="px-2 py-3 text-sm text-muted-foreground">
+                                Nenhuma especialidade encontrada.
+                              </p>
+                            ) : (
+                              filteredSpecialties.map((item) => {
+                                const checked = selectedSpecialtyIds.includes(
+                                  item.id,
+                                );
+                                return (
+                                  <label
+                                    key={item.id}
+                                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-muted/60"
+                                  >
+                                    <FlipCheckbox
+                                      checked={checked}
+                                      onChange={() => toggleSpecialty(item.id)}
+                                      aria-label={item.name}
+                                    />
+                                    <span className="min-w-0 truncate text-sm text-foreground">
+                                      {item.name}
+                                    </span>
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
@@ -623,6 +766,25 @@ export default function GeradorRelatoriosPage() {
                 </div>
               </div>
 
+              {isCobranca ? (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 px-4 py-3">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium text-foreground">
+                      Só excedente
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Lista apenas linhas em que as horas gastas passaram do
+                      contratado (C &gt; B).
+                    </p>
+                  </div>
+                  <Switch
+                    checked={onlyExcess}
+                    onCheckedChange={setOnlyExcess}
+                    aria-label="Filtrar só excedente"
+                  />
+                </div>
+              ) : null}
+
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-muted-foreground">
                   Apontamentos: horas dos colaboradores nos tickets da empresa
@@ -631,10 +793,9 @@ export default function GeradorRelatoriosPage() {
                   Zabbix/chamados de uma empresa (sem colaborador); CSV com as
                   mesmas tabelas do XLSX (gráficos só no XLSX). Inventário:
                   snapshot dos ativos das empresas selecionadas (sem período e
-                  sem colaborador), em CSV ou XLSX — use &quot;Selecionar
-                  todas&quot; para incluir todas as empresas. Fechamento /
-                  cobrança: horas gastas por especialidade do apontador vs
-                  contrato (valor, excedente, a cobrar) de uma empresa no
+                  sem colaborador), em CSV ou XLSX — use &quot;Todas&quot; para
+                  incluir todas as empresas. Fechamento / cobrança: multi-empresa,
+                  filtro por especialidade e visão tudo ou só excedente no
                   período.
                 </p>
 

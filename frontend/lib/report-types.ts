@@ -56,6 +56,11 @@ export function reportTypeSupportsCollaborator(type: string): boolean {
   return type === "1";
 }
 
+/** Inventário (5) e Fechamento/cobrança (6): multi-select de empresas + "Todas". */
 export function reportTypeSupportsMultiCompany(type: string): boolean {
-  return type === "5";
+  return type === "5" || type === "6";
+}
+
+export function reportTypeSupportsBillingFilters(type: string): boolean {
+  return type === "6";
 }

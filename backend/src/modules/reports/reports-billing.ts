@@ -12,6 +12,13 @@ export type BillingReportFilters = {
   specialtyIds?: string[];
 };
 
+export type BillingReportMultiFilters = Omit<
+  BillingReportFilters,
+  'companyId'
+> & {
+  companyIds: string[];
+};
+
 export type BillingReportRow = {
   companyName: string;
   specialtyName: string;
@@ -50,6 +57,30 @@ function csvEscape(value: string | number) {
   const s = String(value ?? '');
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
+}
+
+export async function buildBillingReportRowsForCompanies(
+  prisma: PrismaService,
+  filters: BillingReportMultiFilters,
+): Promise<BillingReportRow[]> {
+  const ids = [
+    ...new Set(filters.companyIds.map((id) => id.trim()).filter(Boolean)),
+  ];
+  if (!ids.length) {
+    throw new BadRequestException('Selecione ao menos uma empresa.');
+  }
+  const rows: BillingReportRow[] = [];
+  for (const companyId of ids) {
+    const part = await buildBillingReportRows(prisma, {
+      companyId,
+      start: filters.start,
+      end: filters.end,
+      onlyExcess: filters.onlyExcess,
+      specialtyIds: filters.specialtyIds,
+    });
+    rows.push(...part);
+  }
+  return rows;
 }
 
 export async function buildBillingReportRows(
