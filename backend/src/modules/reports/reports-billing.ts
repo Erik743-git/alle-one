@@ -277,34 +277,108 @@ export function billingRowsToCsv(rows: BillingReportRow[]): string {
   return `${lines.join('\n')}\n`;
 }
 
+const BILLING_HEADERS = [
+  'Empresa',
+  'Contrato',
+  'Especialidade',
+  'Ilimitado',
+  'Horas contratadas (B)',
+  'Horas gastas (C)',
+  'Saldo horas (D)',
+  'Valor excedente (E)',
+  'Custo teórico (F)',
+  'Valor contrato',
+  'Valor hora excedente',
+  'Valor hora calculado',
+  'A cobrar',
+] as const;
+
+const BILLING_COL_COUNT = BILLING_HEADERS.length;
+const BILLING_LAST_COL = String.fromCharCode(64 + BILLING_COL_COUNT); // M
+
+function moneyFmt(n: number) {
+  return Number.isFinite(n) ? n : 0;
+}
+
 export async function billingRowsToXlsx(
   rows: BillingReportRow[],
   meta: { companyName: string; start: Date; end: Date },
 ): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
-  const sheet = workbook.addWorksheet('Fechamento');
-  sheet.addRow([`Fechamento / cobrança — ${meta.companyName}`]);
-  sheet.addRow([
-    `Período: ${meta.start.toISOString().slice(0, 10)} a ${meta.end.toISOString().slice(0, 10)}`,
-  ]);
-  sheet.addRow([]);
-  sheet.addRow([
-    'Empresa',
-    'Contrato',
-    'Especialidade',
-    'Ilimitado',
-    'Horas contratadas (B)',
-    'Horas gastas (C)',
-    'Saldo horas (D)',
-    'Valor excedente (E)',
-    'Custo teórico (F)',
-    'Valor contrato',
-    'Valor hora excedente',
-    'Valor hora calculado',
-    'A cobrar',
-  ]);
+  workbook.creator = 'Alle One';
+  workbook.created = new Date();
+
+  const sheet = workbook.addWorksheet('Fechamento', {
+    views: [{ state: 'frozen', ySplit: 8 }],
+  });
+
+  const widths = [28, 28, 22, 12, 18, 16, 16, 18, 16, 16, 18, 18, 14];
+  widths.forEach((w, i) => {
+    sheet.getColumn(i + 1).width = w;
+  });
+
+  sheet.mergeCells(`A1:${BILLING_LAST_COL}1`);
+  const title = sheet.getCell('A1');
+  title.value = 'Fechamento / cobrança';
+  title.font = { bold: true, size: 16, color: { argb: 'FFFFFFFF' } };
+  title.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF08182F' },
+  };
+  title.alignment = { vertical: 'middle', horizontal: 'left' };
+  sheet.getRow(1).height = 28;
+
+  sheet.getCell('A2').value = 'Escopo:';
+  sheet.getCell('B2').value = meta.companyName;
+  sheet.getCell('A3').value = 'Período:';
+  sheet.getCell('B3').value =
+    `${meta.start.toISOString().slice(0, 10)} a ${meta.end.toISOString().slice(0, 10)}`;
+  sheet.getCell('A4').value = 'Linhas:';
+  sheet.getCell('B4').value = rows.length;
+  sheet.getCell('A5').value = 'Gerado em:';
+  sheet.getCell('B5').value = new Date()
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
+
+  ['A2', 'A3', 'A4', 'A5'].forEach((addr) => {
+    sheet.getCell(addr).font = { bold: true };
+  });
+
+  if (rows.length === 0) {
+    sheet.mergeCells(`A7:${BILLING_LAST_COL}7`);
+    const empty = sheet.getCell('A7');
+    empty.value =
+      'Nenhuma linha encontrada. Cadastre contratos ativos com especialidades (horas, valor do contrato e hora excedente) para as empresas do período.';
+    empty.font = { italic: true, color: { argb: 'FF667085' } };
+    empty.alignment = { wrapText: true, vertical: 'middle' };
+    sheet.getRow(7).height = 36;
+
+    const outEmpty = await workbook.xlsx.writeBuffer();
+    return Buffer.from(outEmpty);
+  }
+
+  const headerRowIndex = 8;
+  const headerRow = sheet.getRow(headerRowIndex);
+  headerRow.values = [...BILLING_HEADERS];
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF0A2540' },
+  };
+  headerRow.alignment = {
+    vertical: 'middle',
+    wrapText: true,
+    horizontal: 'center',
+  };
+  headerRow.height = 32;
+
+  let rowIndex = headerRowIndex + 1;
   for (const r of rows) {
-    sheet.addRow([
+    const row = sheet.getRow(rowIndex);
+    row.values = [
       r.companyName,
       r.contractTitle,
       r.specialtyName,
@@ -312,14 +386,88 @@ export async function billingRowsToXlsx(
       r.hoursContracted,
       r.hoursSpent,
       r.balanceHours,
-      r.excessAmount,
-      r.theoreticalCost,
-      r.contractValue,
-      r.excessHourPrice,
-      r.hourlyRate,
-      r.amountDue,
-    ]);
+      moneyFmt(r.excessAmount),
+      moneyFmt(r.theoreticalCost),
+      moneyFmt(r.contractValue),
+      moneyFmt(r.excessHourPrice),
+      moneyFmt(r.hourlyRate),
+      moneyFmt(r.amountDue),
+    ];
+    row.alignment = { vertical: 'middle' };
+    row.getCell(4).alignment = { horizontal: 'center', vertical: 'middle' };
+
+    // Horas: 0.00
+    for (const col of [5, 6, 7]) {
+      row.getCell(col).numFmt = '0.00';
+      row.getCell(col).alignment = { horizontal: 'right', vertical: 'middle' };
+    }
+    // Moeda R$
+    for (const col of [8, 9, 10, 11, 12, 13]) {
+      row.getCell(col).numFmt = '"R$" #,##0.00';
+      row.getCell(col).alignment = { horizontal: 'right', vertical: 'middle' };
+    }
+
+    if (r.balanceHours < 0 && !r.unlimited) {
+      row.getCell(7).font = { color: { argb: 'FFB42318' }, bold: true };
+      row.getCell(8).font = { color: { argb: 'FFB42318' } };
+    }
+
+    if (rowIndex % 2 === 0) {
+      for (let c = 1; c <= BILLING_COL_COUNT; c++) {
+        row.getCell(c).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF2F4F7' },
+        };
+      }
+    }
+
+    rowIndex += 1;
   }
+
+  const lastDataRow = rowIndex - 1;
+  sheet.autoFilter = {
+    from: { row: headerRowIndex, column: 1 },
+    to: { row: lastDataRow, column: BILLING_COL_COUNT },
+  };
+
+  // Totais
+  rowIndex += 1;
+  const totalRow = sheet.getRow(rowIndex);
+  totalRow.getCell(1).value = 'Totais';
+  totalRow.getCell(1).font = { bold: true };
+  totalRow.getCell(6).value = {
+    formula: `SUM(F${headerRowIndex + 1}:F${lastDataRow})`,
+  };
+  totalRow.getCell(7).value = {
+    formula: `SUM(G${headerRowIndex + 1}:G${lastDataRow})`,
+  };
+  totalRow.getCell(8).value = {
+    formula: `SUM(H${headerRowIndex + 1}:H${lastDataRow})`,
+  };
+  totalRow.getCell(9).value = {
+    formula: `SUM(I${headerRowIndex + 1}:I${lastDataRow})`,
+  };
+  totalRow.getCell(10).value = {
+    formula: `SUM(J${headerRowIndex + 1}:J${lastDataRow})`,
+  };
+  totalRow.getCell(13).value = {
+    formula: `SUM(M${headerRowIndex + 1}:M${lastDataRow})`,
+  };
+  for (const col of [6, 7]) {
+    totalRow.getCell(col).numFmt = '0.00';
+    totalRow.getCell(col).font = { bold: true };
+  }
+  for (const col of [8, 9, 10, 13]) {
+    totalRow.getCell(col).numFmt = '"R$" #,##0.00';
+    totalRow.getCell(col).font = { bold: true };
+  }
+  totalRow.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FFE8EEF5' },
+  };
+
   const out = await workbook.xlsx.writeBuffer();
   return Buffer.from(out);
 }
