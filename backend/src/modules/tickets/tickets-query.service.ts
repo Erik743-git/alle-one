@@ -1039,11 +1039,37 @@ export class TicketsQueryService {
         sortAt: createdAtSource,
       });
     }
+
+    const cachedTiflux = await this.prisma.ticketHistory.findMany({
+      where: { ticketNumber },
+      orderBy: { occurredAt: 'desc' },
+    });
+
+    // Evita "Ticket atualizado" genérico quando já há evento específico
+    // (reabrir/fechar/estágio) no mesmo instante.
+    const LIFECYCLE_HISTORY_TYPES = new Set([
+      'TICKET_REOPENED',
+      'TICKET_CLOSED',
+      'TICKET_CANCELLED',
+      'STAGE_CHANGED',
+    ]);
+    const hasLifecycleNearUpdate =
+      updatedAtSource != null &&
+      !Number.isNaN(updatedAtSource.getTime()) &&
+      cachedTiflux.some((row) => {
+        if (!LIFECYCLE_HISTORY_TYPES.has(row.eventType)) return false;
+        return (
+          Math.abs(row.occurredAt.getTime() - updatedAtSource.getTime()) <=
+          120_000
+        );
+      });
+
     if (
       updatedAtSource &&
       !Number.isNaN(updatedAtSource.getTime()) &&
       (!createdAtSource ||
-        updatedAtSource.getTime() - createdAtSource.getTime() > 60_000)
+        updatedAtSource.getTime() - createdAtSource.getTime() > 60_000) &&
+      !hasLifecycleNearUpdate
     ) {
       events.push({
         id: `ticket-updated-${ticketNumber}-${updatedAtSource.getTime()}`,
@@ -1057,10 +1083,6 @@ export class TicketsQueryService {
       });
     }
 
-    const cachedTiflux = await this.prisma.ticketHistory.findMany({
-      where: { ticketNumber },
-      orderBy: { occurredAt: 'desc' },
-    });
     for (const row of cachedTiflux) {
       events.push({
         id: `tiflux-cache-${row.id}`,
@@ -1233,6 +1255,22 @@ export class TicketsQueryService {
       orderBy: { createdAt: 'desc' },
     });
     for (const log of auditRows) {
+      // Já coberto por ticket_history (PORTAL) no mesmo instante.
+      if (
+        log.action === 'STAGE_CHANGED' &&
+        cachedTiflux.some(
+          (row) =>
+            (row.eventType === 'STAGE_CHANGED' ||
+              row.eventType === 'TICKET_CLOSED' ||
+              row.eventType === 'TICKET_REOPENED' ||
+              row.eventType === 'TICKET_CANCELLED') &&
+            Math.abs(row.occurredAt.getTime() - log.createdAt.getTime()) <=
+              120_000,
+        )
+      ) {
+        continue;
+      }
+
       const payload = (log.payload ?? {}) as Record<string, unknown>;
       let summary = String(payload.message ?? '').trim();
       if (log.action === 'STAGE_CHANGED') {

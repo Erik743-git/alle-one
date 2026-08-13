@@ -27,6 +27,10 @@ export const TICKET_HISTORY_FILTER_OPTIONS: Array<{
 const EVENT_LABELS: Record<string, string> = {
   TICKET_CREATED: "Ticket criado",
   TICKET_UPDATED: "Ticket atualizado",
+  TICKET_REOPENED: "Chamado reaberto",
+  TICKET_CLOSED: "Chamado encerrado",
+  TICKET_CANCELLED: "Chamado cancelado",
+  EMAIL_REPLY: "Resposta por e-mail",
   APPOINTMENT_CREATED: "Apontamento registrado",
   APPOINTMENT_TIFLUX: "Apontamento histórico",
   STAGE_CHANGED: "Estágio alterado",
@@ -50,7 +54,11 @@ export function ticketHistoryFilterCategory(
   if (
     eventType === "STAGE_CHANGED" ||
     eventType === "TIFLUX_EVENT" ||
-    eventType === "TICKET_UPDATED"
+    eventType === "TICKET_UPDATED" ||
+    eventType === "TICKET_REOPENED" ||
+    eventType === "TICKET_CLOSED" ||
+    eventType === "TICKET_CANCELLED" ||
+    eventType === "EMAIL_REPLY"
   ) {
     return "TICKET";
   }
@@ -87,7 +95,14 @@ export type TicketHistoryTone =
   | "stage";
 
 export function ticketHistoryTone(eventType: string): TicketHistoryTone {
-  if (eventType === "STAGE_CHANGED") return "stage";
+  if (
+    eventType === "STAGE_CHANGED" ||
+    eventType === "TICKET_REOPENED" ||
+    eventType === "TICKET_CLOSED" ||
+    eventType === "TICKET_CANCELLED"
+  ) {
+    return "stage";
+  }
   if (eventType.startsWith("GMUD_")) return "gmud";
   if (eventType.startsWith("PROJECT_")) return "project";
   if (eventType.includes("APPOINTMENT")) return "appointment";
