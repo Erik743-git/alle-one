@@ -129,6 +129,21 @@ export function ClassificationCascadeFields({
   }, [tree, level2Id]);
 
   function emitSelection(l1: string, l2: string, l3: string) {
+    // Só emite folha: se ainda há subnível visível, fica incompleto (null).
+    if (l1 && !l2) {
+      const parent = findNodeById(tree, l1);
+      if (parent && activeNodes(parent.children).length > 0) {
+        onChange(null);
+        return;
+      }
+    }
+    if (l2 && !l3) {
+      const parent = findNodeById(tree, l2);
+      if (parent && activeNodes(parent.children).length > 0) {
+        onChange(null);
+        return;
+      }
+    }
     onChange(l3 || l2 || l1 || null);
   }
 

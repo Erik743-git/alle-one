@@ -130,8 +130,21 @@ export function ContractClassificationPicker({
   }, [tree, level2Id]);
 
   function emitSelection(l1: string, l2: string, l3: string) {
-    const selected = l3 || l2 || l1 || null;
-    onChange(selected);
+    if (l1 && !l2) {
+      const parent = findNodeById(tree, l1);
+      if (parent && activeNodes(parent.children).length > 0) {
+        onChange(null);
+        return;
+      }
+    }
+    if (l2 && !l3) {
+      const parent = findNodeById(tree, l2);
+      if (parent && activeNodes(parent.children).length > 0) {
+        onChange(null);
+        return;
+      }
+    }
+    onChange(l3 || l2 || l1 || null);
   }
 
   function handleDeskChange(nextDeskId: string) {
