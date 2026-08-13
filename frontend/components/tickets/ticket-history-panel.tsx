@@ -69,7 +69,14 @@ function HistoryIcon({ eventType }: { eventType: string }) {
   if (eventType.includes("APPOINTMENT")) return <Clock className="h-4 w-4" />;
   if (eventType.startsWith("PROJECT_")) return <FolderKanban className="h-4 w-4" />;
   if (eventType.startsWith("GMUD_")) return <Link2 className="h-4 w-4" />;
-  if (eventType === "STAGE_CHANGED") return <Ticket className="h-4 w-4" />;
+  if (
+    eventType === "STAGE_CHANGED" ||
+    eventType === "TICKET_REOPENED" ||
+    eventType === "TICKET_CLOSED" ||
+    eventType === "TICKET_CANCELLED"
+  ) {
+    return <Ticket className="h-4 w-4" />;
+  }
   return <History className="h-4 w-4" />;
 }
 
