@@ -297,6 +297,7 @@ export class DeskClassificationService {
   private buildTree(rows: ClassificationRow[]): DeskClassificationNodeDto[] {
     const byParent = new Map<string | null, ClassificationRow[]>();
     for (const row of rows) {
+      if (row.level > MAX_CLASSIFICATION_LEVEL) continue;
       const key = row.parentId;
       const bucket = byParent.get(key);
       if (bucket) {

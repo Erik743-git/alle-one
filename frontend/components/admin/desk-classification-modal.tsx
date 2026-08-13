@@ -21,10 +21,11 @@ import {
   type ServiceDeskOption,
 } from "@/lib/services/classification.service";
 
+const MAX_LEVEL = 2;
+
 const LEVEL_HINTS: Record<number, string> = {
   1: "Nível 1 — categoria",
   2: "Nível 2 — subcategoria",
-  3: "Nível 3 — produto/solução",
 };
 
 type AddTarget = {
@@ -73,7 +74,7 @@ function ClassificationTreeRows({
             </span>
             <span className="font-medium text-foreground">{node.name}</span>
             <div className="ml-auto flex flex-wrap items-center gap-1">
-              {node.level < 3 ? (
+              {node.level < MAX_LEVEL ? (
                 <Button
                   type="button"
                   variant="ghost"
@@ -306,7 +307,7 @@ export function DeskClassificationModal({
   }
 
   function openAddChild(node: ClassificationNode) {
-    if (node.level >= 3) return;
+    if (node.level >= MAX_LEVEL) return;
     setAddTarget({ level: node.level + 1, parentId: node.id });
     setEditingNode(null);
     setNewName("");
@@ -318,8 +319,8 @@ export function DeskClassificationModal({
         <DialogHeader className="shrink-0 border-b px-6 py-4">
           <DialogTitle>Hierarquia da mesa</DialogTitle>
           <DialogDescription>
-            Cadastre quantas classificações precisar em cada nível (até 3
-            níveis de profundidade).
+            Cadastre quantas classificações precisar em cada nível (até 2
+            níveis: categoria e subcategoria).
           </DialogDescription>
         </DialogHeader>
 

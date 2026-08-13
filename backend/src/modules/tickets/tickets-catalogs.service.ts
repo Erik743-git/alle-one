@@ -294,8 +294,12 @@ export class TicketsCatalogsService {
       parentId: string | null;
     }>,
   ): TicketClassificationNode[] {
+    // Portal: no máximo 2 níveis (categoria → subcategoria).
+    // Filhos com level > 2 (legado) ficam de fora da árvore e da validação.
+    const maxLevel = 2;
     const byParent = new Map<string | null, typeof rows>();
     for (const row of rows) {
+      if (row.level > maxLevel) continue;
       const bucket = byParent.get(row.parentId);
       if (bucket) bucket.push(row);
       else byParent.set(row.parentId, [row]);
@@ -310,7 +314,9 @@ export class TicketsCatalogsService {
     const toNode = (row: (typeof rows)[number]): TicketClassificationNode => ({
       ...row,
       children:
-        row.level < 2 ? sortRows(byParent.get(row.id) ?? []).map(toNode) : [],
+        row.level < maxLevel
+          ? sortRows(byParent.get(row.id) ?? []).map(toNode)
+          : [],
     });
 
     return sortRows(byParent.get(null) ?? []).map(toNode);
@@ -472,8 +478,15 @@ export class TicketsCatalogsService {
       );
     }
 
+    // Só exige folha dentro dos 2 níveis oficiais. Filhos level>2 (legado de
+    // quando havia 3 níveis) não bloqueiam a subcategoria selecionada.
+    const maxLevel = 2;
     const hasChildren = await this.prisma.specialtyClassification.count({
-      where: { parentId: node.id, active: true },
+      where: {
+        parentId: node.id,
+        active: true,
+        level: { lte: maxLevel },
+      },
     });
     if (hasChildren > 0) {
       throw new BadRequestException(
