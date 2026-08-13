@@ -23,6 +23,8 @@ export type UpsertPortalTicketInput = {
   createdAtSource?: Date | null;
   updatedAtSource?: Date | null;
   createdBy?: string | null;
+  specialtyId?: string | null;
+  emailConversationId?: string | null;
 };
 
 @Injectable()
@@ -92,6 +94,8 @@ export class TicketsPortalStoreService {
       requestorTelephone: input.requestorTelephone ?? null,
       isClosed: input.isClosed ?? false,
       origin: input.origin ?? PortalTicketOrigin.TIFLUX,
+      specialtyId: input.specialtyId ?? null,
+      emailConversationId: input.emailConversationId ?? null,
       createdAtSource: input.createdAtSource ?? null,
       updatedAtSource: input.updatedAtSource ?? new Date(),
       createdBy: input.createdBy ?? null,
@@ -116,6 +120,12 @@ export class TicketsPortalStoreService {
         requestorEmail: data.requestorEmail,
         requestorTelephone: data.requestorTelephone,
         isClosed: data.isClosed,
+        ...(input.specialtyId !== undefined
+          ? { specialtyId: input.specialtyId }
+          : {}),
+        ...(input.emailConversationId !== undefined
+          ? { emailConversationId: input.emailConversationId }
+          : {}),
         updatedAtSource: data.updatedAtSource,
       },
     });

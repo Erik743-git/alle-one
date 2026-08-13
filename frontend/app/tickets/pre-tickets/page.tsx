@@ -171,6 +171,18 @@ export default function PreTicketsPage() {
                       >
                         {row.title}
                       </span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {row.linkedTicketNumber ? (
+                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">
+                            Resposta a #{row.linkedTicketNumber}
+                          </span>
+                        ) : null}
+                        {row.possibleDuplicateSubject ? (
+                          <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-800 dark:text-orange-200">
+                            Possível duplicata de assunto
+                          </span>
+                        ) : null}
+                      </div>
                       <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                         {row.channel}
                         {row.mailboxAddress ? ` · ${row.mailboxAddress}` : ""}

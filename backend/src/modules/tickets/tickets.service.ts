@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -30,6 +31,8 @@ import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { assertTicketCreateClientScope } from './tickets-client-scope';
+import { canonicalizeStageName } from './tickets-stage-groups';
+import { PORTAL_STAGE } from './portal-ticket-stages';
 
 @Injectable()
 export class TicketsService {
@@ -399,8 +402,8 @@ export class TicketsService {
         requestorName,
         requestorEmail,
         requestorTelephone,
-        statusName: 'Aberto',
-        stageName: 'Aberto',
+        statusName: PORTAL_STAGE.NOVO,
+        stageName: PORTAL_STAGE.NOVO,
         priorityName: null,
         createdByWayOf: writeTiflux ? 'Integração' : 'Portal',
         isClosed: false,
@@ -528,7 +531,8 @@ export class TicketsService {
         dto.description != null ||
         dto.responsibleId !== undefined ||
         dto.stageName != null ||
-        dto.statusName != null;
+        dto.statusName != null ||
+        dto.clientId != null;
       if (touchingOpenFields) {
         throw new BadRequestException(
           'Não é possível editar um ticket fechado. Reabra o ticket antes.',
@@ -538,9 +542,35 @@ export class TicketsService {
 
     const writeTiflux = isTicketsTifluxWriteEnabled();
     const title = dto.title?.trim();
-    const stageName = dto.stageName?.trim();
-    const statusName = dto.statusName?.trim();
+    const stageName = canonicalizeStageName(dto.stageName?.trim()) ?? undefined;
+    const statusName =
+      canonicalizeStageName(dto.statusName?.trim()) ?? undefined;
     const descriptionRaw = dto.description?.trim();
+
+    let nextClientExternalId = portal?.clientExternalId ?? null;
+    let nextClientName = portal?.clientName ?? null;
+    if (dto.clientId != null) {
+      if (actor.role !== 'ADMIN') {
+        throw new ForbiddenException(
+          'Somente administradores podem alterar o cliente do chamado.',
+        );
+      }
+      const company = await this.prisma.company.findFirst({
+        where: { tifluxClientId: dto.clientId, deletedAt: null },
+        select: { id: true, name: true, tifluxClientId: true },
+      });
+      if (!company?.tifluxClientId) {
+        throw new BadRequestException(
+          'Cliente inválido ou sem vínculo externo (tifluxClientId).',
+        );
+      }
+      nextClientExternalId = company.tifluxClientId;
+      nextClientName = company.name;
+      // GMUD da empresa antiga não se aplica ao novo cliente
+      await this.prisma.portalTicketGmudLink.deleteMany({
+        where: { ticketNumber },
+      });
+    }
 
     const responsibleId =
       dto.responsibleId === undefined ? undefined : dto.responsibleId;
@@ -571,6 +601,9 @@ export class TicketsService {
       if (responsibleId !== undefined) {
         payload.responsible_id = responsibleId;
       }
+      if (dto.clientId != null) {
+        payload.client_id = dto.clientId;
+      }
       if (Object.keys(payload).length > 0) {
         try {
           await this.tiflux.updateTicket(ticketNumber, payload);
@@ -579,25 +612,43 @@ export class TicketsService {
             error instanceof Error
               ? error.message
               : 'Falha ao atualizar ticket.';
-          throw new BadGatewayException(message);
+          // Troca de cliente no portal mesmo se TiFlux falhar (origem portal-only)
+          if (dto.clientId == null) {
+            throw new BadGatewayException(message);
+          }
         }
       }
     }
 
+    const reopening = portal?.isClosed && dto.isClosed === false;
+    const resolvedStageName =
+      stageName ??
+      (reopening ? PORTAL_STAGE.NOVO : (portal?.stageName ?? null));
+    const resolvedStatusName =
+      statusName ??
+      (reopening
+        ? PORTAL_STAGE.NOVO
+        : dto.isClosed === true && !statusName
+          ? PORTAL_STAGE.ENCERRADO
+          : (portal?.statusName ?? null));
+
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
       title: title ?? portal?.title ?? null,
-      clientName: portal?.clientName ?? null,
-      clientExternalId: portal?.clientExternalId ?? null,
+      clientName: nextClientName,
+      clientExternalId: nextClientExternalId,
       deskName: portal?.deskName ?? null,
       deskExternalId: portal?.deskExternalId ?? null,
-      requestorName: portal?.requestorName ?? null,
-      requestorEmail: portal?.requestorEmail ?? null,
-      requestorTelephone: portal?.requestorTelephone ?? null,
+      requestorName:
+        dto.clientId != null ? null : (portal?.requestorName ?? null),
+      requestorEmail:
+        dto.clientId != null ? null : (portal?.requestorEmail ?? null),
+      requestorTelephone:
+        dto.clientId != null ? null : (portal?.requestorTelephone ?? null),
       priorityName: portal?.priorityName ?? null,
       createdByWayOf: portal?.createdByWayOf ?? null,
-      statusName: statusName ?? portal?.statusName ?? null,
-      stageName: stageName ?? portal?.stageName ?? null,
+      statusName: resolvedStatusName,
+      stageName: resolvedStageName,
       responsibleExternalId:
         responsibleId !== undefined
           ? responsibleId

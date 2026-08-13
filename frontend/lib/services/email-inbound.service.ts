@@ -38,8 +38,11 @@ export type PreTicketListItem = {
   channel: string;
   attachmentCount: number;
   receivedAt: string;
+  possibleDuplicateSubject?: boolean;
+  linkedTicketNumber?: number | null;
   company?: { id: string; name: string } | null;
   desk?: { id: string; name: string } | null;
+  specialty?: { id: string; name: string } | null;
 };
 
 export type PreTicketDetail = PreTicketListItem & {

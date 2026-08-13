@@ -157,6 +157,15 @@ function FullDescriptionBody({
       <div className="space-y-2">
         {doc.blocks.map((block, index) => {
           if (block.type === "text") {
+            if (block.html) {
+              return (
+                <div
+                  key={`text-${index}`}
+                  className="text-foreground/90 [&_b]:font-semibold [&_strong]:font-semibold [&_i]:italic [&_em]:italic [&_u]:underline [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                  dangerouslySetInnerHTML={{ __html: block.content }}
+                />
+              );
+            }
             return (
               <p
                 key={`text-${index}`}
