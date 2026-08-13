@@ -270,7 +270,7 @@ export default function TicketDetailPage() {
       title: "Reabrir chamado?",
       description:
         "O chamado volta para o estágio Novo e poderá ser editado novamente.",
-      confirmLabel: "Reabrir",
+      confirmText: "Reabrir",
     });
     if (!ok) return;
     try {
@@ -297,8 +297,8 @@ export default function TicketDetailPage() {
       title: "Cancelar chamado?",
       description:
         "O chamado será marcado como Cancelado e encerrado. Essa ação pode ser desfeita com Reabrir.",
-      confirmLabel: "Cancelar chamado",
-      variant: "destructive",
+      confirmText: "Cancelar chamado",
+      variant: "error",
     });
     if (!ok) return;
     try {
@@ -354,7 +354,7 @@ export default function TicketDetailPage() {
       title: "Trocar cliente do chamado?",
       description:
         "GMUD vinculada e dados do solicitante serão limpos. Confirme se o cliente está correto.",
-      confirmLabel: "Trocar cliente",
+      confirmText: "Trocar cliente",
     });
     if (!ok) return;
     try {
