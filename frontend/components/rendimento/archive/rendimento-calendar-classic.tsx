@@ -37,6 +37,7 @@ import {
   RendimentoOvertimeServiceLine,
 } from "@/components/rendimento/rendimento-overtime-badge";
 import { RendimentoEntryMedia, rendimentoEntryPlainText } from "@/components/rendimento/rendimento-entry-media";
+import { formatRendimentoTicketLine } from "@/lib/rendimento/entry-label";
 import { Button } from "@/components/ui/button";
 import {
   rendimentoOvertimeCardClass,
@@ -577,8 +578,7 @@ export function RendimentoCalendar({
                         />
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Ticket #{item.entry.ticketNumber}
-                        {item.entry.clientName ? ` · ${item.entry.clientName}` : ""}
+                        {formatRendimentoTicketLine(item.entry)}
                       </p>
                       <RendimentoOvertimeServiceLine entry={item.entry} />
                       {rendimentoEntryPlainText(item.entry.description) ? (

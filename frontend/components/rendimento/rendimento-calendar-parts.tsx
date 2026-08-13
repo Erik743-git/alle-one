@@ -17,6 +17,7 @@ import {
   rendimentoOvertimeCardClass,
   resolveRendimentoOvertimeDisplay,
 } from "@/lib/rendimento/entry-overtime";
+import { formatRendimentoTicketRef } from "@/lib/rendimento/entry-label";
 import { cn } from "@/lib/utils";
 import {
   RENDIMENTO_GAP_LEGEND,
@@ -303,8 +304,7 @@ export function RendimentoEntryCard({
         <span className="font-bold">{entry.hoursFormatted}</span>
       </div>
       <p className={cn("truncate text-muted-foreground", dense && "text-[9px]")}>
-        #{entry.ticketNumber}
-        {entry.clientName ? ` · ${entry.clientName}` : ""}
+        {formatRendimentoTicketRef(entry)}
       </p>
     </li>
   );

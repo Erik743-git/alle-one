@@ -62,6 +62,7 @@ export type RendimentoEntryDto = {
   minutes: number;
   hoursFormatted: string;
   ticketNumber: number;
+  ticketTitle?: string | null;
   clientName: string | null;
   description: string | null;
   /** Há imagem/anexo para abrir no detalhe (evita enviar base64 na listagem). */
@@ -157,6 +158,7 @@ type AppointmentRow = {
   init_time: string | null;
   end_time: string | null;
   ticket_number: number;
+  ticket_title: string | null;
   client_name: string | null;
   description: string | null;
   minutes: number;
@@ -470,6 +472,7 @@ export class RendimentoService {
             init_time: string | null;
             end_time: string | null;
             ticket_number: number;
+            ticket_title: string | null;
             client_name: string | null;
             description: string | null;
             service_name: string | null;
@@ -484,6 +487,7 @@ export class RendimentoService {
           a.init_time as init_time,
           a.end_time as end_time,
           a.ticket_number,
+          nullif(trim(t.title), '') as ticket_title,
           t.client_name,
           a.description,
           a.service_name,
@@ -515,6 +519,7 @@ export class RendimentoService {
         init_time: row.init_time,
         end_time: row.end_time,
         ticket_number: Number(row.ticket_number),
+        ticket_title: row.ticket_title,
         client_name: row.client_name,
         description: row.description,
         valorization_raw: serviceNameToValorizationRaw(row.service_name),
@@ -536,6 +541,10 @@ export class RendimentoService {
         a.init_time::text as init_time,
         a.end_time::text as end_time,
         a.ticket_number,
+        coalesce(
+          nullif(trim(pt.title), ''),
+          nullif(trim(tt.title), '')
+        ) as ticket_title,
         a.client_name,
         a.description,
         a.valorization_raw,
@@ -549,6 +558,8 @@ export class RendimentoService {
           0
         )::int as minutes
       from tiflux.ticket_appointments a
+      left join portal_tickets pt on pt.ticket_number = a.ticket_number
+      left join tiflux.tickets tt on tt.ticket_number = a.ticket_number
       where a.user_external_id = ${params.tifluxUserId}
         and a.appointment_date::date between ${startDate}::date and ${endDate}::date
       order by a.appointment_date asc, a.init_time asc nulls last, a.external_id asc
@@ -1539,6 +1550,7 @@ export class RendimentoService {
         minutes: Number(row.minutes) || 0,
         hoursFormatted: this.formatMinutes(Number(row.minutes) || 0),
         ticketNumber: Number(row.ticket_number),
+        ticketTitle: row.ticket_title?.trim() || null,
         clientName: row.client_name,
         description: plain,
         hasMedia,
