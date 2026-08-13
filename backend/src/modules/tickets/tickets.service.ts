@@ -667,6 +667,52 @@ export class TicketsService {
       createdBy: portal?.createdBy ?? actor.userId,
     });
 
+    const nextIsClosed =
+      dto.isClosed !== undefined
+        ? Boolean(dto.isClosed)
+        : (portal?.isClosed ?? false);
+    const stageChanged =
+      Boolean(resolvedStageName) &&
+      resolvedStageName !== (portal?.stageName ?? null);
+    const closedChanged = nextIsClosed !== Boolean(portal?.isClosed);
+    if (stageChanged || closedChanged || reopening) {
+      let eventType = 'STAGE_CHANGED';
+      let summary = `Estágio atualizado para "${resolvedStageName ?? '—'}"`;
+      if (reopening) {
+        eventType = 'TICKET_REOPENED';
+        summary = `Chamado reaberto · estágio "${resolvedStageName ?? PORTAL_STAGE.NOVO}"`;
+      } else if (nextIsClosed && !portal?.isClosed) {
+        eventType = 'TICKET_CLOSED';
+        summary = `Chamado fechado · estágio "${resolvedStageName ?? PORTAL_STAGE.ENCERRADO}"`;
+      } else if (
+        resolvedStageName === PORTAL_STAGE.CANCELADO ||
+        statusName === PORTAL_STAGE.CANCELADO
+      ) {
+        eventType = 'TICKET_CANCELLED';
+        summary = 'Chamado cancelado';
+      }
+      try {
+        await this.prisma.ticketHistory.create({
+          data: {
+            ticketNumber,
+            eventType,
+            summary,
+            actorName: actor.email ?? null,
+            source: 'PORTAL',
+            externalKey: `${eventType.toLowerCase()}:${ticketNumber}:${Date.now()}`,
+            payload: {
+              fromStageName: portal?.stageName ?? null,
+              toStageName: resolvedStageName,
+              isClosed: nextIsClosed,
+            },
+            occurredAt: new Date(),
+          },
+        });
+      } catch {
+        // Histórico não deve bloquear a atualização do ticket.
+      }
+    }
+
     if (descriptionRaw) {
       await this.savePortalTicketDescription(
         actor,

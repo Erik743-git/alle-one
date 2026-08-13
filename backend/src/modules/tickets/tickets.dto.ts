@@ -58,6 +58,12 @@ export class TicketsListQueryDto {
   @IsString()
   statusName?: string;
 
+  /** Inclui resolvidos, encerrados, cancelados e fechados (fora da lista pendente). */
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => parseOptionalBoolean(value))
+  includeDone?: boolean;
+
   @IsOptional()
   @IsString()
   deskName?: string;

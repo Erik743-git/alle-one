@@ -25,6 +25,7 @@ import {
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import { TICKETS_LIST_SUBTITLE, TICKETS_CLIENT_LIST_SUBTITLE } from "@/lib/module-copy";
+import { PORTAL_STAGES_ORDER } from "@/lib/portal-ticket-stages";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
@@ -58,6 +59,7 @@ export default function TicketsPage() {
   const [includeAllResponsibles, setIncludeAllResponsibles] = useState(
     () => isClientGestor(),
   );
+  const [includeDone, setIncludeDone] = useState(false);
 
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
@@ -66,7 +68,6 @@ export default function TicketsPage() {
   const [responsibleExternalId, setResponsibleExternalId] = useState("");
   const [clientExternalId, setClientExternalId] = useState("");
   const [stageName, setStageName] = useState("");
-  const [statusName, setStatusName] = useState("");
   const [deskName, setDeskName] = useState("");
   const [ticketNumber, setTicketNumber] = useState("");
   const [externalGmudRef, setExternalGmudRef] = useState("");
@@ -81,7 +82,6 @@ export default function TicketsPage() {
           : undefined,
       clientExternalId: clientExternalId ? Number(clientExternalId) : undefined,
       stageName: stageName || undefined,
-      statusName: statusName || undefined,
       deskName: deskName || undefined,
       from: from || undefined,
       to: to || undefined,
@@ -91,19 +91,20 @@ export default function TicketsPage() {
           : undefined,
       search: search.trim() || undefined,
       externalGmudRef: externalGmudRef.trim() || undefined,
+      includeDone: includeDone || undefined,
     };
   }, [
     mineOnly,
     responsibleExternalId,
     clientExternalId,
     stageName,
-    statusName,
     deskName,
     from,
     to,
     ticketNumber,
     externalGmudRef,
     search,
+    includeDone,
   ]);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -131,13 +132,17 @@ export default function TicketsPage() {
     void load();
   }, [load]);
 
-  const stageOptions = useMemo(
-    () => [
+  const stageOptions = useMemo(() => {
+    const fromApi = catalogs?.stages ?? [];
+    const merged = [
+      ...PORTAL_STAGES_ORDER,
+      ...fromApi.filter((s) => !PORTAL_STAGES_ORDER.includes(s as (typeof PORTAL_STAGES_ORDER)[number])),
+    ];
+    return [
       { value: "", label: "Todos os estágios" },
-      ...(catalogs?.stages ?? []).map((s) => ({ value: s, label: s })),
-    ],
-    [catalogs],
-  );
+      ...merged.map((s) => ({ value: s, label: s })),
+    ];
+  }, [catalogs]);
 
   const clientOptions = useMemo(
     () => [
@@ -157,14 +162,6 @@ export default function TicketsPage() {
         value: String(r.externalId),
         label: r.name,
       })),
-    ],
-    [catalogs],
-  );
-
-  const statusOptions = useMemo(
-    () => [
-      { value: "", label: "Todos os status" },
-      ...(catalogs?.statuses ?? []).map((s) => ({ value: s, label: s })),
     ],
     [catalogs],
   );
@@ -291,6 +288,14 @@ export default function TicketsPage() {
                   />
                 </div>
 
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                  <FlipCheckbox
+                    checked={includeDone}
+                    onChange={(e) => setIncludeDone(e.target.checked)}
+                  />
+                  Incluir resolvidos, encerrados e cancelados
+                </label>
+
                 {showAdvanced ? (
                   <div className="space-y-4">
                     {!isClient() ? (
@@ -356,7 +361,16 @@ export default function TicketsPage() {
                         </Label>
                         <SearchableSelectField
                           value={stageName}
-                          onChange={setStageName}
+                          onChange={(next) => {
+                            setStageName(next);
+                            if (
+                              next === "Resolvido" ||
+                              next === "Encerrado" ||
+                              next === "Cancelado"
+                            ) {
+                              setIncludeDone(true);
+                            }
+                          }}
                           options={stageOptions}
                           emptyLabel="Todos os estágios"
                         />
@@ -385,17 +399,6 @@ export default function TicketsPage() {
                           />
                         </div>
                       ) : null}
-                      <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Status
-                        </Label>
-                        <SearchableSelectField
-                          value={statusName}
-                          onChange={setStatusName}
-                          options={statusOptions}
-                          emptyLabel="Todos os status"
-                        />
-                      </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
                           Mesa
@@ -427,13 +430,18 @@ export default function TicketsPage() {
             ) : !(data?.groups?.length) ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
-                  Nenhum ticket aberto encontrado com os filtros atuais.
+                  {includeDone
+                    ? "Nenhum ticket encontrado com os filtros atuais."
+                    : "Nenhum ticket pendente encontrado. Marque “Incluir resolvidos, encerrados e cancelados” para ver o histórico."}
                 </CardContent>
               </Card>
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground">
                   {data.total} ticket(s)
+                  {includeDone
+                    ? " · incluindo resolvidos/encerrados"
+                    : " · só pendentes"}
                   {data.mineOnly
                     ? data.responsibleName
                       ? ` · responsável: ${data.responsibleName}`
@@ -460,7 +468,6 @@ export default function TicketsPage() {
                             <th className="px-4 py-2">GMUD</th>
                             <th className="px-4 py-2">Origem</th>
                             <th className="px-4 py-2">Prioridade</th>
-                            <th className="px-4 py-2">Status</th>
                             <th className="px-4 py-2">Estágio</th>
                             <th className="px-4 py-2">Atualizado</th>
                           </tr>
@@ -486,7 +493,6 @@ export default function TicketsPage() {
                               </td>
                               <td className="px-4 py-2">{ticket.origin ?? "—"}</td>
                               <td className="px-4 py-2">{ticket.priorityName ?? "—"}</td>
-                              <td className="px-4 py-2">{ticket.statusName ?? "—"}</td>
                               <td className="px-4 py-2">{ticket.stageName ?? "—"}</td>
                               <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
                                 {formatWhen(ticket.updatedAt)}
