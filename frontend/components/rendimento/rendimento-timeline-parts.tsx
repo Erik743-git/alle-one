@@ -5,6 +5,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { appointmentDescriptionToPlainText, isAppointmentDoc } from "@/lib/appointment-doc";
 import { resolveRendimentoOvertimeDisplay } from "@/lib/rendimento/entry-overtime";
+import { formatRendimentoTicketRef } from "@/lib/rendimento/entry-label";
 import {
   assignTimelineColumns,
   buildTimelineMarks,
@@ -81,7 +82,7 @@ export function buildTimelineBlocks(
         return {
           startMin: interval.startMin,
           endMin: interval.endMin,
-          label: `#${entry.ticketNumber}${entry.clientName ? ` · ${entry.clientName}` : ""}`,
+          label: formatRendimentoTicketRef(entry),
           sub: entryTooltipSub(entry.description),
           tone,
         };

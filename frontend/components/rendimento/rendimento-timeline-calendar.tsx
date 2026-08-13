@@ -47,6 +47,7 @@ import {
   rendimentoOvertimeCardClass,
   resolveRendimentoOvertimeDisplay,
 } from "@/lib/rendimento/entry-overtime";
+import { formatRendimentoTicketLine } from "@/lib/rendimento/entry-label";
 import {
   RENDIMENTO_OVERTIME_APPROVED_NOTE,
   RENDIMENTO_OVERTIME_BALANCE_LABEL,
@@ -330,8 +331,7 @@ function DayDetailList({
                   />
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Ticket #{item.entry.ticketNumber}
-                  {item.entry.clientName ? ` · ${item.entry.clientName}` : ""}
+                  {formatRendimentoTicketLine(item.entry)}
                 </p>
                 <RendimentoOvertimeServiceLine entry={item.entry} />
                 {rendimentoEntryPlainText(item.entry.description) ? (

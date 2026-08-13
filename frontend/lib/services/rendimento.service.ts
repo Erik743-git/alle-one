@@ -63,6 +63,7 @@ export type RendimentoEntry = {
   minutes: number;
   hoursFormatted: string;
   ticketNumber: number;
+  ticketTitle?: string | null;
   clientName: string | null;
   description: string | null;
   hasMedia?: boolean;
