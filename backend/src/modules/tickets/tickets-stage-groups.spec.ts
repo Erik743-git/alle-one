@@ -2,7 +2,7 @@ import {
   canonicalizeStageName,
   resolveTicketStageGroup,
 } from './tickets-stage-groups';
-import { PORTAL_STAGE } from './portal-ticket-stages';
+import { isDonePortalStage, PORTAL_STAGE } from './portal-ticket-stages';
 
 describe('tickets-stage-groups', () => {
   it('mapeia legado e canônico para grupos', () => {
@@ -30,5 +30,12 @@ describe('tickets-stage-groups', () => {
 
   it('tolera UTF-8 corrompido em execução', () => {
     expect(resolveTicketStageGroup('Em execu??o')).toBe('atendimento');
+  });
+
+  it('marca resolvido/encerrado/cancelado como done', () => {
+    expect(isDonePortalStage('Resolvido')).toBe(true);
+    expect(isDonePortalStage('Encerrado')).toBe(true);
+    expect(isDonePortalStage('Cancelado')).toBe(true);
+    expect(isDonePortalStage('Novo')).toBe(false);
   });
 });

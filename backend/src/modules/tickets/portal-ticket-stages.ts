@@ -74,3 +74,21 @@ export function isTerminalPortalStage(
   const mapped = mapLegacyStageToPortal(stageName);
   return mapped === PORTAL_STAGE.ENCERRADO || mapped === PORTAL_STAGE.CANCELADO;
 }
+
+/** Estágios fora da lista “pendentes” (resolvido / encerrado / cancelado). */
+export function isDonePortalStage(
+  stageName: string | null | undefined,
+): boolean {
+  const mapped = mapLegacyStageToPortal(stageName);
+  return (
+    mapped === PORTAL_STAGE.RESOLVIDO ||
+    mapped === PORTAL_STAGE.ENCERRADO ||
+    mapped === PORTAL_STAGE.CANCELADO
+  );
+}
+
+export const PORTAL_DONE_STAGES: PortalStageName[] = [
+  PORTAL_STAGE.RESOLVIDO,
+  PORTAL_STAGE.ENCERRADO,
+  PORTAL_STAGE.CANCELADO,
+];

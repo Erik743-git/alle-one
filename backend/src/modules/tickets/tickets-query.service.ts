@@ -12,6 +12,7 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import type { TicketsListQueryDto } from './tickets.dto';
+import { PORTAL_DONE_STAGES, isDonePortalStage } from './portal-ticket-stages';
 import {
   canonicalizeStageName,
   resolveTicketStageGroup,
@@ -346,9 +347,32 @@ export class TicketsQueryService {
       }
     }
 
+    const includeDone =
+      query.includeDone === true ||
+      query.ticketNumber != null ||
+      isDonePortalStage(query.stageName);
+
+    if (!includeDone) {
+      andParts.push({ isClosed: false });
+      andParts.push({
+        OR: [
+          { stageName: null },
+          {
+            NOT: {
+              OR: PORTAL_DONE_STAGES.map((stage) => ({
+                stageName: {
+                  equals: stage,
+                  mode: 'insensitive' as const,
+                },
+              })),
+            },
+          },
+        ],
+      });
+    }
+
     const rows = await this.prisma.portalTicket.findMany({
       where: {
-        isClosed: false,
         ...(!mineOnly && responsibleFilter != null
           ? { responsibleExternalId: responsibleFilter }
           : {}),
@@ -653,6 +677,10 @@ export class TicketsQueryService {
     const search = query.search?.trim() ?? '';
     const ticketNumberFilter = query.ticketNumber ?? null;
     const externalGmudRefFilter = query.externalGmudRef?.trim() ?? '';
+    const includeDone =
+      query.includeDone === true ||
+      ticketNumberFilter != null ||
+      isDonePortalStage(query.stageName);
 
     const rows = mineOnly
       ? ((await this.prisma.$queryRaw<TicketRow[]>`
@@ -674,7 +702,18 @@ export class TicketsQueryService {
               l.external_gmud_ref
             FROM tiflux.tickets t
             LEFT JOIN portal_ticket_gmud_links l ON l.ticket_number = t.ticket_number
-            WHERE COALESCE(t.is_closed, false) = false
+            WHERE (
+                ${includeDone}::boolean = true
+                OR (
+                  COALESCE(t.is_closed, false) = false
+                  AND (
+                    t.stage_name IS NULL
+                    OR lower(trim(t.stage_name)) NOT IN (
+                      'resolvido', 'encerrado', 'cancelado'
+                    )
+                  )
+                )
+              )
               AND (
                 t.responsible_external_id = ${responsibleFilter}
                 OR EXISTS (
@@ -719,7 +758,18 @@ export class TicketsQueryService {
               l.external_gmud_ref
             FROM tiflux.tickets t
             LEFT JOIN portal_ticket_gmud_links l ON l.ticket_number = t.ticket_number
-            WHERE COALESCE(t.is_closed, false) = false
+            WHERE (
+                ${includeDone}::boolean = true
+                OR (
+                  COALESCE(t.is_closed, false) = false
+                  AND (
+                    t.stage_name IS NULL
+                    OR lower(trim(t.stage_name)) NOT IN (
+                      'resolvido', 'encerrado', 'cancelado'
+                    )
+                  )
+                )
+              )
               AND (${responsibleFilter}::int IS NULL OR t.responsible_external_id = ${responsibleFilter})
               AND (${clientExternalIdFilter ?? null}::int IS NULL OR t.client_external_id = ${clientExternalIdFilter ?? null})
               AND (${query.stageName ?? null}::text IS NULL OR t.stage_name ILIKE ${query.stageName ? `%${query.stageName}%` : null})
@@ -1615,6 +1665,26 @@ export class TicketsQueryService {
         await this.portalStore.patchStage(ticketNumber, targetStage.name, {
           isClosed: true,
         });
+        try {
+          await this.prisma.ticketHistory.create({
+            data: {
+              ticketNumber,
+              eventType: 'TICKET_CLOSED',
+              summary: `Chamado fechado · estágio "${targetStage.name}"`,
+              actorName: actor.email ?? null,
+              source: 'PORTAL',
+              externalKey: `close:${ticketNumber}:${Date.now()}`,
+              payload: {
+                fromStageName: ticket.stage_name,
+                toStageName: targetStage.name,
+                isClosed: true,
+              },
+              occurredAt: new Date(),
+            },
+          });
+        } catch {
+          /* ignore */
+        }
         return {
           ok: true,
           stageId: targetStage.id,
@@ -1671,6 +1741,31 @@ export class TicketsQueryService {
     await this.portalStore.patchStage(ticketNumber, stageName, {
       isClosed: Boolean(targetStage.lastStage),
     });
+
+    try {
+      const closing = Boolean(targetStage.lastStage) && !ticket.is_closed;
+      await this.prisma.ticketHistory.create({
+        data: {
+          ticketNumber,
+          eventType: closing ? 'TICKET_CLOSED' : 'STAGE_CHANGED',
+          summary: closing
+            ? `Chamado fechado · estágio "${stageName}"`
+            : `Estágio atualizado de "${ticket.stage_name ?? '—'}" para "${stageName}"`,
+          actorName: actor.email ?? null,
+          source: 'PORTAL',
+          externalKey: `stage:${ticketNumber}:${stageId}:${Date.now()}`,
+          payload: {
+            fromStageName: ticket.stage_name,
+            toStageName: stageName,
+            stageId,
+            isClosed: Boolean(targetStage.lastStage),
+          },
+          occurredAt: new Date(),
+        },
+      });
+    } catch {
+      // Histórico não deve bloquear a mudança de estágio.
+    }
 
     await this.audit.log({
       actor,

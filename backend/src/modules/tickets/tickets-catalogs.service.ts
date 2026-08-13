@@ -12,6 +12,7 @@ import {
   isTicketsTifluxWriteEnabled,
 } from './tickets-portal.config';
 import { resolveResponsibleExternalId } from './portal-responsible.helper';
+import { PORTAL_STAGES_ORDER } from './portal-ticket-stages';
 import {
   portalRequestorSyntheticId,
   sanitizeTicketRequestors,
@@ -571,35 +572,25 @@ export class TicketsCatalogsService {
     actor: AuthenticatedRequestUser,
     clientFilter: number | null,
   ) {
-    const whereOpen = {
-      isClosed: false,
+    const whereTickets = {
       ...(clientFilter != null ? { clientExternalId: clientFilter } : {}),
     } as const;
 
     const [tickets, responsibles] = await Promise.all([
       this.prisma.portalTicket.findMany({
-        where: whereOpen,
+        where: whereTickets,
         select: {
-          stageName: true,
           clientExternalId: true,
           clientName: true,
           deskName: true,
-          statusName: true,
-          responsibleExternalId: true,
-          responsibleName: true,
         },
         take: 2000,
       }),
       this.listResponsiblesForCatalogs(),
     ]);
 
-    const stages = [
-      ...new Set(
-        tickets
-          .map((t) => t.stageName?.trim())
-          .filter((v): v is string => Boolean(v)),
-      ),
-    ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    // Catálogo canônico: inclui Resolvido / Encerrado / Cancelado mesmo sem tickets abertos.
+    const stages = [...PORTAL_STAGES_ORDER];
 
     const clientMap = new Map<number, string>();
     for (const t of tickets) {
@@ -611,14 +602,6 @@ export class TicketsCatalogsService {
       ...new Set(
         tickets
           .map((t) => t.deskName?.trim())
-          .filter((v): v is string => Boolean(v)),
-      ),
-    ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-
-    const statuses = [
-      ...new Set(
-        tickets
-          .map((t) => t.statusName?.trim())
           .filter((v): v is string => Boolean(v)),
       ),
     ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -646,7 +629,8 @@ export class TicketsCatalogsService {
             a.name.localeCompare(b.name, 'pt-BR'),
           ),
       desks,
-      statuses,
+      // Mantido por compat da API; UI de lista usa só Estágio.
+      statuses: stages,
     };
   }
 
