@@ -48,6 +48,8 @@ import {
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
+import { useAuth } from "@/lib/use-auth";
+import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
 import {
   ticketsService,
   type PortalAppointmentEditContext,
@@ -55,6 +57,13 @@ import {
   type TicketDetailResponse,
   type TicketStagesResponse,
 } from "@/lib/services/tickets.service";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
@@ -125,6 +134,8 @@ async function openPortalAttachment(
 export default function TicketDetailPage() {
   const params = useParams<{ ticketNumber: string }>();
   const ticketNumber = Number(params.ticketNumber);
+  const { user } = useAuth();
+  const isAdmin = user?.role === "ADMIN";
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TicketDetailResponse | null>(null);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
@@ -145,6 +156,13 @@ export default function TicketDetailPage() {
   const [stagesLoading, setStagesLoading] = useState(false);
   const [mainView, setMainView] = useState<TicketMainView>("appointments");
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
+  const [changeClientOpen, setChangeClientOpen] = useState(false);
+  const [clientOptions, setClientOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [nextClientId, setNextClientId] = useState("");
+  const [loadingClients, setLoadingClients] = useState(false);
 
   const load = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
@@ -244,6 +262,116 @@ export default function TicketDetailPage() {
       );
     } finally {
       setStageSaving(false);
+    }
+  }
+
+  async function handleReopenTicket() {
+    const ok = await confirm({
+      title: "Reabrir chamado?",
+      description:
+        "O chamado volta para o estágio Novo e poderá ser editado novamente.",
+      confirmLabel: "Reabrir",
+    });
+    if (!ok) return;
+    try {
+      setLifecycleBusy(true);
+      await ticketsService.updateTicket(ticketNumber, {
+        isClosed: false,
+        stageName: PORTAL_STAGE.NOVO,
+        statusName: PORTAL_STAGE.NOVO,
+      });
+      notifySuccess("Chamado reaberto.");
+      await Promise.all([load(), loadStages()]);
+      setHistoryRefreshToken((n) => n + 1);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível reabrir o chamado.",
+      );
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function handleCancelTicket() {
+    const ok = await confirm({
+      title: "Cancelar chamado?",
+      description:
+        "O chamado será marcado como Cancelado e encerrado. Essa ação pode ser desfeita com Reabrir.",
+      confirmLabel: "Cancelar chamado",
+      variant: "destructive",
+    });
+    if (!ok) return;
+    try {
+      setLifecycleBusy(true);
+      await ticketsService.updateTicket(ticketNumber, {
+        isClosed: true,
+        stageName: PORTAL_STAGE.CANCELADO,
+        statusName: PORTAL_STAGE.CANCELADO,
+      });
+      notifySuccess("Chamado cancelado.");
+      await Promise.all([load(), loadStages()]);
+      setHistoryRefreshToken((n) => n + 1);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível cancelar o chamado.",
+      );
+    } finally {
+      setLifecycleBusy(false);
+    }
+  }
+
+  async function openChangeClientDialog() {
+    setChangeClientOpen(true);
+    setNextClientId("");
+    setLoadingClients(true);
+    try {
+      const catalogs = await ticketsService.createCatalogs();
+      setClientOptions(
+        (catalogs.clients ?? []).map((c) => ({
+          value: String(c.id),
+          label: c.name,
+        })),
+      );
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os clientes.",
+      );
+      setChangeClientOpen(false);
+    } finally {
+      setLoadingClients(false);
+    }
+  }
+
+  async function confirmChangeClient() {
+    const clientId = Number(nextClientId);
+    if (!Number.isFinite(clientId) || clientId <= 0) {
+      notifyError("Selecione o novo cliente.");
+      return;
+    }
+    const ok = await confirm({
+      title: "Trocar cliente do chamado?",
+      description:
+        "GMUD vinculada e dados do solicitante serão limpos. Confirme se o cliente está correto.",
+      confirmLabel: "Trocar cliente",
+    });
+    if (!ok) return;
+    try {
+      setLifecycleBusy(true);
+      await ticketsService.updateTicket(ticketNumber, { clientId });
+      notifySuccess("Cliente do chamado atualizado.");
+      setChangeClientOpen(false);
+      await Promise.all([load(), loadStages()]);
+      setHistoryRefreshToken((n) => n + 1);
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível trocar o cliente.",
+      );
+    } finally {
+      setLifecycleBusy(false);
     }
   }
 
@@ -579,7 +707,8 @@ export default function TicketDetailPage() {
                                 disabled={
                                   stageSaving ||
                                   stagesLoading ||
-                                  stagesData?.isClosed === true
+                                  stagesData?.isClosed === true ||
+                                  ticket.isClosed
                                 }
                                 placeholder="Selecione o estágio"
                                 preserveOrder
@@ -593,7 +722,8 @@ export default function TicketDetailPage() {
                                 stageSaving ||
                                 stagesLoading ||
                                 !stageChanged ||
-                                stagesData?.isClosed === true
+                                stagesData?.isClosed === true ||
+                                ticket.isClosed
                               }
                               onClick={() => void handleSaveStage()}
                             >
@@ -604,10 +734,51 @@ export default function TicketDetailPage() {
                             </Button>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            {stagesData?.isClosed
-                              ? "Ticket fechado — o estágio não pode ser alterado."
+                            {stagesData?.isClosed || ticket.isClosed
+                              ? "Ticket fechado — use Reabrir para alterar o estágio."
                               : "Altere o estágio do chamado conforme o andamento do atendimento."}
                           </p>
+                        </div>
+                      ) : null}
+                      {canCreateTicket() || canChangeTicketStage() || isAdmin ? (
+                        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                          {(stagesData?.isClosed || ticket.isClosed) &&
+                          (canChangeTicketStage() || canCreateTicket()) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              disabled={lifecycleBusy}
+                              onClick={() => void handleReopenTicket()}
+                            >
+                              {lifecycleBusy ? (
+                                <Loader2 className="mr-2 size-4 animate-spin" />
+                              ) : null}
+                              Reabrir
+                            </Button>
+                          ) : null}
+                          {!ticket.isClosed && canCreateTicket() ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              disabled={lifecycleBusy}
+                              onClick={() => void handleCancelTicket()}
+                            >
+                              Cancelar chamado
+                            </Button>
+                          ) : null}
+                          {isAdmin && !ticket.isClosed ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              disabled={lifecycleBusy}
+                              onClick={() => void openChangeClientDialog()}
+                            >
+                              Trocar cliente
+                            </Button>
+                          ) : null}
                         </div>
                       ) : null}
                     </CardContent>
@@ -921,6 +1092,44 @@ export default function TicketDetailPage() {
               </>
             )}
           </div>
+
+          <Dialog open={changeClientOpen} onOpenChange={setChangeClientOpen}>
+            <DialogContent className="sm:max-w-md" showCloseButton>
+              <DialogHeader>
+                <DialogTitle>Trocar cliente do chamado</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-2">
+                <Label>Novo cliente</Label>
+                <SearchableSelectField
+                  value={nextClientId}
+                  onChange={setNextClientId}
+                  options={clientOptions}
+                  loading={loadingClients}
+                  placeholder="Selecione o cliente"
+                  emptyLabel="Nenhum cliente"
+                />
+                <p className="text-xs text-muted-foreground">
+                  GMUD e solicitante atuais serão limpos após a troca.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setChangeClientOpen(false)}
+                >
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={lifecycleBusy || !nextClientId}
+                  onClick={() => void confirmChangeClient()}
+                >
+                  Confirmar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

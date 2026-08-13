@@ -5,6 +5,7 @@ type TokenCache = { accessToken: string; expiresAt: number };
 export type GraphMailMessage = {
   id: string;
   internetMessageId?: string;
+  conversationId?: string;
   subject?: string;
   bodyPreview?: string;
   body?: { contentType?: string; content?: string };
@@ -13,6 +14,7 @@ export type GraphMailMessage = {
   ccRecipients?: Array<{ emailAddress?: { name?: string; address?: string } }>;
   receivedDateTime?: string;
   hasAttachments?: boolean;
+  internetMessageHeaders?: Array<{ name?: string; value?: string }>;
 };
 
 @Injectable()
@@ -109,7 +111,7 @@ export class MicrosoftGraphMailClient {
     const top = params.top ?? 25;
     const mailbox = encodeURIComponent(params.mailbox);
     const select =
-      'id,internetMessageId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments';
+      'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,internetMessageHeaders';
     const res = await this.graphFetch(
       `/users/${mailbox}/mailFolders/inbox/messages?$top=${top}&$orderby=receivedDateTime desc&$select=${select}`,
       undefined,
@@ -134,7 +136,7 @@ export class MicrosoftGraphMailClient {
     const mailbox = encodeURIComponent(params.mailbox);
     const id = encodeURIComponent(params.graphMessageId);
     const select =
-      'id,internetMessageId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments';
+      'id,internetMessageId,conversationId,subject,bodyPreview,body,from,toRecipients,ccRecipients,receivedDateTime,hasAttachments,internetMessageHeaders';
     const res = await this.graphFetch(
       `/users/${mailbox}/messages/${id}?$select=${select}`,
       undefined,

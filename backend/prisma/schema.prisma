@@ -799,6 +799,8 @@ model PortalTicket {
   requestorTelephone      String?            @map("requestor_telephone")
   isClosed                Boolean            @default(false) @map("is_closed")
   origin                  PortalTicketOrigin @default(TIFLUX)
+  /// ConversationId do Microsoft Graph (thread de e-mail).
+  emailConversationId     String?            @map("email_conversation_id")
   createdAtSource         DateTime?          @map("created_at_source")
   updatedAtSource         DateTime?          @map("updated_at_source")
   createdBy               String?            @map("created_by")
@@ -814,6 +816,7 @@ model PortalTicket {
   @@index([isClosed, responsibleExternalId, updatedAtSource])
   @@index([isClosed, clientExternalId, createdAtSource])
   @@index([specialtyId])
+  @@index([emailConversationId])
   @@map("portal_tickets")
 }
 
@@ -1265,6 +1268,12 @@ model PreTicket {
   mailboxAddress    String          @map("mailbox_address")
   messageId         String          @unique @map("message_id")
   graphMessageId    String?         @map("graph_message_id")
+  conversationId    String?         @map("conversation_id")
+  inReplyTo         String?         @map("in_reply_to")
+  referencesHeader  String?         @map("references_header") @db.Text
+  possibleDuplicateSubject Boolean  @default(false) @map("possible_duplicate_subject")
+  linkedTicketNumber Int?           @map("linked_ticket_number")
+  appliedToTicket   Boolean         @default(false) @map("applied_to_ticket")
   companyId         String?         @map("company_id")
   requestorUserId   String?         @map("requestor_user_id")
   specialtyId       String?         @map("specialty_id")
@@ -1287,6 +1296,8 @@ model PreTicket {
   @@index([status, receivedAt])
   @@index([fromEmail])
   @@index([mailboxAddress])
+  @@index([conversationId])
+  @@index([linkedTicketNumber])
   @@map("pre_tickets")
 }
 

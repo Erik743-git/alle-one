@@ -15,6 +15,13 @@ import {
 } from "@/components/tickets/appointment-description-composer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
@@ -79,6 +86,10 @@ export default function NewTicketPage() {
   const [requestorName, setRequestorName] = useState("");
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorTelephone, setRequestorTelephone] = useState("");
+  const [newRequestorOpen, setNewRequestorOpen] = useState(false);
+  const [newRequestorName, setNewRequestorName] = useState("");
+  const [newRequestorEmail, setNewRequestorEmail] = useState("");
+  const [newRequestorTelephone, setNewRequestorTelephone] = useState("");
   const [externalGmudRef, setExternalGmudRef] = useState("");
   const [gmudOptions, setGmudOptions] = useState<Gmud[]>([]);
   const [loadingGmuds, setLoadingGmuds] = useState(false);
@@ -348,6 +359,43 @@ export default function NewTicketPage() {
     setRequestorTelephone(
       selected.telephone ? formatBrPhone(selected.telephone) : "",
     );
+  }
+
+  function openNewRequestorModal() {
+    setNewRequestorName("");
+    setNewRequestorEmail("");
+    setNewRequestorTelephone("");
+    setNewRequestorOpen(true);
+  }
+
+  function confirmNewRequestor() {
+    const name = newRequestorName.trim();
+    const email = newRequestorEmail.trim();
+    if (!name) {
+      notifyError("Informe o nome do solicitante.");
+      return;
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      notifyError("Informe um e-mail válido do solicitante.");
+      return;
+    }
+    if (
+      newRequestorTelephone.trim() &&
+      !isValidBrPhone(newRequestorTelephone)
+    ) {
+      notifyError("Telefone inválido. Use DDD + número.");
+      return;
+    }
+    setRequestorId("");
+    setRequestorName(name);
+    setRequestorEmail(email);
+    setRequestorTelephone(
+      newRequestorTelephone.trim()
+        ? formatBrPhone(newRequestorTelephone)
+        : "",
+    );
+    setNewRequestorOpen(false);
+    notifySuccess("Solicitante preenchido. Continue a abertura do chamado.");
   }
 
   function addCcPerson(emailRaw: string, name?: string) {
@@ -627,34 +675,44 @@ export default function NewTicketPage() {
                       />
                     </div>
                     <div className="space-y-3">
+                      <div className="flex flex-wrap items-end justify-between gap-2">
+                        <FieldLabel required>Solicitante</FieldLabel>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          disabled={saving || !clientId}
+                          onClick={openNewRequestorModal}
+                        >
+                          <Plus className="mr-1 size-3.5" />
+                          Novo solicitante
+                        </Button>
+                      </div>
                       {requestorOptions.length > 0 ? (
-                        <div className="space-y-2">
-                          <FieldLabel required>Solicitante</FieldLabel>
-                          <SearchableSelectField
-                            value={requestorId}
-                            onChange={handleRequestorSuggestion}
-                            options={requestorOptions}
-                            loading={loading}
-                            emptyLabel="Selecione o solicitante"
-                            placeholder="Selecione o solicitante"
-                          />
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
-                          <FieldLabel required>Solicitante</FieldLabel>
-                          <Input
-                            value={requestorName}
-                            onChange={(e) => {
-                              setRequestorName(e.target.value);
-                              setRequestorId("");
-                            }}
-                            placeholder="Nome de quem está solicitando"
-                            className="h-11"
-                            disabled={saving}
-                            required
-                          />
-                        </div>
-                      )}
+                        <SearchableSelectField
+                          value={requestorId}
+                          onChange={handleRequestorSuggestion}
+                          options={requestorOptions}
+                          loading={loading}
+                          emptyLabel="Selecione o solicitante"
+                          placeholder="Selecione ou adicione um novo"
+                        />
+                      ) : null}
+                      <div className="space-y-2">
+                        <FieldLabel required>Nome</FieldLabel>
+                        <Input
+                          value={requestorName}
+                          onChange={(e) => {
+                            setRequestorName(e.target.value);
+                            setRequestorId("");
+                          }}
+                          placeholder="Nome de quem está solicitando"
+                          className="h-11"
+                          disabled={saving}
+                          required
+                        />
+                      </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="space-y-2">
                           <FieldLabel required>E-mail do solicitante</FieldLabel>
@@ -686,6 +744,10 @@ export default function NewTicketPage() {
                           />
                         </div>
                       </div>
+                      <p className="text-xs text-muted-foreground">
+                        Não está na lista? Use &quot;Novo solicitante&quot; para
+                        preencher na hora (ex.: caixa compartilhada).
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -798,6 +860,60 @@ export default function NewTicketPage() {
               </form>
             )}
           </div>
+
+          <Dialog open={newRequestorOpen} onOpenChange={setNewRequestorOpen}>
+            <DialogContent className="sm:max-w-md" showCloseButton>
+              <DialogHeader>
+                <DialogTitle>Novo solicitante</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <FieldLabel required>Nome</FieldLabel>
+                  <Input
+                    value={newRequestorName}
+                    onChange={(e) => setNewRequestorName(e.target.value)}
+                    placeholder="Nome completo"
+                    className="h-11"
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel required>E-mail</FieldLabel>
+                  <Input
+                    type="email"
+                    value={newRequestorEmail}
+                    onChange={(e) => setNewRequestorEmail(e.target.value)}
+                    placeholder="alleone.teste@alletecnologia.com"
+                    className="h-11"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <FieldLabel optional>Telefone</FieldLabel>
+                  <Input
+                    value={newRequestorTelephone}
+                    onChange={(e) =>
+                      setNewRequestorTelephone(formatBrPhone(e.target.value))
+                    }
+                    placeholder="(00) 00000-0000"
+                    className="h-11"
+                    inputMode="tel"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setNewRequestorOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="button" onClick={confirmNewRequestor}>
+                  Usar no chamado
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

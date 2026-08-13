@@ -1,7 +1,15 @@
+import {
+  PORTAL_STAGE,
+  mapLegacyStageToPortal,
+  normalizeStageCompareKey,
+} from './portal-ticket-stages';
+
 export type TicketStageGroupKey =
-  | 'pendente'
+  | 'novo'
+  | 'atendimento'
   | 'aguardando'
-  | 'execucao'
+  | 'resolvido'
+  | 'encerrado'
   | 'outros';
 
 export type TicketStageGroupDef = {
@@ -11,65 +19,68 @@ export type TicketStageGroupDef = {
 };
 
 export const TICKET_STAGE_GROUPS: TicketStageGroupDef[] = [
-  { key: 'pendente', label: 'Pendente', order: 1 },
-  { key: 'aguardando', label: 'Aguardando usuário', order: 2 },
-  { key: 'execucao', label: 'Em execução', order: 3 },
-  { key: 'outros', label: 'Outros estágios', order: 4 },
+  { key: 'novo', label: PORTAL_STAGE.NOVO, order: 1 },
+  { key: 'atendimento', label: PORTAL_STAGE.EM_ATENDIMENTO, order: 2 },
+  { key: 'aguardando', label: PORTAL_STAGE.AGUARDANDO_CLIENTE, order: 3 },
+  { key: 'resolvido', label: PORTAL_STAGE.RESOLVIDO, order: 4 },
+  { key: 'encerrado', label: PORTAL_STAGE.ENCERRADO, order: 5 },
+  { key: 'outros', label: 'Outros estágios', order: 6 },
 ];
 
 /** Normaliza texto para comparação (caixa, acentos, espaços). */
 export function normalizeStageKey(
   stageName: string | null | undefined,
 ): string {
-  return String(stageName ?? '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .replace(/\s+/g, ' ');
+  return normalizeStageCompareKey(String(stageName ?? ''));
 }
 
 /**
- * Label canônico para persistência/UI (unifica casing e aliases EN/PT).
- * Ex.: "Em Execução" → "Em execução"; "Pending" → "Pendente".
+ * Label canônico para persistência/UI.
  */
 export function canonicalizeStageName(
   stageName: string | null | undefined,
 ): string | null {
-  if (stageName == null) return null;
-  const trimmed = String(stageName).trim();
-  if (!trimmed) return null;
-
-  const key = resolveTicketStageGroup(trimmed);
-  if (key === 'pendente') return 'Pendente';
-  if (key === 'aguardando') return 'Aguardando usuário';
-  if (key === 'execucao') return 'Em execução';
-  return trimmed;
+  return mapLegacyStageToPortal(stageName);
 }
 
 export function resolveTicketStageGroup(
   stageName: string | null | undefined,
 ): TicketStageGroupKey {
-  const normalized = normalizeStageKey(stageName);
+  const mapped = mapLegacyStageToPortal(stageName);
+  if (!mapped) return 'outros';
+  if (mapped === PORTAL_STAGE.NOVO) return 'novo';
+  if (mapped === PORTAL_STAGE.EM_ATENDIMENTO) return 'atendimento';
+  if (mapped === PORTAL_STAGE.AGUARDANDO_CLIENTE) return 'aguardando';
+  if (mapped === PORTAL_STAGE.RESOLVIDO) return 'resolvido';
+  if (mapped === PORTAL_STAGE.ENCERRADO || mapped === PORTAL_STAGE.CANCELADO) {
+    return 'encerrado';
+  }
 
+  const normalized = normalizeStageKey(stageName);
   if (!normalized) return 'outros';
-  // EN + PT: Pending / Pendente
   if (normalized.includes('pendente') || normalized === 'pending') {
-    return 'pendente';
+    return 'novo';
   }
   if (normalized.includes('aguardando') || normalized.includes('waiting')) {
     return 'aguardando';
   }
-  // Em execução / Em Execução / In progress
-  // Também "Em execu??o" (UTF-8 corrompido em dumps/clones).
   if (
+    normalized.includes('atend') ||
     normalized.includes('execuc') ||
     normalized.includes('execut') ||
     normalized.includes('in progress') ||
     normalized === 'progress' ||
     /^em execu/.test(normalized)
   ) {
-    return 'execucao';
+    return 'atendimento';
+  }
+  if (normalized.includes('resolv')) return 'resolvido';
+  if (
+    normalized.includes('encerr') ||
+    normalized.includes('fechad') ||
+    normalized.includes('cancel')
+  ) {
+    return 'encerrado';
   }
   return 'outros';
 }

@@ -178,6 +178,12 @@ export class UpdateTicketDto {
   @Type(() => Boolean)
   isClosed?: boolean;
 
+  /** Troca de cliente (tiflux client id). Só ADMIN no service. */
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  clientId?: number;
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

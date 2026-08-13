@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TicketsPortalStoreService } from '../tickets/tickets-portal-store.service';
+import { PORTAL_STAGE } from '../tickets/portal-ticket-stages';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
@@ -221,12 +222,14 @@ export class PreTicketsService {
       requestorName: row.fromName,
       requestorEmail: row.fromEmail,
       requestorTelephone: null,
-      statusName: 'Aberto',
-      stageName: 'Pendente',
+      statusName: PORTAL_STAGE.NOVO,
+      stageName: PORTAL_STAGE.NOVO,
       priorityName: dto.priorityName?.trim() || row.priorityName,
       createdByWayOf: 'E-mail',
       isClosed: false,
       origin: PortalTicketOrigin.PORTAL,
+      specialtyId: desk?.id ?? null,
+      emailConversationId: row.conversationId ?? null,
       createdAtSource: row.receivedAt,
       updatedAtSource: new Date(),
       createdBy: actor.userId,

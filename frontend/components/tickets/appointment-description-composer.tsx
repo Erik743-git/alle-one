@@ -10,13 +10,14 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
 } from "react";
-import { FileText, Paperclip, X } from "lucide-react";
+import { FileText, Paperclip, X, Bold, Italic, Underline, List } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
 import {
   isAppointmentDoc,
   parseAppointmentDoc,
+  sanitizeComposerHtml,
   serializeAppointmentDoc,
   type StoredBlock,
 } from "@/lib/appointment-doc";
@@ -507,7 +508,15 @@ export const AppointmentDescriptionComposer = forwardRef<
           for (const block of doc.blocks) {
             if (cancelled) return;
             if (block.type === "text") {
-              appendText(block.content);
+              if (block.html) {
+                const wrap = document.createElement("div");
+                wrap.innerHTML = sanitizeComposerHtml(block.content);
+                while (wrap.firstChild) {
+                  editor.appendChild(wrap.firstChild);
+                }
+              } else {
+                appendText(block.content);
+              }
               continue;
             }
             if (block.type !== "image") continue;
@@ -915,35 +924,53 @@ export const AppointmentDescriptionComposer = forwardRef<
 
         syncInlineImagesWithDom();
 
-        let textBuffer = "";
-
-        const flushText = () => {
-          const normalized = textBuffer
-            .replace(/\u00a0/g, " ")
-            .replace(/[ \t]+\n/g, "\n")
-            .replace(/\n{3,}/g, "\n\n")
+        const flushHtml = (html: string) => {
+          const cleaned = sanitizeComposerHtml(html)
+            .replace(/^(<br\s*\/?>|\s)+/gi, "")
+            .replace(/(<br\s*\/?>|\s)+$/gi, "")
             .trim();
-
-          if (normalized) {
-            storedBlocks.push({
-              type: "text",
-              content: normalized,
-            });
-          }
-
-          textBuffer = "";
+          if (!cleaned) return;
+          const plain = cleaned
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (!plain) return;
+          const hasFormat = /<(b|strong|i|em|u|ul|ol|li)\b/i.test(cleaned);
+          storedBlocks.push(
+            hasFormat
+              ? { type: "text", content: cleaned, html: true }
+              : {
+                  type: "text",
+                  content: cleaned
+                    .replace(/<br\s*\/?>/gi, "\n")
+                    .replace(/<\/(p|div)>/gi, "\n")
+                    .replace(/<[^>]+>/g, "")
+                    .replace(/\u00a0/g, " ")
+                    .replace(/\n{3,}/g, "\n\n")
+                    .trim(),
+                },
+          );
         };
+
+        let htmlBuffer = "";
 
         const walk = (node: Node) => {
           if (node.nodeType === Node.TEXT_NODE) {
-            textBuffer += node.textContent ?? "";
+            const text = node.textContent ?? "";
+            if (text) {
+              htmlBuffer += text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            }
             return;
           }
 
           if (!(node instanceof HTMLElement)) return;
 
           if (node.dataset.appointmentImage === "true") {
-            flushText();
+            flushHtml(htmlBuffer);
+            htmlBuffer = "";
 
             const fileKey = node.dataset.fileKey;
             if (!fileKey) return;
@@ -965,35 +992,41 @@ export const AppointmentDescriptionComposer = forwardRef<
             return;
           }
 
-          if (node.tagName === "BR") {
-            textBuffer += "\n";
+          const tag = node.tagName.toUpperCase();
+          if (tag === "BR") {
+            htmlBuffer += "<br>";
             return;
           }
 
-          const block = isBlockElement(node) || node.tagName === "TR";
-
-          if (
-            block &&
-            textBuffer &&
-            !textBuffer.endsWith("\n")
-          ) {
-            textBuffer += "\n";
-          }
-
+          const formatTags: Record<string, string> = {
+            B: "b",
+            STRONG: "strong",
+            I: "i",
+            EM: "em",
+            U: "u",
+            UL: "ul",
+            OL: "ol",
+            LI: "li",
+            P: "p",
+            DIV: "div",
+          };
+          const open = formatTags[tag];
+          if (open) htmlBuffer += `<${open}>`;
           for (const child of Array.from(node.childNodes)) {
             walk(child);
           }
-
-          if (block && !textBuffer.endsWith("\n")) {
-            textBuffer += "\n";
+          if (open) {
+            htmlBuffer += `</${open}>`;
+            if (open === "p" || open === "div" || open === "li") {
+              htmlBuffer += "";
+            }
           }
         };
 
         for (const child of Array.from(editor.childNodes)) {
           walk(child);
         }
-
-        flushText();
+        flushHtml(htmlBuffer);
 
         files.push(...attachments.map(({ file }) => file));
 
@@ -1021,6 +1054,26 @@ export const AppointmentDescriptionComposer = forwardRef<
     ],
   );
 
+  const runFormat = useCallback(
+    (command: string) => {
+      if (disabled) return;
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      const selection = window.getSelection();
+      if (
+        lastSelectionRef.current &&
+        selection &&
+        selection.rangeCount === 0
+      ) {
+        selection.addRange(lastSelectionRef.current);
+      }
+      document.execCommand(command, false);
+      saveSelection();
+    },
+    [disabled, saveSelection],
+  );
+
   return (
     <div className="space-y-3">
       <div className="space-y-2">
@@ -1042,6 +1095,60 @@ export const AppointmentDescriptionComposer = forwardRef<
               : "border-border",
           )}
         >
+          <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-2 py-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-8 w-8"
+              disabled={disabled}
+              title="Negrito"
+              aria-label="Negrito"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => runFormat("bold")}
+            >
+              <Bold className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-8 w-8"
+              disabled={disabled}
+              title="Itálico"
+              aria-label="Itálico"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => runFormat("italic")}
+            >
+              <Italic className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-8 w-8"
+              disabled={disabled}
+              title="Sublinhado"
+              aria-label="Sublinhado"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => runFormat("underline")}
+            >
+              <Underline className="size-3.5" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="h-8 w-8"
+              disabled={disabled}
+              title="Lista"
+              aria-label="Lista"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => runFormat("insertUnorderedList")}
+            >
+              <List className="size-3.5" />
+            </Button>
+          </div>
           <div
             ref={setEditorNode}
             contentEditable={!disabled}
@@ -1084,6 +1191,8 @@ export const AppointmentDescriptionComposer = forwardRef<
               "min-h-[180px] max-h-[420px] w-full cursor-text overflow-x-hidden overflow-y-auto break-words px-4 py-3 text-sm leading-6 outline-none",
               "whitespace-pre-wrap text-foreground",
               "[&_b]:font-semibold [&_strong]:font-semibold",
+              "[&_i]:italic [&_em]:italic [&_u]:underline",
+              "[&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5",
               "[&_p]:my-1 [&_div]:my-0.5 [&_br]:leading-6",
               "[&_table]:w-full [&_table]:border-collapse [&_td]:align-top [&_td]:py-0.5",
               "empty:before:pointer-events-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]",

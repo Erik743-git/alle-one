@@ -192,6 +192,15 @@ export class EmailInboundIngestService {
         ? bodyContent
         : (params.message.bodyPreview ?? stripHtml(bodyContent));
 
+    const conversationId = params.message.conversationId?.trim() || null;
+    const headers = params.message.internetMessageHeaders ?? [];
+    const headerValue = (name: string) =>
+      headers
+        .find((h) => h.name?.toLowerCase() === name.toLowerCase())
+        ?.value?.trim() || null;
+    const inReplyTo = headerValue('In-Reply-To');
+    const referencesHeader = headerValue('References');
+
     const requestor = await this.prisma.user.findFirst({
       where: {
         email: { equals: fromEmail, mode: 'insensitive' },
@@ -218,12 +227,57 @@ export class EmailInboundIngestService {
       this.logger.warn('Sem usuário para gravar anexos do pré-ticket');
     }
 
+    const matchedTicketNumber = await this.resolveLinkedTicketNumber({
+      subject: title,
+      bodyText: descriptionText,
+      conversationId,
+      inReplyTo,
+      referencesHeader,
+    });
+
+    const linkedTicketNumber: number | null = matchedTicketNumber;
+    let appliedToTicket = false;
+    let status: PreTicketStatus = PreTicketStatus.PENDING;
+
+    if (matchedTicketNumber != null) {
+      const ticket = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber: matchedTicketNumber },
+        select: {
+          ticketNumber: true,
+          isClosed: true,
+          emailConversationId: true,
+        },
+      });
+      if (ticket && !ticket.isClosed) {
+        appliedToTicket = true;
+        status = PreTicketStatus.OPENED;
+      }
+      // fechado: permanece PENDING com linkedTicketNumber para o operador
+    }
+
+    const normalizedSubject = normalizeEmailSubject(title);
+    let possibleDuplicateSubject = false;
+    if (!matchedTicketNumber && companyId && normalizedSubject) {
+      const dup = await this.prisma.preTicket.findFirst({
+        where: {
+          status: PreTicketStatus.PENDING,
+          companyId,
+          deletedAt: null,
+          appliedToTicket: false,
+          receivedAt: { gte: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000) },
+          title: { equals: title, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      possibleDuplicateSubject = Boolean(dup);
+    }
+
     let preTicket;
     try {
       preTicket = await this.prisma.preTicket.create({
         data: {
           id: randomUUID(),
-          status: PreTicketStatus.PENDING,
+          status,
           title: title.slice(0, 500),
           descriptionHtml,
           descriptionText,
@@ -233,10 +287,18 @@ export class EmailInboundIngestService {
           mailboxAddress: mailbox,
           messageId: params.messageId,
           graphMessageId: params.message.id,
+          conversationId,
+          inReplyTo,
+          referencesHeader,
+          possibleDuplicateSubject,
+          linkedTicketNumber,
+          appliedToTicket,
           companyId,
           requestorUserId: requestor?.id ?? null,
           specialtyId,
           priorityName,
+          ticketNumber: appliedToTicket ? linkedTicketNumber : null,
+          openedAt: appliedToTicket ? new Date() : null,
           receivedAt: params.message.receivedDateTime
             ? new Date(params.message.receivedDateTime)
             : new Date(),
@@ -338,10 +400,174 @@ export class EmailInboundIngestService {
       });
     }
 
+    if (appliedToTicket && linkedTicketNumber != null) {
+      await this.applyEmailToOpenTicket({
+        ticketNumber: linkedTicketNumber,
+        fromName: fromName ?? fromEmail,
+        fromEmail,
+        title,
+        html: html ?? descriptionHtml,
+        text: descriptionText,
+        conversationId,
+        preTicketId: preTicket.id,
+        systemUploaderId: systemUploader ?? null,
+      });
+      this.logger.log(
+        `E-mail aplicado ao chamado #${linkedTicketNumber} (${params.messageId})`,
+      );
+      return true;
+    }
+
     this.logger.log(
-      `Pré-ticket criado ${preTicket.id} de ${fromEmail} (${params.messageId})`,
+      `Pré-ticket criado ${preTicket.id} de ${fromEmail} (${params.messageId})` +
+        (linkedTicketNumber
+          ? ` → resposta a #${linkedTicketNumber} (fechado)`
+          : '') +
+        (possibleDuplicateSubject ? ' [assunto duplicado]' : ''),
     );
     return true;
+  }
+
+  private async resolveLinkedTicketNumber(params: {
+    subject: string;
+    bodyText: string;
+    conversationId: string | null;
+    inReplyTo: string | null;
+    referencesHeader: string | null;
+  }): Promise<number | null> {
+    const fromHash = extractTicketNumberFromText(
+      `${params.subject}\n${params.bodyText}`,
+    );
+    if (fromHash != null) {
+      const exists = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber: fromHash },
+        select: { ticketNumber: true },
+      });
+      if (exists) return fromHash;
+    }
+
+    if (params.conversationId) {
+      const byConv = await this.prisma.portalTicket.findFirst({
+        where: { emailConversationId: params.conversationId },
+        select: { ticketNumber: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (byConv) return byConv.ticketNumber;
+    }
+
+    const refIds = [
+      params.inReplyTo,
+      ...(params.referencesHeader?.split(/\s+/) ?? []),
+    ]
+      .map((v) => v?.trim())
+      .filter((v): v is string => Boolean(v));
+
+    for (const mid of refIds.slice(0, 12)) {
+      const prev = await this.prisma.preTicket.findFirst({
+        where: { messageId: mid },
+        select: {
+          ticketNumber: true,
+          linkedTicketNumber: true,
+        },
+      });
+      const n = prev?.ticketNumber ?? prev?.linkedTicketNumber;
+      if (n != null) return n;
+    }
+
+    return null;
+  }
+
+  private async applyEmailToOpenTicket(params: {
+    ticketNumber: number;
+    fromName: string;
+    fromEmail: string;
+    title: string;
+    html: string | null;
+    text: string;
+    conversationId: string | null;
+    preTicketId: string;
+    systemUploaderId: string | null;
+  }) {
+    const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    const blockHtml = [
+      `<hr/>`,
+      `<p><strong>Resposta por e-mail</strong> — ${escapeHtml(params.fromName)} &lt;${escapeHtml(params.fromEmail)}&gt; · ${stamp}</p>`,
+      `<p><em>${escapeHtml(params.title)}</em></p>`,
+      params.html?.trim() ||
+        `<pre>${escapeHtml(params.text || '(sem conteúdo)')}</pre>`,
+    ].join('\n');
+
+    const existing = await this.prisma.portalTicketDescription.findUnique({
+      where: { ticketNumber: params.ticketNumber },
+      select: { description: true },
+    });
+    const nextDescription = existing?.description?.trim()
+      ? `${existing.description}\n${blockHtml}`
+      : blockHtml;
+
+    const uploader = params.systemUploaderId;
+    if (!uploader) {
+      this.logger.warn(
+        `Sem uploader para aplicar e-mail ao ticket #${params.ticketNumber}`,
+      );
+      return;
+    }
+
+    await this.prisma.portalTicketDescription.upsert({
+      where: { ticketNumber: params.ticketNumber },
+      create: {
+        ticketNumber: params.ticketNumber,
+        description: nextDescription,
+        createdBy: uploader,
+      },
+      update: { description: nextDescription },
+    });
+
+    if (params.conversationId) {
+      await this.prisma.portalTicket.update({
+        where: { ticketNumber: params.ticketNumber },
+        data: {
+          emailConversationId: params.conversationId,
+          updatedAtSource: new Date(),
+        },
+      });
+    }
+
+    const preAttachments = await this.prisma.preTicketAttachment.findMany({
+      where: { preTicketId: params.preTicketId },
+    });
+    for (const att of preAttachments) {
+      try {
+        await this.prisma.portalTicketAppointmentAttachment.create({
+          data: {
+            id: randomUUID(),
+            ticketNumber: params.ticketNumber,
+            portalAppointmentId: null,
+            fileId: att.fileId,
+            createdBy: uploader,
+          },
+        });
+      } catch {
+        /* ignore duplicates */
+      }
+    }
+
+    try {
+      await this.prisma.ticketHistory.create({
+        data: {
+          id: randomUUID(),
+          ticketNumber: params.ticketNumber,
+          eventType: 'EMAIL_REPLY',
+          summary: `Resposta por e-mail de ${params.fromEmail}: ${params.title.slice(0, 160)}`,
+          actorName: params.fromName,
+          source: 'PORTAL',
+          occurredAt: new Date(),
+          externalKey: `email:${params.preTicketId}`,
+        },
+      });
+    } catch {
+      /* ignore */
+    }
   }
 
   /**
@@ -615,4 +841,35 @@ function rewriteRemainingCidsByOrder(
     out = rewriteCidReferences(out, cids[i], imageDataUrls[i]);
   }
   return out;
+}
+
+function extractTicketNumberFromText(text: string): number | null {
+  const patterns = [
+    /#\s*(\d{1,9})\b/,
+    /\bchamado\s*[#:.-]?\s*(\d{1,9})\b/i,
+    /\bticket\s*[#:.-]?\s*(\d{1,9})\b/i,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m?.[1]) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  return null;
+}
+
+function normalizeEmailSubject(subject: string): string {
+  return subject
+    .replace(/^(re|fw|fwd|enc|res)\s*:\s*/gi, '')
+    .trim()
+    .toLowerCase();
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

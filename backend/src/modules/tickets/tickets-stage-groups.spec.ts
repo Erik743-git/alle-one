@@ -2,45 +2,33 @@ import {
   canonicalizeStageName,
   resolveTicketStageGroup,
 } from './tickets-stage-groups';
+import { PORTAL_STAGE } from './portal-ticket-stages';
 
-describe('resolveTicketStageGroup', () => {
-  it('agrupa estágios conhecidos', () => {
-    expect(resolveTicketStageGroup('Pendente')).toBe('pendente');
-    expect(resolveTicketStageGroup('Aguardando usuário')).toBe('aguardando');
-    expect(resolveTicketStageGroup('Em execução')).toBe('execucao');
+describe('tickets-stage-groups', () => {
+  it('mapeia legado e canônico para grupos', () => {
+    expect(resolveTicketStageGroup('Pendente')).toBe('novo');
+    expect(resolveTicketStageGroup('Novo')).toBe('novo');
+    expect(resolveTicketStageGroup('Em execução')).toBe('atendimento');
+    expect(resolveTicketStageGroup('Em Atendimento')).toBe('atendimento');
+    expect(resolveTicketStageGroup('Aguardando Cliente')).toBe('aguardando');
+    expect(resolveTicketStageGroup('Resolvido')).toBe('resolvido');
+    expect(resolveTicketStageGroup('Encerrado')).toBe('encerrado');
+    expect(resolveTicketStageGroup('Cancelado')).toBe('encerrado');
   });
 
-  it('normaliza acentos e caixa', () => {
-    expect(resolveTicketStageGroup('AGUARDANDO USUÁRIO')).toBe('aguardando');
-    expect(resolveTicketStageGroup('Em Execução')).toBe('execucao');
-  });
-
-  it('aceita aliases em inglês', () => {
-    expect(resolveTicketStageGroup('Pending')).toBe('pendente');
-    expect(resolveTicketStageGroup('In progress')).toBe('execucao');
-  });
-
-  it('recupera label com encoding corrompido', () => {
-    expect(resolveTicketStageGroup('Em execu??o')).toBe('execucao');
-    expect(canonicalizeStageName('Em execu??o')).toBe('Em execução');
-  });
-
-  it('cai em outros para estágio desconhecido', () => {
-    expect(resolveTicketStageGroup('Fechado')).toBe('outros');
-    expect(resolveTicketStageGroup(null)).toBe('outros');
-  });
-});
-
-describe('canonicalizeStageName', () => {
-  it('unifica casing e aliases', () => {
-    expect(canonicalizeStageName('Em Execução')).toBe('Em execução');
-    expect(canonicalizeStageName('Pending')).toBe('Pendente');
-    expect(canonicalizeStageName('Aguardando Usuário')).toBe(
-      'Aguardando usuário',
+  it('unifica casing legado', () => {
+    expect(resolveTicketStageGroup('Em Execução')).toBe('atendimento');
+    expect(canonicalizeStageName('Em Execução')).toBe(
+      PORTAL_STAGE.EM_ATENDIMENTO,
     );
   });
 
-  it('preserva estágios desconhecidos', () => {
-    expect(canonicalizeStageName('Aberto')).toBe('Aberto');
+  it('aceita aliases EN', () => {
+    expect(resolveTicketStageGroup('Pending')).toBe('novo');
+    expect(resolveTicketStageGroup('In progress')).toBe('atendimento');
+  });
+
+  it('tolera UTF-8 corrompido em execução', () => {
+    expect(resolveTicketStageGroup('Em execu??o')).toBe('atendimento');
   });
 });

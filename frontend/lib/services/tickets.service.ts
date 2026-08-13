@@ -3,7 +3,13 @@ import { readBlobDownload } from "@/lib/download-blob";
 import { authFetch } from "@/lib/auth-fetch";
 import { API_URL } from "@/lib/env";
 
-export type TicketStageGroupKey = "pendente" | "aguardando" | "execucao" | "outros";
+export type TicketStageGroupKey =
+  | "novo"
+  | "atendimento"
+  | "aguardando"
+  | "resolvido"
+  | "encerrado"
+  | "outros";
 
 export type TicketListItem = {
   ticketNumber: number;
@@ -295,6 +301,8 @@ export type UpdateTicketPayload = {
   stageName?: string;
   statusName?: string;
   isClosed?: boolean;
+  /** tiflux client id — só ADMIN */
+  clientId?: number;
   removeAttachmentFileIds?: string[];
 };
 

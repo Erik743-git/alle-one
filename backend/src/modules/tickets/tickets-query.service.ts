@@ -1539,11 +1539,12 @@ export class TicketsQueryService {
 
     if (stages.length === 0) {
       const names = [
-        'Aberto',
-        'Em andamento',
-        'Aguardando',
+        'Novo',
+        'Em Atendimento',
+        'Aguardando Cliente',
         'Resolvido',
-        'Fechado',
+        'Encerrado',
+        'Cancelado',
       ];
       const current = ticket.stage_name?.trim();
       if (
@@ -1556,7 +1557,7 @@ export class TicketsQueryService {
         id: index + 1,
         name,
         firstStage: index === 0,
-        lastStage: index === names.length - 1,
+        lastStage: name === 'Encerrado' || name === 'Cancelado',
       }));
     }
 

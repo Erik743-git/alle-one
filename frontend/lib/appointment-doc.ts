@@ -1,6 +1,11 @@
 export const APPOINTMENT_DOC_PREFIX = "__ALLEONE_DOC_V1__:";
 
-export type StoredTextBlock = { type: "text"; content: string };
+export type StoredTextBlock = {
+  type: "text";
+  content: string;
+  /** Quando true, `content` é fragmento HTML (B/I/U/listas). */
+  html?: boolean;
+};
 export type StoredImageBlock = {
   type: "image";
   fileIndex: number;
@@ -40,7 +45,11 @@ export function serializeAppointmentDoc(blocks: StoredBlock[]): string {
 
 export function appointmentDocToPlainText(doc: AppointmentStoredDoc): string {
   return doc.blocks
-    .map((block) => (block.type === "text" ? block.content : "[imagem]"))
+    .map((block) => {
+      if (block.type !== "text") return "[imagem]";
+      if (block.html) return stripHtmlToPlain(block.content);
+      return block.content;
+    })
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
@@ -72,6 +81,60 @@ export function stripHtmlToPlain(html: string): string {
     .trim();
 }
 
+const ALLOWED_HTML_TAGS = new Set([
+  "B",
+  "STRONG",
+  "I",
+  "EM",
+  "U",
+  "S",
+  "BR",
+  "P",
+  "DIV",
+  "UL",
+  "OL",
+  "LI",
+  "SPAN",
+]);
+
+/** Sanitiza fragmento HTML do editor (só tags de formatação básicas). */
+export function sanitizeComposerHtml(html: string): string {
+  if (typeof document === "undefined") {
+    return stripHtmlToPlain(html);
+  }
+  const root = document.createElement("div");
+  root.innerHTML = html;
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) return;
+    if (!(node instanceof HTMLElement)) {
+      node.parentNode?.removeChild(node);
+      return;
+    }
+    const tag = node.tagName.toUpperCase();
+    if (!ALLOWED_HTML_TAGS.has(tag)) {
+      const parent = node.parentNode;
+      if (!parent) return;
+      while (node.firstChild) {
+        parent.insertBefore(node.firstChild, node);
+      }
+      parent.removeChild(node);
+      return;
+    }
+    for (const attr of Array.from(node.attributes)) {
+      node.removeAttribute(attr.name);
+    }
+    for (const child of Array.from(node.childNodes)) {
+      walk(child);
+    }
+  };
+
+  for (const child of Array.from(root.childNodes)) {
+    walk(child);
+  }
+  return root.innerHTML.trim();
+}
+
 /**
  * Texto seguro para o modal de edição (sem HTML cru / doc Alle One).
  * Imagens embutidas viram marcador curto.
@@ -86,7 +149,6 @@ export function normalizeTicketDescriptionForEdit(
   }
   if (looksLikeHtml(raw)) {
     const plain = stripHtmlToPlain(raw);
-    // data: URLs gigantes às vezes sobram como lixo após strip parcial
     return plain
       .replace(/data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/gi, "[imagem]")
       .replace(/\s+/g, " ")

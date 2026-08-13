@@ -105,6 +105,19 @@ export default function PreTicketDetailPage() {
             <>
               <div className="space-y-2">
                 <h1 className="text-xl font-semibold md:text-2xl">{item.title}</h1>
+                <div className="flex flex-wrap gap-2">
+                  {item.linkedTicketNumber ? (
+                    <span className="rounded-md bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+                      Resposta a chamado #{item.linkedTicketNumber} (fechado —
+                      reabra ou abra novo)
+                    </span>
+                  ) : null}
+                  {item.possibleDuplicateSubject ? (
+                    <span className="rounded-md bg-orange-500/15 px-2 py-1 text-xs font-medium text-orange-800 dark:text-orange-200">
+                      Possível duplicata de assunto
+                    </span>
+                  ) : null}
+                </div>
                 <div className="grid gap-2 text-sm md:grid-cols-2">
                   <p>
                     <span className="text-muted-foreground">Solicitante: </span>
