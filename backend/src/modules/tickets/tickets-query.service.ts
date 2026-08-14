@@ -131,6 +131,23 @@ export class TicketsQueryService {
     return email.trim().toLowerCase();
   }
 
+  private async actorCanChangeTicketClient(
+    actor: AuthenticatedRequestUser,
+    responsibleExternalId: number | null | undefined,
+  ): Promise<boolean> {
+    if (actor.role === 'ADMIN') return true;
+    if (
+      responsibleExternalId == null ||
+      !Number.isFinite(Number(responsibleExternalId))
+    ) {
+      return false;
+    }
+    const mine = await this.resolveTifluxExternalIdForUser(actor.email);
+    return (
+      mine != null && Number(mine.externalId) === Number(responsibleExternalId)
+    );
+  }
+
   private async resolveTifluxExternalIdForUser(
     email: string,
   ): Promise<{ externalId: number; name: string | null } | null> {
@@ -510,6 +527,7 @@ export class TicketsQueryService {
         priorityName: apiTicket.priority?.name ?? null,
         statusName: apiTicket.status?.name ?? null,
         stageName,
+        responsibleExternalId: apiTicket.responsible?.id ?? null,
         responsibleName: apiTicket.responsible?.name ?? null,
         deskName: apiTicket.desk?.name ?? null,
         deskExternalId: apiTicket.desk?.id ?? null,
@@ -527,6 +545,10 @@ export class TicketsQueryService {
       externalGmudRef,
       portalDescription,
       syncPending: true,
+      canChangeClient: await this.actorCanChangeTicketClient(
+        actor,
+        apiTicket.responsible?.id ?? null,
+      ),
     };
   }
 
@@ -883,6 +905,10 @@ export class TicketsQueryService {
         externalGmudRef,
         portalDescription,
         source: 'portal_tickets',
+        canChangeClient: await this.actorCanChangeTicketClient(
+          actor,
+          row.responsible_external_id,
+        ),
       };
     }
 
@@ -950,6 +976,10 @@ export class TicketsQueryService {
       appointments,
       externalGmudRef,
       portalDescription,
+      canChangeClient: await this.actorCanChangeTicketClient(
+        actor,
+        row.responsible_external_id,
+      ),
     };
   }
 

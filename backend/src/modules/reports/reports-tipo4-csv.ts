@@ -19,9 +19,28 @@ export type Tipo4TriggerRow = {
   count: number;
 };
 
+export type Tipo4ZabbixSlice = {
+  group: string;
+  alertasMonitoringRows: Array<{
+    periodLabel: string;
+    High: number;
+    Disaster: number;
+  }>;
+  dashSummary: Record<string, unknown> | undefined;
+  topTriggers: Tipo4TriggerRow[];
+  allTriggersInPeriod: Tipo4TriggerRow[];
+  principaisHosts: Array<{
+    monthLabel: string;
+    High: Array<{ host: string; quantity: number }>;
+    Disaster: Array<{ host: string; quantity: number }>;
+  }>;
+};
+
 export type Tipo4ReportBundle = {
   companyName: string;
   zabbixGroup: string;
+  /** Quando a empresa tem vários grupos Zabbix, um slice por grupo. */
+  zabbixSlices?: Tipo4ZabbixSlice[];
   periodLabel: string;
   periodStartIso: string;
   periodEndIso: string;
@@ -128,81 +147,137 @@ export function buildTipo4ReportCsv(bundle: Tipo4ReportBundle): string {
     pushRow(row);
   }
 
-  lines.push(...sectionTitle('Monitoramento'));
-  pushRow([bundle.monitoringUseWeekly ? 'Semana' : 'Mês', 'High', 'Disaster']);
-  for (const r of bundle.alertasMonitoringRows) {
-    pushRow([r.periodLabel, r.High, r.Disaster]);
-  }
+  const slices: Tipo4ZabbixSlice[] =
+    bundle.zabbixSlices && bundle.zabbixSlices.length > 0
+      ? bundle.zabbixSlices
+      : [
+          {
+            group: bundle.zabbixGroup,
+            alertasMonitoringRows: bundle.alertasMonitoringRows,
+            dashSummary: bundle.dashSummary,
+            topTriggers: bundle.topTriggers,
+            allTriggersInPeriod: bundle.allTriggersInPeriod,
+            principaisHosts: bundle.principaisHosts,
+          },
+        ];
 
-  const totalHosts = Number(bundle.dashSummary?.totalHosts) || 0;
-  const totalHigh = Number(bundle.dashSummary?.totalHigh) || 0;
-  const totalDisaster = Number(bundle.dashSummary?.totalDisaster) || 0;
-  const totalAlerts = totalHigh + totalDisaster;
-  const uniqueTriggers =
-    Number(bundle.dashSummary?.totalTriggersDistintos) ||
-    bundle.topTriggers.length;
+  for (const slice of slices) {
+    const suffix = slices.length > 1 ? ` — ${slice.group}` : '';
 
-  lines.push(...sectionTitle('Top Triggers — resumo do período'));
-  pushRow([
-    'Hosts no grupo',
-    'Triggers distintos',
-    'Total alertas',
-    'High',
-    'Disaster',
-  ]);
-  pushRow([totalHosts, uniqueTriggers, totalAlerts, totalHigh, totalDisaster]);
+    lines.push(...sectionTitle(`Monitoramento${suffix}`));
+    pushRow([
+      'Grupo Zabbix',
+      bundle.monitoringUseWeekly ? 'Semana' : 'Mês',
+      'High',
+      'Disaster',
+    ]);
+    for (const r of slice.alertasMonitoringRows) {
+      pushRow([slice.group, r.periodLabel, r.High, r.Disaster]);
+    }
 
-  lines.push(...sectionTitle('Top Triggers — top 10'));
-  pushRow(['#', 'Host', 'Trigger', 'Severidade', 'Alertas']);
-  bundle.topTriggers.slice(0, 10).forEach((t, i) => {
-    pushRow([i + 1, t.host, t.trigger, t.severity, t.count]);
-  });
+    const totalHosts = Number(slice.dashSummary?.totalHosts) || 0;
+    const totalHigh = Number(slice.dashSummary?.totalHigh) || 0;
+    const totalDisaster = Number(slice.dashSummary?.totalDisaster) || 0;
+    const totalAlerts = totalHigh + totalDisaster;
+    const uniqueTriggers =
+      Number(slice.dashSummary?.totalTriggersDistintos) ||
+      slice.topTriggers.length;
 
-  if (bundle.principaisHosts.length > 0) {
-    lines.push(
-      ...sectionTitle(
-        'Top Triggers — principais hosts por mês (top 3 por severidade)',
-      ),
-    );
-    pushRow(['Mês', 'Host', 'Severidade', 'Posição', 'Alertas']);
-    for (const m of bundle.principaisHosts) {
-      const entries: Array<{
-        pos: number;
-        severity: string;
-        host: string;
-        qty: number;
-      }> = [];
-      (m.High ?? []).slice(0, 3).forEach((h, idx) => {
-        entries.push({
-          pos: idx + 1,
-          severity: 'High',
-          host: h.host,
-          qty: h.quantity,
+    lines.push(...sectionTitle(`Top Triggers — resumo do período${suffix}`));
+    pushRow([
+      'Grupo Zabbix',
+      'Hosts no grupo',
+      'Triggers distintos',
+      'Total alertas',
+      'High',
+      'Disaster',
+    ]);
+    pushRow([
+      slice.group,
+      totalHosts,
+      uniqueTriggers,
+      totalAlerts,
+      totalHigh,
+      totalDisaster,
+    ]);
+
+    lines.push(...sectionTitle(`Top Triggers — top 10${suffix}`));
+    pushRow(['#', 'Grupo Zabbix', 'Host', 'Trigger', 'Severidade', 'Alertas']);
+    slice.topTriggers.slice(0, 10).forEach((t, i) => {
+      pushRow([i + 1, slice.group, t.host, t.trigger, t.severity, t.count]);
+    });
+
+    if (slice.principaisHosts.length > 0) {
+      lines.push(
+        ...sectionTitle(
+          `Top Triggers — principais hosts por mês (top 3 por severidade)${suffix}`,
+        ),
+      );
+      pushRow([
+        'Grupo Zabbix',
+        'Mês',
+        'Host',
+        'Severidade',
+        'Posição',
+        'Alertas',
+      ]);
+      for (const m of slice.principaisHosts) {
+        const entries: Array<{
+          pos: number;
+          severity: string;
+          host: string;
+          qty: number;
+        }> = [];
+        (m.High ?? []).slice(0, 3).forEach((h, idx) => {
+          entries.push({
+            pos: idx + 1,
+            severity: 'High',
+            host: h.host,
+            qty: h.quantity,
+          });
         });
-      });
-      (m.Disaster ?? []).slice(0, 3).forEach((h, idx) => {
-        entries.push({
-          pos: idx + 1,
-          severity: 'Disaster',
-          host: h.host,
-          qty: h.quantity,
+        (m.Disaster ?? []).slice(0, 3).forEach((h, idx) => {
+          entries.push({
+            pos: idx + 1,
+            severity: 'Disaster',
+            host: h.host,
+            qty: h.quantity,
+          });
         });
-      });
-      if (entries.length === 0) {
-        pushRow([m.monthLabel, '—', '—', '—', '—']);
-        continue;
-      }
-      for (const e of entries) {
-        pushRow([m.monthLabel, e.host, e.severity, e.pos, e.qty]);
+        if (entries.length === 0) {
+          pushRow([slice.group, m.monthLabel, '—', '—', '—', '—']);
+          continue;
+        }
+        for (const e of entries) {
+          pushRow([
+            slice.group,
+            m.monthLabel,
+            e.host,
+            e.severity,
+            e.pos,
+            e.qty,
+          ]);
+        }
       }
     }
   }
 
   lines.push(...sectionTitle('Triggers do período (detalhado)'));
-  pushRow(['#', 'Host', 'Trigger', 'Severidade', 'Alertas']);
-  bundle.allTriggersInPeriod.forEach((t, i) => {
-    pushRow([i + 1, t.host, t.trigger, t.severity, t.count]);
-  });
+  pushRow(['#', 'Grupo Zabbix', 'Host', 'Trigger', 'Severidade', 'Alertas']);
+  let triggerIdx = 0;
+  for (const slice of slices) {
+    for (const t of slice.allTriggersInPeriod) {
+      triggerIdx += 1;
+      pushRow([
+        triggerIdx,
+        slice.group,
+        t.host,
+        t.trigger,
+        t.severity,
+        t.count,
+      ]);
+    }
+  }
 
   lines.push(...sectionTitle('Chamados geral — resumo'));
   pushRow([

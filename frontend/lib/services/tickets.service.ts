@@ -103,6 +103,8 @@ export type TicketDetailResponse = {
     }>;
   } | null;
   syncPending?: boolean;
+  /** ADMIN ou responsável do chamado. */
+  canChangeClient?: boolean;
 };
 
 export type TicketFilterCatalogs = {
