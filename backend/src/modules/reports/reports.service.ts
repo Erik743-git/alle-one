@@ -19,6 +19,7 @@ import { writeUploadedBuffer } from '../../common/upload/local-file.helper';
 import { join } from 'path';
 import ExcelJS from 'exceljs';
 import { isMonitoringPeriodWeekly } from '../../common/monitoring-period';
+import { parseZabbixGroupNames } from '../companies/zabbix-groups.util';
 import {
   analyzeRendimentoDay,
   overtimeKindFromValorization,
@@ -622,12 +623,21 @@ export class ReportsService {
       trigger: string;
       severity: string;
       count: number;
+      group?: string;
     }>;
     addCompanyLogo: (sheet: ExcelJS.Worksheet) => void;
+    includeGroupColumn?: boolean;
   }) {
-    const { sheet, companyName, group, periodLabel, rows, addCompanyLogo } =
-      params;
-    const colCount = 5;
+    const {
+      sheet,
+      companyName,
+      group,
+      periodLabel,
+      rows,
+      addCompanyLogo,
+      includeGroupColumn = false,
+    } = params;
+    const colCount = includeGroupColumn ? 6 : 5;
     const lastCol = String.fromCharCode(64 + colCount);
 
     this.styleTipo4TitleBand(
@@ -645,39 +655,58 @@ export class ReportsService {
     sheet.getRow(2).height = 22;
 
     const headerRow = sheet.getRow(4);
-    headerRow.values = ['#', 'Host', 'Trigger', 'Severidade', 'Alertas'];
+    headerRow.values = includeGroupColumn
+      ? ['#', 'Grupo Zabbix', 'Host', 'Trigger', 'Severidade', 'Alertas']
+      : ['#', 'Host', 'Trigger', 'Severidade', 'Alertas'];
     this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
     let rowIdx = 5;
     for (let i = 0; i < rows.length; i += 1) {
       const t = rows[i];
       const row = sheet.getRow(rowIdx);
-      row.values = [i + 1, t.host, t.trigger, t.severity, t.count];
+      row.values = includeGroupColumn
+        ? [i + 1, t.group ?? group, t.host, t.trigger, t.severity, t.count]
+        : [i + 1, t.host, t.trigger, t.severity, t.count];
       this.styleTipo4DataRow(row, i, colCount, { minHeight: 20 });
       row.getCell(1).alignment = { horizontal: 'center' };
-      row.getCell(2).alignment = {
+      const hostCol = includeGroupColumn ? 3 : 2;
+      const triggerCol = includeGroupColumn ? 4 : 3;
+      const sevCol = includeGroupColumn ? 5 : 4;
+      const countCol = includeGroupColumn ? 6 : 5;
+      if (includeGroupColumn) {
+        row.getCell(2).alignment = { horizontal: 'left', indent: 1 };
+      }
+      row.getCell(hostCol).alignment = {
         horizontal: 'left',
         indent: 1,
         wrapText: false,
       };
-      row.getCell(3).font = { size: 9 };
-      row.getCell(3).alignment = {
+      row.getCell(triggerCol).font = { size: 9 };
+      row.getCell(triggerCol).alignment = {
         horizontal: 'left',
         vertical: 'middle',
         wrapText: true,
       };
-      row.getCell(4).font = this.tipo4SeverityFont(t.severity);
-      row.getCell(4).alignment = { horizontal: 'center' };
-      row.getCell(5).alignment = { horizontal: 'center' };
-      row.getCell(5).font = { bold: true };
+      row.getCell(sevCol).font = this.tipo4SeverityFont(t.severity);
+      row.getCell(sevCol).alignment = { horizontal: 'center' };
+      row.getCell(countCol).alignment = { horizontal: 'center' };
+      row.getCell(countCol).font = { bold: true };
       rowIdx += 1;
     }
 
     sheet.getColumn(1).width = 8;
-    sheet.getColumn(2).width = 34;
-    sheet.getColumn(3).width = 48;
-    sheet.getColumn(4).width = 12;
-    sheet.getColumn(5).width = 10;
+    if (includeGroupColumn) {
+      sheet.getColumn(2).width = 28;
+      sheet.getColumn(3).width = 34;
+      sheet.getColumn(4).width = 48;
+      sheet.getColumn(5).width = 12;
+      sheet.getColumn(6).width = 10;
+    } else {
+      sheet.getColumn(2).width = 34;
+      sheet.getColumn(3).width = 48;
+      sheet.getColumn(4).width = 12;
+      sheet.getColumn(5).width = 10;
+    }
     sheet.views = [{ state: 'frozen', ySplit: 4, activeCell: 'A5' }];
   }
 
@@ -1146,7 +1175,10 @@ export class ReportsService {
     });
     if (!company) throw new NotFoundException('Empresa não encontrada');
 
-    const group = company.zabbixGroupName?.trim() || 'ALLE-CLOUD';
+    const zabbixGroups = parseZabbixGroupNames(company.zabbixGroupName);
+    const groupsForZabbix =
+      zabbixGroups.length > 0 ? zabbixGroups : ['ALLE-CLOUD'];
+    const groupLabel = groupsForZabbix.join('; ');
     const startIso = params.start.toISOString();
     const endIso = params.end.toISOString();
 
@@ -1155,37 +1187,110 @@ export class ReportsService {
       role: 'ADMIN' as AuthenticatedRequestUser['role'],
     };
 
-    const dash = await this.dashboard.getCompleteDashboard(
+    // Chamados/horas: uma vez na empresa (TiFlux). Zabbix: um fetch por grupo.
+    const dashTicketsHours = await this.dashboard.getCompleteDashboard(
       reportUser,
-      { group, start: startIso, end: endIso, companyId: params.companyId },
-      { includeHours: true },
+      {
+        group: groupLabel,
+        start: startIso,
+        end: endIso,
+        companyId: params.companyId,
+      },
+      { includeHours: true, includeCharts: false },
     );
 
-    const chamados = Array.isArray(dash.chamadosPorMes)
-      ? dash.chamadosPorMes
+    const chamados = Array.isArray(dashTicketsHours.chamadosPorMes)
+      ? dashTicketsHours.chamadosPorMes
       : [];
-    const horas = Array.isArray(dash.horasPorMes) ? dash.horasPorMes : [];
-    const alertas = Array.isArray(dash.alertasPorMes) ? dash.alertasPorMes : [];
-    const alertasSemanaRaw = Array.isArray(
-      (dash as { alertasPorSemana?: unknown[] }).alertasPorSemana,
-    )
-      ? ((
-          dash as {
-            alertasPorSemana: Array<{
-              weekLabel: string;
-              High: number;
-              Disaster: number;
-            }>;
-          }
-        ).alertasPorSemana ?? [])
+    const horas = Array.isArray(dashTicketsHours.horasPorMes)
+      ? dashTicketsHours.horasPorMes
       : [];
-
     const chamadosMonths = this.splitTipo4MonthRows(chamados as any).months;
     const horasMonths = this.splitTipo4MonthRows(horas as any).months;
-    const alertasMonths = this.splitTipo4MonthRows(alertas as any).months;
-    const alertasWeeks =
-      alertasSemanaRaw.length > 0
-        ? alertasSemanaRaw
+
+    const monitoringUseWeekly = isMonitoringPeriodWeekly(
+      params.start,
+      params.end,
+    );
+
+    const zabbixSlices: Array<{
+      group: string;
+      alertasMonitoringRows: Array<{
+        periodLabel: string;
+        High: number;
+        Disaster: number;
+      }>;
+      dashSummary: Record<string, unknown> | undefined;
+      topTriggers: Array<{
+        host: string;
+        trigger: string;
+        severity: string;
+        count: number;
+      }>;
+      allTriggersInPeriod: Array<{
+        host: string;
+        trigger: string;
+        severity: string;
+        count: number;
+      }>;
+      principaisHosts: Array<{
+        monthLabel: string;
+        High: Array<{ host: string; quantity: number }>;
+        Disaster: Array<{ host: string; quantity: number }>;
+      }>;
+    }> = [];
+
+    for (const groupName of groupsForZabbix) {
+      const dash = await this.dashboard.getCompleteDashboard(
+        reportUser,
+        {
+          group: groupName,
+          start: startIso,
+          end: endIso,
+          companyId: params.companyId,
+        },
+        { includeHours: false, includeCharts: true },
+      );
+
+      const alertas = Array.isArray(dash.alertasPorMes)
+        ? dash.alertasPorMes
+        : [];
+      const alertasSemanaRaw = Array.isArray(
+        (dash as { alertasPorSemana?: unknown[] }).alertasPorSemana,
+      )
+        ? ((
+            dash as {
+              alertasPorSemana: Array<{
+                weekLabel: string;
+                High: number;
+                Disaster: number;
+              }>;
+            }
+          ).alertasPorSemana ?? [])
+        : [];
+
+      const alertasMonths = this.splitTipo4MonthRows(alertas as any).months;
+      const alertasWeeks =
+        alertasSemanaRaw.length > 0
+          ? alertasSemanaRaw
+          : (
+              alertasMonths as Array<{
+                monthLabel: string;
+                High: number;
+                Disaster: number;
+              }>
+            ).map((row) => ({
+              weekLabel: row.monthLabel,
+              High: Number(row.High) || 0,
+              Disaster: Number(row.Disaster) || 0,
+            }));
+
+      const alertasMonitoringRows = monitoringUseWeekly
+        ? alertasWeeks.map((row) => ({
+            periodLabel: row.weekLabel,
+            High: Number(row.High) || 0,
+            Disaster: Number(row.Disaster) || 0,
+          }))
         : (
             alertasMonths as Array<{
               monthLabel: string;
@@ -1193,74 +1298,65 @@ export class ReportsService {
               Disaster: number;
             }>
           ).map((row) => ({
-            weekLabel: row.monthLabel,
+            periodLabel: row.monthLabel,
             High: Number(row.High) || 0,
             Disaster: Number(row.Disaster) || 0,
           }));
 
-    const monitoringUseWeekly = isMonitoringPeriodWeekly(
-      params.start,
-      params.end,
-    );
-    const alertasMonitoringRows = monitoringUseWeekly
-      ? alertasWeeks.map((row) => ({
-          periodLabel: row.weekLabel,
-          High: Number(row.High) || 0,
-          Disaster: Number(row.Disaster) || 0,
-        }))
-      : (
-          alertasMonths as Array<{
-            monthLabel: string;
-            High: number;
-            Disaster: number;
-          }>
-        ).map((row) => ({
-          periodLabel: row.monthLabel,
-          High: Number(row.High) || 0,
-          Disaster: Number(row.Disaster) || 0,
-        }));
-    const dashSummary = (dash as { summary?: Record<string, unknown> }).summary;
-    const topTriggers = Array.isArray(
-      (dash as { topTriggers?: unknown[] }).topTriggers,
-    )
-      ? (
-          dash as {
-            topTriggers: Array<{
-              host: string;
-              trigger: string;
-              severity: string;
-              count: number;
-            }>;
-          }
-        ).topTriggers
-      : [];
-    const allTriggersInPeriod = Array.isArray(
-      (dash as { allTriggersInPeriod?: unknown[] }).allTriggersInPeriod,
-    )
-      ? (
-          dash as {
-            allTriggersInPeriod: Array<{
-              host: string;
-              trigger: string;
-              severity: string;
-              count: number;
-            }>;
-          }
-        ).allTriggersInPeriod
-      : topTriggers;
-    const principaisHosts = Array.isArray(
-      (dash as { principaisHostsPorMes?: unknown[] }).principaisHostsPorMes,
-    )
-      ? (
-          dash as {
-            principaisHostsPorMes: Array<{
-              monthLabel: string;
-              High: Array<{ host: string; quantity: number }>;
-              Disaster: Array<{ host: string; quantity: number }>;
-            }>;
-          }
-        ).principaisHostsPorMes
-      : [];
+      const dashSummary = (dash as { summary?: Record<string, unknown> })
+        .summary;
+      const topTriggers = Array.isArray(
+        (dash as { topTriggers?: unknown[] }).topTriggers,
+      )
+        ? (
+            dash as {
+              topTriggers: Array<{
+                host: string;
+                trigger: string;
+                severity: string;
+                count: number;
+              }>;
+            }
+          ).topTriggers
+        : [];
+      const allTriggersInPeriod = Array.isArray(
+        (dash as { allTriggersInPeriod?: unknown[] }).allTriggersInPeriod,
+      )
+        ? (
+            dash as {
+              allTriggersInPeriod: Array<{
+                host: string;
+                trigger: string;
+                severity: string;
+                count: number;
+              }>;
+            }
+          ).allTriggersInPeriod
+        : topTriggers;
+      const principaisHosts = Array.isArray(
+        (dash as { principaisHostsPorMes?: unknown[] }).principaisHostsPorMes,
+      )
+        ? (
+            dash as {
+              principaisHostsPorMes: Array<{
+                monthLabel: string;
+                High: Array<{ host: string; quantity: number }>;
+                Disaster: Array<{ host: string; quantity: number }>;
+              }>;
+            }
+          ).principaisHostsPorMes
+        : [];
+
+      zabbixSlices.push({
+        group: groupName,
+        alertasMonitoringRows,
+        dashSummary,
+        topTriggers,
+        allTriggersInPeriod,
+        principaisHosts,
+      });
+    }
+
     const ticketsStats =
       company.tifluxClientId != null
         ? await this.getTipo4TicketsStats({
@@ -1276,20 +1372,24 @@ export class ReportsService {
             openTickets: [],
           };
 
+    // Compat: campos “flat” = primeiro grupo (ou único)
+    const primary = zabbixSlices[0];
+
     return {
       company,
-      group,
+      group: groupLabel,
+      zabbixSlices,
       periodLabel: this.formatTipo4PeriodLabel(params.start, params.end),
       periodStartIso: startIso,
       periodEndIso: endIso,
       monitoringUseWeekly,
       chamadosMonths,
       horasMonths,
-      alertasMonitoringRows,
-      dashSummary,
-      topTriggers,
-      allTriggersInPeriod,
-      principaisHosts,
+      alertasMonitoringRows: primary.alertasMonitoringRows,
+      dashSummary: primary.dashSummary,
+      topTriggers: primary.topTriggers,
+      allTriggersInPeriod: primary.allTriggersInPeriod,
+      principaisHosts: primary.principaisHosts,
       ticketsStats,
     };
   }
@@ -1304,6 +1404,7 @@ export class ReportsService {
     return buildTipo4ReportCsv({
       companyName: loaded.company.name,
       zabbixGroup: loaded.group,
+      zabbixSlices: loaded.zabbixSlices,
       periodLabel: loaded.periodLabel,
       periodStartIso: loaded.periodStartIso,
       periodEndIso: loaded.periodEndIso,
@@ -1327,15 +1428,10 @@ export class ReportsService {
   }) {
     const loaded = await this.loadTipo4ReportBundle(params);
     const company = loaded.company;
-    const group = loaded.group;
     const chamadosMonths = loaded.chamadosMonths;
     const horasMonths = loaded.horasMonths;
-    const alertasMonitoringRows = loaded.alertasMonitoringRows;
     const monitoringUseWeekly = loaded.monitoringUseWeekly;
-    const dashSummary = loaded.dashSummary;
-    const topTriggers = loaded.topTriggers;
-    const allTriggersInPeriod = loaded.allTriggersInPeriod;
-    const principaisHosts = loaded.principaisHosts;
+    const zabbixSlices = loaded.zabbixSlices;
     const ticketsStats = loaded.ticketsStats;
 
     const workbook = new ExcelJS.Workbook();
@@ -1357,6 +1453,19 @@ export class ReportsService {
         tl: { col: 5.8, row: 0.15 },
         ext: { width: 120, height: 40 },
       });
+    };
+
+    const usedSheetNames = new Set<string>();
+    const safeSheetName = (raw: string, fallbackIndex: number) => {
+      const cleaned =
+        raw.replace(/[\\/*?:[\]]/g, ' ').trim() || `Grupo ${fallbackIndex + 1}`;
+      let name = cleaned.slice(0, 31);
+      if (usedSheetNames.has(name)) {
+        const suffix = ` ${fallbackIndex + 1}`;
+        name = `${cleaned.slice(0, Math.max(1, 31 - suffix.length))}${suffix}`;
+      }
+      usedSheetNames.add(name);
+      return name;
     };
 
     // Aba 1: Chamados por mês (modelo Alle)
@@ -1541,93 +1650,119 @@ export class ReportsService {
       );
     }
 
-    // Aba 3: Monitoramento (modelo Alle)
-    {
-      const sheet = workbook.addWorksheet('Monitoramento', {
-        views: [{ state: 'frozen', ySplit: 5 }],
-      });
-      const colCount = 3;
-      sheet.columns = [{ width: 18 }, { width: 12 }, { width: 12 }];
-      this.styleTipo4TitleBand(sheet, 'Monitoramento', colCount);
-      addCompanyLogo(sheet);
-      this.styleTipo4TableTitleRow(
-        sheet,
-        monitoringUseWeekly
-          ? 'Total de Alertas por Semana'
-          : 'Total de Alertas por Mês',
-        colCount,
-      );
+    // Abas Zabbix: um bloco/aba por grupo (ex. GMO com 6 grupos)
+    for (let gi = 0; gi < zabbixSlices.length; gi += 1) {
+      const slice = zabbixSlices[gi];
+      const multi = zabbixSlices.length > 1;
+      const monitTitle = multi
+        ? safeSheetName(`Monit. ${slice.group}`, gi)
+        : 'Monitoramento';
+      const topTitle = multi
+        ? safeSheetName(`Top ${slice.group}`, gi)
+        : 'Top Triggers';
 
-      const headerRow = sheet.getRow(4);
-      headerRow.values = [
-        monitoringUseWeekly ? 'Semana' : 'Mês',
-        'High',
-        'Disaster',
-      ];
-      this.styleTipo4ColumnHeaderRow(headerRow, colCount);
+      {
+        const sheet = workbook.addWorksheet(monitTitle, {
+          views: [{ state: 'frozen', ySplit: 5 }],
+        });
+        const colCount = 3;
+        sheet.columns = [{ width: 18 }, { width: 12 }, { width: 12 }];
+        this.styleTipo4TitleBand(
+          sheet,
+          multi ? `Monitoramento — ${slice.group}` : 'Monitoramento',
+          colCount,
+        );
+        addCompanyLogo(sheet);
+        this.styleTipo4TableTitleRow(
+          sheet,
+          monitoringUseWeekly
+            ? 'Total de Alertas por Semana'
+            : 'Total de Alertas por Mês',
+          colCount,
+        );
 
-      let rowIdx = 5;
-      for (const r of alertasMonitoringRows) {
-        const row = sheet.getRow(rowIdx);
-        row.values = [r.periodLabel, r.High, r.Disaster];
-        this.styleTipo4DataRow(row, rowIdx - 5, colCount);
-        rowIdx += 1;
+        const headerRow = sheet.getRow(4);
+        headerRow.values = [
+          monitoringUseWeekly ? 'Semana' : 'Mês',
+          'High',
+          'Disaster',
+        ];
+        this.styleTipo4ColumnHeaderRow(headerRow, colCount);
+
+        let rowIdx = 5;
+        for (const r of slice.alertasMonitoringRows) {
+          const row = sheet.getRow(rowIdx);
+          row.values = [r.periodLabel, r.High, r.Disaster];
+          this.styleTipo4DataRow(row, rowIdx - 5, colCount);
+          rowIdx += 1;
+        }
+
+        const chartLabels = slice.alertasMonitoringRows.map(
+          (r) => r.periodLabel,
+        );
+        await this.embedTipo4Chart(
+          workbook,
+          sheet,
+          rowIdx + 1,
+          this.buildTipo4LineChart({
+            title: monitoringUseWeekly
+              ? `Alertas por Semana — ${slice.group}`
+              : `Alertas por Mês — ${slice.group}`,
+            labels: chartLabels,
+            rotateLabels: chartLabels.length > 4,
+            datasets: [
+              {
+                label: 'High',
+                data: slice.alertasMonitoringRows.map((r) => r.High),
+                borderColor: this.tipo4Theme.high,
+              },
+              {
+                label: 'Disaster',
+                data: slice.alertasMonitoringRows.map((r) => r.Disaster),
+                borderColor: this.tipo4Theme.disaster,
+              },
+            ],
+          }),
+        );
       }
 
-      const chartLabels = alertasMonitoringRows.map((r) => r.periodLabel);
-      await this.embedTipo4Chart(
-        workbook,
-        sheet,
-        rowIdx + 1,
-        this.buildTipo4LineChart({
-          title: monitoringUseWeekly ? 'Alertas por Semana' : 'Alertas por Mês',
-          labels: chartLabels,
-          rotateLabels: chartLabels.length > 4,
-          datasets: [
-            {
-              label: 'High',
-              data: alertasMonitoringRows.map((r) => r.High),
-              borderColor: this.tipo4Theme.high,
-            },
-            {
-              label: 'Disaster',
-              data: alertasMonitoringRows.map((r) => r.Disaster),
-              borderColor: this.tipo4Theme.disaster,
-            },
-          ],
-        }),
-      );
+      {
+        const sheet = workbook.addWorksheet(topTitle);
+        this.writeTipo4TopTriggersSheet({
+          sheet,
+          companyName: company.name,
+          group: slice.group,
+          periodLabel: loaded.periodLabel,
+          dashSummary: slice.dashSummary,
+          topTriggers: slice.topTriggers,
+          principaisHosts: slice.principaisHosts,
+          addCompanyLogo,
+        });
+      }
     }
 
-    // Aba 4: Top Triggers e totais do período (grp Zabbix da empresa)
-    {
-      const sheet = workbook.addWorksheet('Top Triggers');
-      this.writeTipo4TopTriggersSheet({
-        sheet,
-        companyName: company.name,
-        group,
-        periodLabel: loaded.periodLabel,
-        dashSummary,
-        topTriggers,
-        principaisHosts,
-        addCompanyLogo,
-      });
-    }
-
-    // Aba 5: todas as triggers do período (linha a linha)
+    // Aba: todas as triggers do período (com coluna de grupo quando multi)
     {
       const sheet = workbook.addWorksheet('Triggers período');
+      const multi = zabbixSlices.length > 1;
+      const flatRows = zabbixSlices.flatMap((slice) =>
+        slice.allTriggersInPeriod.map((t) => ({
+          ...t,
+          group: slice.group,
+        })),
+      );
       this.writeTipo4AllTriggersSheet({
         sheet,
         companyName: company.name,
-        group,
+        group: loaded.group,
         periodLabel: loaded.periodLabel,
-        rows: allTriggersInPeriod,
+        rows: flatRows,
         addCompanyLogo,
+        includeGroupColumn: multi,
       });
     }
 
-    // Aba 6: chamados abertos/fechados e chamados em aberto geral
+    // Aba: chamados abertos/fechados e chamados em aberto geral
     {
       const sheet = workbook.addWorksheet('Chamados geral');
       await this.writeTipo4TicketsSheet({

@@ -4,7 +4,10 @@ import type {
   DashboardFilters,
   ResolvedCompanyIntegration,
 } from './dashboard.types';
-import { zabbixGroupListIncludes } from '../companies/zabbix-groups.util';
+import {
+  parseZabbixGroupNames,
+  zabbixGroupListIncludes,
+} from '../companies/zabbix-groups.util';
 
 @Injectable()
 export class DashboardIntegrationsService {
@@ -25,7 +28,19 @@ export class DashboardIntegrationsService {
       });
 
       if (company?.zabbixGroupName?.trim()) {
-        zabbixGroupName = company.zabbixGroupName;
+        const requested = params.group?.trim() ?? '';
+        const companyGroups = parseZabbixGroupNames(company.zabbixGroupName);
+        // Pedido de UM grupo da lista (ex. relatório GMO) → não expandir para todos
+        if (
+          requested &&
+          !requested.includes(';') &&
+          companyGroups.length > 1 &&
+          zabbixGroupListIncludes(company.zabbixGroupName, requested)
+        ) {
+          zabbixGroupName = requested;
+        } else {
+          zabbixGroupName = company.zabbixGroupName;
+        }
       }
 
       if (
@@ -51,9 +66,8 @@ export class DashboardIntegrationsService {
         tifluxClientId = companyByGroup.tifluxClientId;
       }
 
-      if (companyByGroup?.zabbixGroupName?.trim()) {
-        zabbixGroupName = companyByGroup.zabbixGroupName;
-      }
+      // Mantém o grupo pedido (não junta todos os grupos da empresa)
+      zabbixGroupName = params.group.trim();
     }
 
     return {

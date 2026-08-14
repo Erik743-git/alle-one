@@ -740,7 +740,7 @@ export default function TicketDetailPage() {
                           </p>
                         </div>
                       ) : null}
-                      {canCreateTicket() || canChangeTicketStage() || isAdmin ? (
+                      {canCreateTicket() || canChangeTicketStage() || isAdmin || data.canChangeClient ? (
                         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                           {(stagesData?.isClosed || ticket.isClosed) &&
                           (canChangeTicketStage() || canCreateTicket()) ? (
@@ -768,7 +768,7 @@ export default function TicketDetailPage() {
                               Cancelar chamado
                             </Button>
                           ) : null}
-                          {isAdmin && !ticket.isClosed ? (
+                          {data.canChangeClient && !ticket.isClosed ? (
                             <Button
                               type="button"
                               variant="outline"

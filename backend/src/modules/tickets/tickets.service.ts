@@ -76,6 +76,24 @@ export class TicketsService {
     return email.trim().toLowerCase();
   }
 
+  /** ADMIN ou técnico responsável (mesmo external_id TiFlux / e-mail casado). */
+  async actorCanChangeTicketClient(
+    actor: AuthenticatedRequestUser,
+    responsibleExternalId: number | null | undefined,
+  ): Promise<boolean> {
+    if (actor.role === 'ADMIN') return true;
+    if (
+      responsibleExternalId == null ||
+      !Number.isFinite(Number(responsibleExternalId))
+    ) {
+      return false;
+    }
+    const mine = await this.resolveTifluxExternalIdForUser(actor.email);
+    return (
+      mine != null && Number(mine.externalId) === Number(responsibleExternalId)
+    );
+  }
+
   private async resolveTifluxExternalIdForUser(
     email: string,
   ): Promise<{ externalId: number; name: string | null } | null> {
@@ -93,14 +111,39 @@ export class TicketsService {
           LIMIT 1
         `) ?? [];
       const row = rows[0];
-      if (!row) return null;
-      return {
-        externalId: Number(row.external_id),
-        name: row.name,
-      };
+      if (row) {
+        return {
+          externalId: Number(row.external_id),
+          name: row.name,
+        };
+      }
     } catch {
-      return null;
+      /* schema tiflux.* ausente */
     }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalized, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: { name: true },
+    });
+    const name = user?.name?.trim();
+    if (!name) return null;
+
+    const ticket = await this.prisma.portalTicket.findFirst({
+      where: {
+        responsibleName: { equals: name, mode: 'insensitive' },
+        responsibleExternalId: { not: null },
+      },
+      select: { responsibleExternalId: true, responsibleName: true },
+      orderBy: { updatedAtSource: 'desc' },
+    });
+    if (ticket?.responsibleExternalId == null) return null;
+    return {
+      externalId: ticket.responsibleExternalId,
+      name: ticket.responsibleName,
+    };
   }
 
   private normalizeExternalGmudRef(value: string | null | undefined) {
@@ -550,9 +593,30 @@ export class TicketsService {
     let nextClientExternalId = portal?.clientExternalId ?? null;
     let nextClientName = portal?.clientName ?? null;
     if (dto.clientId != null) {
-      if (actor.role !== 'ADMIN') {
+      let responsibleExternalId = portal?.responsibleExternalId ?? null;
+      if (responsibleExternalId == null) {
+        try {
+          const rows =
+            (await this.prisma.$queryRaw<
+              Array<{ responsible_external_id: number | null }>
+            >`
+              SELECT t.responsible_external_id
+              FROM tiflux.tickets t
+              WHERE t.ticket_number = ${ticketNumber}
+              LIMIT 1
+            `) ?? [];
+          responsibleExternalId = rows[0]?.responsible_external_id ?? null;
+        } catch {
+          responsibleExternalId = null;
+        }
+      }
+      const canChangeClient = await this.actorCanChangeTicketClient(
+        actor,
+        responsibleExternalId,
+      );
+      if (!canChangeClient) {
         throw new ForbiddenException(
-          'Somente administradores podem alterar o cliente do chamado.',
+          'Somente o administrador ou o responsável do chamado podem alterar o cliente.',
         );
       }
       const company = await this.prisma.company.findFirst({
