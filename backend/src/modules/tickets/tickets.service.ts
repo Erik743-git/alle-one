@@ -34,6 +34,7 @@ import {
   isTifluxDisconnected,
 } from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
+import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
@@ -111,6 +112,23 @@ export class TicketsService {
     email: string,
   ): Promise<{ externalId: number; name: string | null } | null> {
     const normalized = this.normalizeEmail(email);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalized, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: { id: true, name: true },
+    });
+
+    if (isTifluxDisconnected()) {
+      const name = user?.name?.trim();
+      if (!user || !name) return null;
+      return {
+        externalId: portalResponsibleSyntheticId(user.id),
+        name,
+      };
+    }
+
     try {
       const rows =
         (await this.prisma.$queryRaw<
@@ -134,15 +152,8 @@ export class TicketsService {
       /* schema tiflux.* ausente */
     }
 
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: { equals: normalized, mode: 'insensitive' },
-        deletedAt: null,
-      },
-      select: { name: true },
-    });
     const name = user?.name?.trim();
-    if (!name) return null;
+    if (!name || !user) return null;
 
     const ticket = await this.prisma.portalTicket.findFirst({
       where: {
@@ -152,7 +163,12 @@ export class TicketsService {
       select: { responsibleExternalId: true, responsibleName: true },
       orderBy: { updatedAtSource: 'desc' },
     });
-    if (ticket?.responsibleExternalId == null) return null;
+    if (ticket?.responsibleExternalId == null) {
+      return {
+        externalId: portalResponsibleSyntheticId(user.id),
+        name,
+      };
+    }
     return {
       externalId: ticket.responsibleExternalId,
       name: ticket.responsibleName,
