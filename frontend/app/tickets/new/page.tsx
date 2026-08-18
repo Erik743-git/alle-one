@@ -36,8 +36,11 @@ import { TICKETS_NEW_SUBTITLE } from "@/lib/module-copy";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   applyClientTitlePrefix,
+  emailsMatch,
+  findByEmail,
   formatBrPhone,
   isValidBrPhone,
+  pinCurrentUserFirst,
 } from "@/lib/ticket-form";
 import {
   ticketsService,
@@ -159,14 +162,18 @@ export default function NewTicketPage() {
     [catalogs],
   );
 
-  const responsibleOptions = useMemo(
-    () =>
-      (catalogs?.responsibles ?? []).map((r) => ({
+  const responsibleOptions = useMemo(() => {
+    const sorted = [...(catalogs?.responsibles ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name, "pt-BR"),
+    );
+    return pinCurrentUserFirst(sorted, user?.email).map((r) => {
+      const label = r.email ? `${r.name} (${r.email})` : r.name;
+      return {
         value: String(r.id),
-        label: r.email ? `${r.name} (${r.email})` : r.name,
-      })),
-    [catalogs],
-  );
+        label: emailsMatch(r.email, user?.email) ? `${label} — você` : label,
+      };
+    });
+  }, [catalogs, user?.email]);
 
   const requestorOptions = useMemo(
     () =>
@@ -242,6 +249,7 @@ export default function NewTicketPage() {
     missingRequired.length === 0;
 
   const prevDeskIdRef = useRef("");
+  const responsiblePrefillDone = useRef(false);
 
   const loadCatalogs = useCallback(
     async (params?: { deskId?: number; clientId?: number }) => {
@@ -301,6 +309,14 @@ export default function NewTicketPage() {
           : undefined,
     });
   }, [deskId, clientId, loadCatalogs]);
+
+  useEffect(() => {
+    if (responsiblePrefillDone.current || responsibleId) return;
+    const match = findByEmail(catalogs?.responsibles ?? [], user?.email);
+    if (!match) return;
+    setResponsibleId(String(match.id));
+    responsiblePrefillDone.current = true;
+  }, [catalogs, responsibleId, user?.email]);
 
   useEffect(() => {
     const companyId = selectedClient?.companyId;
@@ -664,6 +680,7 @@ export default function NewTicketPage() {
                         onChange={setResponsibleId}
                         options={responsibleOptions}
                         loading={loading}
+                        preserveOrder
                         emptyLabel={
                           responsibleOptions.length === 0
                             ? isClientUser

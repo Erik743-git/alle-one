@@ -9,6 +9,7 @@
 | [REDIS.md](./REDIS.md) | Redis opcional + fila BullMQ e-mail |
 | [PERFORMANCE.md](./PERFORMANCE.md) | Caches dashboard (LRU/TTL), Redis L2 e external_api_cache |
 | [Load k6](../deploy/load/README.md) | Smoke/load com k6 (login cookie + dashboard + tickets + GMUD) |
+| [TESTES_DESEMPENHO_SEGURANCA.md](./TESTES_DESEMPENHO_SEGURANCA.md) | Roteiro: k6 + Playwright + ZAP na base de teste |
 | [CLIENTE_DUTEX_MODULO_TI.md](./CLIENTE_DUTEX_MODULO_TI.md) | Dutex × ALLE: portal, chamados, inventário e frentes da reunião |
 | [PR1_ALLE_TICKET_REVIEW.md](./PR1_ALLE_TICKET_REVIEW.md) | Revisão do PR #1 vs cutover v0.6.0 |
 | [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) | Cutover TiFlux → `portal_*` canônico |

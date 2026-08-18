@@ -29,9 +29,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
+import { AppointmentDescriptionCell } from "@/components/tickets/appointment-description-cell";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
 import { TicketHistoryPanel } from "@/components/tickets/ticket-history-panel";
 import { PortalAppointmentTifluxWarningDialog } from "@/components/tickets/portal-appointment-tiflux-warning-dialog";
+import {
+  TicketResponsibleSelect,
+  mapFilterResponsibles,
+} from "@/components/tickets/ticket-responsible-select";
+import {
+  TicketOptionsMenu,
+  type TicketOptionsChange,
+} from "@/components/tickets/ticket-options-menu";
 import {
   canChangeTicketStage,
   canCreateTicket,
@@ -47,14 +56,14 @@ import {
 } from "@/lib/module-copy";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
-import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
-import { useAuth } from "@/lib/use-auth";
 import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
+import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
 import {
   ticketsService,
   type PortalAppointmentEditContext,
   type TicketAppointment,
   type TicketDetailResponse,
+  type TicketFilterCatalogs,
   type TicketStagesResponse,
 } from "@/lib/services/tickets.service";
 import {
@@ -80,6 +89,36 @@ function formatAppointmentDate(value: string | null | undefined) {
   const [y, m, d] = value.trim().slice(0, 10).split("-");
   if (!y || !m || !d) return value;
   return `${d}/${m}/${y}`;
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function isOvernightTimes(initTime: string | null, endTime: string | null) {
+  if (!initTime || !endTime) return false;
+  const parse = (value: string) => {
+    const [h, m] = value.split(":").map((part) => Number(part));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+    return h * 60 + m;
+  };
+  const start = parse(initTime);
+  const end = parse(endTime);
+  if (start == null || end == null) return false;
+  return end < start;
+}
+
+function formatAppointmentDateCell(
+  date: string | null | undefined,
+  initTime: string | null,
+  endTime: string | null,
+) {
+  const startLabel = formatAppointmentDate(date);
+  if (!date?.trim() || !isOvernightTimes(initTime, endTime)) return startLabel;
+  return `${startLabel} → ${formatAppointmentDate(addDaysYmd(date.trim().slice(0, 10), 1))}`;
 }
 
 function appointmentRowKey(row: {
@@ -134,8 +173,6 @@ async function openPortalAttachment(
 export default function TicketDetailPage() {
   const params = useParams<{ ticketNumber: string }>();
   const ticketNumber = Number(params.ticketNumber);
-  const { user } = useAuth();
-  const isAdmin = user?.role === "ADMIN";
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TicketDetailResponse | null>(null);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
@@ -163,11 +200,13 @@ export default function TicketDetailPage() {
   >([]);
   const [nextClientId, setNextClientId] = useState("");
   const [loadingClients, setLoadingClients] = useState(false);
+  const [filterCatalogs, setFilterCatalogs] =
+    useState<TicketFilterCatalogs | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!Number.isFinite(ticketNumber)) return;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await ticketsService.detail(ticketNumber);
       setData(res);
       setHistoryRefreshToken((value) => value + 1);
@@ -176,7 +215,7 @@ export default function TicketDetailPage() {
         err instanceof Error ? err.message : "Não foi possível carregar o ticket.",
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [ticketNumber]);
 
@@ -210,19 +249,80 @@ export default function TicketDetailPage() {
   }, [load, loadStages]);
 
   useEffect(() => {
+    if (!canChangeTicketStage()) return;
+    let cancelled = false;
+    void ticketsService
+      .catalogs()
+      .then((catalogs) => {
+        if (!cancelled) setFilterCatalogs(catalogs);
+      })
+      .catch(() => {
+        if (!cancelled) setFilterCatalogs(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     setExternalGmudRefInput(data?.externalGmudRef ?? "");
   }, [data?.externalGmudRef]);
 
   const ticket = data?.ticket;
   const externalGmudRef = data?.externalGmudRef;
-  const stageOptions = (stagesData?.stages ?? []).map((stage) => ({
-    value: String(stage.id),
-    label: stage.firstStage ? `${stage.name} (inicial)` : stage.name,
-  }));
+  const stageOptions = (stagesData?.stages ?? [])
+    .filter(
+      (stage) =>
+        !stage.lastStage &&
+        stage.name !== PORTAL_STAGE.ENCERRADO &&
+        stage.name !== PORTAL_STAGE.CANCELADO,
+    )
+    .map((stage) => ({
+      value: String(stage.id),
+      label: stage.firstStage ? `${stage.name} (inicial)` : stage.name,
+    }));
   const stageChanged =
     stageIdInput !== "" &&
     stagesData?.currentStageId != null &&
     Number(stageIdInput) !== stagesData.currentStageId;
+
+  async function applyOptionsChange(patch?: TicketOptionsChange) {
+    if (patch) {
+      setData((prev) =>
+        prev?.ticket
+          ? {
+              ...prev,
+              ticket: {
+                ...prev.ticket,
+                ...(patch.isClosed != null ? { isClosed: patch.isClosed } : {}),
+                ...(patch.stageName != null
+                  ? { stageName: patch.stageName, statusName: patch.statusName ?? patch.stageName }
+                  : {}),
+                ...(patch.deskName != null
+                  ? {
+                      deskName: patch.deskName,
+                      deskExternalId: patch.deskExternalId,
+                    }
+                  : {}),
+              },
+            }
+          : prev,
+      );
+      if (patch.isClosed != null || patch.stageName != null) {
+        setStagesData((prev) =>
+          prev
+            ? {
+                ...prev,
+                isClosed: patch.isClosed ?? prev.isClosed,
+                currentStageName: patch.stageName ?? prev.currentStageName,
+              }
+            : prev,
+        );
+      }
+    }
+    setHistoryRefreshToken((value) => value + 1);
+    await Promise.all([load(true), loadStages()]);
+  }
 
   async function handleSaveStage() {
     if (!Number.isFinite(ticketNumber) || !stageIdInput) return;
@@ -262,61 +362,6 @@ export default function TicketDetailPage() {
       );
     } finally {
       setStageSaving(false);
-    }
-  }
-
-  async function handleReopenTicket() {
-    const ok = await confirm({
-      title: "Reabrir chamado?",
-      description:
-        "O chamado volta para o estágio Novo e poderá ser editado novamente.",
-      confirmText: "Reabrir",
-    });
-    if (!ok) return;
-    try {
-      setLifecycleBusy(true);
-      await ticketsService.updateTicket(ticketNumber, {
-        isClosed: false,
-        stageName: PORTAL_STAGE.NOVO,
-        statusName: PORTAL_STAGE.NOVO,
-      });
-      notifySuccess("Chamado reaberto.");
-      await Promise.all([load(), loadStages()]);
-      setHistoryRefreshToken((n) => n + 1);
-    } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível reabrir o chamado.",
-      );
-    } finally {
-      setLifecycleBusy(false);
-    }
-  }
-
-  async function handleCancelTicket() {
-    const ok = await confirm({
-      title: "Cancelar chamado?",
-      description:
-        "O chamado será marcado como Cancelado e encerrado. Essa ação pode ser desfeita com Reabrir.",
-      confirmText: "Cancelar chamado",
-      variant: "error",
-    });
-    if (!ok) return;
-    try {
-      setLifecycleBusy(true);
-      await ticketsService.updateTicket(ticketNumber, {
-        isClosed: true,
-        stageName: PORTAL_STAGE.CANCELADO,
-        statusName: PORTAL_STAGE.CANCELADO,
-      });
-      notifySuccess("Chamado cancelado.");
-      await Promise.all([load(), loadStages()]);
-      setHistoryRefreshToken((n) => n + 1);
-    } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível cancelar o chamado.",
-      );
-    } finally {
-      setLifecycleBusy(false);
     }
   }
 
@@ -523,6 +568,15 @@ export default function TicketDetailPage() {
                   </Link>
                 </Button>
               ) : null}
+              {ticket && canChangeTicketStage() ? (
+                <TicketOptionsMenu
+                  ticketNumber={ticket.ticketNumber}
+                  isClosed={ticket.isClosed}
+                  currentDeskId={ticket.deskExternalId}
+                  disabled={lifecycleBusy}
+                  onChanged={applyOptionsChange}
+                />
+              ) : null}
             </div>
 
             {loading ? (
@@ -554,6 +608,38 @@ export default function TicketDetailPage() {
                     </div>
                   </div>
                 </div>
+                {data?.grouping?.parent ? (
+                  <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                    Agrupado no chamado pai{" "}
+                    <Link
+                      href={`/tickets/${data.grouping.parent.ticketNumber}`}
+                      className="font-medium text-primary hover:underline"
+                    >
+                      #{data.grouping.parent.ticketNumber}
+                    </Link>
+                    {data.grouping.parent.title
+                      ? ` — ${data.grouping.parent.title}`
+                      : ""}
+                    .
+                  </p>
+                ) : null}
+                {data?.grouping?.children?.length ? (
+                  <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+                    Chamados agrupados neste ticket:{" "}
+                    {data.grouping.children.map((child, index) => (
+                      <span key={child.ticketNumber}>
+                        {index > 0 ? ", " : ""}
+                        <Link
+                          href={`/tickets/${child.ticketNumber}`}
+                          className="font-medium text-primary hover:underline"
+                        >
+                          #{child.ticketNumber}
+                        </Link>
+                      </span>
+                    ))}
+                    .
+                  </p>
+                ) : null}
 
                 <div className="grid gap-4 md:grid-cols-4">
                   <Card>
@@ -688,97 +774,104 @@ export default function TicketDetailPage() {
                         <span className="text-muted-foreground">Prioridade: </span>
                         {ticket.priorityName ?? "—"}
                       </p>
-                      <p>
-                        <span className="text-muted-foreground">Responsável: </span>
-                        {ticket.responsibleName ?? "—"}
-                      </p>
+                      {canChangeTicketStage() ? (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-semibold text-muted-foreground">
+                            Responsável
+                          </Label>
+                          <TicketResponsibleSelect
+                            ticketNumber={ticket.ticketNumber}
+                            responsibleId={ticket.responsibleExternalId}
+                            responsibleName={ticket.responsibleName}
+                            options={mapFilterResponsibles(
+                              filterCatalogs?.responsibles ?? [],
+                            )}
+                            disabled={ticket.isClosed}
+                            onUpdated={(next) => {
+                              setData((prev) =>
+                                prev?.ticket
+                                  ? {
+                                      ...prev,
+                                      ticket: {
+                                        ...prev.ticket,
+                                        responsibleExternalId:
+                                          next.responsibleId,
+                                        responsibleName: next.responsibleName,
+                                      },
+                                    }
+                                  : prev,
+                              );
+                              setHistoryRefreshToken((value) => value + 1);
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <p>
+                          <span className="text-muted-foreground">
+                            Responsável:{" "}
+                          </span>
+                          {ticket.responsibleName ?? "—"}
+                        </p>
+                      )}
                       {canChangeTicketStage() && (stagesLoading || stagesData) ? (
                         <div className="space-y-2 border-t border-border pt-3">
                           <Label className="text-xs font-semibold text-muted-foreground">
                             Estágio
                           </Label>
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                            <div className="flex-1">
-                              <SearchableSelectField
-                                value={stageIdInput}
-                                onChange={setStageIdInput}
-                                options={stageOptions}
-                                loading={stagesLoading}
-                                disabled={
-                                  stageSaving ||
-                                  stagesLoading ||
-                                  stagesData?.isClosed === true ||
-                                  ticket.isClosed
-                                }
-                                placeholder="Selecione o estágio"
-                                preserveOrder
-                              />
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-11 shrink-0"
-                              disabled={
-                                stageSaving ||
-                                stagesLoading ||
-                                !stageChanged ||
-                                stagesData?.isClosed === true ||
-                                ticket.isClosed
-                              }
-                              onClick={() => void handleSaveStage()}
-                            >
-                              {stageSaving ? (
-                                <Loader2 className="mr-2 size-4 animate-spin" />
-                              ) : null}
-                              Salvar estágio
-                            </Button>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {stagesData?.isClosed || ticket.isClosed
-                              ? "Ticket fechado — use Reabrir para alterar o estágio."
-                              : "Altere o estágio do chamado conforme o andamento do atendimento."}
-                          </p>
+                          {ticket.isClosed || stagesData?.isClosed ? (
+                            <p className="text-sm">
+                              {ticket.stageName ?? stagesData?.currentStageName ?? "—"}
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                Chamado encerrado. Use Opções → Reabrir chamado.
+                              </span>
+                            </p>
+                          ) : (
+                            <>
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                                <div className="flex-1">
+                                  <SearchableSelectField
+                                    value={stageIdInput}
+                                    onChange={setStageIdInput}
+                                    options={stageOptions}
+                                    loading={stagesLoading}
+                                    disabled={stageSaving || stagesLoading}
+                                    placeholder="Selecione o estágio"
+                                    preserveOrder
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="h-11 shrink-0"
+                                  disabled={
+                                    stageSaving || stagesLoading || !stageChanged
+                                  }
+                                  onClick={() => void handleSaveStage()}
+                                >
+                                  {stageSaving ? (
+                                    <Loader2 className="mr-2 size-4 animate-spin" />
+                                  ) : null}
+                                  Salvar estágio
+                                </Button>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Andamento do atendimento. Fechar, cancelar e reabrir ficam em Opções.
+                              </p>
+                            </>
+                          )}
                         </div>
                       ) : null}
-                      {canCreateTicket() || canChangeTicketStage() || isAdmin || data.canChangeClient ? (
+                      {data.canChangeClient && !ticket.isClosed ? (
                         <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                          {(stagesData?.isClosed || ticket.isClosed) &&
-                          (canChangeTicketStage() || canCreateTicket()) ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-9"
-                              disabled={lifecycleBusy}
-                              onClick={() => void handleReopenTicket()}
-                            >
-                              {lifecycleBusy ? (
-                                <Loader2 className="mr-2 size-4 animate-spin" />
-                              ) : null}
-                              Reabrir
-                            </Button>
-                          ) : null}
-                          {!ticket.isClosed && canCreateTicket() ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-9"
-                              disabled={lifecycleBusy}
-                              onClick={() => void handleCancelTicket()}
-                            >
-                              Cancelar chamado
-                            </Button>
-                          ) : null}
-                          {data.canChangeClient && !ticket.isClosed ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              className="h-9"
-                              disabled={lifecycleBusy}
-                              onClick={() => void openChangeClientDialog()}
-                            >
-                              Trocar cliente
-                            </Button>
-                          ) : null}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-9"
+                            disabled={lifecycleBusy}
+                            onClick={() => void openChangeClientDialog()}
+                          >
+                            Trocar cliente
+                          </Button>
                         </div>
                       ) : null}
                     </CardContent>
@@ -932,15 +1025,19 @@ export default function TicketDetailPage() {
                                 ) : null}
                               </td>
                               <td className="px-4 py-2">
-                                {formatAppointmentDate(row.appointmentDate)}
+                                {formatAppointmentDateCell(
+                                  row.appointmentDate,
+                                  row.initTime,
+                                  row.endTime,
+                                )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-2">
                                 {row.initTime ?? "—"} – {row.endTime ?? "—"}
                               </td>
                               <td className="px-4 py-2">{formatMinutes(row.minutes)}</td>
                               <td className="px-4 py-2">{row.valorizationLabel ?? "—"}</td>
-                              <td className="max-w-[360px] px-4 py-2 text-muted-foreground">
-                                <AppointmentDescriptionView
+                              <td className="w-[240px] max-w-[240px] px-4 py-2">
+                                <AppointmentDescriptionCell
                                   description={row.description}
                                   attachments={row.attachments ?? []}
                                 />

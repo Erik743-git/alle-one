@@ -19,6 +19,7 @@ export type TicketListItem = {
   priorityName: string | null;
   statusName: string | null;
   stageName: string | null;
+  responsibleExternalId?: number | null;
   responsibleName: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -78,6 +79,7 @@ export type TicketHistoryEntry = {
 export type TicketDetailResponse = {
   ticket: TicketListItem & {
     deskName: string | null;
+    deskExternalId?: number | null;
     isClosed: boolean;
     requestorName: string | null;
     requestorEmail: string | null;
@@ -105,6 +107,19 @@ export type TicketDetailResponse = {
   syncPending?: boolean;
   /** ADMIN ou responsável do chamado. */
   canChangeClient?: boolean;
+  grouping?: {
+    parent: {
+      ticketNumber: number;
+      title: string | null;
+      isClosed: boolean;
+    } | null;
+    children: Array<{
+      ticketNumber: number;
+      title: string | null;
+      isClosed: boolean;
+      stageName: string | null;
+    }>;
+  };
 };
 
 export type TicketFilterCatalogs = {
@@ -249,6 +264,8 @@ export type CreateAppointmentPayload = {
   date: string;
   initTime: string;
   endTime: string;
+  /** Fim no dia seguinte (YYYY-MM-DD). */
+  endDate?: string;
   description: string;
   serviceName: string;
   attendance: "Remote" | "External" | "Internal";
@@ -308,6 +325,7 @@ export type UpdateTicketPayload = {
   isClosed?: boolean;
   /** tiflux client id — só ADMIN */
   clientId?: number;
+  deskId?: number;
   removeAttachmentFileIds?: string[];
 };
 
@@ -431,6 +449,18 @@ export const ticketsService = {
       `/tickets/${ticketNumber}/gmud`,
       { method: "PATCH", body: { externalGmudRef } },
     );
+  },
+
+  groupTicket(ticketNumber: number, parentTicketNumber: number) {
+    return apiRequest<{
+      ok: boolean;
+      ticketNumber: number;
+      parentTicketNumber: number;
+      message: string;
+    }>(`/tickets/${ticketNumber}/group`, {
+      method: "POST",
+      body: { parentTicketNumber },
+    });
   },
 
   appointmentCatalogs(ticketNumber: number) {

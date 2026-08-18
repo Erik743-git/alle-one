@@ -48,3 +48,39 @@ export function applyClientTitlePrefix(
   }
   return `${next}${rest}`;
 }
+
+function normalizeEmail(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+export function emailsMatch(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = normalizeEmail(a);
+  const right = normalizeEmail(b);
+  return Boolean(left && right && left === right);
+}
+
+/** Coloca o usuário da sessão no topo da lista (abertura rápida, estilo Digisac). */
+export function pinCurrentUserFirst<T extends { email?: string | null }>(
+  items: T[],
+  currentEmail: string | null | undefined,
+): T[] {
+  const email = normalizeEmail(currentEmail);
+  if (!email || items.length === 0) return items;
+  const index = items.findIndex((item) => emailsMatch(item.email, email));
+  if (index <= 0) return items;
+  const next = [...items];
+  const [current] = next.splice(index, 1);
+  return [current, ...next];
+}
+
+export function findByEmail<T extends { email?: string | null }>(
+  items: T[],
+  currentEmail: string | null | undefined,
+): T | undefined {
+  const email = normalizeEmail(currentEmail);
+  if (!email) return undefined;
+  return items.find((item) => emailsMatch(item.email, email));
+}

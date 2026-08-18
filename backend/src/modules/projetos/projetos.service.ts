@@ -17,6 +17,7 @@ import { randomUUID } from 'crypto';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { hhmmDurationMinutes } from '../tickets/portal-appointment.helper';
 import { ProjetosDocumentsService } from './projetos-documents.service';
 import { ProjetosHistoryPdfService } from './projetos-history-pdf.service';
 import type {
@@ -1103,16 +1104,7 @@ export class ProjetosService {
     initTime: string | null,
     endTime: string | null,
   ): number {
-    const parse = (value: string | null) => {
-      if (!value) return null;
-      const [h, m] = value.split(':').map((part) => Number(part));
-      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-      return h * 60 + m;
-    };
-    const start = parse(initTime);
-    const end = parse(endTime);
-    if (start == null || end == null) return 0;
-    return Math.max(0, end - start);
+    return hhmmDurationMinutes(initTime, endTime);
   }
 
   private minutesToDays(minutes: number): number {

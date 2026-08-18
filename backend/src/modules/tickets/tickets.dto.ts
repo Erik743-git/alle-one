@@ -26,6 +26,13 @@ export class UpdateTicketStageDto {
   stageId!: number;
 }
 
+export class GroupTicketDto {
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  parentTicketNumber!: number;
+}
+
 /** Busca usuários do portal para cópia/seguidores no create. */
 export class SearchTicketUsersQueryDto {
   @IsOptional()

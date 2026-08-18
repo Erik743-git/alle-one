@@ -25,6 +25,7 @@ export type UpsertPortalTicketInput = {
   createdBy?: string | null;
   specialtyId?: string | null;
   emailConversationId?: string | null;
+  parentTicketNumber?: number | null;
 };
 
 @Injectable()
@@ -125,6 +126,9 @@ export class TicketsPortalStoreService {
           : {}),
         ...(input.emailConversationId !== undefined
           ? { emailConversationId: input.emailConversationId }
+          : {}),
+        ...(input.parentTicketNumber !== undefined
+          ? { parentTicketNumber: input.parentTicketNumber }
           : {}),
         updatedAtSource: data.updatedAtSource,
       },

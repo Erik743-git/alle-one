@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Montserrat, Nunito } from "next/font/google";
+import Script from "next/script";
 
 import { ClientProviders } from "@/components/providers/client-providers";
 import "./globals.css";
@@ -62,12 +63,7 @@ export default function RootLayout({
       <body
         className={`${nunito.variable} ${montserrat.variable} ${geistMono.variable} font-sans antialiased`}
       >
-        <script
-          // Define o tema antes do React hidratar (evita flash).
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var root=document.documentElement;var t=localStorage.getItem('alleone.theme');var theme=(t==='light'||t==='dark')?t:'dark';if(theme==='dark'){root.classList.add('dark')}else{root.classList.remove('dark')}var c=localStorage.getItem('alleone.sidebar.collapsed');var w=(c==='1')?72:260;root.style.setProperty('--sidebar-width',w+'px');root.dataset.sidebarCollapsed=(c==='1')?'true':'false';}catch(e){}})();`,
-          }}
-        />
+        <Script src="/theme-boot.js" strategy="beforeInteractive" />
         <ClientProviders>{children}</ClientProviders>
       </body>
     </html>

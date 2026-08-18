@@ -44,6 +44,38 @@
 - Build backend + testes unitários (helpers rendimento) + build frontend.
 - Sem secrets no workflow; `DATABASE_URL` fictícia só para `prisma generate`.
 
+## Scan OWASP ZAP (teste)
+
+Baseline passivo (spider + alertas passivos) só em `alleone-teste`:
+
+```powershell
+.\deploy\security\zap-baseline.ps1
+```
+
+Roteiro completo (k6, Playwright, ZAP): [TESTES_DESEMPENHO_SEGURANCA.md](./TESTES_DESEMPENHO_SEGURANCA.md).  
+Não rode full scan autenticado em produção.
+
+Relatórios HTML em `deploy/security/` **não** entram no Git.
+
+### Headers no Nginx (após git pull na VM)
+
+Os achados de médio/baixo do ZAP (CSP ausente nas páginas, HSTS/`X-Content-Type-Options` em `robots.txt`, `X-Powered-By`, redirect `/` com corpo grande) são cobertos por:
+
+- `deploy/nginx-alleone-security-headers.snippet.conf`
+- `deploy/nginx-alleone-csp-html.snippet.conf` (páginas; `'unsafe-inline'` em script/style por causa do Next/React/`next/font`)
+- `deploy/nginx-alleone-csp-api.snippet.conf` (API; sem coringa `https:` e sem `unsafe-inline`)
+
+Na **teste**:
+
+```bash
+sudo cp /home/alleone/teste/deploy/nginx-alleone-teste-https.conf /etc/nginx/sites-available/alleone-teste
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Rebuild/restart `alleone-teste-web` e `alleone-teste-api` para Helmet + `poweredByHeader: false` + `theme-boot.js`.
+
+Não aplique o conf de teste em produção. Produção usa `deploy/nginx-alleone-https.conf` no mesmo ciclo de deploy habitual.
+
 ## Incidentes
 
 1. Revogar token vazado na origem (TiFlux, Zabbix, SMTP).

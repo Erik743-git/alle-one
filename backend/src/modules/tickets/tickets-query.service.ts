@@ -75,6 +75,7 @@ export type TicketListItemDto = {
   priorityName: string | null;
   statusName: string | null;
   stageName: string | null;
+  responsibleExternalId: number | null;
   responsibleName: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -88,6 +89,20 @@ export type TicketHistoryDto = {
   summary: string;
   actorName: string | null;
   createdAt: string;
+};
+
+export type TicketGroupingDto = {
+  parent: {
+    ticketNumber: number;
+    title: string | null;
+    isClosed: boolean;
+  } | null;
+  children: Array<{
+    ticketNumber: number;
+    title: string | null;
+    isClosed: boolean;
+    stageName: string | null;
+  }>;
 };
 
 @Injectable()
@@ -210,12 +225,60 @@ export class TicketsQueryService {
       priorityName: row.priority_name,
       statusName: row.status_name,
       stageName: canonicalizeStageName(row.stage_name) ?? row.stage_name,
+      responsibleExternalId:
+        row.responsible_external_id != null
+          ? Number(row.responsible_external_id)
+          : null,
       responsibleName: row.responsible_name,
       createdAt: this.toIso(row.created_at_source),
       updatedAt: this.toIso(row.updated_at_source),
       stageGroup: resolveTicketStageGroup(row.stage_name),
       externalGmudRef: row.external_gmud_ref?.trim() || null,
     };
+  }
+
+  private async loadTicketGrouping(
+    ticketNumber: number,
+  ): Promise<TicketGroupingDto> {
+    const empty: TicketGroupingDto = { parent: null, children: [] };
+    try {
+      const portal = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber },
+        select: { parentTicketNumber: true },
+      });
+      if (!portal) return empty;
+      const [parent, children] = await Promise.all([
+        portal.parentTicketNumber != null
+          ? this.prisma.portalTicket.findUnique({
+              where: { ticketNumber: portal.parentTicketNumber },
+              select: { ticketNumber: true, title: true, isClosed: true },
+            })
+          : Promise.resolve(null),
+        this.prisma.portalTicket.findMany({
+          where: { parentTicketNumber: ticketNumber },
+          select: {
+            ticketNumber: true,
+            title: true,
+            isClosed: true,
+            stageName: true,
+          },
+          orderBy: { ticketNumber: 'asc' },
+          take: 50,
+        }),
+      ]);
+      return {
+        parent: parent
+          ? {
+              ticketNumber: parent.ticketNumber,
+              title: parent.title,
+              isClosed: parent.isClosed,
+            }
+          : null,
+        children,
+      };
+    } catch {
+      return empty;
+    }
   }
 
   /** Leitura canônica a partir de `portal_tickets` (flag TICKETS_PORTAL_CANONICAL). */
@@ -504,11 +567,12 @@ export class TicketsQueryService {
           : null,
     });
 
-    const [appointments, externalGmudRef, portalDescription] =
+    const [appointments, externalGmudRef, portalDescription, grouping] =
       await Promise.all([
         this.appointments.listMergedAppointments(ticketNumber),
         this.loadExternalGmudRef(ticketNumber),
         this.loadPortalTicketDescription(ticketNumber),
+        this.loadTicketGrouping(ticketNumber),
       ]);
 
     const stageName = apiTicket.stage?.name ?? null;
@@ -545,6 +609,7 @@ export class TicketsQueryService {
       externalGmudRef,
       portalDescription,
       syncPending: true,
+      grouping,
       canChangeClient: await this.actorCanChangeTicketClient(
         actor,
         apiTicket.responsible?.id ?? null,
@@ -859,11 +924,12 @@ export class TicketsQueryService {
         createdBy: portal.createdBy,
         requestorEmail: portal.requestorEmail,
       });
-      const [appointments, externalGmudRef, portalDescription] =
+      const [appointments, externalGmudRef, portalDescription, grouping] =
         await Promise.all([
           this.appointments.listMergedAppointments(ticketNumber),
           this.loadExternalGmudRef(ticketNumber),
           this.loadPortalTicketDescription(ticketNumber),
+          this.loadTicketGrouping(ticketNumber),
         ]);
       const row: TicketRow & {
         requestor_name?: string | null;
@@ -905,6 +971,7 @@ export class TicketsQueryService {
         externalGmudRef,
         portalDescription,
         source: 'portal_tickets',
+        grouping,
         canChangeClient: await this.actorCanChangeTicketClient(
           actor,
           row.responsible_external_id,
@@ -954,11 +1021,12 @@ export class TicketsQueryService {
       requestorEmail: row.requestor_email ?? null,
     });
 
-    const [appointments, externalGmudRef, portalDescription] =
+    const [appointments, externalGmudRef, portalDescription, grouping] =
       await Promise.all([
         this.appointments.listMergedAppointments(ticketNumber),
         this.loadExternalGmudRef(ticketNumber),
         this.loadPortalTicketDescription(ticketNumber),
+        this.loadTicketGrouping(ticketNumber),
       ]);
 
     return {
@@ -976,6 +1044,7 @@ export class TicketsQueryService {
       appointments,
       externalGmudRef,
       portalDescription,
+      grouping,
       canChangeClient: await this.actorCanChangeTicketClient(
         actor,
         row.responsible_external_id,
@@ -1082,6 +1151,14 @@ export class TicketsQueryService {
       'TICKET_CLOSED',
       'TICKET_CANCELLED',
       'STAGE_CHANGED',
+      'RESPONSIBLE_CHANGED',
+      'DESK_CHANGED',
+      'TICKET_GROUPED',
+      'COMMUNICATION_UPDATED',
+      'COMMUNICATION_REMOVED',
+      'APPOINTMENT_CREATED',
+      'APPOINTMENT_UPDATED',
+      'APPOINTMENT_DELETED',
     ]);
     const hasLifecycleNearUpdate =
       updatedAtSource != null &&
@@ -1166,10 +1243,25 @@ export class TicketsQueryService {
         orderBy: { createdAt: 'desc' },
       });
     const claimedTifluxExternalIds = new Set<number>();
+    const historyCreatedAppointmentIds = new Set<string>();
+    for (const row of cachedTiflux) {
+      if (row.eventType !== 'APPOINTMENT_CREATED') continue;
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      if (typeof payload.portalAppointmentId === 'string') {
+        historyCreatedAppointmentIds.add(payload.portalAppointmentId);
+      }
+      const key = row.externalKey ?? '';
+      if (key.startsWith('appointment_created:')) {
+        historyCreatedAppointmentIds.add(
+          key.slice('appointment_created:'.length),
+        );
+      }
+    }
     for (const appt of portalAppointments) {
       if (appt.tifluxAppointmentExternalId != null) {
         claimedTifluxExternalIds.add(appt.tifluxAppointmentExternalId);
       }
+      if (historyCreatedAppointmentIds.has(appt.id)) continue;
       const dateLabel = this.formatDateOnly(appt.appointmentDate) ?? '';
       events.push({
         id: `appt-${appt.id}`,

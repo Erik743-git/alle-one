@@ -32,8 +32,15 @@ const EVENT_LABELS: Record<string, string> = {
   TICKET_CANCELLED: "Chamado cancelado",
   EMAIL_REPLY: "Resposta por e-mail",
   APPOINTMENT_CREATED: "Apontamento registrado",
+  APPOINTMENT_UPDATED: "Apontamento alterado",
+  APPOINTMENT_DELETED: "Apontamento excluído",
   APPOINTMENT_TIFLUX: "Apontamento histórico",
   STAGE_CHANGED: "Estágio alterado",
+  RESPONSIBLE_CHANGED: "Responsável alterado",
+  DESK_CHANGED: "Chamado transferido",
+  TICKET_GROUPED: "Chamado agrupado",
+  COMMUNICATION_UPDATED: "Comunicação alterada",
+  COMMUNICATION_REMOVED: "Comunicação removida",
   GMUD_LINKED: "GMUD vinculada",
   GMUD_UPDATED: "GMUD atualizada",
   PROJECT_LINKED: "Projeto vinculado",
@@ -53,12 +60,17 @@ export function ticketHistoryFilterCategory(
   if (eventType.includes("APPOINTMENT")) return "APPOINTMENT";
   if (
     eventType === "STAGE_CHANGED" ||
+    eventType === "RESPONSIBLE_CHANGED" ||
+    eventType === "DESK_CHANGED" ||
+    eventType === "TICKET_GROUPED" ||
     eventType === "TIFLUX_EVENT" ||
     eventType === "TICKET_UPDATED" ||
     eventType === "TICKET_REOPENED" ||
     eventType === "TICKET_CLOSED" ||
     eventType === "TICKET_CANCELLED" ||
-    eventType === "EMAIL_REPLY"
+    eventType === "EMAIL_REPLY" ||
+    eventType === "COMMUNICATION_UPDATED" ||
+    eventType === "COMMUNICATION_REMOVED"
   ) {
     return "TICKET";
   }
@@ -99,7 +111,9 @@ export function ticketHistoryTone(eventType: string): TicketHistoryTone {
     eventType === "STAGE_CHANGED" ||
     eventType === "TICKET_REOPENED" ||
     eventType === "TICKET_CLOSED" ||
-    eventType === "TICKET_CANCELLED"
+    eventType === "TICKET_CANCELLED" ||
+    eventType === "TICKET_GROUPED" ||
+    eventType === "DESK_CHANGED"
   ) {
     return "stage";
   }
