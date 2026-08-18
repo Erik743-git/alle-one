@@ -88,6 +88,9 @@ export class MailService {
         ? { requireTLS: true }
         : {}),
       tls: { rejectUnauthorized },
+      connectionTimeout: 12_000,
+      greetingTimeout: 12_000,
+      socketTimeout: 20_000,
     });
   }
 

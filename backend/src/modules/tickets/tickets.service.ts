@@ -3,7 +3,10 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   PortalTicketOrigin,
@@ -25,7 +28,11 @@ import {
 } from './appointment-doc.util';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
 import { TicketsCatalogsService } from './tickets-catalogs.service';
-import { isTicketsTifluxWriteEnabled } from './tickets-portal.config';
+import {
+  isTicketsPortalCanonical,
+  isTicketsTifluxWriteEnabled,
+  isTifluxDisconnected,
+} from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -40,6 +47,8 @@ import {
 
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tiflux: TifluxService,
@@ -279,6 +288,9 @@ export class TicketsService {
     await assertTicketCreateClientScope(this.tenantScope, actor, dto.clientId);
 
     const writeTiflux = isTicketsTifluxWriteEnabled();
+    this.logger.log(
+      `createTicket writeTiflux=${writeTiflux} canonical=${isTicketsPortalCanonical()} disconnected=${isTifluxDisconnected()}`,
+    );
     const deskMeta = await this.resolveDeskMetaForCreate(
       dto.deskId,
       writeTiflux,
@@ -530,15 +542,21 @@ export class TicketsService {
       }
 
       if (
-        error instanceof BadGatewayException ||
         error instanceof BadRequestException ||
-        error instanceof NotFoundException
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
       ) {
-        throw error instanceof BadGatewayException
-          ? new BadRequestException(error.message)
-          : error;
+        throw error;
       }
-      throw new BadGatewayException(message);
+      if (error instanceof BadGatewayException) {
+        throw new ServiceUnavailableException(
+          error.message ||
+            'Não foi possível criar o chamado (integração indisponível).',
+        );
+      }
+      throw new InternalServerErrorException(
+        message || 'Falha ao criar o chamado.',
+      );
     }
   }
 

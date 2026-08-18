@@ -57,10 +57,17 @@ echo "==> pm2 save"
 run_pm2 save >/dev/null 2>&1 || true
 
 echo "==> Aguardando API de teste subir..."
-sleep 5
+API_OK=0
+for _i in $(seq 1 20); do
+  if curl -sf --max-time 3 "$API_HEALTH_URL" >/dev/null; then
+    API_OK=1
+    break
+  fi
+  sleep 2
+done
 
 echo "==> Health API ($API_HEALTH_URL)"
-if ! curl -sf "$API_HEALTH_URL" >/dev/null; then
+if [[ "$API_OK" -ne 1 ]]; then
   echo "FALHA: API de teste não respondeu 200 em $API_HEALTH_URL"
   echo "--- últimos logs ($API_NAME) ---"
   run_pm2 logs "$API_NAME" --lines 40 --nostream || true

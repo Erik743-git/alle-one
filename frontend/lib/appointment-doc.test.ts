@@ -9,6 +9,12 @@ describe("sanitizeAllowedStyle", () => {
     );
   });
 
+  it("mantém tamanho e família de fonte", () => {
+    expect(
+      sanitizeAllowedStyle("font-size: 14px; font-family: Inter, Arial"),
+    ).toBe("font-size: 14px; font-family: Inter, Arial");
+  });
+
   it("remove CSS perigoso e propriedades desconhecidas", () => {
     expect(
       sanitizeAllowedStyle(

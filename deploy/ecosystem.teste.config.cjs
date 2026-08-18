@@ -21,10 +21,16 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
+      kill_timeout: 20000,
       max_memory_restart: "800M",
       env: {
         NODE_ENV: "production",
         PORT: "3004",
+        // Teste e portal-only: criar chamado nao espera a API TiFlux (evita 502 no Nginx).
+        TICKETS_PORTAL_CANONICAL: "true",
+        TICKETS_TIFLUX_WRITE: "false",
+        TIFLUX_DISCONNECTED: "true",
+        TIFLUX_RUNTIME_API: "false",
       },
     },
     {

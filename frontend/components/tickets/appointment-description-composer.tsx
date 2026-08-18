@@ -52,11 +52,30 @@ const DEFAULT_IMAGE_WIDTH = 280;
 const MAX_IMAGE_WIDTH = 360;
 
 const FONT_SIZE_OPTIONS = [
-  { label: "12px", value: "2" },
-  { label: "14px", value: "3" },
-  { label: "16px", value: "4" },
-  { label: "18px", value: "5" },
-  { label: "24px", value: "6" },
+  "8px",
+  "9px",
+  "10px",
+  "11px",
+  "12px",
+  "14px",
+  "16px",
+  "18px",
+  "20px",
+  "24px",
+  "36px",
+] as const;
+
+const FONT_FAMILY_OPTIONS = [
+  "Inter",
+  "Arial",
+  "Arial Black",
+  "Georgia",
+  "Times New Roman",
+  "Courier New",
+  "Verdana",
+  "Tahoma",
+  "Trebuchet MS",
+  "Comic Sans MS",
 ] as const;
 
 function FormatButton({
@@ -977,7 +996,7 @@ export const AppointmentDescriptionComposer = forwardRef<
             .trim();
           if (!plain) return;
           const hasFormat =
-            /<(b|strong|i|em|u|s|strike|ul|ol|li|h[1-4]|a|blockquote|font|span)\b/i.test(
+            /<(b|strong|i|em|u|s|strike|ul|ol|li|h[1-4]|a|blockquote|pre|code|font|span)\b/i.test(
               cleaned,
             ) ||
             /style\s*=/i.test(cleaned) ||
@@ -1116,7 +1135,41 @@ export const AppointmentDescriptionComposer = forwardRef<
 
   const applyHeading = useCallback(
     (tag: string) => {
-      runFormat("formatBlock", tag === "p" ? "p" : `<${tag}>`);
+      const block = tag === "p" ? "p" : tag;
+      runFormat("formatBlock", block);
+    },
+    [runFormat],
+  );
+
+  const applyFontSize = useCallback(
+    (px: string) => {
+      if (disabled) return;
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      restoreSelection();
+      document.execCommand("styleWithCSS", false, "false");
+      document.execCommand("fontSize", false, "7");
+      editor.querySelectorAll('font[size="7"]').forEach((font) => {
+        const span = document.createElement("span");
+        span.style.fontSize = px;
+        while (font.firstChild) span.appendChild(font.firstChild);
+        font.replaceWith(span);
+      });
+      editor.querySelectorAll("span").forEach((span) => {
+        const size = span.style.fontSize.toLowerCase();
+        if (size === "xxx-large" || size === "-webkit-xxx-large") {
+          span.style.fontSize = px;
+        }
+      });
+      saveSelection();
+    },
+    [disabled, restoreSelection, saveSelection],
+  );
+
+  const applyFontFamily = useCallback(
+    (family: string) => {
+      runFormat("fontName", family);
     },
     [runFormat],
   );
@@ -1162,7 +1215,7 @@ export const AppointmentDescriptionComposer = forwardRef<
         >
           <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 px-2 py-1.5">
             <select
-              className="h-8 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
+              className="h-8 max-w-[8.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
               defaultValue="p"
               disabled={disabled}
               aria-label="Estilo do texto"
@@ -1173,22 +1226,40 @@ export const AppointmentDescriptionComposer = forwardRef<
               }}
             >
               <option value="p">Parágrafo</option>
-              <option value="h1">Título 1</option>
-              <option value="h2">Título 2</option>
-              <option value="h3">Título 3</option>
+              <option value="h1">Cabeçalho 1</option>
+              <option value="h2">Cabeçalho 2</option>
+              <option value="h3">Cabeçalho 3</option>
+              <option value="h4">Cabeçalho 4</option>
+              <option value="blockquote">Citação</option>
+              <option value="pre">Código</option>
+            </select>
+            <select
+              className="h-8 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
+              defaultValue="Inter"
+              disabled={disabled}
+              aria-label="Fonte"
+              title="Fonte"
+              onMouseDown={(event) => event.preventDefault()}
+              onChange={(event) => applyFontFamily(event.target.value)}
+            >
+              {FONT_FAMILY_OPTIONS.map((family) => (
+                <option key={family} value={family} style={{ fontFamily: family }}>
+                  {family}
+                </option>
+              ))}
             </select>
             <select
               className="h-8 w-[4.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
-              defaultValue="3"
+              defaultValue="14px"
               disabled={disabled}
               aria-label="Tamanho da fonte"
               title="Tamanho da fonte"
               onMouseDown={(event) => event.preventDefault()}
-              onChange={(event) => runFormat("fontSize", event.target.value)}
+              onChange={(event) => applyFontSize(event.target.value)}
             >
-              {FONT_SIZE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
+              {FONT_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
                 </option>
               ))}
             </select>

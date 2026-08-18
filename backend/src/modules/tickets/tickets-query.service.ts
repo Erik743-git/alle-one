@@ -916,6 +916,13 @@ export class TicketsQueryService {
   }
 
   async getDetail(actor: AuthenticatedRequestUser, ticketNumber: number) {
+    if (
+      !Number.isSafeInteger(ticketNumber) ||
+      ticketNumber < 1 ||
+      ticketNumber > 2147483647
+    ) {
+      throw new NotFoundException('Chamado não encontrado.');
+    }
     const portal = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber },
     });

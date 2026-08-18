@@ -12,17 +12,19 @@ function parseEnvFlag(raw: string | undefined): boolean | undefined {
   return undefined;
 }
 
-/** Valor bruto de `TICKETS_TIFLUX_WRITE` (default true). Sem checar disconnect. */
+/** Valor de `TICKETS_TIFLUX_WRITE`. Sem checar disconnect. */
 function isTicketsTifluxWriteEnvEnabled(): boolean {
   const parsed = parseEnvFlag(process.env.TICKETS_TIFLUX_WRITE);
+  if (parsed === true) return true;
   if (parsed === false) return false;
-  return true;
+  // Cutover: se a leitura já é portal, não chama a API TiFlux sem WRITE explícito.
+  return !isTicketsPortalCanonical();
 }
 
 /**
  * Create/stage ainda chamam a API TiFlux.
- * Default: true (comportamento legado). Defina `false` para portal-only.
- * Sempre false quando `TIFLUX_DISCONNECTED`.
+ * Default: true no modo legado; false quando `TICKETS_PORTAL_CANONICAL=true`
+ * (a menos que WRITE=true explícito). Sempre false se `TIFLUX_DISCONNECTED`.
  */
 export function isTicketsTifluxWriteEnabled(): boolean {
   if (isTifluxDisconnected()) return false;
