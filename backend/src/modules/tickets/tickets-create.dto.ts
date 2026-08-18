@@ -134,6 +134,11 @@ export class CreateTicketAppointmentDto {
   /** Remote, External ou Internal. */
   @IsIn(['Remote', 'External', 'Internal'])
   attendance!: 'Remote' | 'External' | 'Internal';
+
+  /** Envia e-mail ao responsável e aos seguidores. */
+  @IsOptional()
+  @IsBoolean()
+  notifyClient?: boolean;
 }
 
 export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {

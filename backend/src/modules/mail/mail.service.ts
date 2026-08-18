@@ -1,12 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import nodemailer from 'nodemailer';
 
+export type SendMailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  cid?: string;
+};
+
 type SendMailPayload = {
   to: string[] | string;
   cc?: string[] | string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: SendMailAttachment[];
 };
 
 function envTrim(value: string | undefined): string | undefined {
@@ -112,6 +120,13 @@ export class MailService {
       subject: payload.subject,
       text: payload.text,
       html: payload.html,
+      attachments: payload.attachments?.map((item) => ({
+        filename: item.filename,
+        content: item.content,
+        contentType: item.contentType,
+        cid: item.cid,
+        contentDisposition: item.cid ? 'inline' : 'attachment',
+      })),
     });
 
     this.logger.log(
