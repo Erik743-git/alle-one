@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, User2 } from "lucide-react";
 
 import { FieldLabel } from "@/components/ui/field-label";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { Button } from "@/components/ui/button";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Input } from "@/components/ui/input";
@@ -122,6 +123,7 @@ export function TicketAppointmentModal({
   const [overnight, setOvernight] = useState(false);
   const [serviceName, setServiceName] = useState("");
   const [projectActivityId, setProjectActivityId] = useState("");
+  const [notifyClient, setNotifyClient] = useState(false);
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
   const saveModeRef = useRef<SaveMode>("save");
@@ -164,6 +166,7 @@ export function TicketAppointmentModal({
             timeToMinutes(editingAppointment.initTime),
         );
         setServiceName(editingAppointment.serviceName);
+        setNotifyClient(Boolean(editingAppointment.notifyClient));
         setComposerKey((k) => k + 1);
       } else {
         const start = nowTime();
@@ -171,6 +174,7 @@ export function TicketAppointmentModal({
         setEndTime(addMinutesToTime(start, 15));
         setOvernight(false);
         setProjectActivityId(fixedActivityId ?? "");
+        setNotifyClient(false);
         setComposerKey((k) => k + 1);
       }
       void loadTicketMeta();
@@ -201,6 +205,7 @@ export function TicketAppointmentModal({
     setOvernight(false);
     setInitTime(previousEndTime);
     setEndTime(addMinutesToTime(previousEndTime, 15));
+    setNotifyClient(false);
     setComposerKey((k) => k + 1);
   }
 
@@ -255,6 +260,7 @@ export function TicketAppointmentModal({
       description: exported.description,
       serviceName: serviceName.trim(),
       attendance: DEFAULT_ATTENDANCE,
+      notifyClient,
       ...(projectActivityId ? { projectActivityId } : {}),
       ...(isEdit
         ? { removeAttachmentFileIds: exported.removeAttachmentFileIds }
@@ -509,6 +515,22 @@ export function TicketAppointmentModal({
                 isEdit ? editingAppointment?.attachments ?? [] : []
               }
             />
+
+            <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/20 px-3 py-3 text-sm text-foreground">
+              <FlipCheckbox
+                checked={notifyClient}
+                onChange={(e) => setNotifyClient(e.target.checked)}
+                disabled={saving}
+              />
+              <span>
+                Comunicação com cliente
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Envia e-mail ao responsável do chamado e aos seguidores, com
+                  horário, quem apontou, o ticket, a descrição do apontamento e a
+                  do chamado. Imagens e anexos vão juntos no e-mail.
+                </span>
+              </span>
+            </label>
           </div>
 
           <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 pt-4 sm:flex-row sm:flex-wrap sm:justify-end">

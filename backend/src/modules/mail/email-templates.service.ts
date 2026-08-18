@@ -1,10 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MailService } from './mail.service';
+import { MailService, type SendMailAttachment } from './mail.service';
 
 export const EMAIL_TEMPLATE_KEYS = {
   TICKET_REGISTERED: 'TICKET_REGISTERED',
   GMUD_NOTIFY: 'GMUD_NOTIFY',
+  APPOINTMENT_CLIENT_NOTIFY: 'APPOINTMENT_CLIENT_NOTIFY',
 } as const;
 
 export type EmailTemplateKey =
@@ -34,6 +35,16 @@ const DEFAULTS: Array<{
       '<p>A GMUD <strong>#{{gmudCode}}</strong> está aguardando sua aprovação.</p><p><strong>Empresa:</strong> {{companyName}}</p><p><a href="{{gmudLink}}">Acessar GMUD no portal</a></p>',
     bodyText:
       'A GMUD #{{gmudCode}} está aguardando sua aprovação.\n\nEmpresa: {{companyName}}\n\nAcesse: {{gmudLink}}\n',
+  },
+  {
+    key: EMAIL_TEMPLATE_KEYS.APPOINTMENT_CLIENT_NOTIFY,
+    name: 'Comunicação com cliente (apontamento)',
+    subject:
+      'Atualização do chamado #{{ticketNumber}} — {{appointmentDate}} {{appointmentTime}}',
+    bodyHtml:
+      '<p>Olá.</p><p>Há um apontamento de comunicação no chamado <strong>#{{ticketNumber}} — {{ticketTitle}}</strong>.</p><p><strong>Quem apontou:</strong> {{authorName}}<br/><strong>Quando:</strong> {{appointmentDate}} {{appointmentTime}}</p><p><strong>Descrição do apontamento</strong></p><div>{{appointmentDescriptionHtml}}</div><p><strong>Descrição do chamado</strong></p><div>{{ticketDescriptionHtml}}</div>{{attachmentsNote}}<p>Atenciosamente.<br/>Alle Tecnologia.</p>',
+    bodyText:
+      'Olá.\n\nHá um apontamento de comunicação no chamado #{{ticketNumber}} — {{ticketTitle}}.\n\nQuem apontou: {{authorName}}\nQuando: {{appointmentDate}} {{appointmentTime}}\n\nDescrição do apontamento:\n{{appointmentDescriptionText}}\n\nDescrição do chamado:\n{{ticketDescriptionText}}\n\nAtenciosamente.\nAlle Tecnologia.\n',
   },
 ];
 
@@ -193,4 +204,81 @@ export class EmailTemplatesService {
       return false;
     }
   }
+
+  async sendAppointmentClientNotify(params: {
+    to: string[];
+    cc?: string[];
+    ticketNumber: number;
+    ticketTitle: string;
+    authorName: string;
+    appointmentDate: string;
+    appointmentTime: string;
+    appointmentDescriptionHtml: string;
+    appointmentDescriptionText: string;
+    ticketDescriptionHtml: string;
+    ticketDescriptionText: string;
+    attachmentsNote?: string;
+    attachments?: SendMailAttachment[];
+  }) {
+    let to = uniqueEmails(params.to);
+    let cc = uniqueEmails(params.cc ?? []).filter(
+      (email) => !to.includes(email),
+    );
+    if (to.length === 0 && cc.length > 0) {
+      to = [cc[0]];
+      cc = cc.slice(1);
+    }
+    if (to.length === 0) {
+      this.logger.warn(
+        `APPOINTMENT_CLIENT_NOTIFY #${params.ticketNumber}: nenhum destinatário.`,
+      );
+      return false;
+    }
+
+    const rendered = await this.getRendered(
+      EMAIL_TEMPLATE_KEYS.APPOINTMENT_CLIENT_NOTIFY,
+      {
+        ticketNumber: params.ticketNumber,
+        ticketTitle: params.ticketTitle,
+        authorName: params.authorName,
+        appointmentDate: params.appointmentDate,
+        appointmentTime: params.appointmentTime,
+        appointmentDescriptionHtml: params.appointmentDescriptionHtml,
+        appointmentDescriptionText: params.appointmentDescriptionText,
+        ticketDescriptionHtml: params.ticketDescriptionHtml,
+        ticketDescriptionText: params.ticketDescriptionText,
+        attachmentsNote: params.attachmentsNote ?? '',
+      },
+    );
+
+    try {
+      return await this.mail.sendMail({
+        to,
+        cc: cc.length ? cc : undefined,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+        attachments: params.attachments,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enviar APPOINTMENT_CLIENT_NOTIFY #${params.ticketNumber}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return false;
+    }
+  }
+}
+
+function uniqueEmails(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const email = raw.trim().toLowerCase();
+    if (!email || !email.includes('@') || seen.has(email)) continue;
+    seen.add(email);
+    out.push(email);
+  }
+  return out;
 }

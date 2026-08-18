@@ -271,6 +271,8 @@ export type CreateAppointmentPayload = {
   attendance: "Remote" | "External" | "Internal";
   projectActivityId?: string;
   removeAttachmentFileIds?: string[];
+  /** Envia e-mail ao responsável e aos seguidores. */
+  notifyClient?: boolean;
 };
 
 export type CreateTicketResult = {
@@ -345,6 +347,7 @@ export type PortalAppointmentEditContext = {
   attendance: string;
   description: string;
   descriptionPlain: string;
+  notifyClient?: boolean;
   attachments?: Array<{
     id: string;
     fileId: string;

@@ -833,6 +833,8 @@ model PortalTicketAppointment {
   description                 String
   serviceName                 String                            @map("service_name") @db.VarChar(120)
   attendance                  String                            @db.VarChar(20)
+  /// Quando true, dispara e-mail ao responsável e aos seguidores.
+  notifyClient                Boolean                           @default(false) @map("notify_client")
   tifluxAppointmentExternalId Int?                              @map("tiflux_appointment_external_id")
   syncStatus                  PortalTicketAppointmentSyncStatus @default(PENDING_TIFLUX) @map("sync_status")
   syncPausedAt                DateTime?                         @map("sync_paused_at")

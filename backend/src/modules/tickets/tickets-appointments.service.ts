@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
@@ -29,10 +30,19 @@ import {
   isTifluxRuntimeApiEnabled,
 } from './tickets-portal.config';
 import {
+  appointmentDescriptionToEmailParts,
   appointmentDescriptionToPlainText,
+  appointmentDocFileIds,
   enrichAppointmentDescriptionWithImages,
+  hydrateAppointmentDescriptionImages,
   type SavedAppointmentImage,
 } from './appointment-doc.util';
+import { EmailTemplatesService } from '../mail/email-templates.service';
+import type { SendMailAttachment } from '../mail/mail.service';
+import {
+  PORTAL_RESPONSIBLE_ID_BASE,
+  portalResponsibleSyntheticId,
+} from './portal-responsible.helper';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 import { isAlleOneTifluxDesk } from './tiflux-portal-desk.config';
 import {
@@ -98,6 +108,9 @@ const ATTENDANCE_LABELS: Record<string, string> = {
 
 @Injectable()
 export class TicketsAppointmentsService {
+  private readonly logger = new Logger(TicketsAppointmentsService.name);
+  private static readonly EMAIL_ATTACHMENTS_MAX_BYTES = 18 * 1024 * 1024;
+
   private get allowRuntimeTifluxApi(): boolean {
     return isTifluxRuntimeApiEnabled();
   }
@@ -108,6 +121,7 @@ export class TicketsAppointmentsService {
     private readonly fileStorage: FileStorageService,
     private readonly projetos: ProjetosService,
     private readonly tenantScope: TenantScopeService,
+    private readonly emailTemplates: EmailTemplatesService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -956,6 +970,7 @@ export class TicketsAppointmentsService {
       attendance: row.attendance,
       description: row.description,
       descriptionPlain: appointmentDescriptionToPlainText(row.description),
+      notifyClient: row.notifyClient,
       attachments: this.mapPortalAttachments(attachmentRows, previewMap),
       syncStatus: row.syncStatus,
       syncPaused: Boolean(row.syncPausedAt),
@@ -1154,6 +1169,7 @@ export class TicketsAppointmentsService {
         description,
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
+        notifyClient: Boolean(dto.notifyClient),
         syncPausedAt: null,
         outboxId,
       },
@@ -1214,12 +1230,26 @@ export class TicketsAppointmentsService {
           endTime: dto.endTime,
           serviceName: dto.serviceName.trim(),
         },
+        notifyClient: Boolean(dto.notifyClient),
       },
+    });
+
+    const mailNote = await this.maybeSendClientCommunication({
+      ticketNumber,
+      portalAppointmentId: row.id,
+      actor,
+      actorName,
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+      endDate: dto.endDate,
+      description,
+      notifyClient: Boolean(dto.notifyClient),
     });
 
     return {
       ok: true,
-      message: 'Apontamento atualizado.',
+      message: `Apontamento atualizado.${mailNote}`,
     };
   }
 
@@ -1319,6 +1349,7 @@ export class TicketsAppointmentsService {
         description: descriptionRaw,
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
+        notifyClient: Boolean(dto.notifyClient),
         syncStatus: syncToTiflux
           ? PortalTicketAppointmentSyncStatus.PENDING_TIFLUX
           : PortalTicketAppointmentSyncStatus.PORTAL_ONLY,
@@ -1371,12 +1402,14 @@ export class TicketsAppointmentsService {
         base64: item.base64,
       }));
 
+    let finalDescription = descriptionRaw;
     if (savedImages.length > 0) {
       const enrichedDescription = enrichAppointmentDescriptionWithImages(
         descriptionRaw,
         savedImages,
       );
       if (enrichedDescription !== descriptionRaw) {
+        finalDescription = enrichedDescription;
         await this.prisma.portalTicketAppointment.update({
           where: { id: portalAppointment.id },
           data: { description: enrichedDescription },
@@ -1415,7 +1448,21 @@ export class TicketsAppointmentsService {
         initTime: dto.initTime,
         endTime: dto.endTime,
         serviceName: dto.serviceName.trim(),
+        notifyClient: Boolean(dto.notifyClient),
       },
+    });
+
+    const mailNote = await this.maybeSendClientCommunication({
+      ticketNumber,
+      portalAppointmentId: portalAppointment.id,
+      actor,
+      actorName,
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+      endDate: dto.endDate,
+      description: finalDescription,
+      notifyClient: Boolean(dto.notifyClient),
     });
 
     return {
@@ -1426,7 +1473,305 @@ export class TicketsAppointmentsService {
       attachmentsCount: attachments.length,
       tifluxSynced: false,
       portalOnly: !syncToTiflux,
-      message: `Apontamento salvo.${attachmentNote}`,
+      message: `Apontamento salvo.${attachmentNote}${mailNote}`,
     };
+  }
+
+  private async maybeSendClientCommunication(params: {
+    ticketNumber: number;
+    portalAppointmentId: string;
+    actor: AuthenticatedRequestUser;
+    actorName: string;
+    date: string;
+    initTime: string;
+    endTime: string;
+    endDate?: string;
+    description: string;
+    notifyClient: boolean;
+  }): Promise<string> {
+    if (!params.notifyClient) return '';
+
+    try {
+      const sent = await this.sendClientCommunicationEmail(params);
+      return sent
+        ? ' E-mail enviado ao responsável e aos seguidores.'
+        : ' Apontamento salvo, mas o e-mail de comunicação não foi enviado.';
+    } catch (err) {
+      this.logger.warn(
+        `Falha na comunicação com cliente do apontamento ${params.portalAppointmentId}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return ' Apontamento salvo, mas o e-mail de comunicação não foi enviado.';
+    }
+  }
+
+  private async sendClientCommunicationEmail(params: {
+    ticketNumber: number;
+    portalAppointmentId: string;
+    actor: AuthenticatedRequestUser;
+    actorName: string;
+    date: string;
+    initTime: string;
+    endTime: string;
+    endDate?: string;
+    description: string;
+  }): Promise<boolean> {
+    const ticket = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber: params.ticketNumber },
+    });
+    if (!ticket) {
+      this.logger.warn(
+        `APPOINTMENT_CLIENT_NOTIFY: ticket #${params.ticketNumber} não encontrado.`,
+      );
+      return false;
+    }
+
+    const [watchers, ticketDescriptionRow, responsibleEmail] =
+      await Promise.all([
+        this.prisma.portalTicketWatcher.findMany({
+          where: { ticketNumber: params.ticketNumber },
+          select: { email: true },
+        }),
+        this.prisma.portalTicketDescription.findUnique({
+          where: { ticketNumber: params.ticketNumber },
+          select: { description: true },
+        }),
+        this.resolveResponsibleEmail(
+          ticket.responsibleExternalId,
+          ticket.responsibleName,
+        ),
+      ]);
+
+    const requestorEmail = ticket.requestorEmail?.trim() || null;
+    const to: string[] = [];
+    if (responsibleEmail) to.push(responsibleEmail);
+    if (requestorEmail) to.push(requestorEmail);
+    const cc = watchers.map((row) => row.email);
+
+    const ticketDescRaw = ticketDescriptionRow?.description?.trim() || '';
+    const imagesByFileId = await this.loadNotifyImagesByFileId([
+      ...appointmentDocFileIds(params.description),
+      ...appointmentDocFileIds(ticketDescRaw),
+    ]);
+    const appointmentDescription = hydrateAppointmentDescriptionImages(
+      params.description,
+      imagesByFileId,
+    );
+    const ticketDesc = hydrateAppointmentDescriptionImages(
+      ticketDescRaw,
+      imagesByFileId,
+    );
+
+    const appointmentParts = appointmentDescriptionToEmailParts(
+      appointmentDescription,
+    );
+    const ticketParts = ticketDesc
+      ? appointmentDescriptionToEmailParts(ticketDesc)
+      : { html: '<p>—</p>', text: '—', inlineImages: [] };
+
+    const skipFileIds = new Set([
+      ...appointmentDocFileIds(appointmentDescription),
+      ...appointmentDocFileIds(ticketDesc),
+    ]);
+
+    const fileAttachments = await this.collectNotifyFileAttachments(
+      params.ticketNumber,
+      params.portalAppointmentId,
+      skipFileIds,
+    );
+
+    const mailAttachments: SendMailAttachment[] = [
+      ...appointmentParts.inlineImages.map((img) => ({
+        filename: img.filename,
+        content: img.content,
+        contentType: img.contentType,
+        cid: img.cid,
+      })),
+      ...ticketParts.inlineImages.map((img) => ({
+        filename: `chamado-${img.filename}`,
+        content: img.content,
+        contentType: img.contentType,
+        cid: `ticket-${img.cid}`,
+      })),
+      ...fileAttachments,
+    ];
+
+    const ticketHtml = ticketParts.html.replace(
+      /cid:(alleone-img-\d+@portal)/g,
+      'cid:ticket-$1',
+    );
+
+    const extraCount = fileAttachments.length;
+    const attachmentsNote =
+      extraCount > 0 ||
+      appointmentParts.inlineImages.length > 0 ||
+      ticketParts.inlineImages.length > 0
+        ? `<p><em>Imagens e anexos do apontamento e do chamado seguem neste e-mail.</em></p>`
+        : '';
+
+    const dateLabel = new Date(
+      `${params.date}T12:00:00.000Z`,
+    ).toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+    const overnight = isOvernightAppointment({
+      date: params.date,
+      initTime: params.initTime,
+      endTime: params.endTime,
+      endDate: params.endDate,
+    });
+    const timeLabel = overnight
+      ? `${params.initTime} – ${params.endTime} (dia seguinte)`
+      : `${params.initTime} – ${params.endTime}`;
+
+    return this.emailTemplates.sendAppointmentClientNotify({
+      to,
+      cc,
+      ticketNumber: params.ticketNumber,
+      ticketTitle: ticket.title?.trim() || 'Chamado',
+      authorName: params.actorName.trim() || params.actor.email || 'equipe',
+      appointmentDate: dateLabel,
+      appointmentTime: timeLabel,
+      appointmentDescriptionHtml: appointmentParts.html,
+      appointmentDescriptionText: appointmentParts.text,
+      ticketDescriptionHtml: ticketHtml,
+      ticketDescriptionText: ticketParts.text,
+      attachmentsNote,
+      attachments: mailAttachments.length ? mailAttachments : undefined,
+    });
+  }
+
+  private async resolveResponsibleEmail(
+    responsibleExternalId: number | null,
+    responsibleName: string | null,
+  ): Promise<string | null> {
+    const extId =
+      responsibleExternalId != null && Number.isFinite(responsibleExternalId)
+        ? Number(responsibleExternalId)
+        : null;
+
+    if (extId != null && extId < PORTAL_RESPONSIBLE_ID_BASE) {
+      try {
+        const rows =
+          (await this.prisma.$queryRaw<Array<{ email: string | null }>>`
+            SELECT tu.email
+            FROM tiflux.users tu
+            WHERE tu.external_id = ${extId}
+              AND tu.email IS NOT NULL
+              AND trim(tu.email) <> ''
+            LIMIT 1
+          `) ?? [];
+        const email = rows[0]?.email?.trim();
+        if (email) return email;
+      } catch {
+        this.logger.warn(
+          'tiflux.users indisponível ao resolver e-mail do responsável.',
+        );
+      }
+    }
+
+    if (extId != null && extId >= PORTAL_RESPONSIBLE_ID_BASE) {
+      const users = await this.prisma.user.findMany({
+        where: { deletedAt: null, email: { not: '' } },
+        select: { id: true, email: true },
+        take: 800,
+      });
+      const match = users.find(
+        (user) => portalResponsibleSyntheticId(user.id) === extId,
+      );
+      if (match?.email?.trim()) return match.email.trim();
+    }
+
+    const name = responsibleName?.trim();
+    if (name) {
+      const byName = await this.prisma.user.findFirst({
+        where: { deletedAt: null, name },
+        select: { email: true },
+      });
+      if (byName?.email?.trim()) return byName.email.trim();
+    }
+
+    return null;
+  }
+
+  private async collectNotifyFileAttachments(
+    ticketNumber: number,
+    portalAppointmentId: string,
+    skipFileIds: Set<string>,
+  ): Promise<SendMailAttachment[]> {
+    const rows = await this.prisma.portalTicketAppointmentAttachment.findMany({
+      where: {
+        ticketNumber,
+        OR: [{ portalAppointmentId }, { portalAppointmentId: null }],
+      },
+      include: { file: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const attachments: SendMailAttachment[] = [];
+    let totalBytes = 0;
+    const seen = new Set<string>();
+
+    for (const row of rows) {
+      if (skipFileIds.has(row.fileId) || seen.has(row.fileId)) continue;
+      seen.add(row.fileId);
+      const size = row.file.size ?? 0;
+      if (
+        totalBytes + size >
+        TicketsAppointmentsService.EMAIL_ATTACHMENTS_MAX_BYTES
+      ) {
+        this.logger.warn(
+          `Anexo "${row.file.originalName}" omitido do e-mail (limite de tamanho).`,
+        );
+        continue;
+      }
+      try {
+        const content = await this.fileStorage.readBuffer(row.file.path);
+        attachments.push({
+          filename: row.file.originalName || `anexo-${attachments.length + 1}`,
+          content,
+          contentType: row.file.mimeType || 'application/octet-stream',
+        });
+        totalBytes += content.length;
+      } catch (err) {
+        this.logger.warn(
+          `Não foi possível ler anexo ${row.fileId} para o e-mail: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+
+    return attachments;
+  }
+
+  private async loadNotifyImagesByFileId(
+    fileIds: string[],
+  ): Promise<Record<string, SavedAppointmentImage>> {
+    const uniqueIds = [...new Set(fileIds.filter(Boolean))];
+    if (!uniqueIds.length) return {};
+
+    const files = await this.prisma.file.findMany({
+      where: { id: { in: uniqueIds } },
+    });
+    const map: Record<string, SavedAppointmentImage> = {};
+    for (const file of files) {
+      if (!file.mimeType?.startsWith('image/')) continue;
+      try {
+        const buffer = await this.fileStorage.readBuffer(file.path);
+        if (!buffer.length) continue;
+        map[file.id] = {
+          fileId: file.id,
+          mimeType: file.mimeType,
+          base64: buffer.toString('base64'),
+        };
+      } catch (err) {
+        this.logger.warn(
+          `Não foi possível ler imagem ${file.id} para o e-mail: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      }
+    }
+    return map;
   }
 }
