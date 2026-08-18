@@ -14,7 +14,7 @@
 | `JWT_SECRET` | 32+ caracteres aleatórios; obrigatório na subida |
 | `CORS_ORIGINS` / `FRONTEND_URL` | URL exata do site (sem barra final) |
 | `SWAGGER_ENABLED` | `false` (padrão) |
-| `AUTH_COOKIE_SECURE` | `false` só em HTTP sem TLS; em HTTPS use cookie Secure |
+| `AUTH_COOKIE_SECURE` | Em **production** o cookie é sempre `Secure` (teste/prod HTTPS). `false` só no HTTP local |
 | `TRUST_PROXY` | `1` atrás de Nginx |
 | Uploads | MIME + **magic bytes**; limites por tipo; `backend/uploads/` fora do Git |
 | `HEALTH_INTEGRATIONS_TOKEN` | Token para `GET /health/integrations` (cron); sem token só ADMIN |

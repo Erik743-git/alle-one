@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import type { Response } from 'express';
+import { isAuthCookieSecure } from './auth-cookie.helper';
 import { getFrontendBaseUrl } from './password-reset.helper';
 
 export const OAUTH_STATE_COOKIE = 'alleone_oauth_state';
@@ -75,9 +76,7 @@ export function createOAuthState(
 }
 
 export function attachOAuthStateCookie(res: Response, state: string): void {
-  const secure =
-    process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase() !== 'false' &&
-    process.env.NODE_ENV === 'production';
+  const secure = isAuthCookieSecure('lax');
 
   res.cookie(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
@@ -89,9 +88,7 @@ export function attachOAuthStateCookie(res: Response, state: string): void {
 }
 
 export function clearOAuthStateCookie(res: Response): void {
-  const secure =
-    process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase() !== 'false' &&
-    process.env.NODE_ENV === 'production';
+  const secure = isAuthCookieSecure('lax');
 
   res.clearCookie(OAUTH_STATE_COOKIE, {
     httpOnly: true,
@@ -215,10 +212,7 @@ export function parseOAuth2faPendingToken(
 }
 
 function oauth2faCookieFlags() {
-  const secure =
-    process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase() !== 'false' &&
-    process.env.NODE_ENV === 'production';
-  return { secure } as const;
+  return { secure: isAuthCookieSecure('lax') } as const;
 }
 
 export function attachOAuth2faPendingCookie(

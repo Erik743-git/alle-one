@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { Response } from 'express';
+import { isAuthCookieSecure } from './auth-cookie.helper';
 
 /** Cookie httpOnly: confiar neste dispositivo e pular 2FA por N dias. */
 export const TOTP_TRUST_COOKIE = 'alleone_totp_trust';
@@ -105,13 +106,7 @@ function cookieFlags() {
     sameSiteRaw === 'strict' || sameSiteRaw === 'lax' || sameSiteRaw === 'none'
       ? sameSiteRaw
       : 'lax';
-  const secureRaw = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
-  let secure = process.env.NODE_ENV === 'production' || sameSite === 'none';
-  if (secureRaw === 'false' || secureRaw === '0' || secureRaw === 'no') {
-    secure = false;
-  } else if (secureRaw === 'true' || secureRaw === '1' || secureRaw === 'yes') {
-    secure = true;
-  }
+  const secure = isAuthCookieSecure(sameSite);
   return { domain, sameSite, secure } as const;
 }
 

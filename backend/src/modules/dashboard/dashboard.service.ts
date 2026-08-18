@@ -1,4 +1,5 @@
 import { isClientPortalRole } from '../../common/security/client-portal-role';
+import { redactPrivateNetworkFields } from '../../common/security/private-network-redact';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1273,10 +1274,12 @@ export class DashboardService {
       allTriggersInPeriod: options.includeCharts
         ? topTriggersPack.allItems
         : [],
-      hostsDetalhados: options.includeCharts ? zabbixData.hosts : [],
+      hostsDetalhados: options.includeCharts
+        ? redactPrivateNetworkFields(zabbixData.hosts)
+        : [],
       templates: options.includeCharts ? zabbixData.templates : [],
       eventosRecentes: options.includeCharts
-        ? zabbixData.events.slice(0, 20)
+        ? redactPrivateNetworkFields(zabbixData.events.slice(0, 20))
         : [],
       monthlyTrends: options.includeCharts ? await monthlyTrendsPromise : null,
     };

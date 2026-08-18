@@ -14,8 +14,13 @@ function parseSameSite(
   return 'lax';
 }
 
-/** Em HTTP (ex.: :8000 sem TLS) use AUTH_COOKIE_SECURE=false no .env */
-function cookieSecure(sameSite: 'strict' | 'lax' | 'none' | boolean): boolean {
+/** Em HTTP local (sem TLS) use AUTH_COOKIE_SECURE=false. Em production/teste HTTPS o cookie é sempre Secure. */
+export function isAuthCookieSecure(
+  sameSite: 'strict' | 'lax' | 'none' | boolean = 'lax',
+): boolean {
+  if (process.env.NODE_ENV === 'production') {
+    return true;
+  }
   const raw = process.env.AUTH_COOKIE_SECURE?.trim().toLowerCase();
   if (raw === 'false' || raw === '0' || raw === 'no') {
     return false;
@@ -23,8 +28,14 @@ function cookieSecure(sameSite: 'strict' | 'lax' | 'none' | boolean): boolean {
   if (raw === 'true' || raw === '1' || raw === 'yes') {
     return true;
   }
-  const isProd = process.env.NODE_ENV === 'production';
-  return isProd || sameSite === 'none';
+  if (process.env.TRUST_PROXY === '1') {
+    return true;
+  }
+  return sameSite === 'none';
+}
+
+function cookieSecure(sameSite: 'strict' | 'lax' | 'none' | boolean): boolean {
+  return isAuthCookieSecure(sameSite);
 }
 
 export function jwtCookieMaxAgeMs(): number {
