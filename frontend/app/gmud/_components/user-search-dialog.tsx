@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { gmudsService, type SearchUserResult } from "@/lib/services/gmuds.service";
@@ -100,18 +100,17 @@ export function UserSearchDialog({
               </button>
             ))}
           </div>
-
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              className=""
-              onClick={() => onOpenChange(false)}
-            >
-              Fechar
-            </Button>
-          </div>
         </div>
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+          >
+            Fechar
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

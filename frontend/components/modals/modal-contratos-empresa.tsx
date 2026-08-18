@@ -889,7 +889,7 @@ export default function ModalContratosEmpresa({
           )}
         </div>
 
-        <DialogFooter className="shrink-0 flex-col gap-3 border-t border-border bg-card px-5 py-4 sm:flex-row sm:px-6">
+        <DialogFooter className="!mx-0 shrink-0 flex-col gap-3 border-t border-border bg-card px-5 pt-4 sm:flex-row sm:px-6">
           <Button
             type="button"
             variant="outline"

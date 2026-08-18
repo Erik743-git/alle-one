@@ -453,7 +453,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border bg-card px-5 py-4 sm:px-6">
+        <div className="shrink-0 border-t border-border bg-card px-5 pt-4 pb-6 sm:px-6">
           <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button
               type="button"

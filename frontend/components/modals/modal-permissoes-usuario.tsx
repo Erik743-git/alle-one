@@ -281,7 +281,7 @@ export default function ModalPermissoesUsuario({
           ) : null}
         </div>
 
-        <DialogFooter className="shrink-0 border-t border-border bg-card px-5 pt-4 pb-7 sm:px-6">
+        <DialogFooter className="!mx-0 shrink-0 border-t border-border bg-card px-5 pt-4 pb-7 sm:px-6">
           <div className="mt-2 flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button
               type="button"

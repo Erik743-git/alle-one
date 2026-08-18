@@ -21,8 +21,9 @@ k6 run deploy/load/k6-alleone-smoke.js \
   -e USER_PASSWORD='***' \
   -e ZABBIX_GROUP='NomeDoGrupoZabbixDaEmpresa' \
   -e COMPANY_ID='uuid-da-empresa' \
-  -e VUS=5 \
-  -e DURATION=2m
+  -e VUS=2 \
+  -e DURATION=1m \
+  -e SLEEP=3
 ```
 
 ### Variáveis
@@ -34,9 +35,9 @@ k6 run deploy/load/k6-alleone-smoke.js \
 | `TOTP_CODE` | se 2FA | Código atual do autenticador |
 | `ZABBIX_GROUP` | para dashboard | Sem isso o script **pula** `/dashboard/complete` |
 | `COMPANY_ID` | não | UUID; senão tenta do `/auth/me` |
-| `VUS` | não | Default `5` |
-| `DURATION` | não | Default `2m` |
-| `SLEEP` | não | Pausa entre iterações (s), default `1` |
+| `VUS` | não | Default `2` |
+| `DURATION` | não | Default `1m` |
+| `SLEEP` | não | Pausa entre iterações (s), default `3` |
 
 ## Carga um pouco maior (ainda em teste)
 
@@ -52,9 +53,11 @@ Observe na VM: `pm2 monit`, CPU/memória de `alleone-teste-api` / `alleone-teste
 
 ## Limites úteis
 
-- Login tem **throttle** (~10/min): o script autentica **1x por VU**, não a cada iteração.
+- Login tem **throttle** (~10/min): o script autentica **1x por execução** (`setup()`), não a cada iteração.
+- A API tem **throttle global ~200 req/min**. Smoke com `VUS=5` e `SLEEP=1` gera 429 e falha `http_req_failed`. Use `VUS=2 SLEEP=3` no ambiente de teste.
+- k6 não expõe `URLSearchParams`; o script monta a query do dashboard à mão.
 - Não use senha de produção em chat/CI; prefira usuário de teste.
-- Se `http_req_failed` ou `alleone_authed_fail` subir, olhe status 401/429/5xx no output do k6.
+- Se `http_req_failed` ou `alleone_authed_fail` subir, olhe o primeiro aviso `[k6] ... HTTP` (401/429/5xx).
 
 ## Ver também
 

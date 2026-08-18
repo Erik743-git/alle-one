@@ -186,7 +186,6 @@ export default function ApontamentosPage() {
         item.name,
         item.email,
         item.companyName ?? "",
-        item.tifluxUserName ?? "",
       ]
         .join(" ")
         .toLowerCase();
@@ -391,7 +390,7 @@ export default function ApontamentosPage() {
                             Horas no mês
                           </th>
                           <th className="px-4 py-3 text-xs font-semibold uppercase">
-                            Vínculo
+                            Horas extra
                           </th>
                           <th className="px-4 py-3 text-right text-xs font-semibold uppercase">
                             Agenda
@@ -426,11 +425,14 @@ export default function ApontamentosPage() {
                               <td className="px-4 py-3 font-bold text-primary">
                                 {item.monthTotalHoursFormatted}
                               </td>
-                              <td className="px-4 py-3 text-muted-foreground">
-                                {item.tifluxUserId
-                                  ? item.tifluxUserName ??
-                                    `ID ${item.tifluxUserId}`
-                                  : "Não vinculado"}
+                              <td
+                                className={
+                                  item.monthOvertimeMinutes > 0
+                                    ? "px-4 py-3 font-bold alle-stat-overtime"
+                                    : "px-4 py-3 text-muted-foreground"
+                                }
+                              >
+                                {item.monthOvertimeHoursFormatted ?? "00:00"}
                               </td>
                               <td className="px-4 py-3 text-right">
                                 <Button asChild size="sm" variant="outline">

@@ -16,8 +16,12 @@
  *     -e USER_PASSWORD='***' \
  *     -e ZABBIX_GROUP='Nome do grupo Zabbix' \
  *     -e COMPANY_ID=uuid-opcional \
- *     -e VUS=5 \
- *     -e DURATION=2m
+ *     -e VUS=2 \
+ *     -e DURATION=1m \
+ *     -e SLEEP=3
+ *
+ * A API tem throttle global ~200 req/min. 5 VUs com SLEEP=1 estoura 429.
+ * k6 (Goja) não tem URLSearchParams — use queryString() neste script.
  *
  * 2FA: se a conta exige TOTP, passe -e TOTP_CODE=123456
  *
@@ -34,8 +38,8 @@ const USER_PASSWORD = __ENV.USER_PASSWORD || '';
 const TOTP_CODE = __ENV.TOTP_CODE || '';
 const ZABBIX_GROUP = __ENV.ZABBIX_GROUP || '';
 const COMPANY_ID = __ENV.COMPANY_ID || '';
-const VUS = Number(__ENV.VUS || 5);
-const DURATION = __ENV.DURATION || '2m';
+const VUS = Number(__ENV.VUS || 2);
+const DURATION = __ENV.DURATION || '1m';
 
 const loginFail = new Rate('alleone_login_fail');
 const authedFail = new Rate('alleone_authed_fail');
@@ -44,7 +48,7 @@ const ticketsMs = new Trend('alleone_tickets_ms', true);
 const gmudMs = new Trend('alleone_gmud_ms', true);
 
 export const options = {
-  vus: Number.isFinite(VUS) && VUS > 0 ? VUS : 5,
+  vus: Number.isFinite(VUS) && VUS > 0 ? VUS : 2,
   duration: DURATION,
   thresholds: {
     http_req_failed: ['rate<0.05'],
@@ -93,7 +97,15 @@ function extractCookieValue(res, name) {
   return '';
 }
 
-function hitTickets(accessCookie) {
+function noteFirstFail(label, res, state) {
+  if (res.status === 200 || state.loggedFail) return;
+  state.loggedFail = true;
+  console.warn(
+    `[k6] ${label} HTTP ${res.status} — se for 429, baixe VUS ou suba SLEEP (throttle ~200/min).`,
+  );
+}
+
+function hitTickets(accessCookie, state) {
   group('tickets', () => {
     const list = http.get(`${API}/tickets?limit=50`, {
       headers: authHeaders(accessCookie),
@@ -102,6 +114,7 @@ function hitTickets(accessCookie) {
     ticketsMs.add(list.timings.duration);
     const ok = check(list, { 'tickets list 200': (r) => r.status === 200 });
     authedFail.add(ok ? 0 : 1);
+    noteFirstFail('GET /api/tickets', list, state);
 
     const catalogs = http.get(`${API}/tickets/catalogs/filters`, {
       headers: authHeaders(accessCookie),
@@ -155,7 +168,7 @@ function hitTickets(accessCookie) {
   });
 }
 
-function hitGmud(accessCookie, companyId) {
+function hitGmud(accessCookie, companyId, state) {
   group('gmud', () => {
     const qs = companyId ? `?companyId=${encodeURIComponent(companyId)}` : '';
     const list = http.get(`${API}/gmuds${qs}`, {
@@ -165,6 +178,7 @@ function hitGmud(accessCookie, companyId) {
     gmudMs.add(list.timings.duration);
     const ok = check(list, { 'gmuds list 200': (r) => r.status === 200 });
     authedFail.add(ok ? 0 : 1);
+    noteFirstFail('GET /api/gmuds', list, state);
 
     const companies = http.get(`${API}/gmuds/companies`, {
       headers: authHeaders(accessCookie),
@@ -198,6 +212,17 @@ function hitGmud(accessCookie, companyId) {
   });
 }
 
+function queryString(pairs) {
+  const parts = [];
+  for (let i = 0; i < pairs.length; i += 1) {
+    const key = pairs[i][0];
+    const val = pairs[i][1];
+    if (val === undefined || val === null || val === '') continue;
+    parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(val))}`);
+  }
+  return parts.join('&');
+}
+
 function hitDashboard(accessCookie, companyId, state) {
   const groupName = ZABBIX_GROUP;
   if (!groupName) {
@@ -213,15 +238,16 @@ function hitDashboard(accessCookie, companyId, state) {
   group('dashboard', () => {
     const start = isoDateDaysAgo(30);
     const end = isoDateDaysAgo(0);
-    const params = new URLSearchParams();
-    params.set('group', groupName);
-    params.set('start', start);
-    params.set('end', end);
-    params.set('includeHours', 'true');
-    params.set('includeCharts', 'true');
-    if (companyId) params.set('companyId', companyId);
+    const qs = queryString([
+      ['group', groupName],
+      ['start', start],
+      ['end', end],
+      ['includeHours', 'true'],
+      ['includeCharts', 'true'],
+      ['companyId', companyId],
+    ]);
 
-    const res = http.get(`${API}/dashboard/complete?${params.toString()}`, {
+    const res = http.get(`${API}/dashboard/complete?${qs}`, {
       headers: authHeaders(accessCookie),
       tags: { name: 'GET /api/dashboard/complete' },
     });
@@ -230,6 +256,7 @@ function hitDashboard(accessCookie, companyId, state) {
       'dashboard complete 200': (r) => r.status === 200,
     });
     authedFail.add(ok ? 0 : 1);
+    noteFirstFail('GET /api/dashboard/complete', res, state);
   });
 }
 
@@ -315,18 +342,19 @@ export function setup() {
   };
 }
 
-/** Aviso de dashboard: uma vez por VU. */
+/** Avisos: uma vez por VU. */
 const vuState = {
   warnedDashboard: false,
+  loggedFail: false,
 };
 
 export default function (data) {
   if (!data || !data.accessCookie) {
     fail('setup não retornou accessCookie');
   }
-  hitTickets(data.accessCookie);
-  hitGmud(data.accessCookie, data.companyId);
+  hitTickets(data.accessCookie, vuState);
+  hitGmud(data.accessCookie, data.companyId, vuState);
   hitDashboard(data.accessCookie, data.companyId, vuState);
 
-  sleep(Number(__ENV.SLEEP || 1));
+  sleep(Number(__ENV.SLEEP || 3));
 }

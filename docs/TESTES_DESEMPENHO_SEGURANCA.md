@@ -16,7 +16,7 @@ Na VM: `pm2 monit` / logs `alleone-teste-api` e `alleone-teste-web`.
 
 ## 2. Desempenho (k6)
 
-Já existe: [`deploy/load/k6-alleone-smoke.js`](../deploy/load/k6-alleone-smoke.js). Login **1x por execução** (throttle de login ~10/min).
+Já existe: [`deploy/load/k6-alleone-smoke.js`](../deploy/load/k6-alleone-smoke.js). Login **1x por execução** (throttle de login ~10/min). A API também limita **~200 req/min no total** — smoke com 5 VUs e `SLEEP=1` vira 429.
 
 Instalar: [k6](https://grafana.com/docs/k6/latest/set-up/install-k6/) (Windows: `winget install k6` ou Chocolatey).
 
@@ -27,8 +27,9 @@ k6 run deploy/load/k6-alleone-smoke.js `
   -e BASE_URL=https://alleone-teste.alletecnologia.com `
   -e USER_EMAIL='usuario-de-teste@alletecnologia.com' `
   -e USER_PASSWORD='***' `
-  -e VUS=5 `
-  -e DURATION=2m
+  -e VUS=2 `
+  -e DURATION=1m `
+  -e SLEEP=3
 ```
 
 Com dashboard (grupo Zabbix da empresa):
@@ -38,12 +39,12 @@ k6 run deploy/load/k6-alleone-smoke.js `
   -e BASE_URL=https://alleone-teste.alletecnologia.com `
   -e USER_EMAIL='...' -e USER_PASSWORD='...' `
   -e ZABBIX_GROUP='NomeDoGrupoZabbix' `
-  -e VUS=5 -e DURATION=2m
+  -e VUS=2 -e DURATION=1m -e SLEEP=3
 ```
 
 2FA: `-e TOTP_CODE=123456` (código **atual**).
 
-Carga um pouco maior (ainda teste): `VUS=20`, `DURATION=5m`, `SLEEP=0.5`.
+Carga um pouco maior (ainda teste): só depois de o smoke passar. `VUS=20` com `SLEEP=0.5` **vai** estourar o throttle 200/min — use para ver 429, não como critério de sucesso.
 
 Critérios no script: `http_req_failed < 5%`, p95 `< 3s`, falha de login `< 1%`.
 

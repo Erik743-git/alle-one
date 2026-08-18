@@ -511,7 +511,7 @@ export function TicketAppointmentModal({
             />
           </div>
 
-          <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 py-4 sm:flex-row sm:flex-wrap sm:justify-end">
+          <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
             <Button
               type="button"
               variant="outline"

@@ -12,21 +12,12 @@ import { ContractFileType, ContractStatus } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { DashboardService } from '../dashboard/dashboard.service';
-
-function toNumber(value: unknown) {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const n = Number(value);
-    return Number.isNaN(n) ? 0 : n;
-  }
-  // Prisma Decimal -> has toNumber()
-  if (typeof value === 'object' && value && 'toNumber' in value) {
-    const fn = (value as { toNumber?: () => number }).toNumber;
-    if (typeof fn === 'function') return fn();
-  }
-  return 0;
-}
+import {
+  computeFinancialOverviewTotals,
+  contractedHoursFromContract,
+  extraHourPriceFromContract,
+  toFinancialNumber,
+} from './financial-overview.util';
 
 @Injectable()
 export class FinancialService {
@@ -83,6 +74,13 @@ export class FinancialService {
         extraHourPrice: true,
         startDate: true,
         endDate: true,
+        specialties: {
+          select: {
+            monthlyHours: true,
+            unlimited: true,
+            excessHourPrice: true,
+          },
+        },
         contractFiles: {
           select: {
             id: true,
@@ -108,29 +106,48 @@ export class FinancialService {
 
     const normalizedContracts = contracts.map((c) => {
       const latest = c.billingEntries[0] ?? null;
-      const contractedHours = latest
-        ? toNumber(latest.contractedHours)
-        : c.monthlyHours;
-      const usedHours = latest ? toNumber(latest.usedHours) : 0;
-      const extraHours = latest
-        ? toNumber(latest.extraHours)
-        : Math.max(0, usedHours - contractedHours);
-      const extraAmount = latest ? toNumber(latest.extraAmount) : 0;
-
-      const contractFile =
-        c.contractFiles.find((f) => f.type === ContractFileType.CONTRACT) ??
-        null;
       const effectiveStatus =
         c.endDate && c.endDate.getTime() < Date.now()
           ? ContractStatus.EXPIRED
           : c.status;
+      const specialtyLines = (c.specialties ?? []).map((line) => ({
+        monthlyHours: line.monthlyHours,
+        unlimited: line.unlimited,
+        excessHourPrice: toFinancialNumber(line.excessHourPrice),
+      }));
+      const monthlyHours = contractedHoursFromContract({
+        status: effectiveStatus,
+        monthlyHours: c.monthlyHours,
+        extraHourPrice: c.extraHourPrice,
+        specialties: specialtyLines,
+      });
+      const extraHourPrice =
+        extraHourPriceFromContract({
+          status: effectiveStatus,
+          monthlyHours: c.monthlyHours,
+          extraHourPrice: c.extraHourPrice,
+          specialties: specialtyLines,
+        }) ?? toFinancialNumber(c.extraHourPrice);
+
+      const usedHours = latest ? toFinancialNumber(latest.usedHours) : 0;
+      const extraHours = latest
+        ? toFinancialNumber(latest.extraHours)
+        : Math.max(0, usedHours - monthlyHours);
+      const extraAmount = latest
+        ? toFinancialNumber(latest.extraAmount)
+        : extraHours * extraHourPrice;
+
+      const contractFile =
+        c.contractFiles.find((f) => f.type === ContractFileType.CONTRACT) ??
+        null;
 
       return {
         id: c.id,
         title: c.title,
         status: effectiveStatus,
-        monthlyHours: c.monthlyHours,
-        extraHourPrice: toNumber(c.extraHourPrice),
+        monthlyHours,
+        extraHourPrice,
+        specialties: specialtyLines,
         startDate: c.startDate.toISOString(),
         endDate: c.endDate ? c.endDate.toISOString() : null,
         documentsCount: c.contractFiles.length,
@@ -144,7 +161,7 @@ export class FinancialService {
           ? {
               id: latest.id,
               monthReference: latest.monthReference.toISOString(),
-              contractedHours,
+              contractedHours: toFinancialNumber(latest.contractedHours),
               usedHours,
               extraHours,
               extraAmount,
@@ -153,26 +170,17 @@ export class FinancialService {
       };
     });
 
-    const totalsFromContracts = normalizedContracts.reduce(
-      (acc, c) => {
-        const contracted = c.latestBilling?.contractedHours ?? c.monthlyHours;
-        const used = c.latestBilling?.usedHours ?? 0;
-        const extra =
-          c.latestBilling?.extraHours ?? Math.max(0, used - contracted);
-        const extraAmount = c.latestBilling?.extraAmount ?? 0;
-        return {
-          contractedHours: acc.contractedHours + contracted,
-          usedHours: acc.usedHours + used,
-          extraHours: acc.extraHours + extra,
-          extraAmount: acc.extraAmount + extraAmount,
-        };
-      },
-      { contractedHours: 0, usedHours: 0, extraHours: 0, extraAmount: 0 },
-    );
-
     const now = new Date();
     const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const endMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
     const startISO = startMonth.toISOString();
     const endISO = endMonth.toISOString();
 
@@ -185,29 +193,15 @@ export class FinancialService {
         companyId: resolvedCompanyId,
       },
     );
-    const tifluxUsedHoursThisMonth = Number(
-      hoursFromDashboard?.summary?.totalHoras ?? 0,
-    );
-    const contractedHours = totalsFromContracts.contractedHours;
-    const usedHours = tifluxUsedHoursThisMonth;
-    const extraHours = Math.max(0, usedHours - contractedHours);
-    const extraHourPrice =
-      normalizedContracts.filter((c) => c.status === ContractStatus.ACTIVE)
-        .length === 1
-        ? normalizedContracts.filter(
-            (c) => c.status === ContractStatus.ACTIVE,
-          )[0].extraHourPrice
-        : 0;
-    const extraAmount = extraHours * extraHourPrice;
+    const usedHours = Number(hoursFromDashboard?.summary?.totalHoras ?? 0);
+    const totals = computeFinancialOverviewTotals({
+      contracts: normalizedContracts,
+      usedHours,
+    });
 
     return {
       company: { id: company.id, name: company.name },
-      totals: {
-        contractedHours,
-        usedHours,
-        extraHours,
-        extraAmount,
-      },
+      totals,
       contracts: normalizedContracts,
     };
   }
@@ -235,6 +229,12 @@ export class FinancialService {
       where: { companyId: company.id, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       include: {
+        specialties: {
+          include: {
+            specialty: { select: { id: true, name: true, externalId: true } },
+          },
+          orderBy: { createdAt: 'asc' as const },
+        },
         contractFiles: {
           include: {
             file: {
