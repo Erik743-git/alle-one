@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent as ReactClipboardEvent,
+  type CSSProperties,
   type DragEvent as ReactDragEvent,
   type ReactNode,
 } from "react";
@@ -16,6 +17,7 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  ChevronDown,
   Eraser,
   FileText,
   IndentDecrease,
@@ -34,7 +36,19 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   COMPOSER_HTML_CLASS,
   isAppointmentDoc,
@@ -78,6 +92,16 @@ const FONT_FAMILY_OPTIONS = [
   "Comic Sans MS",
 ] as const;
 
+const BLOCK_STYLE_OPTIONS = [
+  { value: "p", label: "Parágrafo" },
+  { value: "h1", label: "Cabeçalho 1" },
+  { value: "h2", label: "Cabeçalho 2" },
+  { value: "h3", label: "Cabeçalho 3" },
+  { value: "h4", label: "Cabeçalho 4" },
+  { value: "blockquote", label: "Citação" },
+  { value: "pre", label: "Código" },
+] as const;
+
 function FormatButton({
   label,
   disabled,
@@ -103,6 +127,66 @@ function FormatButton({
     >
       {children}
     </Button>
+  );
+}
+
+function FormatMenu({
+  ariaLabel,
+  value,
+  options,
+  disabled,
+  onOpen,
+  onSelect,
+  triggerClassName,
+  optionStyle,
+}: {
+  ariaLabel: string;
+  value: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  disabled?: boolean;
+  onOpen: () => void;
+  onSelect: (value: string) => void;
+  triggerClassName?: string;
+  optionStyle?: (value: string) => CSSProperties | undefined;
+}) {
+  const current = options.find((item) => item.value === value)?.label ?? value;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <button
+          type="button"
+          disabled={disabled}
+          aria-label={ariaLabel}
+          title={ariaLabel}
+          onMouseDown={() => onOpen()}
+          className={cn(
+            "inline-flex h-8 max-w-[9.5rem] items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground disabled:opacity-50",
+            triggerClassName,
+          )}
+        >
+          <span className="truncate">{current}</span>
+          <ChevronDown className="size-3 shrink-0 opacity-70" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="min-w-[10rem] w-auto rounded-xl"
+      >
+        {options.map((item) => (
+          <DropdownMenuItem
+            key={item.value}
+            className={cn(
+              "rounded-md text-xs",
+              item.value === value && "bg-accent text-accent-foreground",
+            )}
+            style={optionStyle?.(item.value)}
+            onSelect={() => onSelect(item.value)}
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -290,6 +374,13 @@ export const AppointmentDescriptionComposer = forwardRef<
   const lastSelectionRef = useRef<Range | null>(null);
 
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [blockStyle, setBlockStyle] = useState("p");
+  const [fontFamily, setFontFamily] = useState("Inter");
+  const [fontSize, setFontSize] = useState("14px");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("https://");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
   const [removedExistingIds, setRemovedExistingIds] = useState<string[]>([]);
 
@@ -1176,21 +1267,38 @@ export const AppointmentDescriptionComposer = forwardRef<
 
   const applyLink = useCallback(() => {
     if (disabled) return;
+    const raw = linkUrl.trim();
+    const withScheme =
+      raw &&
+      !/^(https?:|mailto:)/i.test(raw) &&
+      !raw.startsWith("/")
+        ? `https://${raw}`
+        : raw;
+    const href = sanitizeHref(withScheme);
+    if (!href) {
+      setLinkError("Use um link http(s) ou mailto.");
+      return;
+    }
     const editor = editorRef.current;
     if (!editor) return;
     editor.focus();
     restoreSelection();
-    const raw = window.prompt("URL do link", "https://");
-    if (!raw) return;
-    const href = sanitizeHref(raw.trim());
-    if (!href) {
-      window.alert("Informe um link http(s) ou mailto.");
-      return;
-    }
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand("createLink", false, href);
     saveSelection();
-  }, [disabled, restoreSelection, saveSelection]);
+    setLinkOpen(false);
+    setLinkError(null);
+    setLinkUrl("https://");
+  }, [disabled, linkUrl, restoreSelection, saveSelection]);
+
+  const openLinkPopover = useCallback(() => {
+    if (disabled) return;
+    saveSelection();
+    setLinkUrl("https://");
+    setLinkError(null);
+    setLinkOpen(true);
+    window.setTimeout(() => linkInputRef.current?.focus(), 0);
+  }, [disabled, saveSelection]);
 
   return (
     <div className="space-y-3">
@@ -1214,55 +1322,48 @@ export const AppointmentDescriptionComposer = forwardRef<
           )}
         >
           <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 px-2 py-1.5">
-            <select
-              className="h-8 max-w-[8.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
-              defaultValue="p"
+            <FormatMenu
+              ariaLabel="Estilo do texto"
+              value={blockStyle}
+              options={BLOCK_STYLE_OPTIONS}
               disabled={disabled}
-              aria-label="Estilo do texto"
-              title="Estilo do texto"
-              onMouseDown={() => saveSelection()}
-              onChange={(event) => {
-                applyHeading(event.target.value);
+              onOpen={saveSelection}
+              onSelect={(next) => {
+                setBlockStyle(next);
+                applyHeading(next);
               }}
-            >
-              <option value="p">Parágrafo</option>
-              <option value="h1">Cabeçalho 1</option>
-              <option value="h2">Cabeçalho 2</option>
-              <option value="h3">Cabeçalho 3</option>
-              <option value="h4">Cabeçalho 4</option>
-              <option value="blockquote">Citação</option>
-              <option value="pre">Código</option>
-            </select>
-            <select
-              className="h-8 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
-              defaultValue="Inter"
+            />
+            <FormatMenu
+              ariaLabel="Fonte"
+              value={fontFamily}
+              options={FONT_FAMILY_OPTIONS.map((family) => ({
+                value: family,
+                label: family,
+              }))}
               disabled={disabled}
-              aria-label="Fonte"
-              title="Fonte"
-              onMouseDown={() => saveSelection()}
-              onChange={(event) => applyFontFamily(event.target.value)}
-            >
-              {FONT_FAMILY_OPTIONS.map((family) => (
-                <option key={family} value={family} style={{ fontFamily: family }}>
-                  {family}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-8 w-[4.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
-              defaultValue="14px"
+              triggerClassName="max-w-[8.5rem]"
+              optionStyle={(family) => ({ fontFamily: family })}
+              onOpen={saveSelection}
+              onSelect={(next) => {
+                setFontFamily(next);
+                applyFontFamily(next);
+              }}
+            />
+            <FormatMenu
+              ariaLabel="Tamanho da fonte"
+              value={fontSize}
+              options={FONT_SIZE_OPTIONS.map((size) => ({
+                value: size,
+                label: size,
+              }))}
               disabled={disabled}
-              aria-label="Tamanho da fonte"
-              title="Tamanho da fonte"
-              onMouseDown={() => saveSelection()}
-              onChange={(event) => applyFontSize(event.target.value)}
-            >
-              {FONT_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
+              triggerClassName="max-w-[5rem]"
+              onOpen={saveSelection}
+              onSelect={(next) => {
+                setFontSize(next);
+                applyFontSize(next);
+              }}
+            />
             <Separator orientation="vertical" className="mx-1 h-5" />
             <FormatButton
               label="Negrito"
@@ -1369,13 +1470,78 @@ export const AppointmentDescriptionComposer = forwardRef<
               <AlignRight className="size-3.5" />
             </FormatButton>
             <Separator orientation="vertical" className="mx-1 h-5" />
-            <FormatButton
-              label="Inserir link"
-              disabled={disabled}
-              onClick={applyLink}
+            <Popover
+              open={linkOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  openLinkPopover();
+                  return;
+                }
+                setLinkOpen(false);
+                setLinkError(null);
+              }}
             >
-              <Link2 className="size-3.5" />
-            </FormatButton>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-8 w-8"
+                  disabled={disabled}
+                  title="Inserir link"
+                  aria-label="Inserir link"
+                  onMouseDown={(event) => event.preventDefault()}
+                >
+                  <Link2 className="size-3.5" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[min(22rem,calc(100vw-2rem))] space-y-2 rounded-xl p-3"
+              >
+                <p className="text-xs font-semibold text-foreground">
+                  Inserir link
+                </p>
+                <Input
+                  ref={linkInputRef}
+                  type="url"
+                  value={linkUrl}
+                  placeholder="https://exemplo.com"
+                  aria-label="URL do link"
+                  aria-invalid={linkError ? true : undefined}
+                  onChange={(event) => {
+                    setLinkUrl(event.target.value);
+                    if (linkError) setLinkError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      applyLink();
+                    }
+                  }}
+                />
+                {linkError ? (
+                  <p className="text-xs text-destructive">{linkError}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    http(s) ou mailto
+                  </p>
+                )}
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setLinkOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="button" size="sm" onClick={applyLink}>
+                    Inserir
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
             <FormatButton
               label="Desfazer"
               disabled={disabled}
