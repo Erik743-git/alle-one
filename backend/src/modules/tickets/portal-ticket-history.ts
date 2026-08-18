@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 
@@ -50,7 +51,9 @@ export async function recordPortalTicketHistory(
         externalKey:
           params.externalKey ??
           `${params.eventType.toLowerCase()}:${params.ticketNumber}:${Date.now()}`,
-        payload: params.payload ?? undefined,
+        payload: (params.payload ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
         occurredAt: new Date(),
       },
     });
