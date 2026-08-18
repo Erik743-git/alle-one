@@ -18,6 +18,12 @@ import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  TicketResponsibleSelect,
+  currentUserResponsibleId,
+  mapFilterResponsibles,
+} from "@/components/tickets/ticket-responsible-select";
+import {
+  canChangeTicketStage,
   canCreateTicket,
   isClient,
   isClientGestor,
@@ -25,16 +31,26 @@ import {
   TICKETS_CREATE_ADMIN_ONLY_MESSAGE,
 } from "@/lib/access-control";
 import { TICKETS_LIST_SUBTITLE, TICKETS_CLIENT_LIST_SUBTITLE } from "@/lib/module-copy";
-import { PORTAL_STAGES_ORDER } from "@/lib/portal-ticket-stages";
+import { PORTAL_STAGE, PORTAL_STAGES_ORDER } from "@/lib/portal-ticket-stages";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/use-auth";
 import {
   ticketsService,
   type TicketFilterCatalogs,
+  type TicketListItem,
   type TicketListResponse,
   type TicketsListParams,
 } from "@/lib/services/tickets.service";
 import { useRouter } from "next/navigation";
+
+function isDoneStage(stageName: string | null) {
+  return (
+    stageName === PORTAL_STAGE.RESOLVIDO ||
+    stageName === PORTAL_STAGE.ENCERRADO ||
+    stageName === PORTAL_STAGE.CANCELADO
+  );
+}
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -51,6 +67,8 @@ function formatWhen(iso: string | null) {
 
 export default function TicketsPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const canReassign = canChangeTicketStage();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<TicketListResponse | null>(null);
@@ -165,6 +183,52 @@ export default function TicketsPage() {
     ],
     [catalogs],
   );
+
+  const responsibleSelectOptions = useMemo(
+    () => mapFilterResponsibles(catalogs?.responsibles ?? []),
+    [catalogs],
+  );
+
+  const myResponsibleId = useMemo(
+    () => currentUserResponsibleId(responsibleSelectOptions, user?.email),
+    [responsibleSelectOptions, user?.email],
+  );
+
+  function applyResponsibleUpdate(
+    ticketNumber: number,
+    next: { responsibleId: number | null; responsibleName: string | null },
+  ) {
+    setData((prev) => {
+      if (!prev) return prev;
+      const shouldDrop =
+        mineOnly &&
+        myResponsibleId != null &&
+        next.responsibleId !== myResponsibleId;
+      const patchTicket = (ticket: TicketListItem): TicketListItem | null => {
+        if (ticket.ticketNumber !== ticketNumber) return ticket;
+        if (shouldDrop) return null;
+        return {
+          ...ticket,
+          responsibleExternalId: next.responsibleId,
+          responsibleName: next.responsibleName,
+        };
+      };
+      const groups = prev.groups
+        .map((group) => ({
+          ...group,
+          tickets: group.tickets
+            .map(patchTicket)
+            .filter((ticket): ticket is TicketListItem => ticket != null),
+        }))
+        .filter((group) => group.tickets.length > 0);
+      const removed = shouldDrop ? 1 : 0;
+      return {
+        ...prev,
+        total: Math.max(0, prev.total - removed),
+        groups,
+      };
+    });
+  }
 
   const deskOptions = useMemo(
     () => [
@@ -459,7 +523,7 @@ export default function TicketsPage() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="overflow-x-auto p-0">
-                      <table className="w-full min-w-[900px] text-left text-sm">
+                      <table className="w-full min-w-[1120px] text-left text-sm">
                         <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
                           <tr>
                             <th className="px-4 py-2">Número</th>
@@ -469,6 +533,7 @@ export default function TicketsPage() {
                             <th className="px-4 py-2">Origem</th>
                             <th className="px-4 py-2">Prioridade</th>
                             <th className="px-4 py-2">Estágio</th>
+                            <th className="px-4 py-2">Responsável</th>
                             <th className="px-4 py-2">Atualizado</th>
                           </tr>
                         </thead>
@@ -494,6 +559,26 @@ export default function TicketsPage() {
                               <td className="px-4 py-2">{ticket.origin ?? "—"}</td>
                               <td className="px-4 py-2">{ticket.priorityName ?? "—"}</td>
                               <td className="px-4 py-2">{ticket.stageName ?? "—"}</td>
+                              <td className="px-4 py-2">
+                                {canReassign ? (
+                                  <TicketResponsibleSelect
+                                    ticketNumber={ticket.ticketNumber}
+                                    responsibleId={ticket.responsibleExternalId}
+                                    responsibleName={ticket.responsibleName}
+                                    options={responsibleSelectOptions}
+                                    compact
+                                    disabled={isDoneStage(ticket.stageName)}
+                                    onUpdated={(next) =>
+                                      applyResponsibleUpdate(
+                                        ticket.ticketNumber,
+                                        next,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  ticket.responsibleName ?? "—"
+                                )}
+                              </td>
                               <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
                                 {formatWhen(ticket.updatedAt)}
                               </td>

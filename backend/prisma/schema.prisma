@@ -801,6 +801,8 @@ model PortalTicket {
   origin                  PortalTicketOrigin @default(TIFLUX)
   /// ConversationId do Microsoft Graph (thread de e-mail).
   emailConversationId     String?            @map("email_conversation_id")
+  /// Chamado pai quando este ticket foi agrupado (filho cancelado).
+  parentTicketNumber      Int?               @map("parent_ticket_number")
   createdAtSource         DateTime?          @map("created_at_source")
   updatedAtSource         DateTime?          @map("updated_at_source")
   createdBy               String?            @map("created_by")
@@ -817,6 +819,7 @@ model PortalTicket {
   @@index([isClosed, clientExternalId, createdAtSource])
   @@index([specialtyId])
   @@index([emailConversationId])
+  @@index([parentTicketNumber])
   @@map("portal_tickets")
 }
 

@@ -33,6 +33,10 @@ import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { assertTicketCreateClientScope } from './tickets-client-scope';
 import { canonicalizeStageName } from './tickets-stage-groups';
 import { PORTAL_STAGE } from './portal-ticket-stages';
+import {
+  actorDisplayName,
+  recordPortalTicketHistory,
+} from './portal-ticket-history';
 
 @Injectable()
 export class TicketsService {
@@ -575,7 +579,8 @@ export class TicketsService {
         dto.responsibleId !== undefined ||
         dto.stageName != null ||
         dto.statusName != null ||
-        dto.clientId != null;
+        dto.clientId != null ||
+        dto.deskId != null;
       if (touchingOpenFields) {
         throw new BadRequestException(
           'Não é possível editar um ticket fechado. Reabra o ticket antes.',
@@ -592,6 +597,8 @@ export class TicketsService {
 
     let nextClientExternalId = portal?.clientExternalId ?? null;
     let nextClientName = portal?.clientName ?? null;
+    let nextDeskExternalId = portal?.deskExternalId ?? null;
+    let nextDeskName = portal?.deskName ?? null;
     if (dto.clientId != null) {
       let responsibleExternalId = portal?.responsibleExternalId ?? null;
       if (responsibleExternalId == null) {
@@ -636,6 +643,18 @@ export class TicketsService {
       });
     }
 
+    if (dto.deskId != null) {
+      const deskMeta = await this.resolveDeskMetaForCreate(
+        dto.deskId,
+        writeTiflux,
+      );
+      if (!deskMeta.name?.trim()) {
+        throw new BadRequestException('Mesa de serviço inválida.');
+      }
+      nextDeskExternalId = dto.deskId;
+      nextDeskName = deskMeta.name.trim();
+    }
+
     const responsibleId =
       dto.responsibleId === undefined ? undefined : dto.responsibleId;
     let responsibleName =
@@ -667,6 +686,9 @@ export class TicketsService {
       }
       if (dto.clientId != null) {
         payload.client_id = dto.clientId;
+      }
+      if (dto.deskId != null) {
+        payload.desk_id = dto.deskId;
       }
       if (Object.keys(payload).length > 0) {
         try {
@@ -701,8 +723,8 @@ export class TicketsService {
       title: title ?? portal?.title ?? null,
       clientName: nextClientName,
       clientExternalId: nextClientExternalId,
-      deskName: portal?.deskName ?? null,
-      deskExternalId: portal?.deskExternalId ?? null,
+      deskName: nextDeskName,
+      deskExternalId: nextDeskExternalId,
       requestorName:
         dto.clientId != null ? null : (portal?.requestorName ?? null),
       requestorEmail:
@@ -777,6 +799,103 @@ export class TicketsService {
       }
     }
 
+    const nextResponsibleId =
+      responsibleId !== undefined
+        ? responsibleId
+        : (portal?.responsibleExternalId ?? null);
+    const nextResponsibleName =
+      responsibleName !== undefined
+        ? responsibleName
+        : (portal?.responsibleName ?? null);
+    const responsibleChanged =
+      responsibleId !== undefined &&
+      (nextResponsibleId !== (portal?.responsibleExternalId ?? null) ||
+        nextResponsibleName !== (portal?.responsibleName ?? null));
+    if (responsibleChanged) {
+      try {
+        await this.prisma.ticketHistory.create({
+          data: {
+            ticketNumber,
+            eventType: 'RESPONSIBLE_CHANGED',
+            summary: `Responsável alterado de "${portal?.responsibleName ?? '—'}" para "${nextResponsibleName ?? '—'}"`,
+            actorName: actor.email ?? null,
+            source: 'PORTAL',
+            externalKey: `responsible_changed:${ticketNumber}:${Date.now()}`,
+            payload: {
+              fromResponsibleId: portal?.responsibleExternalId ?? null,
+              fromResponsibleName: portal?.responsibleName ?? null,
+              toResponsibleId: nextResponsibleId,
+              toResponsibleName: nextResponsibleName,
+            },
+            occurredAt: new Date(),
+          },
+        });
+      } catch {
+        // Histórico não deve bloquear a atualização do ticket.
+      }
+    }
+
+    const deskChanged =
+      dto.deskId != null &&
+      (nextDeskExternalId !== (portal?.deskExternalId ?? null) ||
+        nextDeskName !== (portal?.deskName ?? null));
+    if (deskChanged) {
+      try {
+        await this.prisma.ticketHistory.create({
+          data: {
+            ticketNumber,
+            eventType: 'DESK_CHANGED',
+            summary: `Chamado transferido de "${portal?.deskName ?? '—'}" para "${nextDeskName ?? '—'}"`,
+            actorName: actor.email ?? null,
+            source: 'PORTAL',
+            externalKey: `desk_changed:${ticketNumber}:${Date.now()}`,
+            payload: {
+              fromDeskId: portal?.deskExternalId ?? null,
+              fromDeskName: portal?.deskName ?? null,
+              toDeskId: nextDeskExternalId,
+              toDeskName: nextDeskName,
+            },
+            occurredAt: new Date(),
+          },
+        });
+      } catch {
+        // Histórico não deve bloquear a atualização do ticket.
+      }
+    }
+
+    const actorName = await actorDisplayName(this.prisma, actor);
+    const previousDescription = descriptionRaw
+      ? await this.prisma.portalTicketDescription.findUnique({
+          where: { ticketNumber },
+          select: { description: true },
+        })
+      : null;
+    const previousPlain = appointmentDescriptionToPlainText(
+      previousDescription?.description ?? '',
+    );
+    const nextPlain = descriptionRaw
+      ? appointmentDescriptionToPlainText(descriptionRaw)
+      : '';
+
+    const removeIds = (dto.removeAttachmentFileIds ?? [])
+      .map((id) => id?.trim())
+      .filter((id): id is string => Boolean(id));
+    let removedAttachmentNames: string[] = [];
+    if (removeIds.length > 0) {
+      const removed =
+        await this.prisma.portalTicketAppointmentAttachment.findMany({
+          where: {
+            ticketNumber,
+            portalAppointmentId: null,
+            fileId: { in: removeIds },
+          },
+          include: { file: { select: { originalName: true } } },
+        });
+      removedAttachmentNames = removed
+        .map((row) => row.file.originalName.trim())
+        .filter(Boolean);
+    }
+
     if (descriptionRaw) {
       await this.savePortalTicketDescription(
         actor,
@@ -786,15 +905,49 @@ export class TicketsService {
       );
     }
 
-    const removeIds = (dto.removeAttachmentFileIds ?? [])
-      .map((id) => id?.trim())
-      .filter((id): id is string => Boolean(id));
     if (removeIds.length > 0) {
       await this.prisma.portalTicketAppointmentAttachment.deleteMany({
         where: {
           ticketNumber,
           portalAppointmentId: null,
           fileId: { in: removeIds },
+        },
+      });
+    }
+
+    if (descriptionRaw && previousPlain && previousPlain !== nextPlain) {
+      await recordPortalTicketHistory(this.prisma, {
+        ticketNumber,
+        eventType: nextPlain
+          ? 'COMMUNICATION_UPDATED'
+          : 'COMMUNICATION_REMOVED',
+        summary: nextPlain
+          ? 'Comunicação do chamado alterada'
+          : 'Comunicação do chamado removida',
+        actorName,
+        externalKey: `communication_updated:${ticketNumber}:${Date.now()}`,
+        payload: {
+          previousLength: previousPlain.length,
+          nextLength: nextPlain.length,
+        },
+      });
+    }
+
+    if (removedAttachmentNames.length > 0) {
+      const names = removedAttachmentNames.slice(0, 3).join(', ');
+      const extra =
+        removedAttachmentNames.length > 3
+          ? ` e mais ${removedAttachmentNames.length - 3}`
+          : '';
+      await recordPortalTicketHistory(this.prisma, {
+        ticketNumber,
+        eventType: 'COMMUNICATION_REMOVED',
+        summary: `Anexo(s) removido(s) da comunicação: ${names}${extra}`,
+        actorName,
+        externalKey: `communication_removed:${ticketNumber}:${Date.now()}`,
+        payload: {
+          fileIds: removeIds,
+          names: removedAttachmentNames,
         },
       });
     }
@@ -815,13 +968,160 @@ export class TicketsService {
       }
     }
 
+    if (responsibleId !== undefined) {
+      try {
+        await this.prisma.$executeRaw`
+          UPDATE tiflux.tickets
+          SET responsible_external_id = ${nextResponsibleId},
+              responsible_name = ${nextResponsibleName}
+          WHERE ticket_number = ${ticketNumber}
+        `;
+      } catch {
+        // Mirror pode estar ausente no cutover local.
+      }
+    }
+
+    if (dto.deskId != null) {
+      try {
+        await this.prisma.$executeRaw`
+          UPDATE tiflux.tickets
+          SET desk_external_id = ${nextDeskExternalId},
+              desk_name = ${nextDeskName}
+          WHERE ticket_number = ${ticketNumber}
+        `;
+      } catch {
+        // Mirror pode estar ausente no cutover local.
+      }
+    }
+
     return {
       ok: true,
       ticketNumber,
       message:
-        writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL
-          ? 'Ticket atualizado.'
-          : 'Ticket atualizado no portal.',
+        dto.deskId != null
+          ? `Chamado transferido para a mesa "${nextDeskName}".`
+          : writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL
+            ? 'Ticket atualizado.'
+            : 'Ticket atualizado no portal.',
+    };
+  }
+
+  async groupIntoParent(
+    actor: AuthenticatedRequestUser,
+    childTicketNumber: number,
+    parentTicketNumber: number,
+  ) {
+    if (childTicketNumber === parentTicketNumber) {
+      throw new BadRequestException(
+        'Selecione outro chamado para agrupar. Não é possível agrupar um ticket nele mesmo.',
+      );
+    }
+
+    const [child, parent] = await Promise.all([
+      this.prisma.portalTicket.findUnique({
+        where: { ticketNumber: childTicketNumber },
+      }),
+      this.prisma.portalTicket.findUnique({
+        where: { ticketNumber: parentTicketNumber },
+      }),
+    ]);
+
+    if (!child) {
+      throw new NotFoundException('Chamado atual não encontrado no portal.');
+    }
+    if (!parent) {
+      throw new NotFoundException(
+        'Chamado pai não encontrado. Informe um número válido.',
+      );
+    }
+    if (child.parentTicketNumber === parentTicketNumber) {
+      return {
+        ok: true,
+        ticketNumber: childTicketNumber,
+        parentTicketNumber,
+        message: `Este chamado já está agrupado em #${parentTicketNumber}.`,
+      };
+    }
+
+    let cursor = parent.parentTicketNumber;
+    const seen = new Set<number>([childTicketNumber, parentTicketNumber]);
+    while (cursor != null) {
+      if (seen.has(cursor)) {
+        throw new BadRequestException(
+          'Não é possível agrupar: os chamados formariam um ciclo.',
+        );
+      }
+      seen.add(cursor);
+      const next = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber: cursor },
+        select: { parentTicketNumber: true },
+      });
+      cursor = next?.parentTicketNumber ?? null;
+    }
+
+    const occurredAt = new Date();
+    await this.prisma.$transaction([
+      this.prisma.portalTicket.update({
+        where: { ticketNumber: childTicketNumber },
+        data: {
+          parentTicketNumber,
+          isClosed: true,
+          stageName: PORTAL_STAGE.CANCELADO,
+          statusName: PORTAL_STAGE.CANCELADO,
+          updatedAtSource: occurredAt,
+        },
+      }),
+      this.prisma.ticketHistory.create({
+        data: {
+          ticketNumber: childTicketNumber,
+          eventType: 'TICKET_GROUPED',
+          summary: `Agrupado no chamado #${parentTicketNumber} e cancelado`,
+          actorName: actor.email ?? null,
+          source: 'PORTAL',
+          externalKey: `grouped:${childTicketNumber}:${parentTicketNumber}:${occurredAt.getTime()}`,
+          payload: {
+            parentTicketNumber,
+            parentTitle: parent.title,
+            childTicketNumber,
+          },
+          occurredAt,
+        },
+      }),
+      this.prisma.ticketHistory.create({
+        data: {
+          ticketNumber: parentTicketNumber,
+          eventType: 'TICKET_GROUPED',
+          summary: `Chamado #${childTicketNumber} agrupado neste ticket (filho cancelado)`,
+          actorName: actor.email ?? null,
+          source: 'PORTAL',
+          externalKey: `group-parent:${parentTicketNumber}:${childTicketNumber}:${occurredAt.getTime()}`,
+          payload: {
+            childTicketNumber,
+            childTitle: child.title,
+            parentTicketNumber,
+          },
+          occurredAt,
+        },
+      }),
+    ]);
+
+    try {
+      await this.prisma.$executeRaw`
+        UPDATE tiflux.tickets
+        SET stage_name = ${PORTAL_STAGE.CANCELADO},
+            status_name = ${PORTAL_STAGE.CANCELADO},
+            is_closed = true
+        WHERE ticket_number = ${childTicketNumber}
+      `;
+    } catch {
+      // Mirror pode estar ausente no cutover local.
+    }
+
+    return {
+      ok: true,
+      ticketNumber: childTicketNumber,
+      parentTicketNumber,
+      message: `Chamado #${childTicketNumber} agrupado em #${parentTicketNumber} e cancelado.`,
     };
   }
 

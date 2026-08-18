@@ -56,7 +56,8 @@ Porta dev da API: **3002** (3000 = Next).
 
 ### Nginx (produção)
 
-Arquivo canônico: `deploy/nginx-alleone-https.conf`
+Arquivo canônico: `deploy/nginx-alleone-https.conf`  
+Headers/CSP: `deploy/nginx-alleone-security-headers.snippet.conf` + `nginx-alleone-csp-html.snippet.conf` / `nginx-alleone-csp-api.snippet.conf` (incluídos pelo path `/home/alleone/producao/deploy/`).
 
 ```bash
 sudo cp /home/alleone/producao/deploy/nginx-alleone-https.conf /etc/nginx/sites-available/alleone

@@ -35,11 +35,23 @@ import {
 } from './appointment-doc.util';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
 import { isAlleOneTifluxDesk } from './tiflux-portal-desk.config';
-import { hhmmIntervalsOverlap } from './portal-appointment.helper';
+import {
+  addDaysYmd,
+  appointmentDurationMinutes,
+  daysBetweenYmd,
+  hhmmDurationMinutes,
+  isOvernightAppointment,
+  parseHhMmToMinutes,
+} from './portal-appointment.helper';
 import type {
   CreateTicketAppointmentDto,
   UpdateTicketAppointmentDto,
 } from './tickets-create.dto';
+import {
+  actorDisplayName,
+  appointmentHistoryLabel,
+  recordPortalTicketHistory,
+} from './portal-ticket-history';
 
 type AppointmentRow = {
   external_id: number;
@@ -139,23 +151,16 @@ export class TicketsAppointmentsService {
     if (!initTime || !endTime) return 0;
     const start = initTime.getUTCHours() * 60 + initTime.getUTCMinutes();
     const end = endTime.getUTCHours() * 60 + endTime.getUTCMinutes();
-    return Math.max(0, end - start);
+    if (end > start) return end - start;
+    if (end === start) return 0;
+    return end + 24 * 60 - start;
   }
 
   private appointmentMinutesFromStrings(
     initTime: string | null,
     endTime: string | null,
   ): number {
-    const parse = (value: string | null) => {
-      if (!value) return null;
-      const [h, m] = value.split(':').map((part) => Number(part));
-      if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-      return h * 60 + m;
-    };
-    const start = parse(initTime);
-    const end = parse(endTime);
-    if (start == null || end == null) return 0;
-    return Math.max(0, end - start);
+    return hhmmDurationMinutes(initTime, endTime);
   }
 
   private attendanceLabel(value: string | null | undefined): string | null {
@@ -740,27 +745,68 @@ export class TicketsAppointmentsService {
     if (!dto.serviceName?.trim()) {
       throw new BadRequestException('Selecione o tipo de atendimento.');
     }
-    const from = this.parseAppointmentTimeToMinutes(dto.initTime);
-    const to = this.parseAppointmentTimeToMinutes(dto.endTime);
-    if (to <= from) {
+    const endDate = dto.endDate?.trim() || undefined;
+    if (
+      endDate &&
+      endDate !== dto.date &&
+      endDate !== addDaysYmd(dto.date, 1)
+    ) {
       throw new BadRequestException(
-        'Horário final deve ser maior que o horário inicial.',
+        'O fim só pode ser no mesmo dia ou no dia seguinte.',
+      );
+    }
+    const minutes = appointmentDurationMinutes({
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+      endDate,
+    });
+    if (minutes <= 0) {
+      throw new BadRequestException(
+        'Horário final deve ser depois do horário inicial.',
+      );
+    }
+    if (minutes > 24 * 60) {
+      throw new BadRequestException(
+        'Apontamento não pode passar de 24 horas. Feche um e abra outro no dia seguinte.',
       );
     }
   }
 
-  private parseAppointmentTimeToMinutes(value: string): number {
-    const [h, m] = String(value ?? '')
-      .trim()
-      .split(':')
-      .map((part) => Number(part));
-    if (!Number.isFinite(h) || !Number.isFinite(m)) return 0;
-    return h * 60 + m;
+  /**
+   * Minutos absolutos a partir de `originYmd` 00:00, para comparar intervalos
+   * que cruzam a meia-noite.
+   */
+  private absoluteMinutes(
+    originYmd: string,
+    dateYmd: string,
+    initTime: string,
+    endTime: string,
+    endDate?: string | null,
+  ): { start: number; end: number } | null {
+    const startClock = parseHhMmToMinutes(initTime);
+    const endClock = parseHhMmToMinutes(endTime);
+    if (startClock == null || endClock == null) return null;
+    const start = daysBetweenYmd(originYmd, dateYmd) * 24 * 60 + startClock;
+    const overnight = isOvernightAppointment({
+      date: dateYmd,
+      initTime,
+      endTime,
+      endDate,
+    });
+    const endYmd = overnight
+      ? endDate?.trim() && endDate.trim() !== dateYmd
+        ? endDate.trim()
+        : addDaysYmd(dateYmd, 1)
+      : dateYmd;
+    const end = daysBetweenYmd(originYmd, endYmd) * 24 * 60 + endClock;
+    if (end <= start) return null;
+    return { start, end };
   }
 
   /**
    * Impede dois apontamentos do mesmo usuário no mesmo ticket com horários
-   * sobrepostos (ou idênticos) no mesmo dia.
+   * sobrepostos (ou idênticos), inclusive quando cruzam a meia-noite.
    */
   private async assertNoOverlappingAppointmentForUser(params: {
     userId: string;
@@ -768,28 +814,60 @@ export class TicketsAppointmentsService {
     date: string;
     initTime: string;
     endTime: string;
+    endDate?: string | null;
     excludeAppointmentId?: string;
   }) {
+    const overnight = isOvernightAppointment({
+      date: params.date,
+      initTime: params.initTime,
+      endTime: params.endTime,
+      endDate: params.endDate,
+    });
+    const dates = [
+      addDaysYmd(params.date, -1),
+      params.date,
+      ...(overnight ? [addDaysYmd(params.date, 1)] : []),
+    ];
     const existing = await this.prisma.portalTicketAppointment.findMany({
       where: {
         createdBy: params.userId,
         ticketNumber: params.ticketNumber,
-        appointmentDate: new Date(`${params.date}T12:00:00.000Z`),
+        appointmentDate: {
+          in: dates.map((day) => new Date(`${day}T12:00:00.000Z`)),
+        },
         ...(params.excludeAppointmentId
           ? { id: { not: params.excludeAppointmentId } }
           : {}),
       },
-      select: { id: true, initTime: true, endTime: true },
+      select: {
+        id: true,
+        appointmentDate: true,
+        initTime: true,
+        endTime: true,
+      },
     });
 
-    const conflict = existing.find((row) =>
-      hhmmIntervalsOverlap(
-        params.initTime,
-        params.endTime,
+    const origin = addDaysYmd(params.date, -1);
+    const next = this.absoluteMinutes(
+      origin,
+      params.date,
+      params.initTime,
+      params.endTime,
+      params.endDate,
+    );
+    if (!next) return;
+
+    const conflict = existing.find((row) => {
+      const date = this.formatDateOnly(row.appointmentDate) ?? params.date;
+      const other = this.absoluteMinutes(
+        origin,
+        date,
         row.initTime,
         row.endTime,
-      ),
-    );
+      );
+      if (!other) return false;
+      return Math.max(next.start, other.start) < Math.min(next.end, other.end);
+    });
     if (!conflict) return;
 
     throw new BadRequestException(
@@ -999,6 +1077,7 @@ export class TicketsAppointmentsService {
       date: dto.date,
       initTime: dto.initTime,
       endTime: dto.endTime,
+      endDate: dto.endDate,
       excludeAppointmentId: row.id,
     });
 
@@ -1086,6 +1165,58 @@ export class TicketsAppointmentsService {
       dto.endTime,
     );
 
+    const actorName = await actorDisplayName(this.prisma, actor);
+    const beforeLabel = appointmentHistoryLabel({
+      date: this.formatDateOnly(row.appointmentDate),
+      initTime: row.initTime,
+      endTime: row.endTime,
+    });
+    const afterLabel = appointmentHistoryLabel({
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+    });
+    const changes: string[] = [];
+    if (beforeLabel !== afterLabel) {
+      changes.push(`${beforeLabel} → ${afterLabel}`);
+    }
+    if (row.serviceName !== dto.serviceName.trim()) {
+      changes.push(`tipo ${row.serviceName} → ${dto.serviceName.trim()}`);
+    }
+    if (row.description !== description) {
+      changes.push('descrição');
+    }
+    if (removeIds.length > 0) {
+      changes.push(`${removeIds.length} anexo(s) removido(s)`);
+    }
+    if (files.length > 0) {
+      changes.push(`${files.length} anexo(s) adicionado(s)`);
+    }
+    await recordPortalTicketHistory(this.prisma, {
+      ticketNumber,
+      eventType: 'APPOINTMENT_UPDATED',
+      summary: changes.length
+        ? `Apontamento alterado: ${changes.join(' · ')}`
+        : `Apontamento alterado: ${afterLabel}`,
+      actorName,
+      externalKey: `appointment_updated:${row.id}:${Date.now()}`,
+      payload: {
+        portalAppointmentId: row.id,
+        from: {
+          date: this.formatDateOnly(row.appointmentDate),
+          initTime: row.initTime,
+          endTime: row.endTime,
+          serviceName: row.serviceName,
+        },
+        to: {
+          date: dto.date,
+          initTime: dto.initTime,
+          endTime: dto.endTime,
+          serviceName: dto.serviceName.trim(),
+        },
+      },
+    });
+
     return {
       ok: true,
       message: 'Apontamento atualizado.',
@@ -1093,6 +1224,7 @@ export class TicketsAppointmentsService {
   }
 
   async deletePortalAppointment(
+    actor: AuthenticatedRequestUser,
     ticketNumber: number,
     portalAppointmentId: string,
   ) {
@@ -1121,6 +1253,29 @@ export class TicketsAppointmentsService {
       where: { id: row.id },
     });
 
+    const actorName = await actorDisplayName(this.prisma, actor);
+    const label = appointmentHistoryLabel({
+      date: this.formatDateOnly(row.appointmentDate),
+      initTime: row.initTime,
+      endTime: row.endTime,
+    });
+    await recordPortalTicketHistory(this.prisma, {
+      ticketNumber,
+      eventType: 'APPOINTMENT_DELETED',
+      summary: `Apontamento excluído: ${label}${
+        row.serviceName ? ` (${row.serviceName})` : ''
+      }`,
+      actorName,
+      externalKey: `appointment_deleted:${row.id}:${Date.now()}`,
+      payload: {
+        portalAppointmentId: row.id,
+        date: this.formatDateOnly(row.appointmentDate),
+        initTime: row.initTime,
+        endTime: row.endTime,
+        serviceName: row.serviceName,
+      },
+    });
+
     return {
       ok: true,
       message: 'Apontamento excluído.',
@@ -1146,6 +1301,7 @@ export class TicketsAppointmentsService {
       date: dto.date,
       initTime: dto.initTime,
       endTime: dto.endTime,
+      endDate: dto.endDate,
     });
 
     const descriptionRaw = dto.description.trim();
@@ -1241,6 +1397,26 @@ export class TicketsAppointmentsService {
         createdBy: actor.userId,
       });
     }
+
+    const actorName = await actorDisplayName(this.prisma, actor);
+    await recordPortalTicketHistory(this.prisma, {
+      ticketNumber,
+      eventType: 'APPOINTMENT_CREATED',
+      summary: `Apontamento registrado: ${appointmentHistoryLabel({
+        date: dto.date,
+        initTime: dto.initTime,
+        endTime: dto.endTime,
+      })}${dto.serviceName?.trim() ? ` (${dto.serviceName.trim()})` : ''}`,
+      actorName,
+      externalKey: `appointment_created:${portalAppointment.id}`,
+      payload: {
+        portalAppointmentId: portalAppointment.id,
+        date: dto.date,
+        initTime: dto.initTime,
+        endTime: dto.endTime,
+        serviceName: dto.serviceName.trim(),
+      },
+    });
 
     return {
       ok: true,

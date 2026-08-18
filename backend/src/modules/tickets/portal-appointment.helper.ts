@@ -26,7 +26,8 @@ export function hhmmDurationMinutes(
   const start = parseHhMmToMinutes(initTime);
   const end = parseHhMmToMinutes(endTime);
   if (start == null || end == null) return 0;
-  if (end >= start) return end - start;
+  if (end > start) return end - start;
+  if (end === start) return 0;
   return end + 24 * 60 - start;
 }
 
@@ -42,9 +43,71 @@ export function parseHhMmToMinutes(
   return h * 60 + m;
 }
 
+export function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export function daysBetweenYmd(from: string, to: string): number {
+  const a = new Date(`${from}T12:00:00.000Z`);
+  const b = new Date(`${to}T12:00:00.000Z`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.round((b.getTime() - a.getTime()) / 86_400_000);
+}
+
+/** true se o fim é no dia seguinte (endDate explícito ou horário que volta). */
+export function isOvernightAppointment(params: {
+  date: string;
+  initTime: string;
+  endTime: string;
+  endDate?: string | null;
+}): boolean {
+  const endDate = params.endDate?.trim();
+  if (endDate && endDate !== params.date) return true;
+  const start = parseHhMmToMinutes(params.initTime);
+  const end = parseHhMmToMinutes(params.endTime);
+  if (start == null || end == null) return false;
+  return end < start;
+}
+
+export function appointmentDurationMinutes(params: {
+  date: string;
+  initTime: string;
+  endTime: string;
+  endDate?: string | null;
+}): number {
+  const start = parseHhMmToMinutes(params.initTime);
+  const end = parseHhMmToMinutes(params.endTime);
+  if (start == null || end == null) return 0;
+  const daySpan = params.endDate?.trim()
+    ? daysBetweenYmd(params.date, params.endDate.trim())
+    : end < start
+      ? 1
+      : 0;
+  if (daySpan < 0) return 0;
+  return end + daySpan * 24 * 60 - start;
+}
+
+function hhmmToDaySegments(
+  initTime: string | null | undefined,
+  endTime: string | null | undefined,
+): Array<[number, number]> {
+  const start = parseHhMmToMinutes(initTime);
+  const end = parseHhMmToMinutes(endTime);
+  if (start == null || end == null) return [];
+  if (end > start) return [[start, end]];
+  if (end === start) return [];
+  return [
+    [start, 24 * 60],
+    [0, end],
+  ];
+}
+
 /**
- * Intervalos [init, end) em HH:MM no mesmo dia civil.
- * Não modela cruzamento de meia-noite (create de ticket exige end > init).
+ * Intervalos [init, end) em HH:MM.
+ * Aceita cruzar meia-noite (23:00–08:00).
  */
 export function hhmmIntervalsOverlap(
   aInit: string | null | undefined,
@@ -52,13 +115,14 @@ export function hhmmIntervalsOverlap(
   bInit: string | null | undefined,
   bEnd: string | null | undefined,
 ): boolean {
-  const a1 = parseHhMmToMinutes(aInit);
-  const a2 = parseHhMmToMinutes(aEnd);
-  const b1 = parseHhMmToMinutes(bInit);
-  const b2 = parseHhMmToMinutes(bEnd);
-  if (a1 == null || a2 == null || b1 == null || b2 == null) return false;
-  if (a2 <= a1 || b2 <= b1) return false;
-  return Math.max(a1, b1) < Math.min(a2, b2);
+  const aSegs = hhmmToDaySegments(aInit, aEnd);
+  const bSegs = hhmmToDaySegments(bInit, bEnd);
+  for (const [a1, a2] of aSegs) {
+    for (const [b1, b2] of bSegs) {
+      if (Math.max(a1, b1) < Math.min(a2, b2)) return true;
+    }
+  }
+  return false;
 }
 
 export function overtimeKindFromServiceName(

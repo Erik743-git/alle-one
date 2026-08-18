@@ -30,3 +30,8 @@ backend/exports/
 
 tmp/
 
+# Relatórios OWASP ZAP (podem conter URLs/sessão)
+deploy/security/out/*
+!deploy/security/out/.gitkeep
+deploy/security/*.html
+

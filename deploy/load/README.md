@@ -59,3 +59,4 @@ Observe na VM: `pm2 monit`, CPU/memória de `alleone-teste-api` / `alleone-teste
 ## Ver também
 
 - [PERFORMANCE.md](../../docs/PERFORMANCE.md) — caches dashboard / Redis
+- [TESTES_DESEMPENHO_SEGURANCA.md](../../docs/TESTES_DESEMPENHO_SEGURANCA.md) — k6 + Playwright + ZAP

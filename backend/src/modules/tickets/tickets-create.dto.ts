@@ -110,6 +110,12 @@ export class CreateTicketAppointmentDto {
   @Matches(/^\d{2}:\d{2}$/)
   endTime!: string;
 
+  /** Fim no dia seguinte (YYYY-MM-DD). Só aceita o mesmo dia ou D+1. */
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endDate?: string;
+
   @IsString()
   @MinLength(2)
   @MaxLength(8000)
@@ -183,6 +189,12 @@ export class UpdateTicketDto {
   @IsInt()
   @Type(() => Number)
   clientId?: number;
+
+  /** Troca de mesa/fila (external id). */
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  deskId?: number;
 
   @IsOptional()
   @IsArray()

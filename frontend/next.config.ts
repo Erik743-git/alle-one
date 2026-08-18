@@ -8,6 +8,23 @@ const isProd = process.env.NODE_ENV === "production";
 /** Evita Turbopack usar a raiz do monorepo (package-lock da raiz) e falhar ao resolver tailwindcss. */
 const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
+/** Alinhar com deploy/nginx-alleone-csp-html.snippet.conf */
+const htmlContentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "form-action 'self'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  "script-src 'self' 'unsafe-inline'",
+  "script-src-attr 'none'",
+  "style-src 'self' 'unsafe-inline'",
+  "connect-src 'self' https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io",
+  "worker-src 'self' blob:",
+  "upgrade-insecure-requests",
+].join("; ");
+
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
   {
@@ -21,6 +38,7 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), geolocation=()",
   },
+  { key: "Content-Security-Policy", value: htmlContentSecurityPolicy },
 ];
 
 const apiRewriteBase =
@@ -29,6 +47,7 @@ const apiRewriteBase =
   "http://127.0.0.1:3002";
 
 const nextConfig: NextConfig = {
+  poweredByHeader: false,
   // Monorepo: há package-lock na raiz (husky) e em frontend/ — força o root do app.
   turbopack: {
     root: frontendRoot,

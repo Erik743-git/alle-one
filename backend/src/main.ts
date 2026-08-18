@@ -57,9 +57,31 @@ async function bootstrap() {
   app.use(cookieParser());
   // CORP same-origin (default do helmet) bloqueia o front em outra origem/porta
   // (ex.: localhost:3000 → API :3002) de ler a resposta no browser.
+  // CSP apertado só em produção (Swagger local precisa de inline).
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      contentSecurityPolicy: isProd
+        ? {
+            useDefaults: false,
+            directives: {
+              defaultSrc: ["'self'"],
+              baseUri: ["'self'"],
+              fontSrc: ["'self'"],
+              formAction: ["'self'"],
+              frameAncestors: ["'self'"],
+              imgSrc: ["'self'", 'data:'],
+              objectSrc: ["'none'"],
+              scriptSrc: ["'self'"],
+              scriptSrcAttr: ["'none'"],
+              styleSrc: ["'self'"],
+              upgradeInsecureRequests: [],
+            },
+          }
+        : false,
+      strictTransportSecurity: isProd
+        ? { maxAge: 15_552_000, includeSubDomains: true }
+        : false,
     }),
   );
   app.useGlobalFilters(new GlobalExceptionFilter());

@@ -39,6 +39,7 @@ import {
   SearchTicketUsersQueryDto,
   TicketsListQueryDto,
   UpdateTicketStageDto,
+  GroupTicketDto,
 } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
@@ -280,6 +281,21 @@ export class TicketsController {
     );
   }
 
+  @Post(':ticketNumber/group')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  groupTicket(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Body() body: GroupTicketDto,
+  ) {
+    return this.ticketsService.groupIntoParent(
+      actor,
+      ticketNumber,
+      body.parentTicketNumber,
+    );
+  }
+
   @Post(':ticketNumber/appointments')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
@@ -403,10 +419,12 @@ export class TicketsController {
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   deletePortalAppointment(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
   ) {
     return this.appointmentsService.deletePortalAppointment(
+      actor,
       ticketNumber,
       portalAppointmentId,
     );

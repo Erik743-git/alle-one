@@ -151,7 +151,11 @@ function FullDescriptionBody({
   if (isAppointmentDoc(description)) {
     const doc = parseAppointmentDoc(description);
     if (!doc) {
-      return <p className="whitespace-pre-wrap text-foreground/90">{description}</p>;
+      return (
+        <p className="whitespace-pre-wrap break-words text-foreground/90 [overflow-wrap:anywhere]">
+          {description}
+        </p>
+      );
     }
     return (
       <div className="space-y-2">
@@ -169,7 +173,7 @@ function FullDescriptionBody({
             return (
               <p
                 key={`text-${index}`}
-                className="whitespace-pre-wrap text-foreground/90"
+                className="whitespace-pre-wrap break-words text-foreground/90 [overflow-wrap:anywhere]"
               >
                 {block.content}
               </p>
@@ -197,7 +201,11 @@ function FullDescriptionBody({
     );
   }
 
-  return <p className="whitespace-pre-wrap text-foreground/90">{description}</p>;
+  return (
+    <p className="whitespace-pre-wrap break-words text-foreground/90 [overflow-wrap:anywhere]">
+      {description}
+    </p>
+  );
 }
 
 export function AppointmentDescriptionView({ description, attachments }: Props) {
@@ -248,7 +256,7 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
       {showDescriptionBody ? (
         <div>
           {showCollapsed ? (
-            <p className="line-clamp-3 whitespace-pre-wrap text-foreground/90">
+            <p className="line-clamp-3 whitespace-pre-wrap break-words text-foreground/90 [overflow-wrap:anywhere]">
               {plainText}
             </p>
           ) : (

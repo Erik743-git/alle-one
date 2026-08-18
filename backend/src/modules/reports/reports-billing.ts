@@ -43,8 +43,9 @@ function minutesBetween(initTime: string, endTime: string): number {
   }
   const start = ih * 60 + im;
   const end = eh * 60 + em;
-  const diff = end - start;
-  return diff > 0 ? diff : 0;
+  if (end > start) return end - start;
+  if (end === start) return 0;
+  return end + 24 * 60 - start;
 }
 
 function toNumber(value: Prisma.Decimal | number | string | null | undefined) {

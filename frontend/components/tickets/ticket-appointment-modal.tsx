@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, User2 } from "lucide-react";
+import { Loader2, Plus, User2 } from "lucide-react";
 
 import { FieldLabel } from "@/components/ui/field-label";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import {
   type PortalAppointmentEditContext,
 } from "@/lib/services/tickets.service";
 import { useAuth } from "@/lib/use-auth";
+import { cn } from "@/lib/utils";
 
 const SERVICE_TYPES = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
 
@@ -69,6 +70,36 @@ function timeToMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
+function addDaysYmd(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return ymd;
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function formatYmdBr(ymd: string): string {
+  const [y, m, d] = ymd.split("-");
+  if (!y || !m || !d) return ymd;
+  return `${d}/${m}`;
+}
+
+function appointmentSpanMinutes(
+  initTime: string,
+  endTime: string,
+  overnight: boolean,
+): number {
+  return timeToMinutes(endTime) + (overnight ? 24 * 60 : 0) - timeToMinutes(initTime);
+}
+
+function formatDurationHint(minutes: number): string {
+  if (minutes <= 0) return "";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${String(m).padStart(2, "0")}min`;
+}
+
 export function TicketAppointmentModal({
   ticketNumber,
   open,
@@ -88,6 +119,7 @@ export function TicketAppointmentModal({
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [initTime, setInitTime] = useState(nowTime);
   const [endTime, setEndTime] = useState(() => addMinutesToTime(nowTime(), 15));
+  const [overnight, setOvernight] = useState(false);
   const [serviceName, setServiceName] = useState("");
   const [projectActivityId, setProjectActivityId] = useState("");
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
@@ -127,12 +159,17 @@ export function TicketAppointmentModal({
         setDate(editingAppointment.date);
         setInitTime(editingAppointment.initTime);
         setEndTime(editingAppointment.endTime);
+        setOvernight(
+          timeToMinutes(editingAppointment.endTime) <
+            timeToMinutes(editingAppointment.initTime),
+        );
         setServiceName(editingAppointment.serviceName);
         setComposerKey((k) => k + 1);
       } else {
         const start = nowTime();
         setInitTime(start);
         setEndTime(addMinutesToTime(start, 15));
+        setOvernight(false);
         setProjectActivityId(fixedActivityId ?? "");
         setComposerKey((k) => k + 1);
       }
@@ -151,7 +188,17 @@ export function TicketAppointmentModal({
     [projectLink],
   );
 
-  function resetFormForAnotherAppointment(previousEndTime: string) {
+  const durationMinutes = appointmentSpanMinutes(initTime, endTime, overnight);
+  const endDate = overnight ? addDaysYmd(date, 1) : date;
+
+  function resetFormForAnotherAppointment(
+    previousEndTime: string,
+    previousOvernight: boolean,
+  ) {
+    if (previousOvernight) {
+      setDate((current) => addDaysYmd(current, 1));
+    }
+    setOvernight(false);
     setInitTime(previousEndTime);
     setEndTime(addMinutesToTime(previousEndTime, 15));
     setComposerKey((k) => k + 1);
@@ -184,8 +231,14 @@ export function TicketAppointmentModal({
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
-    if (timeToMinutes(endTime) <= timeToMinutes(initTime)) {
-      notifyError("Horário final deve ser maior que o horário inicial.");
+    if (durationMinutes <= 0) {
+      notifyError("Horário final deve ser depois do horário inicial.");
+      return;
+    }
+    if (durationMinutes > 24 * 60) {
+      notifyError(
+        "Apontamento não pode passar de 24 horas. Use o + só quando o fim for no dia seguinte.",
+      );
       return;
     }
     const exported = composerRef.current?.exportContent();
@@ -198,6 +251,7 @@ export function TicketAppointmentModal({
       date,
       initTime,
       endTime,
+      ...(overnight ? { endDate } : {}),
       description: exported.description,
       serviceName: serviceName.trim(),
       attendance: DEFAULT_ATTENDANCE,
@@ -249,7 +303,7 @@ export function TicketAppointmentModal({
       notifySuccess(res.message);
 
       if (!isEdit && mode === "saveAndAnother") {
-        resetFormForAnotherAppointment(endTime);
+        resetFormForAnotherAppointment(endTime, overnight);
         onCreated?.();
         return;
       }
@@ -331,6 +385,7 @@ export function TicketAppointmentModal({
                   onChange={(e) => {
                     const next = e.target.value;
                     setInitTime(next);
+                    if (overnight) return;
                     if (timeToMinutes(endTime) <= timeToMinutes(next)) {
                       setEndTime(addMinutesToTime(next, 15));
                     }
@@ -343,13 +398,59 @@ export function TicketAppointmentModal({
                 <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
                   Fim
                 </FieldLabel>
-                <Input
-                  type="time"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className={FIELD_INPUT}
-                  required
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setEndTime(next);
+                      if (timeToMinutes(next) < timeToMinutes(initTime)) {
+                        setOvernight(true);
+                      }
+                    }}
+                    className={cn(FIELD_INPUT, "flex-1")}
+                    required
+                  />
+                  <Button
+                    type="button"
+                    variant={overnight ? "default" : "outline"}
+                    size="icon"
+                    className="h-11 w-11 shrink-0"
+                    aria-pressed={overnight}
+                    title={
+                      overnight
+                        ? "Fim no dia seguinte (ativado)"
+                        : "Terminar no dia seguinte"
+                    }
+                    onClick={() => {
+                      setOvernight((on) => {
+                        if (on && timeToMinutes(endTime) <= timeToMinutes(initTime)) {
+                          setEndTime(addMinutesToTime(initTime, 15));
+                        }
+                        return !on;
+                      });
+                    }}
+                  >
+                    <Plus className="size-4" />
+                    <span className="sr-only">
+                      {overnight
+                        ? "Desativar fim no dia seguinte"
+                        : "Terminar no dia seguinte"}
+                    </span>
+                  </Button>
+                </div>
+                <p
+                  className={cn(
+                    "text-xs text-muted-foreground",
+                    durationMinutes > 24 * 60 && "text-destructive",
+                  )}
+                >
+                  {overnight
+                    ? `Termina em ${formatYmdBr(endDate)}`
+                    : "Toque em + se o fim for no dia seguinte"}
+                  {durationMinutes > 0 ? ` · ${formatDurationHint(durationMinutes)}` : ""}
+                </p>
               </div>
             </div>
 
