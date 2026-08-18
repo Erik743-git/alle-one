@@ -14,6 +14,8 @@ export type RendimentoCollaborator = {
   tifluxUserName: string | null;
   monthTotalMinutes: number;
   monthTotalHoursFormatted: string;
+  monthOvertimeMinutes: number;
+  monthOvertimeHoursFormatted: string;
 };
 
 export type RendimentoCollaboratorListPreference = {

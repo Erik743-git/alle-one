@@ -118,6 +118,8 @@ export type RendimentoCollaboratorDto = {
   tifluxUserName: string | null;
   monthTotalMinutes: number;
   monthTotalHoursFormatted: string;
+  monthOvertimeMinutes: number;
+  monthOvertimeHoursFormatted: string;
 };
 
 export type RendimentoCollaboratorListPreferenceDto = {
@@ -2405,6 +2407,8 @@ export class RendimentoService {
         tifluxUserName: tifluxUser?.name ?? null,
         monthTotalMinutes: 0,
         monthTotalHoursFormatted: this.formatMinutes(0),
+        monthOvertimeMinutes: 0,
+        monthOvertimeHoursFormatted: this.formatMinutes(0),
       };
     });
   }
@@ -2427,6 +2431,7 @@ export class RendimentoService {
     for (const user of users) {
       const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
       let monthTotalMinutes = 0;
+      let monthOvertimeMinutes = 0;
 
       if (tifluxUser != null || isTicketsPortalCanonical()) {
         const monthRows = await this.fetchAppointments({
@@ -2436,6 +2441,7 @@ export class RendimentoService {
           end,
         });
         monthTotalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
+        monthOvertimeMinutes = computeUnionWorkedMinutes(monthRows, 'EXTRA');
       }
 
       collaborators.push({
@@ -2449,6 +2455,8 @@ export class RendimentoService {
         tifluxUserName: tifluxUser?.name ?? null,
         monthTotalMinutes,
         monthTotalHoursFormatted: this.formatMinutes(monthTotalMinutes),
+        monthOvertimeMinutes,
+        monthOvertimeHoursFormatted: this.formatMinutes(monthOvertimeMinutes),
       });
     }
 

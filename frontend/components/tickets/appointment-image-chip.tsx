@@ -275,7 +275,7 @@ export function AppointmentImageChip({
             )}
           </div>
 
-          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-4">
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 pt-4 pb-6">
             <Button
               type="button"
               variant="outline"

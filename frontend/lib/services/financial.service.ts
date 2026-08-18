@@ -35,6 +35,7 @@ export type FinancialOverviewResponse = {
     usedHours: number;
     extraHours: number;
     extraAmount: number;
+    extraHourPrice: number | null;
   };
   contracts: FinancialOverviewContract[];
 };

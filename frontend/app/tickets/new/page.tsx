@@ -13,15 +13,9 @@ import {
   AppointmentDescriptionComposer,
   type AppointmentBlockComposerHandle,
 } from "@/components/tickets/appointment-description-composer";
+import { TicketFollowersDialog } from "@/components/tickets/ticket-followers-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { FieldLabel } from "@/components/ui/field-label";
 import { Input } from "@/components/ui/input";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
@@ -89,17 +83,13 @@ export default function NewTicketPage() {
   const [requestorName, setRequestorName] = useState("");
   const [requestorEmail, setRequestorEmail] = useState("");
   const [requestorTelephone, setRequestorTelephone] = useState("");
-  const [newRequestorOpen, setNewRequestorOpen] = useState(false);
-  const [newRequestorName, setNewRequestorName] = useState("");
-  const [newRequestorEmail, setNewRequestorEmail] = useState("");
-  const [newRequestorTelephone, setNewRequestorTelephone] = useState("");
+  const [followersOpen, setFollowersOpen] = useState(false);
   const [externalGmudRef, setExternalGmudRef] = useState("");
   const [gmudOptions, setGmudOptions] = useState<Gmud[]>([]);
   const [loadingGmuds, setLoadingGmuds] = useState(false);
   const [ccPeople, setCcPeople] = useState<
     Array<{ email: string; name?: string }>
   >([]);
-  const [ccSelectValue, setCcSelectValue] = useState("");
 
   const selectedDesk = useMemo(
     () => catalogs?.desks.find((d) => String(d.id) === deskId) ?? null,
@@ -183,19 +173,6 @@ export default function NewTicketPage() {
       })),
     [catalogs],
   );
-
-  const ccOptions = useMemo(() => {
-    const selected = new Set(ccPeople.map((p) => p.email.toLowerCase()));
-    return (catalogs?.responsibles ?? [])
-      .filter((r) => {
-        const email = r.email?.trim().toLowerCase();
-        return Boolean(email) && !selected.has(email!);
-      })
-      .map((r) => ({
-        value: r.email!.trim().toLowerCase(),
-        label: `${r.name} (${r.email!.trim()})`,
-      }));
-  }, [catalogs, ccPeople]);
 
   const gmudSelectOptions = useMemo(
     () =>
@@ -377,66 +354,21 @@ export default function NewTicketPage() {
     );
   }
 
-  function openNewRequestorModal() {
-    setNewRequestorName("");
-    setNewRequestorEmail("");
-    setNewRequestorTelephone("");
-    setNewRequestorOpen(true);
-  }
-
-  function confirmNewRequestor() {
-    const name = newRequestorName.trim();
-    const email = newRequestorEmail.trim();
-    if (!name) {
-      notifyError("Informe o nome do solicitante.");
-      return;
-    }
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      notifyError("Informe um e-mail válido do solicitante.");
-      return;
-    }
-    if (
-      newRequestorTelephone.trim() &&
-      !isValidBrPhone(newRequestorTelephone)
-    ) {
-      notifyError("Telefone inválido. Use DDD + número.");
-      return;
-    }
-    setRequestorId("");
-    setRequestorName(name);
-    setRequestorEmail(email);
-    setRequestorTelephone(
-      newRequestorTelephone.trim()
-        ? formatBrPhone(newRequestorTelephone)
-        : "",
-    );
-    setNewRequestorOpen(false);
-    notifySuccess("Solicitante preenchido. Continue a abertura do chamado.");
-  }
-
-  function addCcPerson(emailRaw: string, name?: string) {
-    const email = emailRaw.trim().toLowerCase();
+  function addFollower(person: { email: string; name?: string }) {
+    const email = person.email.trim().toLowerCase();
     if (!email) return;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      notifyError("E-mail em cópia inválido.");
+      notifyError("E-mail do seguidor inválido.");
+      return;
+    }
+    if (emailsMatch(email, requestorEmail)) {
+      notifyError("Esse e-mail já é o do solicitante.");
       return;
     }
     setCcPeople((prev) => {
       if (prev.some((p) => p.email === email)) return prev;
-      return [...prev, { email, name }];
+      return [...prev, { email, name: person.name }];
     });
-    setCcSelectValue("");
-  }
-
-  function handleCcSelect(nextEmail: string) {
-    if (!nextEmail) {
-      setCcSelectValue("");
-      return;
-    }
-    const selected = (catalogs?.responsibles ?? []).find(
-      (r) => r.email?.trim().toLowerCase() === nextEmail,
-    );
-    addCcPerson(nextEmail, selected?.name);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -699,11 +631,11 @@ export default function NewTicketPage() {
                           variant="outline"
                           size="sm"
                           className="h-8"
-                          disabled={saving || !clientId}
-                          onClick={openNewRequestorModal}
+                          disabled={saving}
+                          onClick={() => setFollowersOpen(true)}
                         >
                           <Plus className="mr-1 size-3.5" />
-                          Novo solicitante
+                          Novo seguidor
                         </Button>
                       </div>
                       {requestorOptions.length > 0 ? (
@@ -713,7 +645,7 @@ export default function NewTicketPage() {
                           options={requestorOptions}
                           loading={loading}
                           emptyLabel="Selecione o solicitante"
-                          placeholder="Selecione ou adicione um novo"
+                          placeholder="Selecione o solicitante"
                         />
                       ) : null}
                       <div className="space-y-2">
@@ -762,8 +694,9 @@ export default function NewTicketPage() {
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Não está na lista? Use &quot;Novo solicitante&quot; para
-                        preencher na hora (ex.: caixa compartilhada).
+                        Não está na lista? Preencha nome e e-mail abaixo (ex.: caixa
+                        compartilhada). Use &quot;Novo seguidor&quot; para avisar
+                        outras pessoas por e-mail, sem trocar o solicitante.
                       </p>
                     </div>
 
@@ -790,26 +723,9 @@ export default function NewTicketPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <FieldLabel optional>Pessoas em cópia</FieldLabel>
-                      <SearchableSelectField
-                        value={ccSelectValue}
-                        onChange={handleCcSelect}
-                        options={ccOptions}
-                        loading={loading}
-                        emptyLabel={
-                          ccOptions.length === 0
-                            ? ccPeople.length > 0
-                              ? "Todos os responsáveis já foram adicionados"
-                              : "Nenhum responsável disponível"
-                            : "Selecione um responsável"
-                        }
-                        placeholder="Selecione um responsável"
-                        searchPlaceholder="Buscar responsável..."
-                        alwaysShowSearch
-                        disabled={saving || ccOptions.length === 0}
-                      />
+                      <FieldLabel optional>Seguidores</FieldLabel>
                       {ccPeople.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
+                        <div className="flex flex-wrap gap-1.5">
                           {ccPeople.map((person) => (
                             <span
                               key={person.email}
@@ -828,17 +744,23 @@ export default function NewTicketPage() {
                                     ),
                                   )
                                 }
-                                aria-label={`Remover ${person.email}`}
+                                aria-label={`Remover seguidor ${person.email}`}
                               >
                                 <X className="size-3.5" />
                               </button>
                             </span>
                           ))}
                         </div>
-                      ) : null}
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhum seguidor. Use &quot;Novo seguidor&quot; para
+                          adicionar.
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground">
-                        Lista dos responsáveis do chamado. Quem estiver na cópia
-                        passa a ver o chamado em Meus chamados.
+                        O seguidor recebe as atualizações do chamado por e-mail,
+                        como o solicitante, e passa a ver o chamado em Meus
+                        chamados.
                       </p>
                     </div>
                   </CardContent>
@@ -878,59 +800,15 @@ export default function NewTicketPage() {
             )}
           </div>
 
-          <Dialog open={newRequestorOpen} onOpenChange={setNewRequestorOpen}>
-            <DialogContent className="sm:max-w-md" showCloseButton>
-              <DialogHeader>
-                <DialogTitle>Novo solicitante</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-2">
-                  <FieldLabel required>Nome</FieldLabel>
-                  <Input
-                    value={newRequestorName}
-                    onChange={(e) => setNewRequestorName(e.target.value)}
-                    placeholder="Nome completo"
-                    className="h-11"
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <FieldLabel required>E-mail</FieldLabel>
-                  <Input
-                    type="email"
-                    value={newRequestorEmail}
-                    onChange={(e) => setNewRequestorEmail(e.target.value)}
-                    placeholder="alleone.teste@alletecnologia.com"
-                    className="h-11"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <FieldLabel optional>Telefone</FieldLabel>
-                  <Input
-                    value={newRequestorTelephone}
-                    onChange={(e) =>
-                      setNewRequestorTelephone(formatBrPhone(e.target.value))
-                    }
-                    placeholder="(00) 00000-0000"
-                    className="h-11"
-                    inputMode="tel"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setNewRequestorOpen(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="button" onClick={confirmNewRequestor}>
-                  Usar no chamado
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <TicketFollowersDialog
+            open={followersOpen}
+            onOpenChange={setFollowersOpen}
+            selected={ccPeople}
+            requestors={catalogs?.requestors}
+            responsibles={catalogs?.responsibles}
+            excludeEmails={[requestorEmail]}
+            onAdd={addFollower}
+          />
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

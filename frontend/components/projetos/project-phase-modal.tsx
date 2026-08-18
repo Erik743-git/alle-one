@@ -114,7 +114,7 @@ export function ProjectPhaseModal({
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-muted/30 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
+        <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-muted/30 px-5 pt-4 pb-6 sm:flex-row sm:justify-end sm:px-6">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>

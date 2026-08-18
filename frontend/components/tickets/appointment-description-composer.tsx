@@ -9,15 +9,38 @@ import {
   useState,
   type ClipboardEvent as ReactClipboardEvent,
   type DragEvent as ReactDragEvent,
+  type ReactNode,
 } from "react";
-import { FileText, Paperclip, X, Bold, Italic, Underline, List } from "lucide-react";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Bold,
+  Eraser,
+  FileText,
+  IndentDecrease,
+  IndentIncrease,
+  Italic,
+  Link2,
+  List,
+  ListOrdered,
+  Paperclip,
+  Redo2,
+  Strikethrough,
+  Underline,
+  Undo2,
+  X,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FieldLabel } from "@/components/ui/field-label";
+import { Separator } from "@/components/ui/separator";
 import {
+  COMPOSER_HTML_CLASS,
   isAppointmentDoc,
   parseAppointmentDoc,
   sanitizeComposerHtml,
+  sanitizeHref,
   serializeAppointmentDoc,
   type StoredBlock,
 } from "@/lib/appointment-doc";
@@ -27,6 +50,42 @@ const MAX_ATTACHMENTS = 10;
 /** Largura padrão dos prints no editor (cabem bem na tela). */
 const DEFAULT_IMAGE_WIDTH = 280;
 const MAX_IMAGE_WIDTH = 360;
+
+const FONT_SIZE_OPTIONS = [
+  { label: "12px", value: "2" },
+  { label: "14px", value: "3" },
+  { label: "16px", value: "4" },
+  { label: "18px", value: "5" },
+  { label: "24px", value: "6" },
+] as const;
+
+function FormatButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="h-8 w-8"
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  );
+}
 
 type AttachmentItem = {
   id: string;
@@ -84,24 +143,6 @@ function normalizePastedFile(file: File, index: number): File {
     `print-${Date.now()}-${index}.${extension}`,
     { type: file.type },
   );
-}
-
-function isBlockElement(element: HTMLElement) {
-  return [
-    "DIV",
-    "P",
-    "LI",
-    "UL",
-    "OL",
-    "BLOCKQUOTE",
-    "PRE",
-    "H1",
-    "H2",
-    "H3",
-    "H4",
-    "H5",
-    "H6",
-  ].includes(element.tagName);
 }
 
 function formatFileSize(size: number) {
@@ -935,7 +976,12 @@ export const AppointmentDescriptionComposer = forwardRef<
             .replace(/\s+/g, " ")
             .trim();
           if (!plain) return;
-          const hasFormat = /<(b|strong|i|em|u|ul|ol|li)\b/i.test(cleaned);
+          const hasFormat =
+            /<(b|strong|i|em|u|s|strike|ul|ol|li|h[1-4]|a|blockquote|font|span)\b/i.test(
+              cleaned,
+            ) ||
+            /style\s*=/i.test(cleaned) ||
+            /align\s*=/i.test(cleaned);
           storedBlocks.push(
             hasFormat
               ? { type: "text", content: cleaned, html: true }
@@ -1055,24 +1101,43 @@ export const AppointmentDescriptionComposer = forwardRef<
   );
 
   const runFormat = useCallback(
-    (command: string) => {
+    (command: string, value?: string) => {
       if (disabled) return;
       const editor = editorRef.current;
       if (!editor) return;
       editor.focus();
-      const selection = window.getSelection();
-      if (
-        lastSelectionRef.current &&
-        selection &&
-        selection.rangeCount === 0
-      ) {
-        selection.addRange(lastSelectionRef.current);
-      }
-      document.execCommand(command, false);
+      restoreSelection();
+      document.execCommand("styleWithCSS", false, "true");
+      document.execCommand(command, false, value);
       saveSelection();
     },
-    [disabled, saveSelection],
+    [disabled, restoreSelection, saveSelection],
   );
+
+  const applyHeading = useCallback(
+    (tag: string) => {
+      runFormat("formatBlock", tag === "p" ? "p" : `<${tag}>`);
+    },
+    [runFormat],
+  );
+
+  const applyLink = useCallback(() => {
+    if (disabled) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    restoreSelection();
+    const raw = window.prompt("URL do link", "https://");
+    if (!raw) return;
+    const href = sanitizeHref(raw.trim());
+    if (!href) {
+      window.alert("Informe um link http(s) ou mailto.");
+      return;
+    }
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("createLink", false, href);
+    saveSelection();
+  }, [disabled, restoreSelection, saveSelection]);
 
   return (
     <div className="space-y-3">
@@ -1095,59 +1160,165 @@ export const AppointmentDescriptionComposer = forwardRef<
               : "border-border",
           )}
         >
-          <div className="flex flex-wrap items-center gap-1 border-b border-border/60 px-2 py-1.5">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
+          <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 px-2 py-1.5">
+            <select
+              className="h-8 max-w-[7.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
+              defaultValue="p"
               disabled={disabled}
-              title="Negrito"
-              aria-label="Negrito"
-              onMouseDown={(e) => e.preventDefault()}
+              aria-label="Estilo do texto"
+              title="Estilo do texto"
+              onMouseDown={(event) => event.preventDefault()}
+              onChange={(event) => {
+                applyHeading(event.target.value);
+              }}
+            >
+              <option value="p">Parágrafo</option>
+              <option value="h1">Título 1</option>
+              <option value="h2">Título 2</option>
+              <option value="h3">Título 3</option>
+            </select>
+            <select
+              className="h-8 w-[4.5rem] rounded-md border-0 bg-transparent px-1 text-xs text-muted-foreground outline-none hover:bg-muted/60"
+              defaultValue="3"
+              disabled={disabled}
+              aria-label="Tamanho da fonte"
+              title="Tamanho da fonte"
+              onMouseDown={(event) => event.preventDefault()}
+              onChange={(event) => runFormat("fontSize", event.target.value)}
+            >
+              {FONT_SIZE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <FormatButton
+              label="Negrito"
+              disabled={disabled}
               onClick={() => runFormat("bold")}
             >
               <Bold className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
+            </FormatButton>
+            <FormatButton
+              label="Itálico"
               disabled={disabled}
-              title="Itálico"
-              aria-label="Itálico"
-              onMouseDown={(e) => e.preventDefault()}
               onClick={() => runFormat("italic")}
             >
               <Italic className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
+            </FormatButton>
+            <FormatButton
+              label="Sublinhado"
               disabled={disabled}
-              title="Sublinhado"
-              aria-label="Sublinhado"
-              onMouseDown={(e) => e.preventDefault()}
               onClick={() => runFormat("underline")}
             >
               <Underline className="size-3.5" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="h-8 w-8"
+            </FormatButton>
+            <FormatButton
+              label="Tachado"
               disabled={disabled}
-              title="Lista"
-              aria-label="Lista"
-              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => runFormat("strikeThrough")}
+            >
+              <Strikethrough className="size-3.5" />
+            </FormatButton>
+            <label
+              className={cn(
+                "relative inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md hover:bg-muted/60",
+                disabled && "pointer-events-none opacity-50",
+              )}
+              title="Cor do texto"
+            >
+              <span className="sr-only">Cor do texto</span>
+              <span className="text-[11px] font-semibold leading-none">A</span>
+              <input
+                type="color"
+                disabled={disabled}
+                defaultValue="#e2e8f0"
+                className="absolute inset-x-1 bottom-1 h-1 w-6 cursor-pointer border-0 bg-transparent p-0"
+                onMouseDown={(event) => event.preventDefault()}
+                onChange={(event) => runFormat("foreColor", event.target.value)}
+              />
+            </label>
+            <FormatButton
+              label="Limpar formatação"
+              disabled={disabled}
+              onClick={() => runFormat("removeFormat")}
+            >
+              <Eraser className="size-3.5" />
+            </FormatButton>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <FormatButton
+              label="Lista com marcadores"
+              disabled={disabled}
               onClick={() => runFormat("insertUnorderedList")}
             >
               <List className="size-3.5" />
-            </Button>
+            </FormatButton>
+            <FormatButton
+              label="Lista numerada"
+              disabled={disabled}
+              onClick={() => runFormat("insertOrderedList")}
+            >
+              <ListOrdered className="size-3.5" />
+            </FormatButton>
+            <FormatButton
+              label="Diminuir recuo"
+              disabled={disabled}
+              onClick={() => runFormat("outdent")}
+            >
+              <IndentDecrease className="size-3.5" />
+            </FormatButton>
+            <FormatButton
+              label="Aumentar recuo"
+              disabled={disabled}
+              onClick={() => runFormat("indent")}
+            >
+              <IndentIncrease className="size-3.5" />
+            </FormatButton>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <FormatButton
+              label="Alinhar à esquerda"
+              disabled={disabled}
+              onClick={() => runFormat("justifyLeft")}
+            >
+              <AlignLeft className="size-3.5" />
+            </FormatButton>
+            <FormatButton
+              label="Centralizar"
+              disabled={disabled}
+              onClick={() => runFormat("justifyCenter")}
+            >
+              <AlignCenter className="size-3.5" />
+            </FormatButton>
+            <FormatButton
+              label="Alinhar à direita"
+              disabled={disabled}
+              onClick={() => runFormat("justifyRight")}
+            >
+              <AlignRight className="size-3.5" />
+            </FormatButton>
+            <Separator orientation="vertical" className="mx-1 h-5" />
+            <FormatButton
+              label="Inserir link"
+              disabled={disabled}
+              onClick={applyLink}
+            >
+              <Link2 className="size-3.5" />
+            </FormatButton>
+            <FormatButton
+              label="Desfazer"
+              disabled={disabled}
+              onClick={() => runFormat("undo")}
+            >
+              <Undo2 className="size-3.5" />
+            </FormatButton>
+            <FormatButton
+              label="Refazer"
+              disabled={disabled}
+              onClick={() => runFormat("redo")}
+            >
+              <Redo2 className="size-3.5" />
+            </FormatButton>
           </div>
           <div
             ref={setEditorNode}
@@ -1190,9 +1361,7 @@ export const AppointmentDescriptionComposer = forwardRef<
             className={cn(
               "min-h-[180px] max-h-[420px] w-full cursor-text overflow-x-hidden overflow-y-auto break-words px-4 py-3 text-sm leading-6 outline-none",
               "whitespace-pre-wrap text-foreground",
-              "[&_b]:font-semibold [&_strong]:font-semibold",
-              "[&_i]:italic [&_em]:italic [&_u]:underline",
-              "[&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5",
+              COMPOSER_HTML_CLASS,
               "[&_p]:my-1 [&_div]:my-0.5 [&_br]:leading-6",
               "[&_table]:w-full [&_table]:border-collapse [&_td]:align-top [&_td]:py-0.5",
               "empty:before:pointer-events-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)]",

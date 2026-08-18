@@ -449,7 +449,7 @@ export function Security2faDialog({ open, onOpenChange }: Security2faDialogProps
           )}
         </div>
 
-        <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border/80 bg-muted/40 px-6 py-3.5 sm:justify-end">
+        <DialogFooter className="mx-0 mb-0 rounded-none border-t border-border/80 bg-muted/40 px-6 pt-4 sm:justify-end">
           <Button
             type="button"
             variant={showingBackup ? "default" : "outline"}

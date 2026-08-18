@@ -15,8 +15,7 @@ test.describe('Tickets', () => {
     await page.goto('/tickets');
 
     const heading = page.getByRole('heading', {
-      name: 'Tickets',
-      exact: true,
+      name: /^(Tickets|Chamados)$/,
     });
     const permissionGate = page.getByText('Sem permissão para este módulo');
 

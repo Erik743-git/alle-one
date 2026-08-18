@@ -63,6 +63,46 @@ import {
 } from "@/lib/selected-company";
 import { ensureArray } from "@/lib/utils";
 
+function moneyNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatBrl(value: number): string {
+  return `R$ ${value.toFixed(2)}`;
+}
+
+function contractListedHours(contract: {
+  monthlyHours: number;
+  specialties?: Array<{ monthlyHours: number; unlimited?: boolean }>;
+}): number {
+  const lines = contract.specialties ?? [];
+  if (lines.length > 0) {
+    return lines.reduce(
+      (sum, line) => sum + (line.unlimited ? 0 : line.monthlyHours),
+      0,
+    );
+  }
+  return Number(contract.monthlyHours) || 0;
+}
+
+function contractListedRate(contract: {
+  extraHourPrice: unknown;
+  specialties?: Array<{ unlimited?: boolean; excessHourPrice: unknown }>;
+}): number | null {
+  const billed = (contract.specialties ?? []).filter((line) => !line.unlimited);
+  if (billed.length > 0) {
+    const prices = billed
+      .map((line) => moneyNumber(line.excessHourPrice))
+      .filter((n): n is number => n != null);
+    if (prices.length === 0) return null;
+    const first = prices[0];
+    return prices.every((price) => price === first) ? first : null;
+  }
+  return moneyNumber(contract.extraHourPrice);
+}
+
 export default function FinanceiroPage() {
   const user = getStoredUser();
   const isClient = isClientPortalRole(user?.role);
@@ -244,16 +284,19 @@ export default function FinanceiroPage() {
     const contracted = t?.contractedHours ?? 0;
     const used = t?.usedHours ?? 0;
     const extraHours = t?.extraHours ?? Math.max(0, used - contracted);
-    const extraAmount = t?.extraAmount ?? 0;
-    return { contracted, used, extraHours, extraAmount };
-  }, [overview?.totals]);
-
-  const extraHourPrice = useMemo(() => {
-    // Se houver 1 contrato ativo, usa o preço dele; senão, mostra "—"
-    const active = (overview?.contracts ?? []).filter((c) => c.status === "ACTIVE");
-    if (active.length === 1) return active[0].extraHourPrice;
-    return null;
-  }, [overview?.contracts]);
+    const active = (contracts ?? []).filter((c) => c.status === "ACTIVE");
+    const listedRate =
+      active.length === 1 ? contractListedRate(active[0]) : null;
+    let extraHourPrice = moneyNumber(t?.extraHourPrice);
+    if (extraHourPrice == null || (extraHourPrice === 0 && listedRate)) {
+      extraHourPrice = listedRate;
+    }
+    const extraAmount =
+      extraHourPrice != null
+        ? extraHours * extraHourPrice
+        : (t?.extraAmount ?? 0);
+    return { contracted, used, extraHours, extraAmount, extraHourPrice };
+  }, [overview?.totals, contracts]);
 
   async function handleDownload(contractId: string) {
     try {
@@ -416,7 +459,7 @@ export default function FinanceiroPage() {
                       <p className="text-sm text-muted-foreground">
                         Valor extra:{" "}
                         <span className="font-bold">
-                          R$ {hours.extraAmount.toFixed(2)}
+                          {formatBrl(hours.extraAmount)}
                         </span>
                       </p>
                     </>
@@ -435,11 +478,13 @@ export default function FinanceiroPage() {
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-muted-foreground">Valor hora excedente</p>
                   <p className="text-3xl font-bold">
-                    {extraHourPrice === null ? "—" : `R$ ${extraHourPrice.toFixed(2)}`}
+                    {hours.extraHourPrice == null
+                      ? "—"
+                      : formatBrl(hours.extraHourPrice)}
                   </p>
                   <p className="text-sm text-muted-foreground">
-                    {extraHourPrice === null
-                      ? "Definido por contrato (exibido quando há 1 contrato ativo)."
+                    {hours.extraHourPrice == null
+                      ? "Definido por contrato (exibido quando há 1 taxa única nos contratos ativos)."
                       : "Baseado no contrato ativo."}
                   </p>
                 </div>
@@ -508,7 +553,11 @@ export default function FinanceiroPage() {
                             <div className="min-w-0">
                               <div className="truncate text-sm font-semibold">{c.title}</div>
                               <div className="text-xs text-muted-foreground">
-                                {c.monthlyHours}h/mês • excedente: R$ {Number(c.extraHourPrice).toFixed(2)}
+                                {contractListedHours(c)}h/mês • excedente:{" "}
+                                {(() => {
+                                  const rate = contractListedRate(c);
+                                  return rate == null ? "—" : formatBrl(rate);
+                                })()}
                               </div>
                             </div>
                             <span className="inline-flex items-center rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
@@ -639,7 +688,7 @@ export default function FinanceiroPage() {
                         <div className="rounded-lg border border-border bg-card p-3">
                           <div className="text-xs text-muted-foreground">Hora excedente</div>
                           <div className="mt-1 font-semibold">
-                            R$ {Number(c.extraHourPrice ?? 0).toFixed(2)}
+                            {formatBrl(Number(c.extraHourPrice ?? 0))}
                           </div>
                         </div>
                         <div className="rounded-lg border border-border bg-card p-3">

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   appointmentDescriptionToPlainText,
+  COMPOSER_HTML_CLASS,
   isAppointmentDoc,
   looksLikeHtml,
   parseAppointmentDoc,
@@ -165,7 +166,10 @@ function FullDescriptionBody({
               return (
                 <div
                   key={`text-${index}`}
-                  className="text-foreground/90 [&_b]:font-semibold [&_strong]:font-semibold [&_i]:italic [&_em]:italic [&_u]:underline [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                  className={cn(
+                    "text-foreground/90",
+                    COMPOSER_HTML_CLASS,
+                  )}
                   dangerouslySetInnerHTML={{ __html: block.content }}
                 />
               );
