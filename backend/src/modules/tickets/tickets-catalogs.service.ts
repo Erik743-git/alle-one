@@ -10,8 +10,12 @@ import { resolveClientListFilter } from './tickets-client-scope';
 import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
+  isTifluxDisconnected,
 } from './tickets-portal.config';
-import { resolveResponsibleExternalId } from './portal-responsible.helper';
+import {
+  portalResponsibleSyntheticId,
+  resolveResponsibleExternalId,
+} from './portal-responsible.helper';
 import { PORTAL_STAGES_ORDER } from './portal-ticket-stages';
 import {
   portalRequestorSyntheticId,
@@ -138,7 +142,7 @@ export class TicketsCatalogsService {
 
   /**
    * Fonte de verdade: usuários portal ACTIVE com checkbox `responsible`,
-   * não-CLIENT. ID = match tiflux.users por e-mail, senão sintético estável.
+   * não-CLIENT. Com TiFlux desvinculado, o id é só uma chave interna do portal.
    * Inativos / soft-deleted nunca entram.
    */
   async listResponsiblesFromPortalUsers(): Promise<
@@ -158,39 +162,20 @@ export class TicketsCatalogsService {
 
     if (users.length === 0) return [];
 
-    const emailToTifluxId = new Map<string, number>();
-    try {
-      const emails = users.map((u) => u.email.trim().toLowerCase());
-      const rows =
-        (await this.prisma.$queryRaw<
-          Array<{ external_id: number; email: string }>
-        >`
-          SELECT tu.external_id, lower(trim(tu.email)) AS email
-          FROM tiflux.users tu
-          WHERE COALESCE(tu.active, true) = true
-            AND lower(trim(tu.email)) = ANY(${emails}::text[])
-          ORDER BY tu.external_id ASC
-        `) ?? [];
-      for (const row of rows) {
-        const email = String(row.email ?? '').trim();
-        const id = Number(row.external_id);
-        if (!email || !Number.isFinite(id) || id <= 0) continue;
-        if (!emailToTifluxId.has(email)) {
-          emailToTifluxId.set(email, id);
-        }
-      }
-    } catch {
-      // Sem schema tiflux (portal-only): usa só IDs sintéticos.
-    }
+    const emailToTifluxId = await this.mapTifluxUserIdsByEmail(
+      users.map((u) => u.email),
+    );
 
     return users
       .map((u) => {
         const email = u.email.trim();
         const name = u.name.trim();
         if (!name) return null;
-        const tifluxId = emailToTifluxId.get(email.toLowerCase()) ?? null;
         return {
-          id: resolveResponsibleExternalId(u.id, tifluxId),
+          id: this.responsibleCatalogId(
+            u.id,
+            emailToTifluxId.get(email.toLowerCase()),
+          ),
           name,
           email: email || null,
         };
@@ -233,39 +218,20 @@ export class TicketsCatalogsService {
 
     if (users.length === 0) return [];
 
-    const emailToTifluxId = new Map<string, number>();
-    try {
-      const emails = users.map((u) => u.email.trim().toLowerCase());
-      const rows =
-        (await this.prisma.$queryRaw<
-          Array<{ external_id: number; email: string }>
-        >`
-          SELECT tu.external_id, lower(trim(tu.email)) AS email
-          FROM tiflux.users tu
-          WHERE COALESCE(tu.active, true) = true
-            AND lower(trim(tu.email)) = ANY(${emails}::text[])
-          ORDER BY tu.external_id ASC
-        `) ?? [];
-      for (const row of rows) {
-        const email = String(row.email ?? '').trim();
-        const id = Number(row.external_id);
-        if (!email || !Number.isFinite(id) || id <= 0) continue;
-        if (!emailToTifluxId.has(email)) {
-          emailToTifluxId.set(email, id);
-        }
-      }
-    } catch {
-      // Sem schema tiflux: IDs sintéticos.
-    }
+    const emailToTifluxId = await this.mapTifluxUserIdsByEmail(
+      users.map((u) => u.email),
+    );
 
     return users
       .map((u) => {
         const email = u.email.trim();
         const name = u.name.trim();
         if (!name) return null;
-        const tifluxId = emailToTifluxId.get(email.toLowerCase()) ?? null;
         return {
-          id: resolveResponsibleExternalId(u.id, tifluxId),
+          id: this.responsibleCatalogId(
+            u.id,
+            emailToTifluxId.get(email.toLowerCase()),
+          ),
           name,
           email: email || null,
         };
@@ -273,6 +239,48 @@ export class TicketsCatalogsService {
       .filter((r): r is { id: number; name: string; email: string | null } =>
         Boolean(r),
       );
+  }
+
+  /** Sem TiFlux (teste/cutover): chave estável do usuário portal, não ID da API. */
+  private responsibleCatalogId(
+    userId: string,
+    tifluxId: number | undefined,
+  ): number {
+    if (isTifluxDisconnected()) {
+      return portalResponsibleSyntheticId(userId);
+    }
+    return resolveResponsibleExternalId(userId, tifluxId ?? null);
+  }
+
+  private async mapTifluxUserIdsByEmail(
+    emails: string[],
+  ): Promise<Map<string, number>> {
+    const map = new Map<string, number>();
+    if (isTifluxDisconnected() || emails.length === 0) return map;
+    try {
+      const normalized = emails
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{ external_id: number; email: string }>
+        >`
+          SELECT tu.external_id, lower(trim(tu.email)) AS email
+          FROM tiflux.users tu
+          WHERE COALESCE(tu.active, true) = true
+            AND lower(trim(tu.email)) = ANY(${normalized}::text[])
+          ORDER BY tu.external_id ASC
+        `) ?? [];
+      for (const row of rows) {
+        const email = String(row.email ?? '').trim();
+        const id = Number(row.external_id);
+        if (!email || !Number.isFinite(id) || id <= 0) continue;
+        if (!map.has(email)) map.set(email, id);
+      }
+    } catch {
+      // Sem schema tiflux: IDs sintéticos.
+    }
+    return map;
   }
 
   private async resolveResponsiblesForCreateCatalogs(

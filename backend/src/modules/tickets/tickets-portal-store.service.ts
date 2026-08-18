@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PortalTicketOrigin, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { fitsPrismaInt4 } from './portal-responsible.helper';
 
 export type UpsertPortalTicketInput = {
   ticketNumber: number;
@@ -83,19 +84,38 @@ export class TicketsPortalStoreService {
   }
 
   async upsertByTicketNumber(input: UpsertPortalTicketInput) {
+    if (!fitsPrismaInt4(input.ticketNumber)) {
+      throw new Error(
+        `Número de chamado ${input.ticketNumber} não cabe no cadastro. Tente novamente.`,
+      );
+    }
+    const responsibleExternalId =
+      input.responsibleExternalId != null &&
+      fitsPrismaInt4(input.responsibleExternalId)
+        ? input.responsibleExternalId
+        : null;
+    const clientExternalId =
+      input.clientExternalId != null && fitsPrismaInt4(input.clientExternalId)
+        ? input.clientExternalId
+        : null;
+    const deskExternalId =
+      input.deskExternalId != null && fitsPrismaInt4(input.deskExternalId)
+        ? input.deskExternalId
+        : null;
+
     const data: Prisma.PortalTicketUncheckedCreateInput = {
       ticketNumber: input.ticketNumber,
       title: input.title ?? null,
       clientName: input.clientName ?? null,
-      clientExternalId: input.clientExternalId ?? null,
+      clientExternalId,
       createdByWayOf: input.createdByWayOf ?? null,
       priorityName: input.priorityName ?? null,
       statusName: input.statusName ?? null,
       stageName: input.stageName ?? null,
-      responsibleExternalId: input.responsibleExternalId ?? null,
+      responsibleExternalId,
       responsibleName: input.responsibleName ?? null,
       deskName: input.deskName ?? null,
-      deskExternalId: input.deskExternalId ?? null,
+      deskExternalId,
       requestorName: input.requestorName ?? null,
       requestorEmail: input.requestorEmail ?? null,
       requestorTelephone: input.requestorTelephone ?? null,

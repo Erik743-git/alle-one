@@ -1220,7 +1220,7 @@ export const AppointmentDescriptionComposer = forwardRef<
               disabled={disabled}
               aria-label="Estilo do texto"
               title="Estilo do texto"
-              onMouseDown={(event) => event.preventDefault()}
+              onMouseDown={() => saveSelection()}
               onChange={(event) => {
                 applyHeading(event.target.value);
               }}
@@ -1239,7 +1239,7 @@ export const AppointmentDescriptionComposer = forwardRef<
               disabled={disabled}
               aria-label="Fonte"
               title="Fonte"
-              onMouseDown={(event) => event.preventDefault()}
+              onMouseDown={() => saveSelection()}
               onChange={(event) => applyFontFamily(event.target.value)}
             >
               {FONT_FAMILY_OPTIONS.map((family) => (
@@ -1254,7 +1254,7 @@ export const AppointmentDescriptionComposer = forwardRef<
               disabled={disabled}
               aria-label="Tamanho da fonte"
               title="Tamanho da fonte"
-              onMouseDown={(event) => event.preventDefault()}
+              onMouseDown={() => saveSelection()}
               onChange={(event) => applyFontSize(event.target.value)}
             >
               {FONT_SIZE_OPTIONS.map((size) => (
