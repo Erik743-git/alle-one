@@ -133,7 +133,13 @@ async function bootstrap() {
   }
 
   const basePort = Number(process.env.PORT) || 3003;
-  const maxAttempts = Number(process.env.PORT_FALLBACK_ATTEMPTS) || 25;
+  // Em produção a porta do Nginx é fixa; se estiver ocupada, falha e o PM2 reinicia.
+  const fallbackRaw = process.env.PORT_FALLBACK_ATTEMPTS?.trim();
+  const maxAttempts = Number.isFinite(Number(fallbackRaw))
+    ? Math.max(1, Number(fallbackRaw))
+    : isProd
+      ? 1
+      : 25;
   const port = await listenWithFallback(app, basePort, maxAttempts);
 
   if (port !== basePort) {
@@ -141,6 +147,10 @@ async function bootstrap() {
       `PORTA_EM_USO: ${basePort} estava ocupada; API subiu na porta ${port}.`,
     );
   }
+
+  console.log(
+    `TICKETS flags: CANONICAL=${process.env.TICKETS_PORTAL_CANONICAL ?? ''} WRITE=${process.env.TICKETS_TIFLUX_WRITE ?? ''} DISCONNECTED=${process.env.TIFLUX_DISCONNECTED ?? ''} port=${port}`,
+  );
 }
 
 void bootstrap();

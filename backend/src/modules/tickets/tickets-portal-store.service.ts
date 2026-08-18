@@ -63,15 +63,21 @@ export class TicketsPortalStoreService {
       next += 1;
     }
 
-    await this.prisma.$executeRaw`
-      SELECT setval(
-        'portal_ticket_number_seq',
-        GREATEST(
-          ${next},
-          COALESCE((SELECT MAX(ticket_number) FROM portal_tickets), 0)
-        )
-      )
-    `;
+    if (!Number.isSafeInteger(next) || next < 1 || next > 2147483646) {
+      throw new Error(
+        'Não foi possível gerar um número de chamado válido. Contate o suporte.',
+      );
+    }
+
+    // Não usa MAX(ticket_number) da tabela inteira: números de cutover (≥ 1e9)
+    // ou lixo fora de INT4 derrubavam o setval e a abertura do chamado.
+    try {
+      await this.prisma.$executeRaw`
+        SELECT setval('portal_ticket_number_seq', ${next}::bigint)
+      `;
+    } catch {
+      // Sequence ausente ou incompatível — o número já foi escolhido acima.
+    }
 
     return next;
   }

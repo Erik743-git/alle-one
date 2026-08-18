@@ -70,19 +70,26 @@ npm run build
 echo "==> pm2 restart $API_NAME $WEB_NAME"
 pm2 restart "$API_NAME" "$WEB_NAME" --update-env
 
-sleep 5
 echo "==> health API ($API_HEALTH_URL)"
-if ! curl -sf "$API_HEALTH_URL" >/dev/null; then
-  # fallback sem prefixo /api (alguns .env locais)
-  ALT_HEALTH="${API_HEALTH_URL%/api/health}/health"
-  if [[ "$ALT_HEALTH" != "$API_HEALTH_URL" ]] && curl -sf "$ALT_HEALTH" >/dev/null; then
-    echo "API OK via $ALT_HEALTH"
-  else
-    echo "ERRO: API health falhou (pm2 logs $API_NAME --lines 30)"
-    exit 1
+API_OK=0
+ALT_HEALTH="${API_HEALTH_URL%/api/health}/health"
+for _i in $(seq 1 20); do
+  if curl -sf --max-time 3 "$API_HEALTH_URL" >/dev/null; then
+    echo "API OK"
+    API_OK=1
+    break
   fi
-else
-  echo "API OK"
+  if [[ "$ALT_HEALTH" != "$API_HEALTH_URL" ]] && curl -sf --max-time 3 "$ALT_HEALTH" >/dev/null; then
+    echo "API OK via $ALT_HEALTH"
+    API_OK=1
+    break
+  fi
+  sleep 2
+done
+if [[ "$API_OK" -ne 1 ]]; then
+  echo "ERRO: API health falhou (pm2 logs $API_NAME --lines 40)"
+  pm2 logs "$API_NAME" --lines 40 --nostream || true
+  exit 1
 fi
 
 echo "==> health Web ($WEB_URL)"

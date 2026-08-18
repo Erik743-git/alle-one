@@ -102,6 +102,8 @@ const ALLOWED_HTML_TAGS = new Set([
   "H3",
   "H4",
   "BLOCKQUOTE",
+  "PRE",
+  "CODE",
   "FONT",
 ]);
 
@@ -138,6 +140,8 @@ export const COMPOSER_HTML_CLASS = [
   "[&_h4]:my-1 [&_h4]:text-sm [&_h4]:font-semibold",
   "[&_a]:text-primary [&_a]:underline",
   "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
+  "[&_pre]:my-1 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:bg-muted/50 [&_pre]:px-2 [&_pre]:py-1 [&_pre]:font-mono [&_pre]:text-[13px]",
+  "[&_code]:rounded-sm [&_code]:bg-muted/50 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[13px]",
 ].join(" ");
 
 export function sanitizeAllowedStyle(cssText: string): string {

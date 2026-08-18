@@ -44,4 +44,17 @@ describe('tickets-portal.config disconnect', () => {
     expect(isTifluxDisconnected()).toBe(true);
     expect(isTicketsTifluxWriteEnabled()).toBe(false);
   });
+
+  it('CANONICAL sem WRITE não chama a API TiFlux', () => {
+    process.env.TICKETS_PORTAL_CANONICAL = 'true';
+    expect(isTicketsTifluxWriteEnabled()).toBe(false);
+    expect(isTifluxDisconnected()).toBe(true);
+  });
+
+  it('CANONICAL + WRITE=true mantém dual-write', () => {
+    process.env.TICKETS_PORTAL_CANONICAL = 'true';
+    process.env.TICKETS_TIFLUX_WRITE = 'true';
+    expect(isTifluxDisconnected()).toBe(false);
+    expect(isTicketsTifluxWriteEnabled()).toBe(true);
+  });
 });
