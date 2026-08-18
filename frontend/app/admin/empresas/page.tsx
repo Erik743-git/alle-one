@@ -918,8 +918,8 @@ export default function AdminEmpresasPage() {
                     Nenhuma empresa encontrada.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-2xl border border-border">
-                    <table className="min-w-[1200px] w-full text-left text-sm">
+                  <div className="relative isolate overflow-x-auto rounded-2xl border border-border">
+                    <table className="min-w-[1200px] w-full border-separate border-spacing-0 text-left text-sm">
                       <thead className="bg-muted/40">
                         <tr className="text-muted-foreground">
                           <th className="px-4 py-4 font-semibold">Empresa</th>
@@ -937,7 +937,7 @@ export default function AdminEmpresasPage() {
                           </th>
                           <th className="px-4 py-4 font-semibold">Contratos</th>
                           <th className="px-4 py-4 font-semibold">Status</th>
-                          <th className="sticky right-0 z-20 w-[200px] min-w-[200px] whitespace-nowrap bg-muted px-4 py-4 font-semibold text-right shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
+                          <th className="sticky right-0 z-30 w-[200px] min-w-[200px] whitespace-nowrap border-l border-border bg-card px-4 py-4 font-semibold text-right shadow-[-12px_0_16px_-8px_rgba(0,0,0,0.55)]">
                             Ações
                           </th>
                         </tr>
@@ -947,7 +947,7 @@ export default function AdminEmpresasPage() {
                         {empresasFiltradas.map((empresa) => (
                           <tr
                             key={empresa.id}
-                            className="border-t border-border transition hover:bg-muted/30"
+                            className="group [&_td]:border-t [&_td]:border-border transition hover:bg-muted/30"
                           >
                             <td className="px-4 py-4">
                               <div className="flex min-w-[260px] items-center gap-3">
@@ -1036,7 +1036,7 @@ export default function AdminEmpresasPage() {
                               </span>
                             </td>
 
-                            <td className="sticky right-0 z-10 w-[200px] min-w-[200px] bg-card px-4 py-4 shadow-[-8px_0_12px_-10px_rgba(0,0,0,0.6)]">
+                            <td className="sticky right-0 z-20 w-[200px] min-w-[200px] border-l border-border bg-card px-4 py-4 shadow-[-12px_0_16px_-8px_rgba(0,0,0,0.55)] group-hover:bg-[color-mix(in_srgb,var(--card)_88%,var(--foreground)_12%)]">
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => {
