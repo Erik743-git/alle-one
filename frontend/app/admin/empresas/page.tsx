@@ -937,7 +937,7 @@ export default function AdminEmpresasPage() {
                           </th>
                           <th className="px-4 py-4 font-semibold">Contratos</th>
                           <th className="px-4 py-4 font-semibold">Status</th>
-                          <th className="sticky right-0 z-30 w-[200px] min-w-[200px] whitespace-nowrap border-l border-border bg-card px-4 py-4 font-semibold text-right shadow-[-12px_0_16px_-8px_rgba(0,0,0,0.55)]">
+                          <th className="sticky right-0 z-30 w-[200px] min-w-[200px] whitespace-nowrap border-l border-border bg-card px-4 py-4 font-semibold text-right shadow-[-4px_0_8px_-6px_rgba(0,0,0,0.16)]">
                             Ações
                           </th>
                         </tr>
@@ -1036,7 +1036,7 @@ export default function AdminEmpresasPage() {
                               </span>
                             </td>
 
-                            <td className="sticky right-0 z-20 w-[200px] min-w-[200px] border-l border-border bg-card px-4 py-4 shadow-[-12px_0_16px_-8px_rgba(0,0,0,0.55)] group-hover:bg-[color-mix(in_srgb,var(--card)_88%,var(--foreground)_12%)]">
+                            <td className="sticky right-0 z-20 w-[200px] min-w-[200px] border-l border-border bg-card px-4 py-4 shadow-[-4px_0_8px_-6px_rgba(0,0,0,0.16)] group-hover:bg-[color-mix(in_srgb,var(--card)_88%,var(--foreground)_12%)]">
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   onClick={() => {
