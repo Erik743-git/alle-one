@@ -11,6 +11,7 @@ export type SendMailAttachment = {
 type SendMailPayload = {
   to: string[] | string;
   cc?: string[] | string;
+  replyTo?: string;
   subject: string;
   text: string;
   html?: string;
@@ -120,6 +121,7 @@ export class MailService {
       from,
       to: payload.to,
       cc: payload.cc,
+      replyTo: payload.replyTo,
       subject: payload.subject,
       text: payload.text,
       html: payload.html,

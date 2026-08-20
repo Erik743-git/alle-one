@@ -15,6 +15,7 @@ import { FirstAccessDto } from './dto/first-access.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ValidateResetTokenDto } from './dto/validate-reset-token.dto';
+import { SupportRequestDto } from './dto/support-request.dto';
 import { AuthMailService } from './mail/auth-mail.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { PresenceService } from '../../common/presence/presence.service';
@@ -557,6 +558,35 @@ export class AuthService {
 
     return {
       message: 'Senha redefinida com sucesso',
+    };
+  }
+
+  async submitSupportRequest(data: SupportRequestDto) {
+    const nome = data.nome.trim();
+    const empresa = data.empresa.trim();
+    const email = data.email.trim().toLowerCase();
+    const mensagem = data.mensagem.trim();
+
+    if (!nome || !empresa || !email || !mensagem) {
+      throw new BadRequestException('Preencha todos os campos do formulário.');
+    }
+
+    const sent = await this.authMail.sendSupportRequest({
+      nome,
+      empresa,
+      email,
+      mensagem,
+    });
+
+    if (!sent) {
+      throw new ServiceUnavailableException(
+        'Não foi possível enviar a mensagem no momento. Tente novamente em instantes ou ligue para o suporte.',
+      );
+    }
+
+    return {
+      message:
+        'Mensagem enviada. Em breve a equipe abrirá um pré-ticket e entrará em contato.',
     };
   }
 

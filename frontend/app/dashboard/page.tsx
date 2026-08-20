@@ -680,9 +680,10 @@ export default function DashboardPage() {
           });
           applyNormalized(full);
         } else {
+          // Auto-refresh: sem horas (payload pesado); horas ficam do cache visual.
           applyNormalized(
             await getCompleteDashboard(requestParams, {
-              includeHours: true,
+              includeHours: false,
               includeCharts: true,
             }),
           );
@@ -727,6 +728,12 @@ export default function DashboardPage() {
     }
 
     autoRefreshTimerRef.current = setInterval(() => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden"
+      ) {
+        return;
+      }
       void loadDashboard("auto");
     }, AUTO_REFRESH_INTERVAL_MS);
 

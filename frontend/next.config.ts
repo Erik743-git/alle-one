@@ -48,6 +48,9 @@ const apiRewriteBase =
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  images: {
+    qualities: [75, 100],
+  },
   // Monorepo: há package-lock na raiz (husky) e em frontend/ — força o root do app.
   turbopack: {
     root: frontendRoot,

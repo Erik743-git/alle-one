@@ -285,6 +285,14 @@ body {
   scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
 }
 
+html.login-lock,
+html.login-lock body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  scrollbar-gutter: auto;
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.35) transparent;

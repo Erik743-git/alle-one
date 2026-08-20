@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
+import { AuthShell, AuthShellFallback } from "@/components/auth/auth-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -231,22 +232,15 @@ function RedefinirSenhaForm() {
         : "Reenviar código";
 
   if (resetEmail === null) {
-    return (
-      <main className="font-sans flex min-h-screen items-center justify-center bg-[#020b1b] text-slate-300">
-        <Loader2 className="h-8 w-8 animate-spin text-[#12b5d9]" />
-      </main>
-    );
+    return <AuthShellFallback />;
   }
 
   return (
-    <main className="font-sans relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020b1b] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#149ddd_0%,#04152d_35%,#020b1b_70%,#010611_100%)]" />
-
-      <div className="relative z-10 w-full max-w-[420px]">
-        <Card className="rounded-[22px] border border-white/10 bg-[#08182f]/88 backdrop-blur-xl">
-          <CardHeader className="space-y-6 px-7 pt-7 pb-3">
+    <AuthShell>
+      <Card className="gap-3 rounded-[20px] border border-white/10 bg-[#08182f]/88 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+          <CardHeader className="space-y-4 px-6 pb-1 pt-5">
             <div className="flex items-center justify-between">
-              <AlleBrandLogoOnDark className="w-[140px]" />
+              <AlleBrandLogoOnDark className="w-[108px] sm:w-[122px]" />
 
               <Link
                 href="/login"
@@ -256,8 +250,8 @@ function RedefinirSenhaForm() {
               </Link>
             </div>
 
-            <div className="space-y-2 text-center">
-              <h1 className="text-3xl font-bold text-white">
+            <div className="space-y-1.5 text-center">
+              <h1 className="text-[1.75rem] font-bold text-white sm:text-[1.95rem]">
                 Redefinir senha
               </h1>
               <p className="text-sm text-slate-400">
@@ -311,7 +305,7 @@ function RedefinirSenhaForm() {
             </div>
           </CardHeader>
 
-          <CardContent className="px-7 pb-7">
+          <CardContent className="px-6 pb-5 pt-1">
             {step === "code" ? (
               <form onSubmit={handleValidateCode} className="space-y-5">
                 <div className="space-y-2">
@@ -515,20 +509,13 @@ function RedefinirSenhaForm() {
             ) : null}
           </CardContent>
         </Card>
-      </div>
-    </main>
+    </AuthShell>
   );
 }
 
 export default function RedefinirSenhaPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="font-sans flex min-h-screen items-center justify-center bg-[#020b1b] text-slate-300">
-          <Loader2 className="h-8 w-8 animate-spin text-[#12b5d9]" />
-        </main>
-      }
-    >
+    <Suspense fallback={<AuthShellFallback />}>
       <RedefinirSenhaForm />
     </Suspense>
   );

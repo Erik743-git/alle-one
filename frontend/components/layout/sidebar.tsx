@@ -16,7 +16,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   CalendarRange,
-  Mail,
   Package,
   FolderKanban,
   Ticket,
@@ -26,7 +25,6 @@ import {
   canAccessAdmin,
   canAccessAplicativos,
   canAccessConsole,
-  canAccessCorreio,
   canAccessInventario,
   canAccessProjetos,
   canAccessDashboard,
@@ -36,8 +34,8 @@ import {
   canAccessRendimento,
   canAccessTickets,
 } from "@/lib/access-control";
-import { MailboxUnreadBadge } from "@/components/layout/mailbox-unread-badge";
 import ThemeToggle from "@/components/theme/theme-toggle";
+import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,11 +50,6 @@ import {
 } from "./sidebar-context";
 import { useAuth } from "@/lib/use-auth";
 import { SidebarCompanySwitcher } from "./sidebar-company-switcher";
-
-const SessionPanel = dynamic(
-  () => import("@/components/layout/session-panel"),
-  { ssr: false, loading: () => <div className="h-16 shrink-0" aria-hidden /> },
-);
 
 const ModalAplicativos = dynamic(
   () => import("@/components/modals/modal-aplicativos"),
@@ -120,12 +113,6 @@ function buildMenuItems(): MenuItem[] {
       href: "/tickets",
       icon: Ticket,
       visible: canAccessTickets(),
-    },
-    {
-      name: "Correio",
-      href: "/correio",
-      icon: Mail,
-      visible: canAccessCorreio(),
     },
     {
       name: "Inventário",
@@ -254,8 +241,6 @@ const SidebarNav = memo(function SidebarNav({
               );
             }
 
-            const isCorreio = item.name === "Correio";
-
             return (
               <Link
                 key={item.href}
@@ -270,19 +255,11 @@ const SidebarNav = memo(function SidebarNav({
                     className="block shrink-0"
                     strokeWidth={2}
                   />
-                  {isCorreio && collapsed ? (
-                    <MailboxUnreadBadge variant="collapsed" />
-                  ) : null}
                 </NavIconSlot>
                 {!collapsed ? (
-                  <>
-                    <span className="min-w-0 flex-1 truncate text-left tracking-tight">
-                      {item.name}
-                    </span>
-                    {isCorreio ? (
-                      <MailboxUnreadBadge variant="inline" />
-                    ) : null}
-                  </>
+                  <span className="min-w-0 flex-1 truncate text-left tracking-tight">
+                    {item.name}
+                  </span>
                 ) : null}
               </Link>
             );
@@ -318,6 +295,7 @@ const SidebarBrand = memo(function SidebarBrand({
             priority
           />
         </div>
+        <UserAccountMenu collapsed />
         <ThemeToggle collapsed />
       </div>
     );
@@ -330,7 +308,8 @@ const SidebarBrand = memo(function SidebarBrand({
           <div className="flex min-w-0 flex-1 justify-center">
             <AlleBrandLogo priority className="w-full max-w-[168px]" />
           </div>
-          <div className="shrink-0 translate-y-5">
+          <div className="flex shrink-0 translate-y-5 flex-col items-center gap-2">
+            <UserAccountMenu />
             <ThemeToggle />
           </div>
         </div>
@@ -365,14 +344,6 @@ function DesktopSidebar() {
       <SidebarCompanySwitcher collapsed={collapsed} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <SidebarNav collapsed={collapsed} />
-      </div>
-      <div
-        className={cn(
-          "shrink-0 border-t border-sidebar-border",
-          collapsed ? "flex justify-center px-0 py-2" : "px-2 py-3 md:px-3",
-        )}
-      >
-        <SessionPanel collapsed={collapsed} />
       </div>
       <div
         className={cn(
@@ -426,9 +397,6 @@ function MobileSidebar() {
               collapsed={false}
               onNavigate={() => setMobileOpen(false)}
             />
-          </div>
-          <div className="shrink-0 border-t border-sidebar-border px-3 py-3">
-            <SessionPanel collapsed={false} />
           </div>
         </div>
       </SheetContent>
