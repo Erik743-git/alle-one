@@ -1,5 +1,5 @@
 -- Portal cliente tenant: sub-papéis + pack de módulos por empresa.
--- Enums CLIENT_GESTOR / CLIENT_MEMBER já devem existir (ADD VALUE fora desta TX).
+-- Depende de 20260806110000_user_role_client_gestor_member (ADD VALUE).
 
 UPDATE users
 SET role = 'CLIENT_GESTOR'
