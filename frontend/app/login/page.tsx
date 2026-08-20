@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -20,6 +19,7 @@ import {
   Send,
 } from "lucide-react";
 import { AlleOneTitle } from "@/components/brand/alle-one-title";
+import { AuthShell, AuthShellFallback } from "@/components/auth/auth-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -138,6 +138,9 @@ function LoginPageContent() {
     email: "",
     mensagem: "",
   });
+  const [supportSending, setSupportSending] = useState(false);
+  const [supportSent, setSupportSent] = useState(false);
+  const [supportError, setSupportError] = useState("");
 
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -421,56 +424,70 @@ function LoginPageContent() {
     setErro("");
   }
 
-  function handleSupportSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSupportSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (supportSending) return;
 
-    const body = [
-      `Nome: ${supportForm.nome}`,
-      `Empresa: ${supportForm.empresa}`,
-      `E-mail: ${supportForm.email}`,
-      "",
-      "Comentario ou mensagem:",
-      supportForm.mensagem,
-    ].join("\n");
+    setSupportError("");
+    setSupportSent(false);
+    setSupportSending(true);
 
-    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(
-      "Solicitacao de suporte - Alle One"
-    )}&body=${encodeURIComponent(body)}`;
+    try {
+      const response = await fetch(authApiUrl("/auth/suporte"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: supportForm.nome.trim(),
+          empresa: supportForm.empresa.trim(),
+          email: supportForm.email.trim(),
+          mensagem: supportForm.mensagem.trim(),
+        }),
+      });
 
-    window.location.href = mailtoUrl;
+      const data = (await response.json().catch(() => null)) as
+        | { message?: string | string[] }
+        | null;
+
+      if (!response.ok) {
+        const msg = Array.isArray(data?.message)
+          ? data.message.join(", ")
+          : typeof data?.message === "string"
+            ? data.message
+            : "Não foi possível enviar a mensagem. Tente novamente.";
+        setSupportError(msg);
+        return;
+      }
+
+      setSupportSent(true);
+      setSupportForm({ nome: "", empresa: "", email: "", mensagem: "" });
+    } catch {
+      setSupportError(
+        "Falha de conexão ao enviar. Verifique a internet e tente de novo.",
+      );
+    } finally {
+      setSupportSending(false);
+    }
   }
 
   return (
-    <main className="font-sans relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020b1b] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#149ddd_0%,#04152d_35%,#020b1b_70%,#010611_100%)]" />
-      <div className="absolute left-[-120px] top-[10%] h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl sm:h-64 sm:w-64 lg:h-72 lg:w-72" />
-      <div className="absolute right-[-80px] top-[35%] h-52 w-52 rounded-full bg-blue-500/10 blur-3xl sm:h-72 sm:w-72 lg:h-80 lg:w-80" />
-      <div className="absolute bottom-[-60px] left-[18%] h-44 w-44 rounded-full bg-sky-500/10 blur-3xl sm:h-64 sm:w-64 lg:h-72 lg:w-72" />
-
-      <div className="relative z-10 w-full max-w-[360px] animate-[fadeIn_0.5s_ease-out] sm:max-w-[400px] lg:max-w-[450px]">
-        <Card className="rounded-[20px] border border-white/10 bg-[#08182f]/88 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:rounded-[22px]">
-          <CardHeader className="space-y-5 px-5 pb-3 pt-5 sm:space-y-6 sm:px-7 sm:pt-7 lg:space-y-8">
-            <div className="relative flex items-center">
-              <AlleBrandLogoOnDark
-                priority
-                className="w-[110px] sm:w-[125px] lg:w-[140px]"
-              />
-
+    <AuthShell>
+        <Card className="gap-3 rounded-[20px] border border-white/10 bg-[#08182f]/88 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+          <CardHeader className="space-y-4 px-6 pb-1 pt-5">
+            <div className="relative space-y-1.5 text-center">
               <a
                 href="https://alletecnologia.com"
                 target="_blank"
                 rel="noreferrer"
                 title="Ir para Alle Tecnologia.com"
-                className="absolute right-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-white"
               >
                 <ArrowUpRight size={18} />
               </a>
-            </div>
 
-            <div className="space-y-2 text-center">
-              <AlleOneTitle />
+              <AlleOneTitle className="text-[1.75rem] sm:text-[1.95rem] lg:text-[2.15rem]" />
 
-              <p className="font-sans text-sm font-medium text-slate-300 sm:text-[15px]">
+              <p className="font-sans text-sm font-medium text-slate-300">
                 {requires2fa
                   ? "Confirme o código do autenticador"
                   : "Acesse o portal da sua empresa"}
@@ -478,8 +495,8 @@ function LoginPageContent() {
             </div>
           </CardHeader>
 
-          <CardContent className="px-5 pb-5 pt-1 sm:px-7 sm:pb-7">
-            <form onSubmit={handleLogin} className="space-y-4 sm:space-y-5">
+          <CardContent className="px-6 pb-5 pt-1">
+            <form onSubmit={handleLogin} className="space-y-4">
               {requires2fa ? (
                 <>
                   <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-[#020b1b]/70 px-3 py-2.5">
@@ -522,7 +539,7 @@ function LoginPageContent() {
                       autoComplete="one-time-code"
                       inputMode="numeric"
                       maxLength={8}
-                      className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-center text-lg tracking-[0.35em] text-white placeholder:tracking-[0.35em] placeholder:text-slate-500 sm:h-12"
+                      className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-center text-lg tracking-[0.35em] text-white placeholder:tracking-[0.35em] placeholder:text-slate-500"
                     />
                     <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-[#020b1b]/60 px-3.5 py-2.5 transition hover:border-[#12b5d9]/40 hover:bg-[#020b1b]/80">
                       <FlipCheckbox
@@ -558,7 +575,7 @@ function LoginPageContent() {
                   <Button
                     type="submit"
                     disabled={carregando}
-                    className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
+                    className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6]"
                   >
                     {carregando ? (
                       <>
@@ -583,7 +600,7 @@ function LoginPageContent() {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="seu.email@empresa.com"
                       disabled={carregando}
-                      className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:h-12 sm:text-[15px]"
+                      className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500"
                     />
                   </div>
 
@@ -607,7 +624,7 @@ function LoginPageContent() {
                         onChange={(e) => setSenha(e.target.value)}
                         placeholder="Digite sua senha"
                         disabled={carregando}
-                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-sm text-white placeholder:text-slate-500 sm:h-12 sm:text-[15px]"
+                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-sm text-white placeholder:text-slate-500"
                       />
 
                       <button
@@ -630,7 +647,7 @@ function LoginPageContent() {
                   <Button
                     type="submit"
                     disabled={carregando}
-                    className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
+                    className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white transition hover:bg-[#0ea5c6]"
                   >
                     {carregando ? (
                       <>
@@ -642,15 +659,6 @@ function LoginPageContent() {
                     )}
                   </Button>
 
-                  <div className="text-center text-xs sm:text-sm">
-                    <Link
-                      href="/primeiro-acesso"
-                      className="font-sans font-semibold text-[#12b5d9] transition hover:text-[#5fd5ee]"
-                    >
-                      Primeiro acesso
-                    </Link>
-                  </div>
-
                   {oauthProvidersLoading ? (
                     <div className="space-y-3 pt-1" aria-hidden>
                       <div className="flex items-center gap-3">
@@ -661,8 +669,8 @@ function LoginPageContent() {
                         <div className="h-px flex-1 bg-white/10" />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
-                        <div className="h-11 animate-pulse rounded-xl bg-white/5 sm:h-12" />
+                        <div className="h-11 animate-pulse rounded-xl bg-white/5" />
+                        <div className="h-11 animate-pulse rounded-xl bg-white/5" />
                       </div>
                     </div>
                   ) : null}
@@ -687,7 +695,7 @@ function LoginPageContent() {
                             onClick={() => {
                               startOAuth("google");
                             }}
-                            className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                            className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5"
                           >
                             <GoogleIcon className="h-5 w-5 shrink-0" />
                             Google
@@ -701,7 +709,7 @@ function LoginPageContent() {
                             onClick={() => {
                               startOAuth("microsoft");
                             }}
-                            className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5 sm:h-12"
+                            className="font-sans h-11 gap-2 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white hover:bg-white/5"
                           >
                             <MicrosoftIcon className="h-5 w-5 shrink-0" />
                             Microsoft
@@ -716,7 +724,7 @@ function LoginPageContent() {
 
             {supportDialogReady ? (
               <Dialog>
-                <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
+                <p className="mt-4 text-center text-xs text-slate-400 sm:text-sm">
                   Precisa de ajuda?{" "}
                   <DialogTrigger asChild>
                     <button
@@ -730,36 +738,40 @@ function LoginPageContent() {
 
                 <DialogContent
                   className="
-                  font-sans
-                  max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] overflow-hidden
+                  font-sans gap-0
+                  max-h-[min(86vh,640px)] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] overflow-hidden
                   border border-white/10 bg-[#08182f] p-0 text-white
                   shadow-[0_24px_90px_rgba(0,0,0,0.48)]
-                  sm:max-w-[920px]
+                  duration-300 ease-out
+                  data-open:fade-in-0 data-open:zoom-in-95 data-open:slide-in-from-bottom-3
+                  data-closed:fade-out-0 data-closed:zoom-out-95 data-closed:slide-out-to-bottom-2
+                  sm:max-w-[720px]
                 "
                 >
-                <div className="border-b border-white/10 px-5 py-5 sm:px-6">
-                  <DialogHeader className="space-y-3 text-left">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#12b5d9]/15 text-[#12b5d9]">
-                      <Mail size={22} />
+                <div className="shrink-0 border-b border-white/10 px-4 py-4 sm:px-5">
+                  <DialogHeader className="space-y-2.5 text-left">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#12b5d9]/15 text-[#12b5d9]">
+                      <Mail size={18} />
                     </div>
 
                     <div className="space-y-1">
-                      <DialogTitle className="font-sans text-xl font-extrabold text-white sm:text-2xl">
+                      <DialogTitle className="font-sans text-lg font-extrabold text-white sm:text-xl">
                         Fale com o suporte
                       </DialogTitle>
 
                       <DialogDescription className="font-sans text-sm font-medium text-slate-300">
-                        Envie sua mensagem para a equipe da Alle Tecnologia.
+                        Sua mensagem abre um pré-ticket na equipe Alle Tecnologia.
                       </DialogDescription>
                     </div>
                   </DialogHeader>
                 </div>
 
-                <div className="grid max-h-[calc(100vh-10rem)] overflow-y-auto md:grid-cols-[1fr_0.9fr]">
+                <div className="grid min-h-0 max-h-[min(68vh,500px)] overflow-hidden md:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
                   <form
                     onSubmit={handleSupportSubmit}
-                    className="space-y-4 p-5 sm:p-6"
+                    className="flex min-h-0 min-w-0 flex-col"
                   >
+                    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
                     <div className="space-y-2">
                       <Label className="font-sans text-sm font-bold text-slate-200">
                         Nome
@@ -773,7 +785,9 @@ function LoginPageContent() {
                         }))
                         }
                         placeholder="Nome"
-                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                        required
+                        minLength={2}
+                        className="font-sans h-10 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500"
                       />
                     </div>
 
@@ -790,7 +804,9 @@ function LoginPageContent() {
                           }))
                         }
                         placeholder="Empresa"
-                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                        required
+                        minLength={2}
+                        className="font-sans h-10 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500"
                       />
                     </div>
 
@@ -808,41 +824,64 @@ function LoginPageContent() {
                           }))
                         }
                         placeholder="seu.email@empresa.com"
-                        className="font-sans h-11 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                        required
+                        className="font-sans h-10 rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500"
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <Label className="font-sans text-sm font-bold text-slate-200">
                         Mensagem
                       </Label>
                       <Textarea
                         value={supportForm.mensagem}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const el = e.currentTarget;
                           setSupportForm((current) => ({
                             ...current,
-                            mensagem: e.target.value,
-                          }))
-                        }
+                            mensagem: el.value,
+                          }));
+                          el.style.height = "auto";
+                          el.style.height = `${Math.min(el.scrollHeight, 112)}px`;
+                        }}
                         placeholder="Como podemos ajudar?"
-                        className="font-sans min-h-32 resize-y rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 sm:text-[15px]"
+                        required
+                        minLength={10}
+                        rows={3}
+                        className="font-sans h-24 max-h-28 w-full min-w-0 max-w-full resize-none overflow-x-hidden overflow-y-auto break-all rounded-xl border-white/15 bg-[#020b1b] text-sm text-white placeholder:text-slate-500 [field-sizing:fixed] [overflow-wrap:anywhere]"
                       />
                     </div>
+                    </div>
 
-                    <div className="pt-1">
+                    <div className="shrink-0 border-t border-white/10 bg-[#08182f] p-4 sm:px-5 sm:pb-5 sm:pt-3">
+                      {supportError ? (
+                        <p className="mb-3 text-center text-xs font-medium text-red-300 sm:text-sm">
+                          {supportError}
+                        </p>
+                      ) : null}
+                      {supportSent ? (
+                        <p className="mb-3 text-center text-xs font-medium text-emerald-300 sm:text-sm">
+                          Mensagem enviada. Em breve a equipe abrirá um pré-ticket.
+                        </p>
+                      ) : null}
                       <Button
                         type="submit"
-                        className="font-sans h-11 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white hover:bg-[#0ea5c6] sm:h-12 sm:text-[15px]"
+                        disabled={supportSending}
+                        className="font-sans h-10 w-full rounded-xl bg-[#12b5d9] text-sm font-bold text-white hover:bg-[#0ea5c6] disabled:opacity-60"
                       >
-                        <Send className="mr-2 h-4 w-4" />
-                        Fale conosco!
+                        {supportSending ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Send className="mr-2 h-4 w-4" />
+                        )}
+                        {supportSending ? "Enviando…" : "Fale conosco!"}
                       </Button>
                     </div>
                   </form>
 
-                  <aside className="border-t border-white/10 bg-[#020b1b]/50 p-5 sm:p-6 md:border-l md:border-t-0">
-                    <section className="space-y-5">
-                      <h2 className="font-sans text-lg font-extrabold text-[#12b5d9]">
+                  <aside className="min-w-0 overflow-y-auto border-t border-white/10 bg-[#020b1b]/50 p-4 sm:p-5 md:border-l md:border-t-0">
+                    <section className="space-y-4">
+                      <h2 className="font-sans text-base font-extrabold text-[#12b5d9]">
                         Contato
                       </h2>
 
@@ -883,10 +922,10 @@ function LoginPageContent() {
                       </div>
                     </section>
 
-                    <div className="my-6 h-px bg-white/10" />
+                    <div className="my-4 h-px bg-white/10" />
 
-                    <section className="space-y-5">
-                      <h2 className="font-sans text-lg font-extrabold text-[#12b5d9]">
+                    <section className="space-y-4">
+                      <h2 className="font-sans text-base font-extrabold text-[#12b5d9]">
                         Horarios
                       </h2>
 
@@ -900,7 +939,7 @@ function LoginPageContent() {
               </DialogContent>
             </Dialog>
             ) : (
-              <p className="mt-5 text-center text-xs text-slate-400 sm:mt-6 sm:text-sm">
+              <p className="mt-4 text-center text-xs text-slate-400 sm:text-sm">
                 Precisa de ajuda?{" "}
                 <span className="font-bold text-[#12b5d9]">
                   Fale com o suporte
@@ -909,20 +948,13 @@ function LoginPageContent() {
             )}
           </CardContent>
         </Card>
-      </div>
-    </main>
+    </AuthShell>
   );
 }
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-screen items-center justify-center bg-[#020b1b]">
-          <Loader2 className="h-8 w-8 animate-spin text-[#12b5d9]" />
-        </main>
-      }
-    >
+    <Suspense fallback={<AuthShellFallback />}>
       <LoginPageContent />
     </Suspense>
   );

@@ -18,6 +18,7 @@ import { FirstAccessDto } from './dto/first-access.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ValidateResetTokenDto } from './dto/validate-reset-token.dto';
+import { SupportRequestDto } from './dto/support-request.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { AuthenticatedRequestUser } from './auth-request-user';
 import {
@@ -161,6 +162,13 @@ export class AuthController {
   @Post('esqueci-senha')
   forgotPassword(@Body() data: ForgotPasswordDto) {
     return this.authService.forgotPassword(data);
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  @Post('suporte')
+  submitSupport(@Body() data: SupportRequestDto) {
+    return this.authService.submitSupportRequest(data);
   }
 
   @Public()

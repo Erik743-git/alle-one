@@ -184,6 +184,10 @@ export class RendimentoService {
   private tifluxUserEmailMapLoadPromise: Promise<
     Map<string, TifluxUserLink>
   > | null = null;
+  /** Evita sync em massa de day-events a cada GET de aprovação (satura a VM). */
+  private approvalRangeSyncInFlight: Promise<void> | null = null;
+  private approvalRangeSyncLastAt = 0;
+  private static readonly APPROVAL_RANGE_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
   /**
    * Segurança/performance: evita fallback para API TiFlux durante uso do portal.
    * O portal deve ler do banco local sincronizado.
@@ -2426,25 +2430,28 @@ export class RendimentoService {
 
     const { start, end } = this.currentMonthRange();
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
-    const collaborators: RendimentoCollaboratorDto[] = [];
-
-    for (const user of users) {
-      const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
-      let monthTotalMinutes = 0;
-      let monthOvertimeMinutes = 0;
-
-      if (tifluxUser != null || isTicketsPortalCanonical()) {
-        const monthRows = await this.fetchAppointments({
+    const rowsByUserId = await this.fetchAppointmentsGroupedByUser({
+      users: users.map((user) => {
+        const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
+        return {
           portalUserId: user.id,
           tifluxUserId: tifluxUser?.id ?? null,
-          start,
-          end,
-        });
-        monthTotalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
-        monthOvertimeMinutes = computeUnionWorkedMinutes(monthRows, 'EXTRA');
-      }
+        };
+      }),
+      start,
+      end,
+    });
 
-      collaborators.push({
+    return users.map((user) => {
+      const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
+      const monthRows = rowsByUserId.get(user.id) ?? [];
+      const monthTotalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
+      const monthOvertimeMinutes = computeUnionWorkedMinutes(
+        monthRows,
+        'EXTRA',
+      );
+
+      return {
         id: user.id,
         name: user.name,
         email: user.email,
@@ -2457,10 +2464,149 @@ export class RendimentoService {
         monthTotalHoursFormatted: this.formatMinutes(monthTotalMinutes),
         monthOvertimeMinutes,
         monthOvertimeHoursFormatted: this.formatMinutes(monthOvertimeMinutes),
-      });
+      };
+    });
+  }
+
+  /** Uma query (ou poucas) para totais do mês — evita N+1 de fetchAppointments. */
+  private async fetchAppointmentsGroupedByUser(params: {
+    users: Array<{ portalUserId: string; tifluxUserId: number | null }>;
+    start: Date;
+    end: Date;
+  }): Promise<Map<string, AppointmentRow[]>> {
+    const grouped = new Map<string, AppointmentRow[]>();
+    if (!params.users.length) return grouped;
+
+    const startDate = this.toDateOnlyString(params.start);
+    const endDate = this.toDateOnlyString(params.end);
+
+    if (isTicketsPortalCanonical()) {
+      const portalUserIds = params.users.map((u) => u.portalUserId);
+      const portalRows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            portal_user_id: string;
+            appointment_id: number;
+            appointment_date: string;
+            init_time: string | null;
+            end_time: string | null;
+            ticket_number: number;
+            ticket_title: string | null;
+            client_name: string | null;
+            description: string | null;
+            service_name: string | null;
+            minutes: number;
+          }>
+        >`
+        select
+          a.created_by as portal_user_id,
+          coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
+          a.appointment_date::text as appointment_date,
+          a.init_time as init_time,
+          a.end_time as end_time,
+          a.ticket_number,
+          nullif(trim(t.title), '') as ticket_title,
+          t.client_name,
+          a.description,
+          a.service_name,
+          coalesce(
+            case
+              when a.init_time is null or a.end_time is null or trim(a.init_time) = '' or trim(a.end_time) = '' then 0
+              when a.end_time::time >= a.init_time::time
+                then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+              else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+            end,
+            0
+          )::int as minutes
+        from portal_ticket_appointments a
+        left join portal_tickets t on t.ticket_number = a.ticket_number
+        where a.created_by = any(${portalUserIds}::text[])
+          and a.appointment_date between ${startDate}::date and ${endDate}::date
+      `) ?? [];
+
+      for (const row of portalRows) {
+        const mapped: AppointmentRow = {
+          appointment_id: Number(row.appointment_id),
+          appointment_date: row.appointment_date,
+          init_time: row.init_time,
+          end_time: row.end_time,
+          ticket_number: Number(row.ticket_number),
+          ticket_title: row.ticket_title,
+          client_name: row.client_name,
+          description: row.description,
+          valorization_raw: serviceNameToValorizationRaw(row.service_name),
+          minutes: Number(row.minutes) || 0,
+        };
+        const list = grouped.get(row.portal_user_id) ?? [];
+        list.push(mapped);
+        grouped.set(row.portal_user_id, list);
+      }
+      return grouped;
     }
 
-    return collaborators;
+    const tifluxToPortal = new Map<number, string>();
+    const tifluxUserIds: number[] = [];
+    for (const user of params.users) {
+      if (user.tifluxUserId == null) continue;
+      tifluxToPortal.set(user.tifluxUserId, user.portalUserId);
+      tifluxUserIds.push(user.tifluxUserId);
+    }
+    if (!tifluxUserIds.length) return grouped;
+
+    const tifluxRows =
+      (await this.prisma.$queryRaw<
+        Array<AppointmentRow & { user_external_id: number }>
+      >`
+      select
+        a.user_external_id,
+        a.external_id as appointment_id,
+        a.appointment_date::text as appointment_date,
+        a.init_time::text as init_time,
+        a.end_time::text as end_time,
+        a.ticket_number,
+        coalesce(
+          nullif(trim(pt.title), ''),
+          nullif(trim(tt.title), '')
+        ) as ticket_title,
+        a.client_name,
+        a.description,
+        a.valorization_raw,
+        coalesce(
+          case
+            when a.init_time is null or a.end_time is null then 0
+            when a.end_time::time >= a.init_time::time
+              then extract(epoch from (a.end_time::time - a.init_time::time)) / 60
+            else extract(epoch from ((a.end_time::time + interval '24 hours') - a.init_time::time)) / 60
+          end,
+          0
+        )::int as minutes
+      from tiflux.ticket_appointments a
+      left join portal_tickets pt on pt.ticket_number = a.ticket_number
+      left join tiflux.tickets tt on tt.ticket_number = a.ticket_number
+      where a.user_external_id = any(${tifluxUserIds}::int[])
+        and a.appointment_date::date between ${startDate}::date and ${endDate}::date
+    `) ?? [];
+
+    for (const row of tifluxRows) {
+      const portalUserId = tifluxToPortal.get(Number(row.user_external_id));
+      if (!portalUserId) continue;
+      const mapped: AppointmentRow = {
+        appointment_id: Number(row.appointment_id),
+        appointment_date: row.appointment_date,
+        init_time: row.init_time,
+        end_time: row.end_time,
+        ticket_number: Number(row.ticket_number),
+        ticket_title: row.ticket_title,
+        client_name: row.client_name,
+        description: row.description,
+        valorization_raw: row.valorization_raw,
+        minutes: Number(row.minutes) || 0,
+      };
+      const list = grouped.get(portalUserId) ?? [];
+      list.push(mapped);
+      grouped.set(portalUserId, list);
+    }
+    return grouped;
   }
 
   /**
@@ -3426,6 +3572,41 @@ export class RendimentoService {
     }
   }
 
+  /**
+   * Sync em background com throttle. GET de pending não deve bloquear 1+ min
+   * sincronizando todos os colaboradores no request path.
+   */
+  private scheduleApprovalRangeSync(params: {
+    start: string;
+    end: string;
+    userId?: string | null;
+  }): void {
+    // Filtro por um usuário: sync leve e sincrono no caller (ver listPending).
+    if (params.userId?.trim()) return;
+
+    const now = Date.now();
+    if (this.approvalRangeSyncInFlight) return;
+    if (
+      now - this.approvalRangeSyncLastAt <
+      RendimentoService.APPROVAL_RANGE_SYNC_MIN_INTERVAL_MS
+    ) {
+      return;
+    }
+
+    this.approvalRangeSyncLastAt = now;
+    this.approvalRangeSyncInFlight = this.syncDayEventsForApprovalRange(params)
+      .catch((err) => {
+        this.logger.warn(
+          `Sync em background de day-events para aprovação falhou: ${
+            err instanceof Error ? err.message : err
+          }`,
+        );
+      })
+      .finally(() => {
+        this.approvalRangeSyncInFlight = null;
+      });
+  }
+
   async listPendingJustifications(params: {
     start: string;
     end: string;
@@ -3596,7 +3777,12 @@ export class RendimentoService {
     const userId = params.userId?.trim() || null;
     const statusFilters = this.normalizeBulkStatusFilters(params.statusFilters);
 
-    await this.syncDayEventsForApprovalRange({ start, end, userId });
+    // Um colaborador: sync pontual (barato). Lista geral: leitura + sync em background.
+    if (userId) {
+      await this.syncDayEventsForApprovalRange({ start, end, userId });
+    } else {
+      this.scheduleApprovalRangeSync({ start, end, userId });
+    }
 
     const rows =
       (await this.prisma.$queryRawUnsafe<

@@ -39,6 +39,29 @@ ZABBIX_DASHBOARD_CACHE_MS=3600000
 
 Prefira leituras do mirror `tiflux.*` / `zabbix.*` (`TIFLUX_RUNTIME_API=false`) para evitar custo de API.
 
+## Apontamentos (hub admin)
+
+- `GET /rendimento/collaborators` agrega o mês em **uma** query (não N+1).
+- `GET` de overtime pendente **não** sincroniza todos os colaboradores no request; sync em background com throttle (~5 min).
+- Índice `(created_by, appointment_date)` em `portal_ticket_appointments`.
+
+## VM compartilhada (prod + teste)
+
+Prod e teste rodam na **mesma VM** (PM2 + Nginx + Postgres). Sintomas em ambos (522 Cloudflare, chunks falhando, navegação >1 min) costumam ser saturação de CPU/RAM/Postgres, não bug de um ambiente só.
+
+Checklist rápido na VM:
+
+```bash
+pm2 status
+free -h
+uptime
+df -h
+sudo bash /home/alleone/producao/deploy/scripts/diagnose-522.sh
+curl -sS https://alleone.alletecnologia.com/api/health
+```
+
+Após deploy de código + migration: `npx prisma migrate deploy`, `pm2 restart`, `sudo nginx -t && sudo systemctl reload nginx`.
+
 ## Limpeza
 
 Entradas expiradas do cache em memória saem no `get`.
@@ -55,3 +78,4 @@ DELETE FROM external_api_cache WHERE expires_at < NOW();
 - [CUTOVER_TIFLUX.md](./CUTOVER_TIFLUX.md) — portal canônico reduz pressão na API TiFlux
 - [Load k6 (smoke)](../deploy/load/README.md) — script de desempenho: login cookie + dashboard + tickets + GMUD
 - [TESTES_DESEMPENHO_SEGURANCA.md](./TESTES_DESEMPENHO_SEGURANCA.md) — k6 + Playwright + ZAP na base de teste
+- [DEPLOY_VM_LINUX.md](../DEPLOY_VM_LINUX.md) — PM2 + Nginx na VM IBM

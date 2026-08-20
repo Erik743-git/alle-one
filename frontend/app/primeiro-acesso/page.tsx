@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -144,16 +145,11 @@ export default function PrimeiroAcessoPage() {
   }
 
   return (
-    <main className="font-sans relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020b1b] px-4 py-6 sm:px-6 lg:px-8">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,#149ddd_0%,#04152d_35%,#020b1b_70%,#010611_100%)]" />
-      <div className="absolute left-[-120px] top-[10%] h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl sm:h-64 sm:w-64 lg:h-72 lg:w-72" />
-      <div className="absolute right-[-80px] top-[35%] h-52 w-52 rounded-full bg-blue-500/10 blur-3xl sm:h-72 sm:w-72 lg:h-80 lg:w-80" />
-
-      <div className="relative z-10 w-full max-w-[420px] animate-[fadeIn_0.5s_ease-out]">
-        <Card className="rounded-[22px] border border-white/10 bg-[#08182f]/88 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-          <CardHeader className="space-y-6 px-7 pb-3 pt-7">
+    <AuthShell>
+      <Card className="gap-3 rounded-[20px] border border-white/10 bg-[#08182f]/88 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+          <CardHeader className="space-y-4 px-6 pb-1 pt-5">
             <div className="flex items-center justify-between">
-              <AlleBrandLogoOnDark priority className="w-[140px]" />
+              <AlleBrandLogoOnDark priority className="w-[108px] sm:w-[122px]" />
 
               <button
                 type="button"
@@ -164,8 +160,8 @@ export default function PrimeiroAcessoPage() {
               </button>
             </div>
 
-            <div className="space-y-2 text-center">
-              <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-white">
+            <div className="space-y-1.5 text-center">
+              <h1 className="text-[1.75rem] font-extrabold tracking-[-0.03em] text-white sm:text-[1.95rem]">
                 Primeiro acesso
               </h1>
 
@@ -175,8 +171,8 @@ export default function PrimeiroAcessoPage() {
             </div>
           </CardHeader>
 
-          <CardContent className="px-7 pb-7">
-            <form onSubmit={handleSubmit} className="space-y-5">
+          <CardContent className="px-6 pb-5 pt-1">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-200">
                   E-mail corporativo
@@ -187,7 +183,7 @@ export default function PrimeiroAcessoPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu.email@empresa.com"
-                  className="h-12 rounded-xl border-white/15 bg-[#020b1b] text-white placeholder:text-slate-500"
+                  className="h-11 rounded-xl border-white/15 bg-[#020b1b] text-white placeholder:text-slate-500"
                 />
               </div>
 
@@ -202,7 +198,7 @@ export default function PrimeiroAcessoPage() {
                     value={senhaProvisoria}
                     onChange={(e) => setSenhaProvisoria(e.target.value)}
                     placeholder="Digite a senha recebida"
-                    className="h-12 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-white placeholder:text-slate-500"
+                    className="h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-white placeholder:text-slate-500"
                   />
 
                   <button
@@ -226,7 +222,7 @@ export default function PrimeiroAcessoPage() {
                     value={novaSenha}
                     onChange={(e) => setNovaSenha(e.target.value)}
                     placeholder="Digite a nova senha"
-                    className="h-12 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-white placeholder:text-slate-500"
+                    className="h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-white placeholder:text-slate-500"
                   />
 
                   <button
@@ -254,7 +250,7 @@ export default function PrimeiroAcessoPage() {
                     value={confirmarSenha}
                     onChange={(e) => setConfirmarSenha(e.target.value)}
                     placeholder="Confirme a nova senha"
-                    className="h-12 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-white placeholder:text-slate-500"
+                    className="h-11 rounded-xl border-white/15 bg-[#020b1b] pr-12 text-white placeholder:text-slate-500"
                   />
 
                   <button
@@ -273,7 +269,7 @@ export default function PrimeiroAcessoPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-[#020b1b] p-4 text-xs text-slate-400">
+              <div className="rounded-xl border border-white/10 bg-[#020b1b] p-3 text-xs text-slate-400">
                 A nova senha deve conter pelo menos 8 caracteres, letra
                 minúscula, letra maiúscula, número e caractere especial.
               </div>
@@ -287,7 +283,7 @@ export default function PrimeiroAcessoPage() {
               <Button
                 type="submit"
                 disabled={carregando}
-                className="h-12 w-full rounded-xl bg-[#12b5d9] font-bold text-white hover:bg-[#0ea5c6]"
+                className="h-11 w-full rounded-xl bg-[#12b5d9] font-bold text-white hover:bg-[#0ea5c6]"
               >
                 {carregando ? (
                   <>
@@ -312,7 +308,6 @@ export default function PrimeiroAcessoPage() {
             </form>
           </CardContent>
         </Card>
-      </div>
-    </main>
+    </AuthShell>
   );
 }
