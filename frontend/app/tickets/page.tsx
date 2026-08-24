@@ -924,11 +924,11 @@ export default function TicketsPage() {
 
                 <Card className="overflow-hidden">
                   <CardContent className="p-0">
-                    <div className="max-h-[min(72vh,780px)] overflow-auto">
+                    <div className="relative isolate max-h-[min(72vh,780px)] overflow-auto">
                       {displaySections.map((section) => (
                         <div key={section.key}>
                           {section.label ? (
-                            <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
+                            <div className="sticky top-0 z-10 border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {section.label}{" "}
                               <span className="font-normal">
                                 ({section.tickets.length})
@@ -937,7 +937,7 @@ export default function TicketsPage() {
                           ) : null}
                           <table className="w-full min-w-[920px] border-collapse text-left text-sm">
                             {section.key === "all" ? (
-                              <thead className="sticky top-0 z-20 shadow-[0_1px_0_0_hsl(var(--border))]">
+                              <thead className="sticky top-0 z-30 bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
                                 <tr>
                                   {activeColumns.map((col) => (
                                     <ExcelColumnHeader
@@ -965,12 +965,12 @@ export default function TicketsPage() {
                                 </tr>
                               </thead>
                             ) : null}
-                            <tbody>
+                            <tbody className="relative z-0">
                               {section.tickets.map((ticket, index) => (
                                 <tr
                                   key={ticket.ticketNumber}
                                   className={cn(
-                                    "cursor-pointer border-b border-border/40 transition hover:bg-muted/30",
+                                    "relative z-0 cursor-pointer border-b border-border/40 transition hover:bg-muted/30",
                                     index % 2 === 1 && "bg-muted/10",
                                   )}
                                   onClick={() =>

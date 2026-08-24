@@ -108,7 +108,7 @@ export function ExcelColumnHeader({
   return (
     <th
       className={cn(
-        "border-r border-border/50 bg-muted/50 p-0 font-sans last:border-r-0",
+        "border-r border-border/50 bg-background p-0 font-sans last:border-r-0",
         className,
       )}
     >

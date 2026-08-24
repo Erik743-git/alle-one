@@ -55,6 +55,9 @@ export function attachAccessTokenCookie(
   res: Response,
   accessToken: string,
 ): void {
+  // Evita acúmulo de alleone_access com atributos diferentes (domain/secure).
+  clearAccessTokenCookie(res);
+
   const domain = process.env.AUTH_COOKIE_DOMAIN?.trim();
   const sameSite = parseSameSite(process.env.AUTH_COOKIE_SAMESITE);
   const secure = cookieSecure(sameSite);
@@ -74,11 +77,22 @@ export function clearAccessTokenCookie(res: Response): void {
   const sameSite = parseSameSite(process.env.AUTH_COOKIE_SAMESITE);
   const secure = cookieSecure(sameSite);
 
-  res.clearCookie(ACCESS_TOKEN_COOKIE, {
-    httpOnly: true,
-    secure,
-    sameSite,
-    path: '/',
-    ...(domain ? { domain } : {}),
-  });
+  const variants: Array<{
+    secure: boolean;
+    domain?: string;
+  }> = [
+    { secure },
+    { secure: !secure },
+    ...(domain ? [{ secure, domain }, { secure: !secure, domain }] : []),
+  ];
+
+  for (const variant of variants) {
+    res.clearCookie(ACCESS_TOKEN_COOKIE, {
+      httpOnly: true,
+      secure: variant.secure,
+      sameSite,
+      path: '/',
+      ...(variant.domain ? { domain: variant.domain } : {}),
+    });
+  }
 }

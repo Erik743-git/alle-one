@@ -111,6 +111,7 @@ function cookieFlags() {
 }
 
 export function attachTotpTrustCookie(res: Response, token: string): void {
+  clearTotpTrustCookie(res);
   const { domain, sameSite, secure } = cookieFlags();
   res.cookie(TOTP_TRUST_COOKIE, token, {
     httpOnly: true,
@@ -124,11 +125,18 @@ export function attachTotpTrustCookie(res: Response, token: string): void {
 
 export function clearTotpTrustCookie(res: Response): void {
   const { domain, sameSite, secure } = cookieFlags();
-  res.clearCookie(TOTP_TRUST_COOKIE, {
-    httpOnly: true,
-    secure,
-    sameSite,
-    path: '/',
-    ...(domain ? { domain } : {}),
-  });
+  const variants: Array<{ secure: boolean; domain?: string }> = [
+    { secure },
+    { secure: !secure },
+    ...(domain ? [{ secure, domain }, { secure: !secure, domain }] : []),
+  ];
+  for (const variant of variants) {
+    res.clearCookie(TOTP_TRUST_COOKIE, {
+      httpOnly: true,
+      secure: variant.secure,
+      sameSite,
+      path: '/',
+      ...(variant.domain ? { domain: variant.domain } : {}),
+    });
+  }
 }
