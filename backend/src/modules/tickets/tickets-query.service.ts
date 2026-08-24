@@ -1895,10 +1895,12 @@ export class TicketsQueryService {
     const deskExternalId = Number(stagesResponse.deskExternalId);
     const portalOrigin = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber },
-      select: { origin: true },
+      select: { origin: true, isPreTicket: true },
     });
     const skipTifluxWrite =
-      portalOrigin?.origin === 'PORTAL' || !isTicketsTifluxWriteEnabled();
+      !isTicketsTifluxWriteEnabled() ||
+      Boolean(portalOrigin?.isPreTicket) ||
+      portalOrigin?.origin === 'PORTAL';
     if (
       !skipTifluxWrite &&
       Number.isFinite(deskExternalId) &&

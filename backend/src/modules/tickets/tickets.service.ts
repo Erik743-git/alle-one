@@ -323,9 +323,6 @@ export class TicketsService {
     if (requiresCatalog && !dto.servicesCatalogsItemId) {
       throw new BadRequestException('Selecione o serviço do catálogo.');
     }
-    if (writeTiflux && !requiresCatalog && !dto.priorityId) {
-      throw new BadRequestException('Esta mesa exige uma prioridade.');
-    }
 
     const requestorName = dto.requestorName?.trim() ?? '';
     const requestorEmail = dto.requestorEmail?.trim() ?? '';
@@ -404,12 +401,11 @@ export class TicketsService {
 
     // Determina se o ticket será pré-ticket (sem responsável)
     const isPreTicket = responsibleId == null;
+    /** Pré-tickets ficam só no portal; tickets com responsável podem ir à API TiFlux. */
+    const syncToTiflux = writeTiflux && !isPreTicket;
 
-    // Se for pré-ticket e writeTiflux estiver habilitado, impede criação
-    if (isPreTicket && writeTiflux) {
-      throw new BadRequestException(
-        'Não é possível criar pré-tickets quando a integração com TiFlux está ativa. Atribua um responsável ao ticket.',
-      );
+    if (syncToTiflux && !requiresCatalog && !dto.priorityId) {
+      throw new BadRequestException('Esta mesa exige uma prioridade.');
     }
 
     let tifluxDescription = descriptionPlain;
@@ -454,7 +450,7 @@ export class TicketsService {
       let ticketNumber: number;
       let tifluxRaw: unknown = null;
 
-      if (writeTiflux) {
+      if (syncToTiflux) {
         const raw = await this.tiflux.createTicket(payload);
         tifluxRaw = raw;
         ticketNumber = Number(
@@ -494,9 +490,9 @@ export class TicketsService {
         statusName: PORTAL_STAGE.NOVO,
         stageName: PORTAL_STAGE.NOVO,
         priorityName: null,
-        createdByWayOf: writeTiflux ? 'Integração' : 'Portal',
+        createdByWayOf: syncToTiflux ? 'Integração' : 'Portal',
         isClosed: false,
-        origin: writeTiflux
+        origin: syncToTiflux
           ? PortalTicketOrigin.TIFLUX
           : PortalTicketOrigin.PORTAL,
         isPreTicket: isPreTicket,
@@ -565,7 +561,7 @@ export class TicketsService {
       const message =
         error instanceof Error ? error.message : 'Falha ao criar ticket.';
 
-      if (writeTiflux) {
+      if (syncToTiflux) {
         await this.appointments.recordOutbox({
           kind: PortalTifluxOutboxKind.CREATE_TICKET,
           status: PortalTifluxOutboxStatus.FAILED,
@@ -729,18 +725,38 @@ export class TicketsService {
       }
     }
 
-    // Verifica se o responsável está sendo removido (conversão para pré-ticket)
     const isRemovingResponsible =
       responsibleId === null && portal?.responsibleExternalId != null;
 
-    // Se está removendo responsável e writeTiflux está ativo, impede
-    if (isRemovingResponsible && writeTiflux) {
-      throw new BadRequestException(
-        'Não é possível remover o responsável quando a integração com TiFlux está ativa. Desative a integração ou atribua um novo responsável.',
-      );
-    }
+    const nextResponsibleIdForPreTicket =
+      responsibleId !== undefined
+        ? responsibleId
+        : (portal?.responsibleExternalId ?? null);
+    const isAssigningResponsible =
+      responsibleId !== undefined &&
+      responsibleId != null &&
+      nextResponsibleIdForPreTicket !== (portal?.responsibleExternalId ?? null);
+    const isClearingPreTicket =
+      isAssigningResponsible && Boolean(portal?.isPreTicket);
 
-    if (writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL) {
+    let nextOrigin = portal?.origin;
+
+    if (writeTiflux && isClearingPreTicket && responsibleId != null) {
+      await this.promotePreTicketToTiflux({
+        ticketNumber,
+        portal,
+        title: title ?? portal?.title ?? null,
+        responsibleId,
+        clientExternalId: nextClientExternalId ?? portal?.clientExternalId ?? null,
+        deskExternalId: nextDeskExternalId ?? portal?.deskExternalId ?? null,
+        actorUserId: actor.userId,
+      });
+      nextOrigin = PortalTicketOrigin.TIFLUX;
+    } else if (
+      writeTiflux &&
+      portal?.origin !== PortalTicketOrigin.PORTAL &&
+      !isRemovingResponsible
+    ) {
       const payload: Record<string, unknown> = {};
       if (title) payload.title = title;
       if (descriptionRaw) {
@@ -783,17 +799,6 @@ export class TicketsService {
           ? PORTAL_STAGE.ENCERRADO
           : (portal?.statusName ?? null));
 
-    const nextResponsibleIdForPreTicket =
-      responsibleId !== undefined
-        ? responsibleId
-        : (portal?.responsibleExternalId ?? null);
-    const isAssigningResponsible =
-      responsibleId !== undefined &&
-      responsibleId != null &&
-      nextResponsibleIdForPreTicket !== (portal?.responsibleExternalId ?? null);
-    const isClearingPreTicket =
-      isAssigningResponsible && Boolean(portal?.isPreTicket);
-
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
       title: title ?? portal?.title ?? null,
@@ -823,7 +828,7 @@ export class TicketsService {
         dto.isClosed !== undefined
           ? Boolean(dto.isClosed)
           : (portal?.isClosed ?? false),
-      origin: portal?.origin,
+      origin: nextOrigin ?? portal?.origin,
       isPreTicket: isRemovingResponsible
         ? true
         : isClearingPreTicket
@@ -1094,10 +1099,12 @@ export class TicketsService {
           ? false
           : (portal?.isPreTicket ?? false),
       message: isRemovingResponsible
-        ? 'Responsável removido. O chamado voltou para triagem como pré-ticket; apontamentos e histórico foram preservados.'
+        ? 'Responsável removido. O ticket voltou para triagem como pré-ticket; apontamentos e histórico foram preservados.'
         : dto.deskId != null
-          ? `Chamado transferido para a mesa "${nextDeskName}".`
-          : writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL
+          ? `Ticket transferido para o catálogo "${nextDeskName}".`
+          : isClearingPreTicket
+          ? 'Responsável atribuído. Ticket sincronizado com TiFlux.'
+          : writeTiflux && nextOrigin !== PortalTicketOrigin.PORTAL
             ? 'Ticket atualizado.'
             : 'Ticket atualizado no portal.',
     };
@@ -1220,6 +1227,81 @@ export class TicketsService {
       parentTicketNumber,
       message: `Chamado #${childTicketNumber} agrupado em #${parentTicketNumber} e cancelado.`,
     };
+  }
+
+  /** Pré-ticket portal-only → ticket TiFlux ao atribuir responsável (modo híbrido WRITE=true). */
+  private async promotePreTicketToTiflux(input: {
+    ticketNumber: number;
+    portal: {
+      title: string | null;
+      clientExternalId: number | null;
+      deskExternalId: number | null;
+      requestorName: string | null;
+      requestorEmail: string | null;
+      requestorTelephone: string | null;
+    } | null;
+    title: string | null;
+    responsibleId: number;
+    clientExternalId: number | null;
+    deskExternalId: number | null;
+    actorUserId: string;
+  }) {
+    const clientId = input.clientExternalId;
+    const deskId = input.deskExternalId;
+    if (clientId == null || !Number.isFinite(clientId)) {
+      throw new BadRequestException(
+        'Cliente sem vínculo externo (tifluxClientId). Não foi possível sincronizar com TiFlux.',
+      );
+    }
+    if (deskId == null || !Number.isFinite(deskId)) {
+      throw new BadRequestException(
+        'Catálogo sem vínculo externo. Não foi possível sincronizar com TiFlux.',
+      );
+    }
+
+    const descRow = await this.prisma.portalTicketDescription.findUnique({
+      where: { ticketNumber: input.ticketNumber },
+      select: { description: true },
+    });
+    const descriptionPlain = appointmentDescriptionToPlainText(
+      descRow?.description ?? '',
+    );
+
+    const payload = {
+      title: (input.title ?? input.portal?.title ?? 'Ticket').trim(),
+      description: descriptionPlain || '(sem descrição)',
+      client_id: clientId,
+      desk_id: deskId,
+      responsible_id: input.responsibleId,
+      requestor_name: input.portal?.requestorName?.trim() || 'Solicitante',
+      requestor_email: input.portal?.requestorEmail?.trim() || undefined,
+      requestor_telephone: input.portal?.requestorTelephone?.trim() || undefined,
+    };
+
+    const raw = await this.tiflux.createTicket(payload);
+    const tifluxNumber = Number(
+      (raw as { ticket?: { ticket_number?: number } })?.ticket?.ticket_number,
+    );
+    if (!Number.isFinite(tifluxNumber)) {
+      throw new BadGatewayException(
+        'Não foi possível obter o número do ticket criado no TiFlux.',
+      );
+    }
+    if (tifluxNumber !== input.ticketNumber) {
+      this.logger.warn(
+        `Promote pré-ticket #${input.ticketNumber}: TiFlux retornou #${tifluxNumber}`,
+      );
+    }
+
+    await this.appointments.recordOutbox({
+      kind: PortalTifluxOutboxKind.CREATE_TICKET,
+      status: PortalTifluxOutboxStatus.SYNCED,
+      ticketNumber: input.ticketNumber,
+      tifluxExternalId: null,
+      payload,
+      errorMessage: null,
+      createdBy: input.actorUserId,
+    });
   }
 
   private async savePortalTicketDescription(

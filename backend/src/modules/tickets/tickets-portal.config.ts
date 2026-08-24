@@ -22,9 +22,9 @@ function isTicketsTifluxWriteEnvEnabled(): boolean {
 }
 
 /**
- * Create/stage ainda chamam a API TiFlux.
- * Default: true no modo legado; false quando `TICKETS_PORTAL_CANONICAL=true`
- * (a menos que WRITE=true explícito). Sempre false se `TIFLUX_DISCONNECTED`.
+ * Escrita na API TiFlux (create/update ticket, estágio outbound).
+ * Padrão portal canônico: **false** — nada do portal vai ao TiFlux.
+ * Legado: true quando CANONICAL=false.
  */
 export function isTicketsTifluxWriteEnabled(): boolean {
   if (isTifluxDisconnected()) return false;
@@ -32,15 +32,22 @@ export function isTicketsTifluxWriteEnabled(): boolean {
 }
 
 /**
- * Desvinculação total em runtime: sem API TiFlux, sem outbox, sem fallback live.
- * - Explícito: `TIFLUX_DISCONNECTED=true`
- * - Ou cutover completo: CANONICAL=true + WRITE=false
+ * TiFlux ainda alimenta o portal (espelho inbound `tiflux.*` → ETL → `portal_*`).
+ * `false` = desvinculado: para de depender do sync externo; dados já no portal permanecem.
+ *
+ * **Única flag operacional:** `TIFLUX_DISCONNECTED=true`
+ * (não infere automaticamente de CANONICAL/WRITE).
  */
 export function isTifluxDisconnected(): boolean {
   const parsed = parseEnvFlag(process.env.TIFLUX_DISCONNECTED);
   if (parsed === true) return true;
   if (parsed === false) return false;
-  return isTicketsPortalCanonical() && !isTicketsTifluxWriteEnvEnabled();
+  return false;
+}
+
+/** Espelho TiFlux → portal ainda esperado (alleone-tiflux-sync + ETL). */
+export function isTifluxInboundSyncEnabled(): boolean {
+  return !isTifluxDisconnected();
 }
 
 /** Chamadas HTTP à API TiFlux em runtime (histórico live, charts, etc.). */

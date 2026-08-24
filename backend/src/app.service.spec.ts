@@ -70,23 +70,31 @@ describe('AppService.getIntegrationsHealth', () => {
     expect(health.tifluxSync.status).toBe('unavailable');
   });
 
-  it('usa frescor de portal_tickets quando canonical', async () => {
+  it('usa frescor do espelho tiflux.* quando canonical e sync ligado', async () => {
     process.env.TICKETS_PORTAL_CANONICAL = 'true';
-    process.env.TICKETS_TIFLUX_WRITE = 'true';
+    process.env.TICKETS_TIFLUX_WRITE = 'false';
     process.env.TIFLUX_DISCONNECTED = 'false';
-    prisma.portalTicket.aggregate.mockResolvedValue({
-      _max: {
-        updatedAt: new Date(Date.now() - 60_000),
-        updatedAtSource: new Date(Date.now() - 60_000),
-      },
-    });
+    prisma.$queryRaw.mockResolvedValue([
+      { max_updated: new Date(Date.now() - 60_000) },
+    ]);
     prisma.portalTifluxOutbox.count
       .mockResolvedValueOnce(0)
       .mockResolvedValueOnce(0);
 
     const health = await service.getIntegrationsHealth();
     expect(health.tifluxSync.status).toBe('ok');
-    expect(health.tifluxSync.source).toBe('portal_tickets');
+    expect(health.tifluxSync.source).toBe('tiflux.tickets');
+  });
+
+  it('usa frescor de portal_tickets quando canonical e desvinculado', async () => {
+    process.env.TICKETS_PORTAL_CANONICAL = 'true';
+    process.env.TIFLUX_DISCONNECTED = 'true';
+    prisma.portalTifluxOutbox.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0);
+
+    const health = await service.getIntegrationsHealth();
+    expect(health.tifluxSync.status).toBe('disconnected');
   });
 
   it('reporta disconnected quando TIFLUX_DISCONNECTED', async () => {

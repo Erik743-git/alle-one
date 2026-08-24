@@ -31,7 +31,25 @@ Efeitos: API TiFlux → 503; outbox/jobs sync off; health `tifluxSync.status=dis
 
 **Desvinculação runtime:** `TIFLUX_DISCONNECTED=true` (ou CANONICAL+WRITE=false) corta API TiFlux, outbox e fallbacks live. Contratos passam a vir da tabela `contracts` do portal; `/tiflux/clients` lista empresas locais.
 
-**Não pare `alleone-tiflux-sync` antes de** `WRITE=false` + checklist Onda 1/2 + harden de hot paths.
+**Não pare `alleone-tiflux-sync` no modo espelho** — enquanto `TIFLUX_DISCONNECTED=false`, o inbound continua alimentando `tiflux.*` (ETL copia para `portal_*`).
+
+### Modelo espelho (recomendado pós-ETL)
+
+TiFlux **→** portal apenas. Portal **não escreve** no TiFlux.
+
+```env
+TICKETS_PORTAL_CANONICAL=true
+TICKETS_TIFLUX_WRITE=false
+TIFLUX_DISCONNECTED=false
+TIFLUX_APPOINTMENT_SYNC_ENABLED=false
+# alleone-tiflux-sync: ativo + ETL periódico (cutover-final-sync.ts)
+```
+
+**Desvincular:** `TIFLUX_DISCONNECTED=true` → parar sync; dados no portal permanecem; novos cadastros só pelo portal.
+
+Pré-tickets, e-mail, automações e apontamentos ficam **100% portal** (como você descreveu).
+
+**Parar sync definitivamente:** `TIFLUX_DISCONNECTED=true` + checklist Onda 1/2.
 
 ```mermaid
 flowchart TD
