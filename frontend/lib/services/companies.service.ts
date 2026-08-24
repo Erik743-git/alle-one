@@ -136,6 +136,22 @@ export const companiesService = {
     );
   },
 
+  async getTicketSpecialties(companyId: string) {
+    return apiRequest<{ companyId: string; specialtyIds: string[] }>(
+      `/companies/${companyId}/ticket-specialties`,
+    );
+  },
+
+  async replaceTicketSpecialties(companyId: string, specialtyIds: string[]) {
+    return apiRequest<{ companyId: string; specialtyIds: string[] }>(
+      `/companies/${companyId}/ticket-specialties`,
+      {
+        method: "PUT",
+        body: { specialtyIds },
+      },
+    );
+  },
+
   async listZabbixGroups() {
     return apiRequest<Array<{ groupid: string; name: string }>>(
       "/companies/zabbix-groups",

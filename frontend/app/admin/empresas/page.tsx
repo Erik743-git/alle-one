@@ -12,6 +12,7 @@ import {
   companiesService,
   type Company,
 } from "@/lib/services/companies.service";
+import { usersService, type Specialty } from "@/lib/services/users.service";
 import { ZabbixGroupMultiSelectField } from "@/components/ui/zabbix-group-select-field";
 import { TifluxClientSelectField } from "@/components/ui/tiflux-client-select-field";
 import {
@@ -62,6 +63,7 @@ type EditCompanyForm = {
   tifluxClientName: string;
   monitoringPriority: boolean;
   modules: string[];
+  ticketSpecialtyIds: string[];
 };
 
 function mapCompanyToUI(company: Company): EmpresaUI {
@@ -87,6 +89,8 @@ function EditarEmpresaModal({
   onChange,
   onToggleModule,
   packModuleOptions,
+  specialtyOptions,
+  onToggleTicketSpecialty,
   onSubmit,
   salvando,
   tifluxClients,
@@ -101,6 +105,8 @@ function EditarEmpresaModal({
   ) => void;
   onToggleModule: (module: string) => void;
   packModuleOptions: string[];
+  specialtyOptions: Specialty[];
+  onToggleTicketSpecialty: (specialtyId: string) => void;
   onSubmit: () => void;
   salvando: boolean;
   tifluxClients: TifluxClient[];
@@ -364,6 +370,36 @@ function EditarEmpresaModal({
               </div>
             </div>
 
+            <div className="space-y-3 md:col-span-2">
+              <label className="font-sans text-sm font-medium tracking-normal text-foreground">
+                Catálogos para abertura de ticket (cliente)
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Define quais especialidades aparecem no formulário de novo ticket
+                para usuários CLIENT_* desta empresa. Nenhuma seleção = todas
+                liberadas.
+              </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {specialtyOptions.map((item) => {
+                  const checked = form.ticketSpecialtyIds.includes(item.id);
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => onToggleTicketSpecialty(item.id)}
+                      className={`rounded-lg border px-3 py-2 text-left text-xs font-medium transition ${
+                        checked
+                          ? "border-primary/40 bg-primary/10 text-foreground"
+                          : "border-border text-muted-foreground hover:bg-muted/40"
+                      }`}
+                    >
+                      {item.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="space-y-2 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
                 Cliente vinculado
@@ -550,6 +586,7 @@ export default function AdminEmpresasPage() {
 
   const [tifluxClients, setTifluxClients] = useState<TifluxClient[]>([]);
   const [carregandoTiflux, setCarregandoTiflux] = useState(false);
+  const [specialtyOptions, setSpecialtyOptions] = useState<Specialty[]>([]);
 
   async function buscarEmpresas() {
     try {
@@ -603,6 +640,10 @@ export default function AdminEmpresasPage() {
         if (res.modules?.length) setPackModuleOptions(res.modules);
       })
       .catch(() => undefined);
+    void usersService
+      .listSpecialties()
+      .then((rows) => setSpecialtyOptions(rows))
+      .catch(() => undefined);
   }, []);
 
   const empresasFiltradas = useMemo(() => {
@@ -639,11 +680,15 @@ export default function AdminEmpresasPage() {
 
   async function handleAbrirEdicao(id: string) {
     try {
-      const [company, modulesRes] = await Promise.all([
+      const [company, modulesRes, ticketSpecialtiesRes] = await Promise.all([
         companiesService.getById(id),
         companiesService.getModules(id).catch(() => ({
           companyId: id,
           modules: [] as string[],
+        })),
+        companiesService.getTicketSpecialties(id).catch(() => ({
+          companyId: id,
+          specialtyIds: [] as string[],
         })),
       ]);
 
@@ -660,6 +705,7 @@ export default function AdminEmpresasPage() {
         tifluxClientName: company.tifluxClientName ?? "",
         monitoringPriority: company.monitoringPriority ?? false,
         modules: modulesRes.modules ?? [],
+        ticketSpecialtyIds: ticketSpecialtiesRes.specialtyIds ?? [],
       });
 
       setModalEditarEmpresa(true);
@@ -703,6 +749,19 @@ export default function AdminEmpresasPage() {
     });
   }
 
+  function handleToggleTicketSpecialty(specialtyId: string) {
+    setEmpresaEdicao((prev) => {
+      if (!prev) return prev;
+      const has = prev.ticketSpecialtyIds.includes(specialtyId);
+      return {
+        ...prev,
+        ticketSpecialtyIds: has
+          ? prev.ticketSpecialtyIds.filter((id) => id !== specialtyId)
+          : [...prev.ticketSpecialtyIds, specialtyId],
+      };
+    });
+  }
+
   async function handleSalvarEdicao() {
     if (!empresaEdicao) {
       return;
@@ -736,6 +795,10 @@ export default function AdminEmpresasPage() {
       await companiesService.replaceModules(
         empresaEdicao.id,
         empresaEdicao.modules,
+      );
+      await companiesService.replaceTicketSpecialties(
+        empresaEdicao.id,
+        empresaEdicao.ticketSpecialtyIds,
       );
 
       setModalEditarEmpresa(false);
@@ -1150,6 +1213,8 @@ export default function AdminEmpresasPage() {
           onChange={handleAlterarCampoEdicao}
           onToggleModule={handleToggleModule}
           packModuleOptions={packModuleOptions}
+          specialtyOptions={specialtyOptions}
+          onToggleTicketSpecialty={handleToggleTicketSpecialty}
           onSubmit={() => void handleSalvarEdicao()}
           salvando={salvandoEdicao}
           tifluxClients={tifluxClients}

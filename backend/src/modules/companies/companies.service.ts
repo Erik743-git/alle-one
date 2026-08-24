@@ -1086,4 +1086,54 @@ export class CompaniesService {
       results,
     };
   }
+
+  async listTicketSpecialties(companyId: string) {
+    await this.findOne(companyId);
+    const rows = await this.prisma.companyTicketSpecialty.findMany({
+      where: { companyId },
+      select: { specialtyId: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return {
+      companyId,
+      specialtyIds: rows.map((row) => row.specialtyId),
+    };
+  }
+
+  async replaceTicketSpecialties(companyId: string, specialtyIds: string[]) {
+    await this.findOne(companyId);
+
+    const uniqueIds = [...new Set(specialtyIds)];
+    if (uniqueIds.length > 0) {
+      const existing = await this.prisma.specialty.findMany({
+        where: {
+          id: { in: uniqueIds },
+          deletedAt: null,
+          active: true,
+        },
+        select: { id: true },
+      });
+      if (existing.length !== uniqueIds.length) {
+        throw new BadRequestException(
+          'Uma ou mais especialidades selecionadas são inválidas.',
+        );
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.companyTicketSpecialty.deleteMany({ where: { companyId } }),
+      ...(uniqueIds.length > 0
+        ? [
+            this.prisma.companyTicketSpecialty.createMany({
+              data: uniqueIds.map((specialtyId) => ({
+                companyId,
+                specialtyId,
+              })),
+            }),
+          ]
+        : []),
+    ]);
+
+    return this.listTicketSpecialties(companyId);
+  }
 }

@@ -9,6 +9,7 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -93,12 +94,13 @@ export class TicketListPresetConfigDto {
   columnFilters?: Record<string, unknown>;
 
   @IsOptional()
+  @ValidateIf((_, value) => value != null)
   @IsString()
   @MaxLength(32)
   sortKey?: string | null;
 
   @IsOptional()
-  @IsString()
+  @ValidateIf((_, value) => value != null)
   @IsIn(['asc', 'desc'])
   sortDir?: 'asc' | 'desc' | null;
 }

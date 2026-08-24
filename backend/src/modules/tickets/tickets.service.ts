@@ -41,6 +41,7 @@ import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { assertTicketCreateClientScope } from './tickets-client-scope';
+import { assertDeskAllowedForCompany } from './company-ticket-specialties.helper';
 import { canonicalizeStageName } from './tickets-stage-groups';
 import { PORTAL_STAGE } from './portal-ticket-stages';
 import {
@@ -307,6 +308,18 @@ export class TicketsService {
     files: Express.Multer.File[] = [],
   ) {
     await assertTicketCreateClientScope(this.tenantScope, actor, dto.clientId);
+
+    if (isClientPortalRole(actor.role)) {
+      const company = await this.prisma.company.findFirst({
+        where: { tifluxClientId: dto.clientId, deletedAt: null },
+        select: { id: true },
+      });
+      await assertDeskAllowedForCompany(
+        this.prisma,
+        company?.id ?? actor.companyId,
+        dto.deskId,
+      );
+    }
 
     const writeTiflux = isTicketsTifluxWriteEnabled();
     this.logger.log(
