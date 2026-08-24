@@ -2,6 +2,7 @@ import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
   isTifluxDisconnected,
+  isTifluxInboundSyncEnabled,
   isTifluxRuntimeApiEnabled,
 } from './tickets-portal.config';
 
@@ -33,25 +34,29 @@ describe('tickets-portal.config disconnect', () => {
     process.env.TICKETS_TIFLUX_WRITE = 'true';
     process.env.TIFLUX_RUNTIME_API = 'true';
     expect(isTifluxDisconnected()).toBe(true);
+    expect(isTifluxInboundSyncEnabled()).toBe(false);
     expect(isTicketsTifluxWriteEnabled()).toBe(false);
     expect(isTifluxRuntimeApiEnabled()).toBe(false);
   });
 
-  it('CANONICAL + WRITE=false implica disconnected', () => {
+  it('CANONICAL + WRITE=false mantém inbound ligado (nada vai ao TiFlux)', () => {
     process.env.TICKETS_PORTAL_CANONICAL = 'true';
     process.env.TICKETS_TIFLUX_WRITE = 'false';
+    process.env.TIFLUX_DISCONNECTED = 'false';
     expect(isTicketsPortalCanonical()).toBe(true);
-    expect(isTifluxDisconnected()).toBe(true);
+    expect(isTifluxDisconnected()).toBe(false);
+    expect(isTifluxInboundSyncEnabled()).toBe(true);
     expect(isTicketsTifluxWriteEnabled()).toBe(false);
   });
 
-  it('CANONICAL sem WRITE não chama a API TiFlux', () => {
+  it('CANONICAL sem WRITE não chama a API TiFlux mas sync inbound pode estar ativo', () => {
     process.env.TICKETS_PORTAL_CANONICAL = 'true';
     expect(isTicketsTifluxWriteEnabled()).toBe(false);
-    expect(isTifluxDisconnected()).toBe(true);
+    expect(isTifluxDisconnected()).toBe(false);
+    expect(isTifluxInboundSyncEnabled()).toBe(true);
   });
 
-  it('CANONICAL + WRITE=true mantém dual-write', () => {
+  it('CANONICAL + WRITE=true mantém dual-write legado (não recomendado)', () => {
     process.env.TICKETS_PORTAL_CANONICAL = 'true';
     process.env.TICKETS_TIFLUX_WRITE = 'true';
     expect(isTifluxDisconnected()).toBe(false);

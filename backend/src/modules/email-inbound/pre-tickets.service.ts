@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -14,6 +15,9 @@ import { PORTAL_STAGE } from '../tickets/portal-ticket-stages';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
 import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { TifluxService } from '../tiflux/tiflux.service';
+import { isTicketsTifluxWriteEnabled } from '../tickets/tickets-portal.config';
+import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
 
 export class OpenPreTicketDto {
   @IsOptional()
@@ -55,6 +59,7 @@ export class PreTicketsService {
     private readonly files: FileStorageService,
     private readonly ingest: EmailInboundIngestService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly tiflux: TifluxService,
   ) {}
 
   private assertOperator(actor: AuthenticatedRequestUser) {
@@ -263,7 +268,6 @@ export class PreTicketsService {
         })
       : null;
 
-    const ticketNumber = await this.portalStore.allocatePortalTicketNumber();
     const title = (dto.title?.trim() || row.title).slice(0, 500);
     // Mantém HTML quando há imagem embutida; senão usa texto limpo.
     const html = row.descriptionHtml?.trim() ?? '';
@@ -284,6 +288,45 @@ export class PreTicketsService {
       : null;
     const responsibleName = dto.responsibleName?.trim() || opener?.name || null;
 
+    const isPreTicket =
+      responsibleExternalId == null || !Number.isFinite(responsibleExternalId);
+    const writeTiflux = isTicketsTifluxWriteEnabled();
+    const syncToTiflux = writeTiflux && !isPreTicket;
+
+    let ticketNumber: number;
+    if (syncToTiflux) {
+      if (!company?.tifluxClientId) {
+        throw new BadRequestException(
+          'Cliente sem vínculo externo (tifluxClientId).',
+        );
+      }
+      if (!desk?.externalId) {
+        throw new BadRequestException(
+          'Catálogo sem vínculo externo para integração TiFlux.',
+        );
+      }
+      const descriptionPlain = appointmentDescriptionToPlainText(description);
+      const raw = await this.tiflux.createTicket({
+        title,
+        description: descriptionPlain || '(sem descrição)',
+        client_id: company.tifluxClientId,
+        desk_id: desk.externalId,
+        responsible_id: responsibleExternalId!,
+        requestor_name: row.fromName?.trim() || 'Solicitante',
+        requestor_email: row.fromEmail?.trim() || undefined,
+      });
+      ticketNumber = Number(
+        (raw as { ticket?: { ticket_number?: number } })?.ticket?.ticket_number,
+      );
+      if (!Number.isFinite(ticketNumber)) {
+        throw new BadGatewayException(
+          'Não foi possível obter o número do ticket criado no TiFlux.',
+        );
+      }
+    } else {
+      ticketNumber = await this.portalStore.allocatePortalTicketNumber();
+    }
+
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
       title,
@@ -301,9 +344,13 @@ export class PreTicketsService {
       statusName: PORTAL_STAGE.NOVO,
       stageName: PORTAL_STAGE.NOVO,
       priorityName: dto.priorityName?.trim() || row.priorityName,
-      createdByWayOf: 'E-mail',
+      createdByWayOf: syncToTiflux ? 'Integração' : 'E-mail',
       isClosed: false,
-      origin: PortalTicketOrigin.PORTAL,
+      origin: syncToTiflux
+        ? PortalTicketOrigin.TIFLUX
+        : PortalTicketOrigin.PORTAL,
+      isPreTicket,
+      becamePreTicketAt: isPreTicket ? new Date() : null,
       specialtyId: desk?.id ?? null,
       emailConversationId: row.conversationId ?? null,
       createdAtSource: row.receivedAt,

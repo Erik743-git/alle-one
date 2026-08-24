@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { FileStorageModule } from '../../common/storage/file-storage.module';
 import { TicketsModule } from '../tickets/tickets.module';
+import { TifluxModule } from '../tiflux/tiflux.module';
 import { EmailInboundController } from './email-inbound.controller';
 import { EmailInboundAdminService } from './email-inbound-admin.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
@@ -11,7 +12,7 @@ import { MicrosoftGraphMailClient } from './microsoft-graph-mail.client';
 import { PreTicketsService } from './pre-tickets.service';
 
 @Module({
-  imports: [PrismaModule, FileStorageModule, TicketsModule],
+  imports: [PrismaModule, FileStorageModule, TicketsModule, TifluxModule],
   controllers: [EmailInboundController],
   providers: [
     MicrosoftGraphMailClient,

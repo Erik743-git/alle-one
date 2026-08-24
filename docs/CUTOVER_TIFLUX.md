@@ -41,7 +41,35 @@ Objetivo: o Alle One deixa de depender do schema `tiflux.*` e da API TiFlux como
 
 **Local desvinculado:** `TIFLUX_DISCONNECTED=true` + `CANONICAL=true` + `WRITE=false` + `APPOINTMENT_SYNC=false` + `OUTBOX_DISABLED=true`.
 
-## Sync final (obrigatório antes de desvincular)
+## Modelo operacional (recomendado)
+
+Fluxo **unidirecional**: o que vem do TiFlux espelha para o portal; **nada** criado ou alterado no portal vai de volta ao TiFlux.
+
+```mermaid
+flowchart LR
+  tiflux[TiFlux SaaS]
+  sync[alleone-tiflux-sync]
+  mirror[tiflux.* espelho]
+  etl[ETL cutover-final-sync]
+  portal[portal_* canônico]
+  ui[Portal UI / API]
+
+  tiflux --> sync --> mirror --> etl --> portal
+  ui --> portal
+```
+
+| Fase | Flags | O que acontece |
+|------|--------|----------------|
+| **Sync ligado** | `CANONICAL=true`, `WRITE=false`, `DISCONNECTED=false` | TiFlux alimenta `tiflux.*` → ETL copia para `portal_*`. Edições, apontamentos, pré-tickets ficam só no portal. |
+| **Desvinculado** | `TIFLUX_DISCONNECTED=true` | Para o sync externo. Dados já no portal permanecem. Novos cadastros só pelo portal. |
+
+**Desligar TiFlux:** `TIFLUX_DISCONNECTED=true` + parar `alleone-tiflux-sync`.
+
+`TICKETS_TIFLUX_WRITE=true` existe só para legado/dual-write; **não use** no modelo acima.
+
+**Antes de ligar `CANONICAL=true` em prod:** rodar ETL (`cutover-final-sync.ts`). Sem ETL a lista fica vazia.
+
+## Sync final (obrigatório antes de CANONICAL em prod)
 
 **Produção continua com `alleone-tiflux-sync` ativo** até este passo. O ETL só lê o espelho `tiflux.*` e grava/atualiza `portal_*` (idempotente). Não para o sync e não muda flags sozinho.
 
