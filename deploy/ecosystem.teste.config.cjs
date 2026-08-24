@@ -26,11 +26,13 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "3004",
-        // Teste e portal-only: criar chamado nao espera a API TiFlux (evita 502 no Nginx).
+        // Espelho TiFlux → portal (igual produção): leitura portal_*, nada volta ao TiFlux.
         TICKETS_PORTAL_CANONICAL: "true",
         TICKETS_TIFLUX_WRITE: "false",
-        TIFLUX_DISCONNECTED: "true",
+        TIFLUX_DISCONNECTED: "false",
         TIFLUX_RUNTIME_API: "false",
+        TIFLUX_APPOINTMENT_SYNC_ENABLED: "false",
+        TIFLUX_OUTBOX_DISABLED: "true",
       },
     },
     {
