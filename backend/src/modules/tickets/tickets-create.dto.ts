@@ -53,9 +53,10 @@ export class CreateTicketDto {
   classificationId?: string;
 
   @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
   @IsInt()
   @Type(() => Number)
-  responsibleId?: number;
+  responsibleId?: number | null;
 
   @IsOptional()
   @IsInt()
@@ -139,6 +140,11 @@ export class CreateTicketAppointmentDto {
   @IsOptional()
   @IsBoolean()
   notifyClient?: boolean;
+
+  /** Advertência: exige leitura dos demais usuários ao abrir o chamado. */
+  @IsOptional()
+  @IsBoolean()
+  isWarning?: boolean;
 }
 
 export class UpdateTicketAppointmentDto extends CreateTicketAppointmentDto {
@@ -205,4 +211,10 @@ export class UpdateTicketDto {
   @IsArray()
   @IsString({ each: true })
   removeAttachmentFileIds?: string[];
+}
+
+export class AcknowledgeAppointmentWarningDto {
+  /** Quando true, não exibir novamente e registrar no histórico. */
+  @IsBoolean()
+  permanent!: boolean;
 }

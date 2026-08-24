@@ -1,4 +1,4 @@
-import { API_URL } from "@/lib/env";
+import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { isPublicRoute } from "@/lib/auth";
 import { endSession } from "@/lib/session";
 
@@ -93,6 +93,16 @@ function resolveApiErrorMessage(
   return trimmed;
 }
 
+function buildApiUrl(endpoint: string): string {
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const base =
+    typeof window !== "undefined"
+      ? getBrowserApiBase()
+      : API_URL.replace(/\/$/, "");
+  if (base) return `${base}${path}`;
+  return path;
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
@@ -113,7 +123,7 @@ export async function apiRequest<T>(
     headerRecord["X-Alleone-Api"] = "1";
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const response = await fetch(buildApiUrl(endpoint), {
     method,
     credentials: "include",
     headers,

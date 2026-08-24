@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { TicketRemoveResponsiblePreTicketDialog } from "@/components/tickets/ticket-remove-responsible-preticket-dialog";
+import { refreshPreTicketsBadge } from "@/components/layout/pre-tickets-badge";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   emailsMatch,
@@ -29,7 +31,9 @@ type TicketResponsibleSelectProps = {
   onUpdated?: (next: {
     responsibleId: number | null;
     responsibleName: string | null;
+    isPreTicket?: boolean;
   }) => void;
+  hasAppointments?: boolean;
 };
 
 function resolveValue(
@@ -57,9 +61,15 @@ export function TicketResponsibleSelect({
   disabled = false,
   compact = false,
   onUpdated,
+  hasAppointments = false,
 }: TicketResponsibleSelectProps) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [pendingChange, setPendingChange] = useState<{
+    nextId: number | null;
+    nextName: string | null;
+  } | null>(null);
 
   const selectOptions = useMemo(() => {
     const sorted = [...options].sort((a, b) =>
@@ -76,20 +86,23 @@ export function TicketResponsibleSelect({
 
   const value = resolveValue(options, responsibleId, responsibleName);
 
-  async function handleChange(nextValue: string) {
-    if (nextValue === value) return;
-    const selected = nextValue
-      ? (options.find((row) => String(row.id) === nextValue) ?? null)
-      : null;
-    const nextId = selected?.id ?? null;
-    const nextName = selected?.name ?? null;
+  async function applyChange(nextId: number | null, nextName: string | null) {
     try {
       setSaving(true);
       const res = await ticketsService.updateTicket(ticketNumber, {
         responsibleId: nextId,
         responsibleName: nextName,
       });
-      onUpdated?.({ responsibleId: nextId, responsibleName: nextName });
+      onUpdated?.({
+        responsibleId: nextId,
+        responsibleName: nextName,
+        isPreTicket: res.isPreTicket,
+      });
+      if (res.isPreTicket) {
+        refreshPreTicketsBadge();
+      } else if (nextId != null) {
+        refreshPreTicketsBadge();
+      }
       if (!compact) {
         notifySuccess(res.message);
       }
@@ -102,6 +115,23 @@ export function TicketResponsibleSelect({
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleChange(nextValue: string) {
+    if (nextValue === value) return;
+    const selected = nextValue
+      ? (options.find((row) => String(row.id) === nextValue) ?? null)
+      : null;
+    const nextId = selected?.id ?? null;
+    const nextName = selected?.name ?? null;
+
+    if (nextId == null && responsibleId != null) {
+      setPendingChange({ nextId, nextName });
+      setRemoveConfirmOpen(true);
+      return;
+    }
+
+    await applyChange(nextId, nextName);
   }
 
   return (
@@ -121,6 +151,17 @@ export function TicketResponsibleSelect({
         emptyLabel={compact ? undefined : "Sem responsável"}
         placeholder="Selecione o responsável"
         className={compact ? "h-9" : undefined}
+      />
+
+      <TicketRemoveResponsiblePreTicketDialog
+        open={removeConfirmOpen}
+        onOpenChange={setRemoveConfirmOpen}
+        hasAppointments={hasAppointments}
+        onConfirm={() => {
+          if (!pendingChange) return;
+          void applyChange(pendingChange.nextId, pendingChange.nextName);
+          setPendingChange(null);
+        }}
       />
     </div>
   );

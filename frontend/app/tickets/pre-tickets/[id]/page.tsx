@@ -108,7 +108,7 @@ export default function PreTicketDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   {item.linkedTicketNumber ? (
                     <span className="rounded-md bg-amber-500/15 px-2 py-1 text-xs font-medium text-amber-800 dark:text-amber-200">
-                      Resposta a chamado #{item.linkedTicketNumber} (fechado —
+                      Resposta a ticket #{item.linkedTicketNumber} (fechado —
                       reabra ou abra novo)
                     </span>
                   ) : null}

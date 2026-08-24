@@ -363,8 +363,12 @@ export class TicketsService {
         : []
       : await this.catalogs.listResponsiblesForCatalogs();
 
-    let responsibleId = dto.responsibleId ?? null;
-    if (responsibleId == null) {
+    const explicitlyNoResponsible = dto.responsibleId === null;
+    let responsibleId = explicitlyNoResponsible
+      ? null
+      : (dto.responsibleId ?? null);
+
+    if (responsibleId == null && !explicitlyNoResponsible) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
       if (writeTiflux) {
         const mineAllowed = mine
@@ -395,6 +399,16 @@ export class TicketsService {
         isClientPortalRole(actor.role)
           ? 'O responsável selecionado não pertence à sua empresa.'
           : 'O responsável selecionado não é válido (precisa estar ativo e marcado como responsável no cadastro).',
+      );
+    }
+
+    // Determina se o ticket será pré-ticket (sem responsável)
+    const isPreTicket = responsibleId == null;
+
+    // Se for pré-ticket e writeTiflux estiver habilitado, impede criação
+    if (isPreTicket && writeTiflux) {
+      throw new BadRequestException(
+        'Não é possível criar pré-tickets quando a integração com TiFlux está ativa. Atribua um responsável ao ticket.',
       );
     }
 
@@ -485,6 +499,9 @@ export class TicketsService {
         origin: writeTiflux
           ? PortalTicketOrigin.TIFLUX
           : PortalTicketOrigin.PORTAL,
+        isPreTicket: isPreTicket,
+        becamePreTicketAt: isPreTicket ? new Date() : null,
+        classificationId: dto.classificationId?.trim() || null,
         createdAtSource: new Date(),
         updatedAtSource: new Date(),
         createdBy: actor.userId,
@@ -537,7 +554,10 @@ export class TicketsService {
       return {
         ok: true,
         ticketNumber,
-        message: 'Ticket criado com sucesso.',
+        isPreTicket,
+        message: isPreTicket
+          ? 'Pré-ticket criado. Atribua um responsável para concluir a abertura.'
+          : 'Ticket criado com sucesso.',
         tiflux: tifluxRaw,
         portalCanonical: true,
       };
@@ -709,6 +729,17 @@ export class TicketsService {
       }
     }
 
+    // Verifica se o responsável está sendo removido (conversão para pré-ticket)
+    const isRemovingResponsible =
+      responsibleId === null && portal?.responsibleExternalId != null;
+
+    // Se está removendo responsável e writeTiflux está ativo, impede
+    if (isRemovingResponsible && writeTiflux) {
+      throw new BadRequestException(
+        'Não é possível remover o responsável quando a integração com TiFlux está ativa. Desative a integração ou atribua um novo responsável.',
+      );
+    }
+
     if (writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL) {
       const payload: Record<string, unknown> = {};
       if (title) payload.title = title;
@@ -752,6 +783,17 @@ export class TicketsService {
           ? PORTAL_STAGE.ENCERRADO
           : (portal?.statusName ?? null));
 
+    const nextResponsibleIdForPreTicket =
+      responsibleId !== undefined
+        ? responsibleId
+        : (portal?.responsibleExternalId ?? null);
+    const isAssigningResponsible =
+      responsibleId !== undefined &&
+      responsibleId != null &&
+      nextResponsibleIdForPreTicket !== (portal?.responsibleExternalId ?? null);
+    const isClearingPreTicket =
+      isAssigningResponsible && Boolean(portal?.isPreTicket);
+
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
       title: title ?? portal?.title ?? null,
@@ -782,6 +824,21 @@ export class TicketsService {
           ? Boolean(dto.isClosed)
           : (portal?.isClosed ?? false),
       origin: portal?.origin,
+      isPreTicket: isRemovingResponsible
+        ? true
+        : isClearingPreTicket
+          ? false
+          : responsibleId === null &&
+              (portal?.responsibleExternalId ?? null) == null
+            ? Boolean(portal?.isPreTicket)
+            : isAssigningResponsible
+              ? false
+              : (portal?.isPreTicket ?? false),
+      becamePreTicketAt: isRemovingResponsible
+        ? new Date()
+        : isClearingPreTicket || isAssigningResponsible
+          ? null
+          : (portal?.becamePreTicketAt ?? null),
       createdAtSource: portal?.createdAtSource ?? null,
       updatedAtSource: new Date(),
       createdBy: portal?.createdBy ?? actor.userId,
@@ -1031,8 +1088,14 @@ export class TicketsService {
     return {
       ok: true,
       ticketNumber,
-      message:
-        dto.deskId != null
+      isPreTicket: isRemovingResponsible
+        ? true
+        : isClearingPreTicket
+          ? false
+          : (portal?.isPreTicket ?? false),
+      message: isRemovingResponsible
+        ? 'Responsável removido. O chamado voltou para triagem como pré-ticket; apontamentos e histórico foram preservados.'
+        : dto.deskId != null
           ? `Chamado transferido para a mesa "${nextDeskName}".`
           : writeTiflux && portal?.origin !== PortalTicketOrigin.PORTAL
             ? 'Ticket atualizado.'

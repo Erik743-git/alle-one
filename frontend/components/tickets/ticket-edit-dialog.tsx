@@ -187,11 +187,11 @@ export function TicketEditDialog({
               onChange={(e) => setDescription(e.target.value)}
               disabled={saving || ticket.isClosed}
               rows={6}
-              placeholder="Descrição do chamado"
+              placeholder="Descrição do Ticket"
               className="max-h-64 overflow-y-auto"
             />
             <p className="text-xs text-muted-foreground">
-              Texto editável do chamado. Imagens do e-mail original permanecem
+              Texto editável do Ticket. Imagens do e-mail original permanecem
               na visualização do ticket quando existirem.
             </p>
           </div>

@@ -62,6 +62,7 @@ export class AuthService {
       },
       include: {
         company: true,
+        specialty: { select: { id: true, name: true } },
       },
     });
 
@@ -244,8 +245,24 @@ export class AuthService {
     tokenVersion?: number;
     totpEnabledAt?: Date | null;
     company?: { name: string } | null;
+    specialtyId?: string | null;
+    specialty?: { name: string } | null;
   }) {
     const tokenVersion = user.tokenVersion ?? 0;
+    let specialtyId = user.specialtyId ?? null;
+    let specialtyName = user.specialty?.name ?? null;
+    if (user.specialtyId === undefined && !user.specialty) {
+      const specialtyRow = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          specialtyId: true,
+          specialty: { select: { name: true } },
+        },
+      });
+      specialtyId = specialtyRow?.specialtyId ?? null;
+      specialtyName = specialtyRow?.specialty?.name ?? null;
+    }
+
     const requestUser = await this.permissionsService.buildRequestUser(
       user.id,
       tokenVersion,
@@ -282,6 +299,8 @@ export class AuthService {
         permissions: requestUser.permissions,
         companies: requestUser.companies ?? [],
         totpEnabled: Boolean(user.totpEnabledAt),
+        specialtyId,
+        specialtyName,
       },
     };
   }
@@ -326,7 +345,10 @@ export class AuthService {
   async me(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { company: true },
+      include: {
+        company: true,
+        specialty: { select: { id: true, name: true } },
+      },
     });
 
     if (!user || user.status !== UserStatus.ACTIVE) {
@@ -358,6 +380,8 @@ export class AuthService {
         companies: requestUser.companies ?? [],
         totpEnabled: Boolean(user.totpEnabledAt),
         totpAdminMustEnable: this.totp.adminMustEnable(user),
+        specialtyId: user.specialtyId ?? null,
+        specialtyName: user.specialty?.name ?? null,
       },
     };
   }

@@ -248,7 +248,7 @@ export default function ApontamentosPage() {
                               Perfil
                             </th>
                             <th className="px-4 py-3 text-right text-xs font-semibold uppercase">
-                              Chamados
+                              Tickets
                             </th>
                           </tr>
                         </thead>
@@ -283,7 +283,7 @@ export default function ApontamentosPage() {
                                       href={`/tickets?q=${encodeURIComponent(item.email)}`}
                                     >
                                       <Ticket className="mr-2 size-4" />
-                                      Ver chamados
+                                      Ver tickets
                                     </Link>
                                   </Button>
                                 </td>

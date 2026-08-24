@@ -57,6 +57,7 @@ export type TicketAppointment = {
   attendanceLabel: string | null;
   syncStatus: "SYNCED" | "PENDING_TIFLUX" | "PORTAL_ONLY";
   syncPaused?: boolean;
+  isWarning?: boolean;
   attachmentCount: number;
   attachments: Array<{
     id: string;
@@ -81,6 +82,7 @@ export type TicketDetailResponse = {
     deskName: string | null;
     deskExternalId?: number | null;
     isClosed: boolean;
+    isPreTicket?: boolean;
     requestorName: string | null;
     requestorEmail: string | null;
     requestorTelephone: string | null;
@@ -105,7 +107,7 @@ export type TicketDetailResponse = {
     }>;
   } | null;
   syncPending?: boolean;
-  /** ADMIN ou responsável do chamado. */
+  /** ADMIN ou responsável do ticket. */
   canChangeClient?: boolean;
   grouping?: {
     parent: {
@@ -221,7 +223,7 @@ export type CreateTicketPayload = {
   priorityId?: number;
   servicesCatalogsItemId?: number;
   classificationId?: string;
-  responsibleId?: number;
+  responsibleId?: number | null;
   requestorId?: number;
   requestorName: string;
   requestorEmail: string;
@@ -238,6 +240,8 @@ export type AppointmentCatalogs = {
     clientExternalId: number | null;
     deskName: string | null;
     deskExternalId: number | null;
+    stageName: string | null;
+    stageGroup: TicketStageGroupKey;
     appointmentType: string;
     tifluxSyncAvailable: boolean;
   };
@@ -273,11 +277,14 @@ export type CreateAppointmentPayload = {
   removeAttachmentFileIds?: string[];
   /** Envia e-mail ao responsável e aos seguidores. */
   notifyClient?: boolean;
+  /** Advertência: exige leitura dos demais usuários. */
+  isWarning?: boolean;
 };
 
 export type CreateTicketResult = {
   ok: boolean;
   ticketNumber: number;
+  isPreTicket?: boolean;
   message: string;
 };
 
@@ -334,6 +341,7 @@ export type UpdateTicketPayload = {
 export type UpdateTicketResult = {
   ok: boolean;
   ticketNumber: number;
+  isPreTicket?: boolean;
   message: string;
 };
 
@@ -348,6 +356,7 @@ export type PortalAppointmentEditContext = {
   description: string;
   descriptionPlain: string;
   notifyClient?: boolean;
+  isWarning?: boolean;
   attachments?: Array<{
     id: string;
     fileId: string;
@@ -360,6 +369,28 @@ export type PortalAppointmentEditContext = {
   syncPaused: boolean;
   existsInTiflux: boolean;
   canPauseSync: boolean;
+};
+
+export type TicketAppointmentWarningListItem = {
+  portalAppointmentId: string;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  userName: string;
+  descriptionPreview: string;
+};
+
+export type TicketAppointmentWarningDetail = {
+  portalAppointmentId: string;
+  ticketNumber: number;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  userName: string;
+  serviceName: string;
+  description: string;
+  descriptionPlain: string;
+  attachments: TicketAppointment["attachments"];
 };
 
 export const ticketsService = {
@@ -469,6 +500,32 @@ export const ticketsService = {
   appointmentCatalogs(ticketNumber: number) {
     return apiRequest<AppointmentCatalogs>(
       `/tickets/${ticketNumber}/catalogs/appointment`,
+    );
+  },
+
+  pendingAppointmentWarnings(ticketNumber: number) {
+    return apiRequest<{ warnings: TicketAppointmentWarningListItem[] }>(
+      `/tickets/${ticketNumber}/warnings/pending`,
+    );
+  },
+
+  appointmentWarningDetail(ticketNumber: number, portalAppointmentId: string) {
+    return apiRequest<TicketAppointmentWarningDetail>(
+      `/tickets/${ticketNumber}/warnings/${portalAppointmentId}`,
+    );
+  },
+
+  acknowledgeAppointmentWarning(
+    ticketNumber: number,
+    portalAppointmentId: string,
+    permanent: boolean,
+  ) {
+    return apiRequest<{ ok: boolean; message: string; permanent?: boolean }>(
+      `/tickets/${ticketNumber}/warnings/${portalAppointmentId}/acknowledge`,
+      {
+        method: "POST",
+        body: { permanent },
+      },
     );
   },
 

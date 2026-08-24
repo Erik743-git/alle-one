@@ -120,6 +120,7 @@ model User {
   company             Company?             @relation(fields: [companyId], references: [id])
   companyMemberships  UserCompany[]
   dashboardChartPresets DashboardChartPreset[]
+  ticketListPresets     TicketListPreset[]
   preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
   preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
   emailInboundRoutesCreated EmailInboundRoute[] @relation("EmailInboundRouteCreator")
@@ -138,6 +139,7 @@ model User {
   tifluxOutboxEntries    PortalTifluxOutbox[]
   portalTicketAppointments PortalTicketAppointment[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[] @relation("PortalTicketAppointmentAttachmentCreator")
+  portalTicketAppointmentWarningAcks PortalTicketAppointmentWarningAck[]
   portalTicketGmudLinks PortalTicketGmudLink[]
   portalTicketDescriptions PortalTicketDescription[] @relation("PortalTicketDescriptionCreator")
   portalTickets            PortalTicket[]            @relation("PortalTicketCreator")
@@ -151,6 +153,8 @@ model User {
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
   projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
   projectHistoryActs                ProjectHistory[]                 @relation("ProjectHistoryActor")
+  ticketAutoOpenRulesCreated        TicketAutoOpenRule[]             @relation("TicketAutoOpenRuleCreator")
+  ticketAutomationRulesCreated      TicketAutomationRule[]           @relation("TicketAutomationRuleCreator")
 
   @@index([companyId])
   @@map("users")
@@ -212,6 +216,7 @@ model Company {
   modules              CompanyModule[]
   userMemberships      UserCompany[]
   dashboardChartPresets DashboardChartPreset[]
+  ticketListPresets     TicketListPreset[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -255,6 +260,29 @@ model DashboardChartPreset {
   @@unique([userId, companyId, viewMode, chartKey])
   @@index([companyId])
   @@map("dashboard_chart_presets")
+}
+
+/// Filtro/agrupamento salvo da lista de tickets (busca avançada pré-definida).
+model TicketListPreset {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  companyId String?  @map("company_id")
+  name      String   @db.VarChar(120)
+  color     String   @default("#14b8a6") @db.VarChar(20)
+  isPublic  Boolean  @default(false) @map("is_public")
+  isPinned  Boolean  @default(false) @map("is_pinned")
+  sortOrder Int      @default(0) @map("sort_order")
+  config    Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, isPinned, sortOrder])
+  @@index([isPublic, companyId])
+  @@map("ticket_list_presets")
 }
 
 /// Módulos contratados (pack vendido) por empresa. Staff Alle ignora; CLIENT_* intersecta.
@@ -353,6 +381,7 @@ model SpecialtyClassification {
   parent    SpecialtyClassification?   @relation("SpecialtyClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  SpecialtyClassification[]  @relation("SpecialtyClassificationTree")
   contracts Contract[]
+  portalTickets PortalTicket[]
 
   @@unique([specialtyId, parentId, name])
   @@index([specialtyId])
@@ -639,6 +668,91 @@ model TicketStage {
   @@map("ticket_stages")
 }
 
+enum TicketAutoOpenPeriodicity {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+/// Regra de abertura automática de ticket (rotinas / agendamentos).
+model TicketAutoOpenRule {
+  id                     String                    @id @default(uuid())
+  name                   String
+  active                 Boolean                   @default(true)
+  periodicity            TicketAutoOpenPeriodicity @default(DAILY)
+  nextScheduledDate      DateTime                  @map("next_scheduled_date") @db.Date
+  scheduleTime           String                    @map("schedule_time") @db.VarChar(5)
+  deskExternalId         Int                       @map("desk_external_id")
+  clientExternalId       Int                       @map("client_external_id")
+  responsibleExternalId  Int?                      @map("responsible_external_id")
+  priorityExternalId     Int?                      @map("priority_external_id")
+  servicesCatalogsItemId Int?                      @map("services_catalogs_item_id")
+  classificationId       String?                   @map("classification_id")
+  title                  String
+  description            String                    @db.Text
+  requestorName          String                    @map("requestor_name") @db.VarChar(255)
+  requestorEmail         String                    @map("requestor_email") @db.VarChar(255)
+  requestorTelephone     String?                   @map("requestor_telephone") @db.VarChar(50)
+  requestorExternalId    Int?                      @map("requestor_external_id")
+  externalGmudRef        String?                   @map("external_gmud_ref") @db.VarChar(120)
+  ccEmails               String[]                  @default([]) @map("cc_emails")
+  parentTicketNumber     Int?                      @map("parent_ticket_number")
+  lastRunAt              DateTime?                 @map("last_run_at")
+  lastTicketNumber       Int?                      @map("last_ticket_number")
+  createdBy              String                    @map("created_by")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
+  deletedAt              DateTime?                 @map("deleted_at")
+
+  creator User @relation("TicketAutoOpenRuleCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([active, nextScheduledDate])
+  @@map("ticket_auto_open_rules")
+}
+
+enum TicketAutomationTrigger {
+  STAGE_CHANGE
+}
+
+/// Regra de automação de ticket (ex.: ao mudar estágio).
+model TicketAutomationRule {
+  id          String                  @id @default(uuid())
+  name        String
+  description String?                 @db.Text
+  active      Boolean                 @default(true)
+  trigger     TicketAutomationTrigger @default(STAGE_CHANGE)
+  /// Condições: catálogo, cliente, classificação, estágio na entrada/saída.
+  conditions  Json
+  /// Ações ordenadas (alterar estágio, responsável, apontamento, etc.).
+  actions     Json
+  sortOrder   Int                     @default(0) @map("sort_order")
+  createdBy   String                  @map("created_by")
+  createdAt   DateTime                @default(now()) @map("created_at")
+  updatedAt   DateTime                @updatedAt @map("updated_at")
+  deletedAt   DateTime?               @map("deleted_at")
+
+  creator User @relation("TicketAutomationRuleCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  runs    TicketAutomationRun[]
+
+  @@index([active, deletedAt])
+  @@map("ticket_automation_rules")
+}
+
+model TicketAutomationRun {
+  id           String   @id @default(uuid())
+  ruleId       String   @map("rule_id")
+  ticketNumber Int      @map("ticket_number")
+  status       String   @db.VarChar(20)
+  detail       Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  rule TicketAutomationRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([ruleId, createdAt])
+  @@index([ticketNumber])
+  @@map("ticket_automation_runs")
+}
+
 model BillingEntry {
   id               String    @id @default(uuid())
   companyId        String    @map("company_id")
@@ -794,6 +908,7 @@ model PortalTicket {
   deskName                String?            @map("desk_name")
   deskExternalId          Int?               @map("desk_external_id")
   specialtyId             String?            @map("specialty_id")
+  classificationId        String?            @map("classification_id")
   requestorName           String?            @map("requestor_name")
   requestorEmail          String?            @map("requestor_email")
   requestorTelephone      String?            @map("requestor_telephone")
@@ -803,6 +918,10 @@ model PortalTicket {
   emailConversationId     String?            @map("email_conversation_id")
   /// Chamado pai quando este ticket foi agrupado (filho cancelado).
   parentTicketNumber      Int?               @map("parent_ticket_number")
+  /// Indica se o ticket é um pré-ticket (sem responsável).
+  isPreTicket             Boolean            @default(false) @map("is_pre_ticket")
+  /// Data em que virou pré-ticket (quando responsável foi removido).
+  becamePreTicketAt       DateTime?          @map("became_pre_ticket_at")
   createdAtSource         DateTime?          @map("created_at_source")
   updatedAtSource         DateTime?          @map("updated_at_source")
   createdBy               String?            @map("created_by")
@@ -811,6 +930,7 @@ model PortalTicket {
 
   creator    User?       @relation("PortalTicketCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   specialty  Specialty?  @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  classification SpecialtyClassification? @relation(fields: [classificationId], references: [id], onDelete: SetNull)
 
   @@index([clientExternalId])
   @@index([isClosed, updatedAtSource])
@@ -818,8 +938,10 @@ model PortalTicket {
   @@index([isClosed, responsibleExternalId, updatedAtSource])
   @@index([isClosed, clientExternalId, createdAtSource])
   @@index([specialtyId])
+  @@index([classificationId])
   @@index([emailConversationId])
   @@index([parentTicketNumber])
+  @@index([isPreTicket])
   @@map("portal_tickets")
 }
 
@@ -835,6 +957,8 @@ model PortalTicketAppointment {
   attendance                  String                            @db.VarChar(20)
   /// Quando true, dispara e-mail ao responsável e aos seguidores.
   notifyClient                Boolean                           @default(false) @map("notify_client")
+  /// Advertência: exige leitura dos demais usuários ao abrir o chamado.
+  isWarning                   Boolean                           @default(false) @map("is_warning")
   tifluxAppointmentExternalId Int?                              @map("tiflux_appointment_external_id")
   syncStatus                  PortalTicketAppointmentSyncStatus @default(PENDING_TIFLUX) @map("sync_status")
   syncPausedAt                DateTime?                         @map("sync_paused_at")
@@ -847,8 +971,10 @@ model PortalTicketAppointment {
   outbox      PortalTifluxOutbox?                 @relation(fields: [outboxId], references: [id], onDelete: SetNull)
   attachments PortalTicketAppointmentAttachment[]
   projectActivityLink ProjectActivityAppointment?
+  warningAcks PortalTicketAppointmentWarningAck[]
 
   @@index([ticketNumber])
+  @@index([ticketNumber, isWarning])
   @@index([tifluxAppointmentExternalId])
   @@index([createdBy, appointmentDate])
   /// UNIQUE parcial via migration SQL (WHERE NOT NULL) — Prisma não modela partial unique.
@@ -876,6 +1002,21 @@ model PortalTicketAppointmentAttachment {
   @@index([outboxId])
   @@index([portalAppointmentId])
   @@map("portal_ticket_appointment_attachments")
+}
+
+/// Confirmação de leitura de advertência (por usuário).
+model PortalTicketAppointmentWarningAck {
+  id                  String   @id @default(uuid())
+  portalAppointmentId String   @map("portal_appointment_id")
+  userId              String   @map("user_id")
+  acknowledgedAt      DateTime @default(now()) @map("acknowledged_at")
+
+  portalAppointment PortalTicketAppointment @relation(fields: [portalAppointmentId], references: [id], onDelete: Cascade)
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([portalAppointmentId, userId])
+  @@index([userId])
+  @@map("portal_ticket_appointment_warning_acks")
 }
 
 /// Descrição rica do chamado criada no portal (texto + imagens embutidas).

@@ -2,11 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  Loader2,
+  Lock,
+  Pencil,
+  Plus,
+  Trash2,
+  Workflow,
+} from "lucide-react";
 
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import AppShell from "@/components/layout/app-shell";
+import { TicketAutoOpenRuleDialog } from "@/components/admin/ticket-auto-open-rule-dialog";
+import {
+  TicketAutomationRuleDialog,
+  formatAutomationSummary,
+} from "@/components/admin/ticket-automation-rule-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,10 +33,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { adminService, type TicketStage } from "@/lib/services/admin.service";
+import {
+  adminService,
+  type TicketAutoOpenRule,
+  type TicketAutomationRule,
+  type TicketStage,
+} from "@/lib/services/admin.service";
+
+type AdminTicketTab = "stages" | "auto-open" | "automations";
 
 function StageBadges({ stage }: { stage: TicketStage }) {
   if (!stage.isSystem && stage.active) return null;
@@ -43,20 +65,45 @@ function StageBadges({ stage }: { stage: TicketStage }) {
   );
 }
 
+function formatRuleDate(ymd: string): string {
+  const [y, m, d] = ymd.split("-");
+  if (!y || !m || !d) return ymd;
+  return `${d}/${m}/${y}`;
+}
+
 export default function AdminTicketPage() {
   const confirm = useConfirm();
+  const [tab, setTab] = useState<AdminTicketTab>("stages");
+
   const [stages, setStages] = useState<TicketStage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rules, setRules] = useState<TicketAutoOpenRule[]>([]);
+  const [automations, setAutomations] = useState<TicketAutomationRule[]>([]);
+  const [loadingStages, setLoadingStages] = useState(true);
+  const [loadingRules, setLoadingRules] = useState(true);
+  const [loadingAutomations, setLoadingAutomations] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingRuleId, setTogglingRuleId] = useState<string | null>(null);
+  const [togglingAutomationId, setTogglingAutomationId] = useState<string | null>(
+    null,
+  );
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<TicketStage | null>(null);
-  const [name, setName] = useState("");
+  const [stageModalOpen, setStageModalOpen] = useState(false);
+  const [editingStage, setEditingStage] = useState<TicketStage | null>(null);
+  const [stageName, setStageName] = useState("");
 
-  const load = useCallback(async () => {
+  const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<TicketAutoOpenRule | null>(
+    null,
+  );
+
+  const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
+  const [editingAutomation, setEditingAutomation] =
+    useState<TicketAutomationRule | null>(null);
+
+  const loadStages = useCallback(async () => {
     try {
-      setLoading(true);
+      setLoadingStages(true);
       const data = await adminService.listTicketStages();
       setStages(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -65,45 +112,79 @@ export default function AdminTicketPage() {
       );
       setStages([]);
     } finally {
-      setLoading(false);
+      setLoadingStages(false);
+    }
+  }, []);
+
+  const loadRules = useCallback(async () => {
+    try {
+      setLoadingRules(true);
+      const data = await adminService.listTicketAutoOpenRules();
+      setRules(Array.isArray(data) ? data : []);
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar as regras de abertura automática.",
+      );
+      setRules([]);
+    } finally {
+      setLoadingRules(false);
+    }
+  }, []);
+
+  const loadAutomations = useCallback(async () => {
+    try {
+      setLoadingAutomations(true);
+      const data = await adminService.listTicketAutomationRules();
+      setAutomations(Array.isArray(data) ? data : []);
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar as automações.",
+      );
+      setAutomations([]);
+    } finally {
+      setLoadingAutomations(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadStages();
+    void loadRules();
+    void loadAutomations();
+  }, [loadStages, loadRules, loadAutomations]);
 
-  function openCreate() {
-    setEditing(null);
-    setName("");
-    setModalOpen(true);
+  function openCreateStage() {
+    setEditingStage(null);
+    setStageName("");
+    setStageModalOpen(true);
   }
 
-  function openEdit(stage: TicketStage) {
-    setEditing(stage);
-    setName(stage.name);
-    setModalOpen(true);
+  function openEditStage(stage: TicketStage) {
+    setEditingStage(stage);
+    setStageName(stage.name);
+    setStageModalOpen(true);
   }
 
-  async function handleSave() {
-    const trimmed = name.trim();
+  async function handleSaveStage() {
+    const trimmed = stageName.trim();
     if (!trimmed) {
       notifyError("Informe o nome do estágio.");
       return;
     }
     try {
       setSaving(true);
-      if (editing) {
-        await adminService.updateTicketStage(editing.id, {
-          name: trimmed,
-        });
+      if (editingStage) {
+        await adminService.updateTicketStage(editingStage.id, { name: trimmed });
         notifySuccess("Estágio atualizado.");
       } else {
         await adminService.createTicketStage({ name: trimmed });
         notifySuccess("Estágio criado.");
       }
-      setModalOpen(false);
-      await load();
+      setStageModalOpen(false);
+      await loadStages();
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao salvar o estágio.");
     } finally {
@@ -111,7 +192,7 @@ export default function AdminTicketPage() {
     }
   }
 
-  async function handleDelete(stage: TicketStage) {
+  async function handleDeleteStage(stage: TicketStage) {
     const ok = await confirm({
       title: "Remover estágio",
       description: `Remover o estágio "${stage.name}"?`,
@@ -123,9 +204,77 @@ export default function AdminTicketPage() {
       setDeletingId(stage.id);
       await adminService.deleteTicketStage(stage.id);
       notifySuccess("Estágio removido.");
-      await load();
+      await loadStages();
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao remover o estágio.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleToggleRule(rule: TicketAutoOpenRule) {
+    try {
+      setTogglingRuleId(rule.id);
+      await adminService.setTicketAutoOpenRuleActive(rule.id, !rule.active);
+      await loadRules();
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Falha ao alterar a regra.");
+    } finally {
+      setTogglingRuleId(null);
+    }
+  }
+
+  async function handleDeleteRule(rule: TicketAutoOpenRule) {
+    const ok = await confirm({
+      title: "Remover regra",
+      description: `Remover a regra "${rule.name}"?`,
+      confirmText: "Remover",
+      variant: "error",
+    });
+    if (!ok) return;
+    try {
+      setDeletingId(rule.id);
+      await adminService.deleteTicketAutoOpenRule(rule.id);
+      notifySuccess("Regra removida.");
+      await loadRules();
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Falha ao remover a regra.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  async function handleToggleAutomation(rule: TicketAutomationRule) {
+    try {
+      setTogglingAutomationId(rule.id);
+      await adminService.setTicketAutomationRuleActive(rule.id, !rule.active);
+      await loadAutomations();
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Falha ao alterar a automação.",
+      );
+    } finally {
+      setTogglingAutomationId(null);
+    }
+  }
+
+  async function handleDeleteAutomation(rule: TicketAutomationRule) {
+    const ok = await confirm({
+      title: "Remover automação",
+      description: `Remover a automação "${rule.name}"?`,
+      confirmText: "Remover",
+      variant: "error",
+    });
+    if (!ok) return;
+    try {
+      setDeletingId(rule.id);
+      await adminService.deleteTicketAutomationRule(rule.id);
+      notifySuccess("Automação removida.");
+      await loadAutomations();
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Falha ao remover a automação.",
+      );
     } finally {
       setDeletingId(null);
     }
@@ -136,131 +285,371 @@ export default function AdminTicketPage() {
       <PermissionGate module="ADMIN">
         <AppShell>
           <div className="font-sans w-full space-y-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="space-y-2">
-                <Button variant="ghost" size="sm" className="-ml-2 w-fit" asChild>
-                  <Link href="/admin">
-                    <ArrowLeft className="h-4 w-4 mr-1" />
-                    Administração
-                  </Link>
-                </Button>
-                <h1 className="text-3xl font-bold text-foreground">Ticket</h1>
-                <p className="text-muted-foreground">
-                  Parametrize os estágios de ticket. Os estágios padrão são fixos.
-                </p>
-              </div>
+            <div className="space-y-2">
+              <Button variant="ghost" size="sm" className="-ml-2 w-fit" asChild>
+                <Link href="/admin">
+                  <ArrowLeft className="mr-1 h-4 w-4" />
+                  Administração
+                </Link>
+              </Button>
+              <h1 className="text-3xl font-bold text-foreground">Ticket</h1>
+              <p className="text-muted-foreground">
+                Estágios, abertura automática e automações por mudança de estágio
+                (catálogo, classificação e cliente).
+              </p>
+            </div>
 
-              <Button onClick={openCreate} className="shrink-0">
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar estágio
+            <div className="flex flex-wrap gap-2 border-b border-border pb-2">
+              <Button
+                type="button"
+                variant={tab === "stages" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setTab("stages")}
+              >
+                Estágios
+              </Button>
+              <Button
+                type="button"
+                variant={tab === "auto-open" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setTab("auto-open")}
+              >
+                <CalendarClock className="mr-2 size-4" />
+                Abertura automática
+              </Button>
+              <Button
+                type="button"
+                variant={tab === "automations" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setTab("automations")}
+              >
+                <Workflow className="mr-2 size-4" />
+                Automações
               </Button>
             </div>
 
-            {loading ? (
-              <div className="flex min-h-[30vh] items-center justify-center gap-2 text-muted-foreground">
-                <Loader2 className="h-6 w-6 animate-spin" />
-                Carregando estágios…
-              </div>
+            {tab === "stages" ? (
+              <>
+                <div className="flex justify-end">
+                  <Button onClick={openCreateStage}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Adicionar estágio
+                  </Button>
+                </div>
+                {loadingStages ? (
+                  <div className="flex min-h-[30vh] items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    Carregando estágios…
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="divide-y divide-border p-0">
+                      {stages.map((stage) => (
+                        <div
+                          key={stage.id}
+                          className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div className="min-w-0 space-y-1.5">
+                            <p
+                              className={cn(
+                                "font-medium",
+                                !stage.active && "text-muted-foreground",
+                              )}
+                            >
+                              {stage.name}
+                            </p>
+                            <StageBadges stage={stage} />
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={stage.isSystem}
+                              onClick={() => openEditStage(stage)}
+                            >
+                              <Pencil className="mr-1 h-4 w-4" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              disabled={stage.isSystem || deletingId === stage.id}
+                              onClick={() => void handleDeleteStage(stage)}
+                            >
+                              {deletingId === stage.id ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-1 h-4 w-4" />
+                              )}
+                              Remover
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : tab === "auto-open" ? (
+              <>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => {
+                      setEditingRule(null);
+                      setRuleDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Criar regra
+                  </Button>
+                </div>
+                {loadingRules ? (
+                  <div className="flex min-h-[30vh] items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    Carregando regras…
+                  </div>
+                ) : rules.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                      Nenhuma regra de abertura automática cadastrada.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="divide-y divide-border p-0">
+                      {rules.map((rule) => (
+                        <div
+                          key={rule.id}
+                          className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-foreground">
+                                {rule.name}
+                              </p>
+                              {!rule.active ? (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                  Inativa
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {rule.periodicityLabel} · próximo{" "}
+                              {formatRuleDate(rule.nextScheduledDate)} às{" "}
+                              {rule.scheduleTime}
+                            </p>
+                            <p className="truncate text-sm text-muted-foreground">
+                              {rule.title}
+                            </p>
+                            {rule.lastTicketNumber ? (
+                              <p className="text-xs text-muted-foreground">
+                                Último ticket: #{rule.lastTicketNumber}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 text-sm">
+                              <FlipCheckbox
+                                checked={rule.active}
+                                disabled={togglingRuleId === rule.id}
+                                onChange={() => void handleToggleRule(rule)}
+                              />
+                              Ativa
+                            </label>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingRule(rule);
+                                setRuleDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="mr-1 h-4 w-4" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              disabled={deletingId === rule.id}
+                              onClick={() => void handleDeleteRule(rule)}
+                            >
+                              {deletingId === rule.id ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-1 h-4 w-4" />
+                              )}
+                              Remover
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </>
             ) : (
-              <Card>
-                <CardContent className="divide-y divide-border p-0">
-                  {stages.map((stage) => (
-                    <div
-                      key={stage.id}
-                      className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="min-w-0 space-y-1.5">
-                        <p
-                          className={cn(
-                            "font-medium",
-                            !stage.active && "text-muted-foreground",
-                          )}
+              <>
+                <div className="flex justify-end">
+                  <Button
+                    onClick={() => {
+                      setEditingAutomation(null);
+                      setAutomationDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Criar automação
+                  </Button>
+                </div>
+                {loadingAutomations ? (
+                  <div className="flex min-h-[30vh] items-center justify-center gap-2 text-muted-foreground">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                    Carregando automações…
+                  </div>
+                ) : automations.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                      Nenhuma automação cadastrada. Crie regras para reagir à
+                      mudança de estágio com base no catálogo, classificação e
+                      cliente.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Card>
+                    <CardContent className="divide-y divide-border p-0">
+                      {automations.map((rule) => (
+                        <div
+                          key={rule.id}
+                          className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
                         >
-                          {stage.name}
-                        </p>
-                        <StageBadges stage={stage} />
-                      </div>
-
-                      <div className="flex shrink-0 gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={stage.isSystem}
-                          onClick={() => openEdit(stage)}
-                        >
-                          <Pencil className="h-4 w-4 mr-1" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          disabled={stage.isSystem || deletingId === stage.id}
-                          onClick={() => void handleDelete(stage)}
-                        >
-                          {deletingId === stage.id ? (
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4 mr-1" />
-                          )}
-                          Remover
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
+                          <div className="min-w-0 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-foreground">
+                                {rule.name}
+                              </p>
+                              {!rule.active ? (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                  Inativa
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {formatAutomationSummary(rule)}
+                            </p>
+                            {rule.description ? (
+                              <p className="line-clamp-2 text-sm text-muted-foreground">
+                                {rule.description}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <label className="flex items-center gap-2 text-sm">
+                              <FlipCheckbox
+                                checked={rule.active}
+                                disabled={togglingAutomationId === rule.id}
+                                onChange={() => void handleToggleAutomation(rule)}
+                              />
+                              Ativa
+                            </label>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingAutomation(rule);
+                                setAutomationDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="mr-1 h-4 w-4" />
+                              Editar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              disabled={deletingId === rule.id}
+                              onClick={() => void handleDeleteAutomation(rule)}
+                            >
+                              {deletingId === rule.id ? (
+                                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-1 h-4 w-4" />
+                              )}
+                              Remover
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </>
             )}
           </div>
 
-          <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+          <Dialog open={stageModalOpen} onOpenChange={setStageModalOpen}>
             <DialogContent className="w-[min(96vw,520px)] max-w-[520px]">
               <DialogHeader>
                 <DialogTitle>
-                  {editing ? "Editar estágio" : "Adicionar estágio"}
+                  {editingStage ? "Editar estágio" : "Adicionar estágio"}
                 </DialogTitle>
                 <DialogDescription>
                   Defina o nome do estágio usado nos tickets.
                 </DialogDescription>
               </DialogHeader>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="stage-name">Nome do estágio *</Label>
-                  <Input
-                    id="stage-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    maxLength={120}
-                    placeholder="Ex.: Aguardando fornecedor"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="stage-name">Nome do estágio *</Label>
+                <Input
+                  id="stage-name"
+                  value={stageName}
+                  onChange={(e) => setStageName(e.target.value)}
+                  maxLength={120}
+                />
               </div>
-
               <DialogFooter>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => setModalOpen(false)}
+                  onClick={() => setStageModalOpen(false)}
                   disabled={saving}
                 >
                   Cancelar
                 </Button>
-                <Button type="button" onClick={() => void handleSave()} disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Salvando…
-                    </>
-                  ) : editing ? (
-                    "Salvar"
-                  ) : (
-                    "Adicionar"
-                  )}
+                <Button
+                  type="button"
+                  onClick={() => void handleSaveStage()}
+                  disabled={saving}
+                >
+                  {saving ? "Salvando…" : editingStage ? "Salvar" : "Adicionar"}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <TicketAutoOpenRuleDialog
+            open={ruleDialogOpen}
+            onOpenChange={setRuleDialogOpen}
+            editing={editingRule}
+            onSaved={() => {
+              notifySuccess(
+                editingRule ? "Regra atualizada." : "Regra criada.",
+              );
+              void loadRules();
+            }}
+          />
+
+          <TicketAutomationRuleDialog
+            open={automationDialogOpen}
+            onOpenChange={setAutomationDialogOpen}
+            editing={editingAutomation}
+            stages={stages}
+            onSaved={() => {
+              notifySuccess(
+                editingAutomation ? "Automação atualizada." : "Automação criada.",
+              );
+              void loadAutomations();
+            }}
+          />
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

@@ -126,44 +126,44 @@ export function TicketOptionsMenu({
 
   function handleCloseTicket() {
     return runLifecycle(
-      "Fechar chamado?",
-      "O chamado será marcado como Encerrado e sai da fila de pendentes. Se precisar, use Reabrir depois.",
-      "Fechar chamado",
+      "Fechar Ticket?",
+      "o ticket será marcado como Encerrado e sai da fila de pendentes. Se precisar, use Reabrir depois.",
+      "Fechar Ticket",
       {
         isClosed: true,
         stageName: PORTAL_STAGE.ENCERRADO,
         statusName: PORTAL_STAGE.ENCERRADO,
       },
-      "Chamado encerrado.",
+      "Ticket encerrado.",
     );
   }
 
   function handleCancelTicket() {
     return runLifecycle(
-      "Cancelar chamado?",
-      "O chamado será marcado como Cancelado e encerrado. Essa ação pode ser desfeita com Reabrir.",
-      "Cancelar chamado",
+      "Cancelar Ticket?",
+      "o ticket será marcado como Cancelado e encerrado. Essa ação pode ser desfeita com Reabrir.",
+      "Cancelar Ticket",
       {
         isClosed: true,
         stageName: PORTAL_STAGE.CANCELADO,
         statusName: PORTAL_STAGE.CANCELADO,
       },
-      "Chamado cancelado.",
+      "Ticket cancelado.",
       "error",
     );
   }
 
   function handleReopenTicket() {
     return runLifecycle(
-      "Reabrir chamado?",
-      "O chamado volta para o estágio Novo e poderá ser editado novamente.",
+      "Reabrir Ticket?",
+      "o ticket volta para o estágio Novo e poderá ser editado novamente.",
       "Reabrir",
       {
         isClosed: false,
         stageName: PORTAL_STAGE.NOVO,
         statusName: PORTAL_STAGE.NOVO,
       },
-      "Chamado reaberto.",
+      "Ticket reaberto.",
     );
   }
 
@@ -183,7 +183,7 @@ export function TicketOptionsMenu({
       notifyError(
         err instanceof Error
           ? err.message
-          : "Não foi possível carregar as mesas.",
+          : "Não foi possível carregar os catálogos.",
       );
       setTransferOpen(false);
     } finally {
@@ -194,18 +194,18 @@ export function TicketOptionsMenu({
   async function confirmTransfer() {
     const nextDeskId = Number(deskId);
     if (!Number.isFinite(nextDeskId) || nextDeskId <= 0) {
-      notifyError("Selecione a mesa de destino.");
+      notifyError("Selecione o catálogo de destino.");
       return;
     }
     if (String(nextDeskId) === currentDeskValue) {
-      notifyError("Selecione uma mesa diferente da atual.");
+      notifyError("Selecione um catálogo diferente do atual.");
       return;
     }
     const deskLabel =
       deskOptions.find((row) => row.value === deskId)?.label ?? deskId;
     const ok = await confirm({
-      title: "Transferir chamado?",
-      description: `O chamado sai da fila atual e vai para "${deskLabel}".`,
+      title: "Transferir Ticket?",
+      description: `o ticket sai da fila atual e vai para "${deskLabel}".`,
       confirmText: "Transferir",
     });
     if (!ok) return;
@@ -224,7 +224,7 @@ export function TicketOptionsMenu({
       notifyError(
         err instanceof Error
           ? err.message
-          : "Não foi possível transferir o chamado.",
+          : "Não foi possível transferir o ticket.",
       );
     } finally {
       setBusy(false);
@@ -241,7 +241,7 @@ export function TicketOptionsMenu({
   async function searchParentTickets() {
     const raw = groupQuery.trim();
     if (!raw) {
-      notifyError("Informe o número ou trecho do título do chamado pai.");
+      notifyError("Informe o número ou trecho do título do ticket pai.");
       return;
     }
     setGroupSearching(true);
@@ -261,13 +261,13 @@ export function TicketOptionsMenu({
       setGroupResults(rows);
       setSelectedParent(rows.length === 1 ? rows[0] : null);
       if (rows.length === 0) {
-        notifyError("Nenhum chamado encontrado para agrupar.");
+        notifyError("Nenhum ticket encontrado para agrupar.");
       }
     } catch (err) {
       notifyError(
         err instanceof Error
           ? err.message
-          : "Não foi possível buscar o chamado pai.",
+          : "Não foi possível buscar o ticket pai.",
       );
     } finally {
       setGroupSearching(false);
@@ -276,12 +276,12 @@ export function TicketOptionsMenu({
 
   async function confirmGroup() {
     if (!selectedParent) {
-      notifyError("Selecione o chamado pai.");
+      notifyError("Selecione o ticket pai.");
       return;
     }
     const ok = await confirm({
-      title: "Agrupar chamado?",
-      description: `Este chamado (#${ticketNumber}) será cancelado e mesclado no #${selectedParent.ticketNumber}. O pai continua aberto.`,
+      title: "Agrupar Ticket?",
+      description: `Este ticket (#${ticketNumber}) será cancelado e mesclado no #${selectedParent.ticketNumber}. O pai continua aberto.`,
       confirmText: "Agrupar",
     });
     if (!ok) return;
@@ -302,7 +302,7 @@ export function TicketOptionsMenu({
       notifyError(
         err instanceof Error
           ? err.message
-          : "Não foi possível agrupar o chamado.",
+          : "Não foi possível agrupar o ticket.",
       );
     } finally {
       setBusy(false);
@@ -335,7 +335,7 @@ export function TicketOptionsMenu({
                 onSelect={() => void handleCloseTicket()}
               >
                 <CheckCircle className="size-4" />
-                Fechar chamado
+                Fechar Ticket
               </DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
@@ -343,7 +343,7 @@ export function TicketOptionsMenu({
                 onSelect={() => void handleCancelTicket()}
               >
                 <XCircle className="size-4" />
-                Cancelar chamado
+                Cancelar Ticket
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -351,14 +351,14 @@ export function TicketOptionsMenu({
                 onSelect={() => void openTransferDialog()}
               >
                 <FolderInput className="size-4" />
-                Transferir chamado
+                Transferir Ticket
               </DropdownMenuItem>
               <DropdownMenuItem
                 disabled={busy}
                 onSelect={() => openGroupDialog()}
               >
                 <GitMerge className="size-4" />
-                Agrupar chamado
+                Agrupar Ticket
               </DropdownMenuItem>
             </>
           ) : (
@@ -367,7 +367,7 @@ export function TicketOptionsMenu({
               onSelect={() => void handleReopenTicket()}
             >
               <RotateCcw className="size-4" />
-              Reabrir chamado
+              Reabrir Ticket
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -376,19 +376,19 @@ export function TicketOptionsMenu({
       <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
         <DialogContent className="sm:max-w-md" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Transferir chamado</DialogTitle>
+            <DialogTitle>Transferir Ticket</DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <Label>Mesa / fila de destino</Label>
+            <Label>Catálogo de destino</Label>
             <SearchableSelectField
               value={deskId}
               onChange={setDeskId}
               options={deskOptions}
               loading={loadingDesks}
-              placeholder="Selecione a mesa"
+              placeholder="Selecione o catálogo"
             />
             <p className="text-xs text-muted-foreground">
-              Use para passar o chamado de Infra para Sistemas, por exemplo.
+              Use para passar o ticket de Infra para Sistemas, por exemplo.
             </p>
           </div>
           <DialogFooter>
@@ -414,18 +414,18 @@ export function TicketOptionsMenu({
       <Dialog open={groupOpen} onOpenChange={setGroupOpen}>
         <DialogContent className="sm:max-w-lg" showCloseButton>
           <DialogHeader>
-            <DialogTitle>Agrupar chamado</DialogTitle>
+            <DialogTitle>Agrupar Ticket</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Este chamado vira filho, é cancelado e fica ligado ao pai. No fim
+              Este ticket vira filho, é cancelado e fica ligado ao pai. No fim
               permanece só o ticket pai aberto.
             </p>
             <div className="flex gap-2">
               <Input
                 value={groupQuery}
                 onChange={(event) => setGroupQuery(event.target.value)}
-                placeholder="Número ou título do chamado pai"
+                placeholder="Número ou título do ticket pai"
                 className="h-11"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {

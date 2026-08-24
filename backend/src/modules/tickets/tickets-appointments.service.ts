@@ -62,6 +62,8 @@ import {
   appointmentHistoryLabel,
   recordPortalTicketHistory,
 } from './portal-ticket-history';
+import { assertCanAppointmentOnNotStartedTicket } from './ticket-appointment-stage-guard';
+import { resolveTicketStageGroup } from './tickets-stage-groups';
 
 type AppointmentRow = {
   external_id: number;
@@ -89,6 +91,7 @@ export type TicketAppointmentDto = {
   attendanceLabel: string | null;
   syncStatus: 'SYNCED' | 'PENDING_TIFLUX' | 'PORTAL_ONLY';
   syncPaused?: boolean;
+  isWarning?: boolean;
   attachmentCount: number;
   attachments: Array<{
     id: string;
@@ -98,6 +101,28 @@ export type TicketAppointmentDto = {
     size: number;
     previewDataUrl: string | null;
   }>;
+};
+
+export type TicketAppointmentWarningListItem = {
+  portalAppointmentId: string;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  userName: string;
+  descriptionPreview: string;
+};
+
+export type TicketAppointmentWarningDetail = {
+  portalAppointmentId: string;
+  ticketNumber: number;
+  appointmentDate: string;
+  initTime: string;
+  endTime: string;
+  userName: string;
+  serviceName: string;
+  description: string;
+  descriptionPlain: string;
+  attachments: TicketAppointmentDto['attachments'];
 };
 
 const ATTENDANCE_LABELS: Record<string, string> = {
@@ -409,6 +434,7 @@ export class TicketsAppointmentsService {
         syncStatus: portal ? 'SYNCED' : 'SYNCED',
         syncPaused: false,
         attachmentCount: portal?.attachments.length ?? 0,
+        isWarning: portal?.isWarning ?? false,
         attachments: portal
           ? this.mapPortalAttachments(portal.attachments, previewMap)
           : [],
@@ -445,6 +471,7 @@ export class TicketsAppointmentsService {
               : 'PENDING_TIFLUX',
         syncPaused: Boolean(portal.syncPausedAt),
         attachmentCount: mappedAttachments.length,
+        isWarning: portal.isWarning,
         attachments: mappedAttachments,
       });
     }
@@ -552,6 +579,20 @@ export class TicketsAppointmentsService {
     };
   }
 
+  private async assertCanCreateAppointment(
+    actor: AuthenticatedRequestUser,
+    stageName: string | null | undefined,
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { specialty: { select: { name: true } } },
+    });
+    assertCanAppointmentOnNotStartedTicket({
+      stageName,
+      userSpecialtyName: user?.specialty?.name ?? null,
+    });
+  }
+
   async getAppointmentCatalogs(ticketNumber: number) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
@@ -573,6 +614,8 @@ export class TicketsAppointmentsService {
         clientExternalId: clientId,
         deskName: ticket.desk_name,
         deskExternalId: ticket.desk_external_id,
+        stageName: ticket.stage_name,
+        stageGroup: resolveTicketStageGroup(ticket.stage_name),
         appointmentType: '',
         tifluxSyncAvailable,
       },
@@ -971,6 +1014,7 @@ export class TicketsAppointmentsService {
       description: row.description,
       descriptionPlain: appointmentDescriptionToPlainText(row.description),
       notifyClient: row.notifyClient,
+      isWarning: row.isWarning,
       attachments: this.mapPortalAttachments(attachmentRows, previewMap),
       syncStatus: row.syncStatus,
       syncPaused: Boolean(row.syncPausedAt),
@@ -1170,6 +1214,7 @@ export class TicketsAppointmentsService {
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
         notifyClient: Boolean(dto.notifyClient),
+        isWarning: Boolean(dto.isWarning),
         syncPausedAt: null,
         outboxId,
       },
@@ -1207,6 +1252,11 @@ export class TicketsAppointmentsService {
     }
     if (files.length > 0) {
       changes.push(`${files.length} anexo(s) adicionado(s)`);
+    }
+    if (row.isWarning !== Boolean(dto.isWarning)) {
+      changes.push(
+        dto.isWarning ? 'marcado como advertência' : 'advertência removida',
+      );
     }
     await recordPortalTicketHistory(this.prisma, {
       ticketNumber,
@@ -1323,6 +1373,8 @@ export class TicketsAppointmentsService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
+    await this.assertCanCreateAppointment(actor, ticket.stage_name);
+
     this.validateAppointmentDto(dto);
 
     await this.assertNoOverlappingAppointmentForUser({
@@ -1350,6 +1402,7 @@ export class TicketsAppointmentsService {
         serviceName: dto.serviceName.trim(),
         attendance: dto.attendance,
         notifyClient: Boolean(dto.notifyClient),
+        isWarning: Boolean(dto.isWarning),
         syncStatus: syncToTiflux
           ? PortalTicketAppointmentSyncStatus.PENDING_TIFLUX
           : PortalTicketAppointmentSyncStatus.PORTAL_ONLY,
@@ -1432,16 +1485,26 @@ export class TicketsAppointmentsService {
     }
 
     const actorName = await actorDisplayName(this.prisma, actor);
+    const apptLabel = appointmentHistoryLabel({
+      date: dto.date,
+      initTime: dto.initTime,
+      endTime: dto.endTime,
+    });
+    const serviceSuffix = dto.serviceName?.trim()
+      ? ` (${dto.serviceName.trim()})`
+      : '';
     await recordPortalTicketHistory(this.prisma, {
       ticketNumber,
-      eventType: 'APPOINTMENT_CREATED',
-      summary: `Apontamento registrado: ${appointmentHistoryLabel({
-        date: dto.date,
-        initTime: dto.initTime,
-        endTime: dto.endTime,
-      })}${dto.serviceName?.trim() ? ` (${dto.serviceName.trim()})` : ''}`,
+      eventType: dto.isWarning
+        ? 'APPOINTMENT_WARNING_CREATED'
+        : 'APPOINTMENT_CREATED',
+      summary: dto.isWarning
+        ? `Advertência registrada: ${apptLabel}${serviceSuffix}`
+        : `Apontamento registrado: ${apptLabel}${serviceSuffix}`,
       actorName,
-      externalKey: `appointment_created:${portalAppointment.id}`,
+      externalKey: dto.isWarning
+        ? `appointment_warning_created:${portalAppointment.id}`
+        : `appointment_created:${portalAppointment.id}`,
       payload: {
         portalAppointmentId: portalAppointment.id,
         date: dto.date,
@@ -1449,6 +1512,7 @@ export class TicketsAppointmentsService {
         endTime: dto.endTime,
         serviceName: dto.serviceName.trim(),
         notifyClient: Boolean(dto.notifyClient),
+        isWarning: Boolean(dto.isWarning),
       },
     });
 
@@ -1773,5 +1837,158 @@ export class TicketsAppointmentsService {
       }
     }
     return map;
+  }
+
+  private warningDescriptionPreview(description: string, max = 120): string {
+    const plain = appointmentDescriptionToPlainText(description)
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (plain.length <= max) return plain;
+    return `${plain.slice(0, max)}…`;
+  }
+
+  async listPendingAppointmentWarnings(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+  ): Promise<{ warnings: TicketAppointmentWarningListItem[] }> {
+    const ticket = await this.getTicketContext(ticketNumber);
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    const rows = await this.prisma.portalTicketAppointment.findMany({
+      where: {
+        ticketNumber,
+        isWarning: true,
+        createdBy: { not: actor.userId },
+        warningAcks: { none: { userId: actor.userId } },
+      },
+      include: { creator: { select: { name: true } } },
+      orderBy: [{ appointmentDate: 'desc' }, { initTime: 'desc' }],
+    });
+
+    return {
+      warnings: rows.map((row) => ({
+        portalAppointmentId: row.id,
+        appointmentDate: this.formatDateOnly(row.appointmentDate) ?? '',
+        initTime: row.initTime,
+        endTime: row.endTime,
+        userName: row.creator.name,
+        descriptionPreview: this.warningDescriptionPreview(row.description),
+      })),
+    };
+  }
+
+  async getAppointmentWarningDetail(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    portalAppointmentId: string,
+  ): Promise<TicketAppointmentWarningDetail> {
+    const row = await this.prisma.portalTicketAppointment.findFirst({
+      where: {
+        id: portalAppointmentId,
+        ticketNumber,
+        isWarning: true,
+      },
+      include: {
+        creator: { select: { name: true } },
+        attachments: { include: { file: true }, orderBy: { createdAt: 'asc' } },
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Advertência não encontrada.');
+    }
+    if (row.createdBy === actor.userId) {
+      throw new BadRequestException(
+        'O autor da advertência não precisa confirmar a própria leitura.',
+      );
+    }
+
+    const previewMap = await this.loadAttachmentPreviewMap(
+      row.attachments.map((item) => item.id),
+    );
+
+    return {
+      portalAppointmentId: row.id,
+      ticketNumber: row.ticketNumber,
+      appointmentDate: this.formatDateOnly(row.appointmentDate) ?? '',
+      initTime: row.initTime,
+      endTime: row.endTime,
+      userName: row.creator.name,
+      serviceName: row.serviceName,
+      description: row.description,
+      descriptionPlain: appointmentDescriptionToPlainText(row.description),
+      attachments: this.mapPortalAttachments(row.attachments, previewMap),
+    };
+  }
+
+  async acknowledgeAppointmentWarning(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    portalAppointmentId: string,
+    permanent: boolean,
+  ) {
+    const row = await this.prisma.portalTicketAppointment.findFirst({
+      where: {
+        id: portalAppointmentId,
+        ticketNumber,
+        isWarning: true,
+      },
+    });
+    if (!row) {
+      throw new NotFoundException('Advertência não encontrada.');
+    }
+    if (row.createdBy === actor.userId) {
+      return { ok: true, message: 'Autor da advertência.' };
+    }
+
+    if (!permanent) {
+      return {
+        ok: true,
+        message: 'Leitura registrada nesta sessão.',
+        permanent: false,
+      };
+    }
+
+    await this.prisma.portalTicketAppointmentWarningAck.upsert({
+      where: {
+        portalAppointmentId_userId: {
+          portalAppointmentId,
+          userId: actor.userId,
+        },
+      },
+      create: {
+        portalAppointmentId,
+        userId: actor.userId,
+      },
+      update: {
+        acknowledgedAt: new Date(),
+      },
+    });
+
+    const actorName = await actorDisplayName(this.prisma, actor);
+    const apptLabel = appointmentHistoryLabel({
+      date: this.formatDateOnly(row.appointmentDate),
+      initTime: row.initTime,
+      endTime: row.endTime,
+    });
+    await recordPortalTicketHistory(this.prisma, {
+      ticketNumber,
+      eventType: 'APPOINTMENT_WARNING_ACKNOWLEDGED',
+      summary: `${actorName} confirmou leitura da advertência (${apptLabel}) e marcou para não exibir novamente`,
+      actorName,
+      externalKey: `appointment_warning_ack:${portalAppointmentId}:${actor.userId}`,
+      payload: {
+        portalAppointmentId,
+        userId: actor.userId,
+        permanent: true,
+      },
+    });
+
+    return {
+      ok: true,
+      message: 'Advertência marcada como lida.',
+      permanent: true,
+    };
   }
 }

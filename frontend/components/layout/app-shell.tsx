@@ -2,6 +2,7 @@
 
 import { Menu } from "lucide-react";
 
+import { TicketCreateFab } from "@/components/tickets/ticket-create-fab";
 import { Button } from "@/components/ui/button";
 import Sidebar from "./sidebar";
 import { SidebarProvider, useSidebar } from "./sidebar-context";
@@ -58,6 +59,7 @@ export default function AppShell({
         <div className="relative z-10">
           <Sidebar />
           <AppShellMain>{children}</AppShellMain>
+          <TicketCreateFab />
         </div>
       </div>
     </SidebarProvider>

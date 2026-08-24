@@ -56,9 +56,41 @@ const nextConfig: NextConfig = {
     root: frontendRoot,
   },
   async rewrites() {
-    // /auth/* é tratado por app/auth/[...path]/route.ts (preserva multi Set-Cookie).
-    // Mantém rewrite só como fallback se a rota não existir em builds antigos.
+    const apiPrefixes = [
+      "admin",
+      "tickets",
+      "users",
+      "permissions",
+      "financial",
+      "contracts",
+      "reports",
+      "gmuds",
+      "zabbix",
+      "tiflux",
+      "rendimento",
+      "projetos",
+      "inventario",
+      "dashboard",
+      "console",
+      "companies",
+      "mailbox",
+      "usage-alerts",
+      "health",
+      "email-inbound",
+      "pre-tickets",
+    ];
     return [
+      ...apiPrefixes.flatMap((prefix) => [
+        {
+          source: `/${prefix}/:path*`,
+          destination: `${apiRewriteBase}/${prefix}/:path*`,
+        },
+        {
+          source: `/${prefix}`,
+          destination: `${apiRewriteBase}/${prefix}`,
+        },
+      ]),
+      // /auth/* é tratado por app/auth/[...path]/route.ts (preserva multi Set-Cookie).
       {
         source: "/auth/:path*",
         destination: `${apiRewriteBase}/auth/:path*`,

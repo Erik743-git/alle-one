@@ -181,7 +181,7 @@ export function ClassificationCascadeFields({
   if (tree.length === 0) {
     return (
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        Nenhuma classificação cadastrada para esta mesa em Administração →
+        Nenhuma classificação cadastrada para este catálogo em Administração →
         Classificação.
       </p>
     );
