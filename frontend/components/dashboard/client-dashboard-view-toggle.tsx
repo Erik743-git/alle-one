@@ -19,16 +19,17 @@ export function ClientDashboardViewToggle({ viewMode, onChange }: Props) {
   const isAlle = viewMode === "ALLE";
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        Visão
-      </span>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          Visão
+        </span>
 
-      <div
-        role="tablist"
-        aria-label="Visão do ambiente"
-        className="relative inline-grid grid-cols-2 rounded-lg bg-muted/50 p-0.5 ring-1 ring-border/50"
-      >
+        <div
+          role="tablist"
+          aria-label="Visão do ambiente"
+          className="relative inline-grid grid-cols-2 rounded-lg bg-muted/50 p-0.5 ring-1 ring-border/50"
+        >
         <span
           aria-hidden
           className={cn(
@@ -88,7 +89,7 @@ export function ClientDashboardViewToggle({ viewMode, onChange }: Props) {
 
       <p
         key={viewMode}
-        className="animate-in fade-in-0 text-[11px] text-muted-foreground duration-300 sm:max-w-md"
+        className="animate-in fade-in-0 text-[11px] leading-snug text-muted-foreground duration-300"
       >
         {isAlle ? DASHBOARD_CLIENT_ALLE_HINT : DASHBOARD_CLIENT_INTERNAL_HINT}
       </p>
