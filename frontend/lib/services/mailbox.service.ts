@@ -34,9 +34,9 @@ const KIND_LABELS: Record<MailboxNotificationKind, string> = {
   RENDIMENTO_APPROVAL_PENDING: "Rendimento",
   CONTRACT_USAGE: "Contrato",
   GMUD_PENDING_APPROVAL: "GMUD",
-  TICKET_NO_APPOINTMENT_24H: "Chamado",
-  TICKET_STALLED_48H: "Chamado",
-  TICKET_STALLED_7D: "Chamado",
+  TICKET_NO_APPOINTMENT_24H: "Ticket",
+  TICKET_STALLED_48H: "Ticket",
+  TICKET_STALLED_7D: "Ticket",
   INVENTORY_EXPIRY: "Inventário",
   TIFLUX_SYNC_STALE: "Integrações",
 };
@@ -68,18 +68,18 @@ export const MAILBOX_KIND_OPTIONS: {
   },
   {
     kind: "TICKET_NO_APPOINTMENT_24H",
-    label: "Chamado sem registro de horas (24h+)",
-    description: "Chamado seu, aberto há mais de 24h sem registro de horas.",
+    label: "Ticket sem registro de horas (24h+)",
+    description: "Ticket seu, aberto há mais de 24h sem registro de horas.",
   },
   {
     kind: "TICKET_STALLED_48H",
-    label: "Chamado parado (48h+)",
-    description: "Chamado aberto sem atualização há mais de 48 horas.",
+    label: "Ticket parado (48h+)",
+    description: "Ticket aberto sem atualização há mais de 48 horas.",
   },
   {
     kind: "TICKET_STALLED_7D",
-    label: "Chamado parado (7 dias+)",
-    description: "Chamado aberto sem atualização há mais de 7 dias.",
+    label: "Ticket parado (7 dias+)",
+    description: "Ticket aberto sem atualização há mais de 7 dias.",
   },
   {
     kind: "INVENTORY_EXPIRY",

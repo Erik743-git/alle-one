@@ -24,6 +24,10 @@ import {
 import { canChangeTicketStage } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
+  canAppointmentOnTicketStage,
+  findExecutionStageOption,
+} from "@/lib/tickets/appointment-stage-guard";
+import {
   ticketsService,
   type AppointmentCatalogs,
   type CreateAppointmentPayload,
@@ -31,6 +35,8 @@ import {
 } from "@/lib/services/tickets.service";
 import { useAuth } from "@/lib/use-auth";
 import { cn } from "@/lib/utils";
+import { TicketAppointmentNotStartedDialog } from "@/components/tickets/ticket-appointment-not-started-dialog";
+import { TICKET_APPOINTMENT_WARNING_HINT } from "@/lib/module-copy";
 
 const SERVICE_TYPES = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
 
@@ -116,6 +122,8 @@ export function TicketAppointmentModal({
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
   const [projectLink, setProjectLink] = useState<AppointmentCatalogs["projectLink"]>(null);
   const [ticketClosed, setTicketClosed] = useState(false);
+  const [notStartedDialogOpen, setNotStartedDialogOpen] = useState(false);
+  const [stageChangeBusy, setStageChangeBusy] = useState(false);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [initTime, setInitTime] = useState(nowTime);
@@ -124,6 +132,7 @@ export function TicketAppointmentModal({
   const [serviceName, setServiceName] = useState("");
   const [projectActivityId, setProjectActivityId] = useState("");
   const [notifyClient, setNotifyClient] = useState(false);
+  const [isWarning, setIsWarning] = useState(false);
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
   const saveModeRef = useRef<SaveMode>("save");
@@ -167,6 +176,7 @@ export function TicketAppointmentModal({
         );
         setServiceName(editingAppointment.serviceName);
         setNotifyClient(Boolean(editingAppointment.notifyClient));
+        setIsWarning(Boolean(editingAppointment.isWarning));
         setComposerKey((k) => k + 1);
       } else {
         const start = nowTime();
@@ -175,11 +185,54 @@ export function TicketAppointmentModal({
         setOvernight(false);
         setProjectActivityId(fixedActivityId ?? "");
         setNotifyClient(false);
+        setIsWarning(false);
         setComposerKey((k) => k + 1);
       }
       void loadTicketMeta();
     }
   }, [open, loadTicketMeta, editingAppointment, fixedActivityId]);
+
+  useEffect(() => {
+    if (!open || isEdit || loadingMeta || !ticketMeta || !user) {
+      return;
+    }
+    if (
+      !canAppointmentOnTicketStage({
+        stageName: ticketMeta.stageName,
+        user,
+      })
+    ) {
+      onOpenChange(false);
+      setNotStartedDialogOpen(true);
+    }
+  }, [open, isEdit, loadingMeta, ticketMeta, user, onOpenChange]);
+
+  async function handleMoveToExecutionAndAppointment() {
+    try {
+      setStageChangeBusy(true);
+      const stages = await ticketsService.listStages(ticketNumber);
+      const executionStage = findExecutionStageOption(stages.stages);
+      if (!executionStage) {
+        notifyError(
+          "Não há estágio Em execução configurado para o catálogo deste ticket.",
+        );
+        return;
+      }
+      const res = await ticketsService.updateStage(ticketNumber, executionStage.id);
+      await loadTicketMeta();
+      setNotStartedDialogOpen(false);
+      onOpenChange(true);
+      notifySuccess(res.message);
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível alterar o estágio.",
+      );
+    } finally {
+      setStageChangeBusy(false);
+    }
+  }
 
   const projectActivityOptions = useMemo(
     () => [
@@ -236,6 +289,18 @@ export function TicketAppointmentModal({
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
+    if (
+      !isEdit &&
+      ticketMeta &&
+      user &&
+      !canAppointmentOnTicketStage({
+        stageName: ticketMeta.stageName,
+        user,
+      })
+    ) {
+      setNotStartedDialogOpen(true);
+      return;
+    }
     if (durationMinutes <= 0) {
       notifyError("Horário final deve ser depois do horário inicial.");
       return;
@@ -261,6 +326,7 @@ export function TicketAppointmentModal({
       serviceName: serviceName.trim(),
       attendance: DEFAULT_ATTENDANCE,
       notifyClient,
+      isWarning,
       ...(projectActivityId ? { projectActivityId } : {}),
       ...(isEdit
         ? { removeAttachmentFileIds: exported.removeAttachmentFileIds }
@@ -316,6 +382,7 @@ export function TicketAppointmentModal({
 
       if (!isEdit) {
         setServiceName("");
+        setIsWarning(false);
       }
       onOpenChange(false);
       onCreated?.();
@@ -329,7 +396,8 @@ export function TicketAppointmentModal({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         aria-describedby={undefined}
@@ -525,9 +593,23 @@ export function TicketAppointmentModal({
               <span>
                 Comunicação com cliente
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Envia e-mail ao responsável do chamado e aos seguidores, com
+                  Envia e-mail ao responsável do Ticket e aos seguidores, com
                   horário, quem apontou, o ticket, a descrição do apontamento e a
-                  do chamado. Imagens e anexos vão juntos no e-mail.
+                  do Ticket. Imagens e anexos vão juntos no e-mail.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-sm text-foreground">
+              <FlipCheckbox
+                checked={isWarning}
+                onChange={(e) => setIsWarning(e.target.checked)}
+                disabled={saving}
+              />
+              <span>
+                Advertência
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {TICKET_APPOINTMENT_WARNING_HINT}
                 </span>
               </span>
             </label>
@@ -592,5 +674,13 @@ export function TicketAppointmentModal({
         </form>
       </SheetContent>
     </Sheet>
+      <TicketAppointmentNotStartedDialog
+        open={notStartedDialogOpen}
+        onOpenChange={setNotStartedDialogOpen}
+        busy={stageChangeBusy}
+        canChangeStage={canChangeTicketStage()}
+        onConfirmStageChange={() => void handleMoveToExecutionAndAppointment()}
+      />
+    </>
   );
 }

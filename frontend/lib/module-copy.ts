@@ -4,19 +4,19 @@
  */
 
 export const TICKETS_NEW_SUBTITLE =
-  "Informe os dados do chamado. Após o envio, ele ficará disponível na lista de tickets.";
+  "Informe os dados do ticket. Após o envio, ele ficará disponível na lista de tickets.";
 
 export const TICKETS_LIST_SUBTITLE =
-  "Por padrão, são exibidos os chamados em que você é o responsável.";
+  "Por padrão, são exibidos os tickets em que você é o responsável.";
 
 export const TICKETS_CLIENT_LIST_SUBTITLE =
-  "Chamados da sua empresa. Você também pode abrir chamados para a Alle.";
+  "Tickets da sua empresa. Você também pode abrir tickets para a Alle.";
 
 export const TICKETS_CREATE_RESTRICTED =
-  "Você não tem permissão para abrir novos chamados. Consulte os existentes ou fale com o administrador.";
+  "Você não tem permissão para abrir novos tickets. Consulte os existentes ou fale com o administrador.";
 
 export const TICKETS_APPOINTMENT_CREATE_RESTRICTED =
-  "Você não tem permissão para registrar apontamentos neste módulo. Consulte os chamados existentes ou fale com o administrador.";
+  "Você não tem permissão para registrar apontamentos neste módulo. Consulte os tickets existentes ou fale com o administrador.";
 
 export const APONTAMENTOS_ADMIN_SUBTITLE =
   "Consulte a agenda e as horas registradas de cada colaborador.";
@@ -25,7 +25,7 @@ export const APONTAMENTOS_GESTOR_SUBTITLE =
   "Funcionários da sua empresa. Os apontamentos da equipe Alle ficam em Financeiro.";
 
 export const APONTAMENTOS_AGENDA_SUBTITLE =
-  "Registros de horas vinculados aos chamados de atendimento.";
+  "Registros de horas vinculados aos tickets de atendimento.";
 
 export const APONTAMENTOS_PJ_SUBTITLE =
   "Visão resumida dos seus apontamentos e horas extras.";
@@ -54,9 +54,9 @@ export const FINANCEIRO_ADMIN_AGENDA_SUBTITLE =
 export const DASHBOARD_CLIENT_ALLE_LABEL = "Visão Alle";
 export const DASHBOARD_CLIENT_INTERNAL_LABEL = "Visão interna";
 export const DASHBOARD_CLIENT_ALLE_HINT =
-  "O que a Alle registra no seu ambiente (chamados e horas de atendimento).";
+  "O que a Alle registra no seu ambiente (tickets e horas de atendimento).";
 export const DASHBOARD_CLIENT_INTERNAL_HINT =
-  "Chamados abertos pelos seus funcionários no portal.";
+  "Tickets abertos pelos seus funcionários no portal.";
 export const DASHBOARD_EDIT_CHART_LABEL = "Editar gráfico";
 
 export const RENDIMENTO_JUSTIFICATION_ALERT_DESC =
@@ -93,6 +93,24 @@ export const SYNC_STATUS_PAUSED = "Sincronização pausada";
 export const TICKET_APPOINTMENT_TIFLUX_PORTAL_ONLY_WARNING =
   "Este apontamento fica registrado no Alle One.";
 
+export const TICKET_NO_RESPONSIBLE_PRETICKET_WARNING =
+  "Sem responsável, o ticket entra na fila de pré-tickets para triagem. Atribua um responsável depois para concluir a abertura. Descrição, anexos e demais dados serão preservados.";
+
+export const TICKET_REMOVE_RESPONSIBLE_PRETICKET_WARNING =
+  "Ao remover o responsável, o ticket volta para a fila de pré-tickets aguardando triagem. Nenhuma informação do ticket será apagada.";
+
+export const TICKET_PRETICKET_BANNER =
+  "Este ticket está na triagem (pré-ticket). Atribua um responsável para retirá-lo da fila.";
+
+export const TICKET_APPOINTMENT_NOT_STARTED_WARNING =
+  "Este ticket ainda não foi iniciado. Para apontar horas, altere o estágio para Em execução.";
+
+export const TICKET_APPOINTMENT_WARNING_HINT =
+  "Marque quando o apontamento for uma advertência importante. Quem abrir o ticket verá um aviso para ler o conteúdo antes de continuar.";
+
+export const TICKET_APPOINTMENT_WARNING_DIALOG_INTRO =
+  "Este ticket possui advertência(s) que precisam ser lidas. Selecione uma linha para ver o conteúdo completo.";
+
 /** Apontamento listado só pelo espelho externo (sem portalAppointmentId). */
 export const TICKET_APPOINTMENT_TIFLUX_ONLY_HINT =
   "Registro histórico migrado — edite quando disponível.";
@@ -113,25 +131,25 @@ export const MAILBOX_RENDIMENTO_ALERT_BODY_ONE = (dateLabel: string, monthLabel:
 export const MAILBOX_RENDIMENTO_ALERT_BODY_MANY = (count: number, monthLabel: string) =>
   `Há ${count} dia(s) com intervalo sem registro de horas em ${monthLabel}. Confira sua agenda.`;
 
-export const MAILBOX_TICKET_NO_HOURS_TITLE = "Chamado sem registro de horas (24h+)";
+export const MAILBOX_TICKET_NO_HOURS_TITLE = "Ticket sem registro de horas (24h+)";
 
 export const MAILBOX_TICKET_NO_HOURS_BODY = (
   ticketNumber: number,
   title: string | null,
 ) =>
-  `Chamado #${ticketNumber}${title ? ` — ${title}` : ""}: aberto há mais de 24h sem registro de horas.`;
+  `Ticket #${ticketNumber}${title ? ` — ${title}` : ""}: aberto há mais de 24h sem registro de horas.`;
 
 export const MAILBOX_TICKET_STALLED_48H_BODY = (
   ticketNumber: number,
   title: string | null,
 ) =>
-  `Chamado #${ticketNumber}${title ? ` — ${title}` : ""}: sem atualização há mais de 48 horas.`;
+  `Ticket #${ticketNumber}${title ? ` — ${title}` : ""}: sem atualização há mais de 48 horas.`;
 
 export const MAILBOX_TICKET_STALLED_7D_BODY = (
   ticketNumber: number,
   title: string | null,
 ) =>
-  `Chamado #${ticketNumber}${title ? ` — ${title}` : ""}: sem atualização há mais de 7 dias.`;
+  `Ticket #${ticketNumber}${title ? ` — ${title}` : ""}: sem atualização há mais de 7 dias.`;
 
 export const MAILBOX_JUSTIFICATION_PENDING_BODY = (
   userName: string,
@@ -142,7 +160,7 @@ export const MAILBOX_JUSTIFICATION_PENDING_BODY = (
   `${userName} · ${date} (${from}–${to}) — justificativa aguardando análise.`;
 
 export const CORREIO_FOOTER_TICKETS =
-  "Colaboradores recebem aviso quando um chamado próprio está aberto há 24h+ sem registro de horas; administradores recebem alertas de chamados sem atualização há 48h ou 7 dias.";
+  "Colaboradores recebem aviso quando um ticket próprio está aberto há 24h+ sem registro de horas; administradores recebem alertas de tickets sem atualização há 48h ou 7 dias.";
 
 export const MAILBOX_RENDIMENTO_ALERT_FILTER_DESC =
   "Intervalos sem registro de horas na sua agenda do mês.";

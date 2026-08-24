@@ -136,7 +136,7 @@ export default function EditTicketPage() {
       return;
     }
     if (!content?.isValid) {
-      notifyError("Informe a descrição do chamado (texto e/ou imagens).");
+      notifyError("Informe a descrição do ticket (texto e/ou imagens).");
       return;
     }
 
@@ -156,10 +156,16 @@ export default function EditTicketPage() {
           description,
           stageName: selectedStage?.name,
           removeAttachmentFileIds: content.removeAttachmentFileIds,
-          ...(selectedResponsible
+          // Se um responsável foi selecionado, atualiza; se foi removido (campo vazio), envia null
+          ...(responsibleId !== "" && selectedResponsible
             ? {
                 responsibleId: selectedResponsible.externalId,
                 responsibleName: selectedResponsible.name,
+              }
+            : responsibleId === ""
+            ? {
+                responsibleId: null,
+                responsibleName: null,
               }
             : {}),
         },
@@ -194,8 +200,8 @@ export default function EditTicketPage() {
               icon={<Pencil size={24} />}
               title={
                 Number.isFinite(ticketNumber)
-                  ? `Editar chamado #${ticketNumber}`
-                  : "Editar chamado"
+                  ? `Editar ticket #${ticketNumber}`
+                  : "Editar ticket"
               }
               description={
                 canEdit
@@ -215,7 +221,7 @@ export default function EditTicketPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <FileText className="size-4 text-primary" />
-                      Conteúdo do chamado
+                      Conteúdo do ticket
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -280,9 +286,29 @@ export default function EditTicketPage() {
                         onChange={setResponsibleId}
                         options={responsibleOptions}
                         disabled={saving || closed}
-                        placeholder="Selecione o responsável"
+                        placeholder="Selecione o responsável (opcional)"
                         emptyLabel="Sem responsável"
+                        preserveOrder
                       />
+                      {responsibleId && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2"
+                          disabled={saving || closed}
+                          onClick={() => {
+                            setResponsibleId("");
+                          }}
+                        >
+                          Remover responsável
+                        </Button>
+                      )}
+                      {!responsibleId && (
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Se remover o responsável, o ticket será convertido em pré-ticket e todas as informações serão preservadas.
+                        </p>
+                      )}
                     </div>
                   </CardContent>
                 </Card>

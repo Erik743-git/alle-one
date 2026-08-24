@@ -211,7 +211,7 @@ function TicketFollowersPanel({
       <DialogHeader className="pr-8">
         <DialogTitle>Seguidores</DialogTitle>
         <DialogDescription className="sr-only">
-          Adicione pessoas que recebem as atualizações do chamado por e-mail.
+          Adicione pessoas que recebem as atualizações do Ticket por e-mail.
         </DialogDescription>
       </DialogHeader>
 

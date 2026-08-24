@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -35,6 +37,7 @@ import {
   isTifluxRuntimeApiEnabled,
 } from './tickets-portal.config';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
+import { TicketAutomationService } from './ticket-automation.service';
 
 type TicketRow = {
   ticket_number: number;
@@ -81,6 +84,7 @@ export type TicketListItemDto = {
   updatedAt: string | null;
   stageGroup: TicketStageGroupKey;
   externalGmudRef: string | null;
+  isPreTicket?: boolean;
 };
 
 export type TicketHistoryDto = {
@@ -116,6 +120,8 @@ export class TicketsQueryService {
     private readonly tenantScope: TenantScopeService,
     private readonly appointments: TicketsAppointmentsService,
     private readonly portalStore: TicketsPortalStoreService,
+    @Inject(forwardRef(() => TicketAutomationService))
+    private readonly ticketAutomation: TicketAutomationService,
   ) {}
 
   private get allowRuntimeTifluxApi(): boolean {
@@ -969,6 +975,7 @@ export class TicketsQueryService {
           deskExternalId: row.desk_external_id ?? null,
           clientExternalId: row.client_external_id ?? null,
           isClosed: Boolean(row.is_closed),
+          isPreTicket: portal.isPreTicket,
           requestorName: row.requestor_name ?? null,
           requestorEmail: row.requestor_email ?? null,
           requestorTelephone: row.requestor_telephone ?? null,
@@ -1806,6 +1813,7 @@ export class TicketsQueryService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
     stageId: number,
+    options?: { skipAutomations?: boolean },
   ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
@@ -1852,6 +1860,17 @@ export class TicketsQueryService {
         } catch {
           /* ignore */
         }
+        await this.dispatchStageAutomations(
+          actor,
+          ticketNumber,
+          {
+            fromStageName: ticket.stage_name,
+            toStageName: targetStage.name,
+            stageId: targetStage.id,
+            deskExternalId: stagesResponse.deskExternalId ?? null,
+          },
+          options?.skipAutomations,
+        );
         return {
           ok: true,
           stageId: targetStage.id,
@@ -1948,6 +1967,21 @@ export class TicketsQueryService {
       },
     });
 
+    await this.dispatchStageAutomations(
+      actor,
+      ticketNumber,
+      {
+        fromStageName: ticket.stage_name,
+        toStageName: stageName,
+        stageId: resolvedStageId,
+        deskExternalId:
+          Number.isFinite(deskExternalId) && deskExternalId > 0
+            ? deskExternalId
+            : null,
+      },
+      options?.skipAutomations,
+    );
+
     return {
       ok: true,
       stageId: resolvedStageId,
@@ -1958,6 +1992,46 @@ export class TicketsQueryService {
         ? `Ticket fechado (estágio "${stageName}").`
         : `Estágio atualizado para "${stageName}".`,
     };
+  }
+
+  private async dispatchStageAutomations(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    partial: {
+      fromStageName: string | null;
+      toStageName: string;
+      stageId: number;
+      deskExternalId: number | null;
+    },
+    skipAutomations?: boolean,
+  ) {
+    if (skipAutomations) return;
+    try {
+      const portalRow = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber },
+        select: {
+          deskExternalId: true,
+          clientExternalId: true,
+          classificationId: true,
+        },
+      });
+      await this.ticketAutomation.handleStageChange(actor, {
+        ticketNumber,
+        fromStageName: partial.fromStageName,
+        toStageName: partial.toStageName,
+        stageId: partial.stageId,
+        deskExternalId:
+          portalRow?.deskExternalId ?? partial.deskExternalId ?? null,
+        clientExternalId: portalRow?.clientExternalId ?? null,
+        classificationId: portalRow?.classificationId ?? null,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Automações de estágio falharam no ticket #${ticketNumber}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private async loadPortalTicketDescription(ticketNumber: number) {

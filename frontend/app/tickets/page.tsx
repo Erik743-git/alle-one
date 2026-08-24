@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Filter, Plus, RefreshCw, Search, Ticket } from "lucide-react";
+import { Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -17,6 +17,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ExcelColumnHeader,
+  countActiveExcelFilters,
+  emptyExcelFilter,
+  excelFilterActive,
+  valuePassesExcelFilter,
+  type ExcelColumnFilterState,
+  type ExcelSortDir,
+} from "@/components/tickets/excel-column-header";
+import { TicketListPresetDialog } from "@/components/tickets/ticket-list-preset-dialog";
+import { TicketListPresetsToolbar } from "@/components/tickets/ticket-list-presets-toolbar";
 import {
   TicketResponsibleSelect,
   currentUserResponsibleId,
@@ -42,7 +53,18 @@ import {
   type TicketListResponse,
   type TicketsListParams,
 } from "@/lib/services/tickets.service";
+import { ticketListPresetsService } from "@/lib/services/ticket-list-presets.service";
+import {
+  TICKET_LIST_COLUMNS,
+  applyPresetConfigToPageState,
+  type TicketColumnKey,
+  type TicketListGroupBy,
+  type TicketListPageState,
+  type TicketListPreset,
+} from "@/lib/tickets/list-presets";
 import { useRouter } from "next/navigation";
+
+const TICKET_COLUMNS = TICKET_LIST_COLUMNS;
 
 function isDoneStage(stageName: string | null) {
   return (
@@ -65,6 +87,68 @@ function formatWhen(iso: string | null) {
   });
 }
 
+function cellText(ticket: TicketListItem, key: TicketColumnKey): string {
+  switch (key) {
+    case "number":
+      return String(ticket.ticketNumber);
+    case "title":
+      return ticket.title?.trim() || "—";
+    case "client":
+      return ticket.clientName?.trim() || "—";
+    case "gmud":
+      return ticket.externalGmudRef?.trim() || "—";
+    case "origin":
+      return ticket.origin?.trim() || "—";
+    case "priority":
+      return ticket.priorityName?.trim() || "—";
+    case "stage":
+      return ticket.stageName?.trim() || "—";
+    case "responsible":
+      return ticket.responsibleName?.trim() || "—";
+    case "updated":
+      return formatWhen(ticket.updatedAt);
+    default:
+      return "—";
+  }
+}
+
+function compareTickets(
+  a: TicketListItem,
+  b: TicketListItem,
+  key: TicketColumnKey,
+  dir: ExcelSortDir,
+): number {
+  const mul = dir === "asc" ? 1 : -1;
+  if (key === "number") {
+    return (a.ticketNumber - b.ticketNumber) * mul;
+  }
+  if (key === "updated") {
+    const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return (ta - tb) * mul;
+  }
+  return (
+    cellText(a, key).localeCompare(cellText(b, key), "pt-BR", {
+      sensitivity: "base",
+      numeric: true,
+    }) * mul
+  );
+}
+
+function emptyColumnFilters(): Record<TicketColumnKey, ExcelColumnFilterState> {
+  return {
+    number: emptyExcelFilter(),
+    title: emptyExcelFilter(),
+    client: emptyExcelFilter(),
+    gmud: emptyExcelFilter(),
+    origin: emptyExcelFilter(),
+    priority: emptyExcelFilter(),
+    stage: emptyExcelFilter(),
+    responsible: emptyExcelFilter(),
+    updated: emptyExcelFilter(),
+  };
+}
+
 export default function TicketsPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -78,6 +162,19 @@ export default function TicketsPage() {
     () => isClientGestor(),
   );
   const [includeDone, setIncludeDone] = useState(false);
+  const [columnFilters, setColumnFilters] = useState(emptyColumnFilters);
+  const [sortKey, setSortKey] = useState<TicketColumnKey | null>(null);
+  const [sortDir, setSortDir] = useState<ExcelSortDir | null>(null);
+  const [groupBy, setGroupBy] = useState<TicketListGroupBy>("none");
+  const [visibleColumns, setVisibleColumns] = useState<TicketColumnKey[]>(
+    TICKET_COLUMNS.map((col) => col.key),
+  );
+  const [presets, setPresets] = useState<TicketListPreset[]>([]);
+  const [activePresetId, setActivePresetId] = useState<string | null>(null);
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<TicketListPreset | null>(
+    null,
+  );
 
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
@@ -149,6 +246,94 @@ export default function TicketsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadPresets = useCallback(async () => {
+    try {
+      const rows = await ticketListPresetsService.list();
+      setPresets(rows);
+    } catch {
+      /* presets opcionais */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPresets();
+  }, [loadPresets]);
+
+  const pageState = useMemo(
+    (): TicketListPageState => ({
+      includeAllResponsibles,
+      includeDone,
+      search,
+      from,
+      to,
+      responsibleExternalId,
+      clientExternalId,
+      stageName,
+      deskName,
+      ticketNumber,
+      externalGmudRef,
+      groupBy,
+      visibleColumns,
+      columnFilters,
+      sortKey,
+      sortDir,
+    }),
+    [
+      includeAllResponsibles,
+      includeDone,
+      search,
+      from,
+      to,
+      responsibleExternalId,
+      clientExternalId,
+      stageName,
+      deskName,
+      ticketNumber,
+      externalGmudRef,
+      groupBy,
+      visibleColumns,
+      columnFilters,
+      sortKey,
+      sortDir,
+    ],
+  );
+
+  function applyPreset(preset: TicketListPreset) {
+    const partial = applyPresetConfigToPageState(preset.config);
+    if (partial.includeAllResponsibles !== undefined) {
+      setIncludeAllResponsibles(partial.includeAllResponsibles);
+    }
+    if (partial.includeDone !== undefined) setIncludeDone(partial.includeDone);
+    if (partial.search !== undefined) setSearch(partial.search);
+    if (partial.from !== undefined) setFrom(partial.from);
+    if (partial.to !== undefined) setTo(partial.to);
+    if (partial.responsibleExternalId !== undefined) {
+      setResponsibleExternalId(partial.responsibleExternalId);
+    }
+    if (partial.clientExternalId !== undefined) {
+      setClientExternalId(partial.clientExternalId);
+    }
+    if (partial.stageName !== undefined) setStageName(partial.stageName);
+    if (partial.deskName !== undefined) setDeskName(partial.deskName);
+    if (partial.ticketNumber !== undefined) setTicketNumber(partial.ticketNumber);
+    if (partial.externalGmudRef !== undefined) {
+      setExternalGmudRef(partial.externalGmudRef);
+    }
+    if (partial.groupBy !== undefined) setGroupBy(partial.groupBy);
+    if (partial.visibleColumns?.length) {
+      setVisibleColumns(partial.visibleColumns);
+    }
+    if (partial.columnFilters) setColumnFilters(partial.columnFilters);
+    if (partial.sortKey !== undefined) setSortKey(partial.sortKey);
+    if (partial.sortDir !== undefined) setSortDir(partial.sortDir);
+    setActivePresetId(preset.id);
+  }
+
+  const activeColumns = useMemo(
+    () => TICKET_COLUMNS.filter((col) => visibleColumns.includes(col.key)),
+    [visibleColumns],
+  );
 
   const stageOptions = useMemo(() => {
     const fromApi = catalogs?.stages ?? [];
@@ -232,11 +417,185 @@ export default function TicketsPage() {
 
   const deskOptions = useMemo(
     () => [
-      { value: "", label: "Todas as mesas" },
+      { value: "", label: "Todos os catálogos" },
       ...(catalogs?.desks ?? []).map((d) => ({ value: d, label: d })),
     ],
     [catalogs],
   );
+
+  const allTickets = useMemo(
+    () => (data?.groups ?? []).flatMap((group) => group.tickets),
+    [data],
+  );
+
+  const distinctByColumn = useMemo(() => {
+    const map = {} as Record<TicketColumnKey, string[]>;
+    for (const col of TICKET_COLUMNS) {
+      const set = new Set<string>();
+      for (const ticket of allTickets) {
+        set.add(cellText(ticket, col.key));
+      }
+      map[col.key] = [...set].sort((a, b) =>
+        a.localeCompare(b, "pt-BR", { sensitivity: "base", numeric: true }),
+      );
+    }
+    return map;
+  }, [allTickets]);
+
+  const displayTickets = useMemo(() => {
+    let tickets = allTickets.filter((ticket) =>
+      TICKET_COLUMNS.every((col) =>
+        valuePassesExcelFilter(cellText(ticket, col.key), columnFilters[col.key]),
+      ),
+    );
+    if (sortKey && sortDir) {
+      tickets = [...tickets].sort((a, b) =>
+        compareTickets(a, b, sortKey, sortDir),
+      );
+    }
+    return tickets;
+  }, [allTickets, columnFilters, sortKey, sortDir]);
+
+  const activeTableFiltersCount = useMemo(
+    () => countActiveExcelFilters(columnFilters),
+    [columnFilters],
+  );
+
+  const activeFilterLabels = useMemo(() => {
+    return TICKET_COLUMNS.filter((col) =>
+      excelFilterActive(columnFilters[col.key]),
+    ).map((col) => col.label);
+  }, [columnFilters]);
+
+  const filteredTotal = useMemo(
+    () => displayTickets.length,
+    [displayTickets],
+  );
+
+  const displaySections = useMemo(() => {
+    if (groupBy === "none") {
+      return [{ key: "all", label: "", tickets: displayTickets }];
+    }
+    const map = new Map<string, TicketListItem[]>();
+    for (const ticket of displayTickets) {
+      const label =
+        groupBy === "stage"
+          ? ticket.stageName ?? "—"
+          : groupBy === "client"
+            ? ticket.clientName ?? "—"
+            : ticket.responsibleName ?? "Sem responsável";
+      const bucket = map.get(label) ?? [];
+      bucket.push(ticket);
+      map.set(label, bucket);
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b, "pt-BR"))
+      .map(([label, tickets]) => ({
+        key: label,
+        label,
+        tickets,
+      }));
+  }, [displayTickets, groupBy]);
+
+  function renderTicketCell(ticket: TicketListItem, key: TicketColumnKey) {
+    switch (key) {
+      case "number":
+        return (
+          <td className="border-r border-border/30 px-3 py-2.5 text-right font-semibold tabular-nums text-primary">
+            #{ticket.ticketNumber}
+          </td>
+        );
+      case "title":
+        return (
+          <td className="max-w-[320px] border-r border-border/30 px-3 py-2.5">
+            <span
+              className="line-clamp-2 font-medium text-foreground"
+              title={ticket.title ?? undefined}
+            >
+              {ticket.title ?? "—"}
+            </span>
+          </td>
+        );
+      case "client":
+        return (
+          <td className="border-r border-border/30 px-3 py-2.5">
+            {ticket.clientName ?? "—"}
+          </td>
+        );
+      case "gmud":
+        return (
+          <td className="border-r border-border/30 px-3 py-2.5 text-muted-foreground">
+            {ticket.externalGmudRef ?? "—"}
+          </td>
+        );
+      case "origin":
+        return (
+          <td className="border-r border-border/30 px-3 py-2.5">
+            {ticket.origin ?? "—"}
+          </td>
+        );
+      case "priority":
+        return (
+          <td className="border-r border-border/30 px-3 py-2.5">
+            {ticket.priorityName ?? "—"}
+          </td>
+        );
+      case "stage":
+        return (
+          <td className="border-r border-border/30 px-3 py-2.5">
+            <span className="rounded-md bg-muted/50 px-1.5 py-0.5 text-xs font-medium">
+              {ticket.stageName ?? "—"}
+            </span>
+          </td>
+        );
+      case "responsible":
+        return (
+          <td
+            className="border-r border-border/30 px-3 py-2.5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {canReassign ? (
+              <TicketResponsibleSelect
+                ticketNumber={ticket.ticketNumber}
+                responsibleId={ticket.responsibleExternalId}
+                responsibleName={ticket.responsibleName}
+                options={responsibleSelectOptions}
+                compact
+                disabled={isDoneStage(ticket.stageName)}
+                onUpdated={(next) =>
+                  applyResponsibleUpdate(ticket.ticketNumber, next)
+                }
+              />
+            ) : (
+              ticket.responsibleName ?? "—"
+            )}
+          </td>
+        );
+      case "updated":
+        return (
+          <td className="whitespace-nowrap px-3 py-2.5 text-xs tabular-nums text-muted-foreground">
+            {formatWhen(ticket.updatedAt)}
+          </td>
+        );
+      default:
+        return null;
+    }
+  }
+
+  function handleSort(columnKey: string) {
+    const key = columnKey as TicketColumnKey;
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("asc");
+      return;
+    }
+    if (sortDir === "asc") {
+      setSortDir("desc");
+      return;
+    }
+    setSortKey(null);
+    setSortDir(null);
+  }
 
   return (
     <ProtectedPage>
@@ -245,10 +604,10 @@ export default function TicketsPage() {
           <div className="font-sans w-full space-y-6">
             <PageHeader
               icon={<Ticket size={24} />}
-              title="Chamados"
+              title="Tickets"
               description={
                 isClientMember()
-                  ? "Chamados em que você é solicitante, criador ou está em cópia."
+                  ? "Tickets em que você é solicitante, criador ou está em cópia."
                   : isClientGestor()
                     ? TICKETS_CLIENT_LIST_SUBTITLE
                     : canCreateTicket()
@@ -257,14 +616,6 @@ export default function TicketsPage() {
               }
               actions={
                 <>
-                  {canCreateTicket() ? (
-                    <Button asChild>
-                      <Link href="/tickets/new">
-                        <Plus className="mr-2 size-4" />
-                        Novo chamado
-                      </Link>
-                    </Button>
-                  ) : null}
                   {!isClient() ? (
                     <Button asChild variant="outline" className="relative">
                       <Link href="/tickets/pre-tickets" className="inline-flex items-center">
@@ -293,12 +644,12 @@ export default function TicketsPage() {
                 <div className="space-y-2">
                   <CardTitle className="text-lg">
                     {isClientMember()
-                      ? "Meus chamados"
+                      ? "Meus tickets"
                       : isClientGestor()
-                        ? "Chamados da empresa"
+                        ? "Tickets da empresa"
                         : mineOnly
-                          ? "Meus chamados"
-                          : "Todos os chamados abertos"}
+                          ? "Meus tickets"
+                          : "Todos os tickets abertos"}
                   </CardTitle>
                   {!isClient() ? (
                     <div className="flex flex-wrap items-center gap-2">
@@ -326,15 +677,48 @@ export default function TicketsPage() {
                     </div>
                   ) : null}
                 </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowAdvanced((v) => !v)}
-                >
-                  <Filter className="mr-2 size-4" />
-                  Busca avançada
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <TicketListPresetsToolbar
+                    presets={presets}
+                    activePresetId={activePresetId}
+                    onRefresh={() => void loadPresets()}
+                    onApply={applyPreset}
+                    onCreate={() => {
+                      setEditingPreset(null);
+                      setPresetDialogOpen(true);
+                    }}
+                    onEdit={(preset) => {
+                      setEditingPreset(preset);
+                      setPresetDialogOpen(true);
+                    }}
+                  />
+                  {activeTableFiltersCount > 0 || sortKey ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setColumnFilters(emptyColumnFilters());
+                        setSortKey(null);
+                        setSortDir(null);
+                      }}
+                    >
+                      Limpar tabela
+                      {activeTableFiltersCount > 0
+                        ? ` (${activeTableFiltersCount} filtro${activeTableFiltersCount > 1 ? "s" : ""})`
+                        : ""}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowAdvanced((v) => !v)}
+                  >
+                    <Filter className="mr-2 size-4" />
+                    Busca avançada
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {data?.message ? (
@@ -372,7 +756,7 @@ export default function TicketsPage() {
                             if (!checked) setResponsibleExternalId("");
                           }}
                         />
-                        Incluir chamados de outros responsáveis
+                        Incluir tickets de outros responsáveis
                       </label>
                     ) : null}
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -465,13 +849,13 @@ export default function TicketsPage() {
                       ) : null}
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
-                          Mesa
+                          Catálogo
                         </Label>
                         <SearchableSelectField
                           value={deskName}
                           onChange={setDeskName}
                           options={deskOptions}
-                          emptyLabel="Todas as mesas"
+                          emptyLabel="Todos os catálogos"
                         />
                       </div>
                     </div>
@@ -499,99 +883,126 @@ export default function TicketsPage() {
                     : "Nenhum ticket pendente encontrado. Marque “Incluir resolvidos, encerrados e cancelados” para ver o histórico."}
                 </CardContent>
               </Card>
+            ) : filteredTotal === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  Nenhum ticket corresponde aos filtros da tabela.
+                  {activeTableFiltersCount > 0 ? " Use “Limpar tabela”." : ""}
+                </CardContent>
+              </Card>
             ) : (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  {data.total} ticket(s)
-                  {includeDone
-                    ? " · incluindo resolvidos/encerrados"
-                    : " · só pendentes"}
-                  {data.mineOnly
-                    ? data.responsibleName
-                      ? ` · responsável: ${data.responsibleName}`
-                      : " · meus tickets"
-                    : data.responsibleName
-                      ? ` · responsável: ${data.responsibleName}`
-                      : " · todos os responsáveis"}
-                </p>
-                {(data?.groups ?? []).map((group) => (
-                  <Card key={group.key}>
-                    <CardHeader>
-                      <CardTitle className="text-base">
-                        {group.label}{" "}
-                        <span className="text-muted-foreground">({group.tickets.length})</span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="overflow-x-auto p-0">
-                      <table className="w-full min-w-[1120px] text-left text-sm">
-                        <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
-                          <tr>
-                            <th className="px-4 py-2">Número</th>
-                            <th className="px-4 py-2">Título</th>
-                            <th className="px-4 py-2">Cliente</th>
-                            <th className="px-4 py-2">GMUD</th>
-                            <th className="px-4 py-2">Origem</th>
-                            <th className="px-4 py-2">Prioridade</th>
-                            <th className="px-4 py-2">Estágio</th>
-                            <th className="px-4 py-2">Responsável</th>
-                            <th className="px-4 py-2">Atualizado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.tickets.map((ticket) => (
-                            <tr
-                              key={`${group.key}-${ticket.ticketNumber}`}
-                              className="cursor-pointer border-b border-border/60 hover:bg-muted/20"
-                              onClick={() =>
-                                router.push(`/tickets/${ticket.ticketNumber}`)
-                              }
-                            >
-                              <td className="px-4 py-2 font-semibold text-primary">
-                                #{ticket.ticketNumber}
-                              </td>
-                              <td className="max-w-[280px] truncate px-4 py-2">
-                                {ticket.title ?? "—"}
-                              </td>
-                              <td className="px-4 py-2">{ticket.clientName ?? "—"}</td>
-                              <td className="px-4 py-2">
-                                {ticket.externalGmudRef ?? "—"}
-                              </td>
-                              <td className="px-4 py-2">{ticket.origin ?? "—"}</td>
-                              <td className="px-4 py-2">{ticket.priorityName ?? "—"}</td>
-                              <td className="px-4 py-2">{ticket.stageName ?? "—"}</td>
-                              <td className="px-4 py-2">
-                                {canReassign ? (
-                                  <TicketResponsibleSelect
-                                    ticketNumber={ticket.ticketNumber}
-                                    responsibleId={ticket.responsibleExternalId}
-                                    responsibleName={ticket.responsibleName}
-                                    options={responsibleSelectOptions}
-                                    compact
-                                    disabled={isDoneStage(ticket.stageName)}
-                                    onUpdated={(next) =>
-                                      applyResponsibleUpdate(
-                                        ticket.ticketNumber,
-                                        next,
-                                      )
-                                    }
-                                  />
-                                ) : (
-                                  ticket.responsibleName ?? "—"
-                                )}
-                              </td>
-                              <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">
-                                {formatWhen(ticket.updatedAt)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </CardContent>
-                  </Card>
-                ))}
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                  <span>
+                    {filteredTotal} ticket(s)
+                    {filteredTotal !== data.total ? ` de ${data.total}` : ""}
+                    {includeDone
+                      ? " · incluindo resolvidos/encerrados"
+                      : " · só pendentes"}
+                  </span>
+                  {sortKey && sortDir ? (
+                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                      Ordenado por{" "}
+                      {TICKET_COLUMNS.find((c) => c.key === sortKey)?.label ??
+                        sortKey}{" "}
+                      ({sortDir === "asc" ? "A → Z" : "Z → A"})
+                    </span>
+                  ) : null}
+                  {activeFilterLabels.length > 0 ? (
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {activeFilterLabels.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-md border border-teal-500/30 bg-teal-500/10 px-2 py-0.5 text-xs font-medium text-teal-800 dark:text-teal-200"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
+
+                <Card className="overflow-hidden">
+                  <CardContent className="p-0">
+                    <div className="max-h-[min(72vh,780px)] overflow-auto">
+                      {displaySections.map((section) => (
+                        <div key={section.key}>
+                          {section.label ? (
+                            <div className="sticky top-0 z-10 border-b border-border/60 bg-muted/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground backdrop-blur-sm">
+                              {section.label}{" "}
+                              <span className="font-normal">
+                                ({section.tickets.length})
+                              </span>
+                            </div>
+                          ) : null}
+                          <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+                            {section.key === "all" ? (
+                              <thead className="sticky top-0 z-20 shadow-[0_1px_0_0_hsl(var(--border))]">
+                                <tr>
+                                  {activeColumns.map((col) => (
+                                    <ExcelColumnHeader
+                                      key={col.key}
+                                      label={col.label}
+                                      columnKey={col.key}
+                                      sortKey={sortKey}
+                                      sortDir={sortDir}
+                                      onSort={handleSort}
+                                      filter={columnFilters[col.key]}
+                                      onFilterChange={(next) =>
+                                        setColumnFilters((prev) => ({
+                                          ...prev,
+                                          [col.key]: next,
+                                        }))
+                                      }
+                                      distinctValues={
+                                        distinctByColumn[col.key]
+                                      }
+                                      align={
+                                        col.key === "number" ? "right" : "left"
+                                      }
+                                    />
+                                  ))}
+                                </tr>
+                              </thead>
+                            ) : null}
+                            <tbody>
+                              {section.tickets.map((ticket, index) => (
+                                <tr
+                                  key={ticket.ticketNumber}
+                                  className={cn(
+                                    "cursor-pointer border-b border-border/40 transition hover:bg-muted/30",
+                                    index % 2 === 1 && "bg-muted/10",
+                                  )}
+                                  onClick={() =>
+                                    router.push(`/tickets/${ticket.ticketNumber}`)
+                                  }
+                                >
+                                  {activeColumns.map((col) => (
+                                    <span key={col.key} className="contents">
+                                      {renderTicketCell(ticket, col.key)}
+                                    </span>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             )}
           </div>
+
+          <TicketListPresetDialog
+            open={presetDialogOpen}
+            onOpenChange={setPresetDialogOpen}
+            pageState={pageState}
+            catalogs={catalogs}
+            editing={editingPreset}
+            onSaved={() => void loadPresets()}
+          />
         </AppShell>
       </PermissionGate>
     </ProtectedPage>

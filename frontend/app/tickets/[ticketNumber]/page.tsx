@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
   Clock,
   Download,
@@ -30,7 +31,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AppointmentDescriptionView } from "@/components/tickets/appointment-description-view";
 import { AppointmentDescriptionCell } from "@/components/tickets/appointment-description-cell";
+import { TicketAppointmentWarningsDialog } from "@/components/tickets/ticket-appointment-warnings-dialog";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
+import { TicketAppointmentNotStartedDialog } from "@/components/tickets/ticket-appointment-not-started-dialog";
 import { TicketHistoryPanel } from "@/components/tickets/ticket-history-panel";
 import { PortalAppointmentTifluxWarningDialog } from "@/components/tickets/portal-appointment-tiflux-warning-dialog";
 import {
@@ -52,10 +55,16 @@ import {
   TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE,
   TICKET_APPOINTMENT_TIFLUX_ONLY_HINT,
   TICKET_DELETE_APPOINTMENT_CONFIRM,
+  TICKET_PRETICKET_BANNER,
   TICKET_SYNC_PENDING_BANNER,
 } from "@/lib/module-copy";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  canAppointmentOnTicketStage,
+  findExecutionStageOption,
+} from "@/lib/tickets/appointment-stage-guard";
+import { useAuth } from "@/lib/use-auth";
 import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
 import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
 import {
@@ -185,6 +194,9 @@ export default function TicketDetailPage() {
   const [pendingResumeId, setPendingResumeId] = useState<string | null>(null);
   const tifluxWarningConfirmedRef = useRef(false);
   const confirm = useConfirm();
+  const { user } = useAuth();
+  const [notStartedDialogOpen, setNotStartedDialogOpen] = useState(false);
+  const [stageChangeBusy, setStageChangeBusy] = useState(false);
   const [externalGmudRefInput, setExternalGmudRefInput] = useState("");
   const [gmudLinking, setGmudLinking] = useState(false);
   const [stagesData, setStagesData] = useState<TicketStagesResponse | null>(null);
@@ -202,6 +214,19 @@ export default function TicketDetailPage() {
   const [loadingClients, setLoadingClients] = useState(false);
   const [filterCatalogs, setFilterCatalogs] =
     useState<TicketFilterCatalogs | null>(null);
+  const [warningsDialogOpen, setWarningsDialogOpen] = useState(false);
+
+  const checkPendingWarnings = useCallback(async () => {
+    if (!Number.isFinite(ticketNumber)) return;
+    try {
+      const res = await ticketsService.pendingAppointmentWarnings(ticketNumber);
+      if (res.warnings.length > 0) {
+        setWarningsDialogOpen(true);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [ticketNumber]);
 
   const load = useCallback(async (silent = false) => {
     if (!Number.isFinite(ticketNumber)) return;
@@ -247,6 +272,11 @@ export default function TicketDetailPage() {
   useEffect(() => {
     void Promise.all([load(), loadStages()]);
   }, [load, loadStages]);
+
+  useEffect(() => {
+    if (loading || !data?.ticket) return;
+    void checkPendingWarnings();
+  }, [loading, data?.ticket, checkPendingWarnings]);
 
   useEffect(() => {
     if (!canChangeTicketStage()) return;
@@ -396,7 +426,7 @@ export default function TicketDetailPage() {
       return;
     }
     const ok = await confirm({
-      title: "Trocar cliente do chamado?",
+      title: "Trocar cliente do ticket?",
       description:
         "GMUD vinculada e dados do solicitante serão limpos. Confirme se o cliente está correto.",
       confirmText: "Trocar cliente",
@@ -405,7 +435,7 @@ export default function TicketDetailPage() {
     try {
       setLifecycleBusy(true);
       await ticketsService.updateTicket(ticketNumber, { clientId });
-      notifySuccess("Cliente do chamado atualizado.");
+      notifySuccess("Cliente do ticket atualizado.");
       setChangeClientOpen(false);
       await Promise.all([load(), loadStages()]);
       setHistoryRefreshToken((n) => n + 1);
@@ -427,6 +457,76 @@ export default function TicketDetailPage() {
       await load();
     } catch {
       /* ignore */
+    }
+  }
+
+  function requestNewAppointment() {
+    if (!ticket) return;
+    if (
+      !canAppointmentOnTicketStage({
+        stageName: ticket.stageName,
+        user,
+      })
+    ) {
+      setNotStartedDialogOpen(true);
+      return;
+    }
+    setEditingAppointment(null);
+    setPendingResumeId(null);
+    setAppointmentOpen(true);
+  }
+
+  async function handleMoveToExecutionAndAppointment() {
+    if (!Number.isFinite(ticketNumber)) return;
+    try {
+      setStageChangeBusy(true);
+      const stages =
+        stagesData ?? (await ticketsService.listStages(ticketNumber));
+      if (!stagesData) {
+        setStagesData(stages);
+      }
+      const executionStage = findExecutionStageOption(stages.stages);
+      if (!executionStage) {
+        notifyError(
+          "Não há estágio Em execução configurado para o catálogo deste ticket.",
+        );
+        return;
+      }
+      const res = await ticketsService.updateStage(ticketNumber, executionStage.id);
+      setData((prev) =>
+        prev?.ticket
+          ? {
+              ...prev,
+              ticket: {
+                ...prev.ticket,
+                stageName: res.stageName,
+                stageGroup: res.stageGroup,
+              },
+            }
+          : prev,
+      );
+      setStagesData((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentStageId: res.stageId,
+              currentStageName: res.stageName,
+            }
+          : prev,
+      );
+      setNotStartedDialogOpen(false);
+      setEditingAppointment(null);
+      setPendingResumeId(null);
+      setAppointmentOpen(true);
+      notifySuccess(res.message);
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível alterar o estágio.",
+      );
+    } finally {
+      setStageChangeBusy(false);
     }
   }
 
@@ -550,11 +650,7 @@ export default function TicketDetailPage() {
                 <Button
                   type="button"
                   size="sm"
-                  onClick={() => {
-                    setEditingAppointment(null);
-                    setPendingResumeId(null);
-                    setAppointmentOpen(true);
-                  }}
+                  onClick={requestNewAppointment}
                 >
                   <Clock className="mr-2 size-4" />
                   Apontar
@@ -592,6 +688,11 @@ export default function TicketDetailPage() {
                     {TICKET_SYNC_PENDING_BANNER}
                   </p>
                 ) : null}
+                {ticket.isPreTicket ? (
+                  <p className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-50/95">
+                    {TICKET_PRETICKET_BANNER}
+                  </p>
+                ) : null}
                 <div className="space-y-2">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -610,7 +711,7 @@ export default function TicketDetailPage() {
                 </div>
                 {data?.grouping?.parent ? (
                   <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                    Agrupado no chamado pai{" "}
+                    Agrupado no ticket pai{" "}
                     <Link
                       href={`/tickets/${data.grouping.parent.ticketNumber}`}
                       className="font-medium text-primary hover:underline"
@@ -625,7 +726,7 @@ export default function TicketDetailPage() {
                 ) : null}
                 {data?.grouping?.children?.length ? (
                   <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
-                    Chamados agrupados neste ticket:{" "}
+                    Tickets agrupados neste ticket:{" "}
                     {data.grouping.children.map((child, index) => (
                       <span key={child.ticketNumber}>
                         {index > 0 ? ", " : ""}
@@ -666,7 +767,7 @@ export default function TicketDetailPage() {
                   </Card>
                   <Card>
                     <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">Mesa</p>
+                      <p className="text-xs text-muted-foreground">Catálogo</p>
                       <p className="text-lg font-semibold">{ticket.deskName ?? "—"}</p>
                     </CardContent>
                   </Card>
@@ -676,7 +777,7 @@ export default function TicketDetailPage() {
                   {data?.portalDescription ? (
                     <Card className="lg:col-span-2">
                       <CardHeader>
-                        <CardTitle className="text-base">Descrição do chamado</CardTitle>
+                        <CardTitle className="text-base">Descrição do ticket</CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <AppointmentDescriptionView
@@ -783,6 +884,7 @@ export default function TicketDetailPage() {
                             ticketNumber={ticket.ticketNumber}
                             responsibleId={ticket.responsibleExternalId}
                             responsibleName={ticket.responsibleName}
+                            hasAppointments={(data?.appointments?.length ?? 0) > 0}
                             options={mapFilterResponsibles(
                               filterCatalogs?.responsibles ?? [],
                             )}
@@ -797,6 +899,7 @@ export default function TicketDetailPage() {
                                         responsibleExternalId:
                                           next.responsibleId,
                                         responsibleName: next.responsibleName,
+                                        isPreTicket: next.isPreTicket ?? false,
                                       },
                                     }
                                   : prev,
@@ -822,7 +925,7 @@ export default function TicketDetailPage() {
                             <p className="text-sm">
                               {ticket.stageName ?? stagesData?.currentStageName ?? "—"}
                               <span className="mt-1 block text-xs text-muted-foreground">
-                                Chamado encerrado. Use Opções → Reabrir chamado.
+                                Ticket encerrado. Use Opções → Reabrir ticket.
                               </span>
                             </p>
                           ) : (
@@ -973,11 +1076,7 @@ export default function TicketDetailPage() {
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => {
-                          setEditingAppointment(null);
-                          setPendingResumeId(null);
-                          setAppointmentOpen(true);
-                        }}
+                        onClick={requestNewAppointment}
                       >
                         <Clock className="mr-2 size-4" />
                         Apontar
@@ -1017,7 +1116,15 @@ export default function TicketDetailPage() {
                               className="border-b border-border/60 align-top"
                             >
                               <td className="px-4 py-2">
-                                <div>{row.userName ?? "—"}</div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span>{row.userName ?? "—"}</span>
+                                  {row.isWarning ? (
+                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                      <AlertTriangle className="size-3" />
+                                      Advertência
+                                    </span>
+                                  ) : null}
+                                </div>
                                 {row.attachmentCount > 0 ? (
                                   <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                                     {row.attachmentCount} anexo(s)
@@ -1160,6 +1267,24 @@ export default function TicketDetailPage() {
                         setPendingResumeId(null);
                         void load();
                         void loadStages();
+                        void checkPendingWarnings();
+                      }}
+                    />
+                    <TicketAppointmentNotStartedDialog
+                      open={notStartedDialogOpen}
+                      onOpenChange={setNotStartedDialogOpen}
+                      busy={stageChangeBusy}
+                      canChangeStage={canChangeTicketStage()}
+                      onConfirmStageChange={() =>
+                        void handleMoveToExecutionAndAppointment()
+                      }
+                    />
+                    <TicketAppointmentWarningsDialog
+                      ticketNumber={ticket.ticketNumber}
+                      open={warningsDialogOpen}
+                      onOpenChange={setWarningsDialogOpen}
+                      onAcknowledged={() => {
+                        setHistoryRefreshToken((value) => value + 1);
                       }}
                     />
                     <PortalAppointmentTifluxWarningDialog
@@ -1193,7 +1318,7 @@ export default function TicketDetailPage() {
           <Dialog open={changeClientOpen} onOpenChange={setChangeClientOpen}>
             <DialogContent className="sm:max-w-md" showCloseButton>
               <DialogHeader>
-                <DialogTitle>Trocar cliente do chamado</DialogTitle>
+                <DialogTitle>Trocar cliente do ticket</DialogTitle>
               </DialogHeader>
               <div className="space-y-2">
                 <Label>Novo cliente</Label>

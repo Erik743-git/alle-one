@@ -30,6 +30,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
+  AcknowledgeAppointmentWarningDto,
   CreateTicketAppointmentDto,
   CreateTicketDto,
   UpdateTicketAppointmentDto,
@@ -47,6 +48,11 @@ import { TicketsReconcileService } from './tickets-reconcile.service';
 import { TicketsCatalogsService } from './tickets-catalogs.service';
 import { TicketsQueryService } from './tickets-query.service';
 import { TicketsService } from './tickets.service';
+import { TicketListPresetsService } from './ticket-list-presets.service';
+import {
+  CreateTicketListPresetDto,
+  UpdateTicketListPresetDto,
+} from './ticket-list-presets.dto';
 
 @ApiTags('Tickets')
 @ApiBearerAuth()
@@ -59,6 +65,7 @@ export class TicketsController {
     private readonly catalogsService: TicketsCatalogsService,
     private readonly appointmentsService: TicketsAppointmentsService,
     private readonly reconcileService: TicketsReconcileService,
+    private readonly listPresetsService: TicketListPresetsService,
   ) {}
 
   @Get()
@@ -76,6 +83,44 @@ export class TicketsController {
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   filterCatalogs(@CurrentUser() actor: AuthenticatedRequestUser) {
     return this.catalogsService.getFilterCatalogs(actor);
+  }
+
+  @Get('list-presets')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  listPresets(@CurrentUser() actor: AuthenticatedRequestUser) {
+    return this.listPresetsService.list(actor);
+  }
+
+  @Post('list-presets')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  createListPreset(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() dto: CreateTicketListPresetDto,
+  ) {
+    return this.listPresetsService.create(actor, dto);
+  }
+
+  @Patch('list-presets/:id')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  updateListPreset(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTicketListPresetDto,
+  ) {
+    return this.listPresetsService.update(actor, id, dto);
+  }
+
+  @Delete('list-presets/:id')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  deleteListPreset(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.listPresetsService.remove(actor, id);
   }
 
   @Get('catalogs/create')
@@ -180,6 +225,51 @@ export class TicketsController {
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
   ) {
     return this.appointmentsService.getAppointmentCatalogs(ticketNumber);
+  }
+
+  @Get(':ticketNumber/warnings/pending')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  pendingAppointmentWarnings(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+  ) {
+    return this.appointmentsService.listPendingAppointmentWarnings(
+      actor,
+      ticketNumber,
+    );
+  }
+
+  @Get(':ticketNumber/warnings/:portalAppointmentId')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  appointmentWarningDetail(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+  ) {
+    return this.appointmentsService.getAppointmentWarningDetail(
+      actor,
+      ticketNumber,
+      portalAppointmentId,
+    );
+  }
+
+  @Post(':ticketNumber/warnings/:portalAppointmentId/acknowledge')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  acknowledgeAppointmentWarning(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
+    @Body() body: AcknowledgeAppointmentWarningDto,
+  ) {
+    return this.appointmentsService.acknowledgeAppointmentWarning(
+      actor,
+      ticketNumber,
+      portalAppointmentId,
+      Boolean(body.permanent),
+    );
   }
 
   @Get(':ticketNumber/stages')

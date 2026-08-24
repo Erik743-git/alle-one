@@ -65,35 +65,111 @@ export class PreTicketsService {
 
   async countPending(actor: AuthenticatedRequestUser) {
     this.assertOperator(actor);
-    return this.prisma.preTicket.count({
-      where: { status: PreTicketStatus.PENDING, deletedAt: null },
-    });
+    const [emailCount, portalCount] = await Promise.all([
+      this.prisma.preTicket.count({
+        where: { status: PreTicketStatus.PENDING, deletedAt: null },
+      }),
+      this.prisma.portalTicket.count({
+        where: { isPreTicket: true, isClosed: false },
+      }),
+    ]);
+    return emailCount + portalCount;
+  }
+
+  private mapPortalPreTicket(row: {
+    ticketNumber: number;
+    title: string | null;
+    requestorName: string | null;
+    requestorEmail: string | null;
+    clientName: string | null;
+    becamePreTicketAt: Date | null;
+    createdAtSource: Date | null;
+    createdAt: Date;
+  }) {
+    const receivedAt =
+      row.becamePreTicketAt ?? row.createdAtSource ?? row.createdAt;
+    return {
+      id: `portal:${row.ticketNumber}`,
+      title: row.title ?? `Ticket #${row.ticketNumber}`,
+      fromName: row.requestorName,
+      fromEmail: row.requestorEmail ?? '',
+      mailboxAddress: '',
+      channel: 'Portal',
+      attachmentCount: 0,
+      receivedAt: receivedAt.toISOString(),
+      ticketNumber: row.ticketNumber,
+      portalPreTicket: true as const,
+      company: row.clientName ? { id: '', name: row.clientName } : null,
+      specialty: null,
+    };
   }
 
   async list(actor: AuthenticatedRequestUser, q?: string) {
     this.assertOperator(actor);
     const query = q?.trim();
-    return this.prisma.preTicket.findMany({
-      where: {
-        status: PreTicketStatus.PENDING,
-        deletedAt: null,
-        ...(query
-          ? {
-              OR: [
-                { title: { contains: query, mode: 'insensitive' } },
-                { fromEmail: { contains: query, mode: 'insensitive' } },
-                { fromName: { contains: query, mode: 'insensitive' } },
-              ],
-            }
-          : {}),
-      },
-      include: {
-        company: { select: { id: true, name: true } },
-        specialty: { select: { id: true, name: true, externalId: true } },
-      },
-      orderBy: { receivedAt: 'desc' },
-      take: 200,
-    });
+    const [emailRows, portalRows] = await Promise.all([
+      this.prisma.preTicket.findMany({
+        where: {
+          status: PreTicketStatus.PENDING,
+          deletedAt: null,
+          ...(query
+            ? {
+                OR: [
+                  { title: { contains: query, mode: 'insensitive' } },
+                  { fromEmail: { contains: query, mode: 'insensitive' } },
+                  { fromName: { contains: query, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
+        include: {
+          company: { select: { id: true, name: true } },
+          specialty: { select: { id: true, name: true, externalId: true } },
+        },
+        orderBy: { receivedAt: 'desc' },
+        take: 200,
+      }),
+      this.prisma.portalTicket.findMany({
+        where: {
+          isPreTicket: true,
+          isClosed: false,
+          ...(query
+            ? {
+                OR: [
+                  { title: { contains: query, mode: 'insensitive' } },
+                  { requestorEmail: { contains: query, mode: 'insensitive' } },
+                  { requestorName: { contains: query, mode: 'insensitive' } },
+                  ...(Number.isFinite(Number(query))
+                    ? [{ ticketNumber: Number(query) }]
+                    : []),
+                ],
+              }
+            : {}),
+        },
+        select: {
+          ticketNumber: true,
+          title: true,
+          requestorName: true,
+          requestorEmail: true,
+          clientName: true,
+          becamePreTicketAt: true,
+          createdAtSource: true,
+          createdAt: true,
+        },
+        orderBy: [{ becamePreTicketAt: 'desc' }, { createdAt: 'desc' }],
+        take: 200,
+      }),
+    ]);
+
+    const merged = [
+      ...emailRows,
+      ...portalRows.map((row) => this.mapPortalPreTicket(row)),
+    ].sort(
+      (a, b) =>
+        new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime(),
+    );
+
+    return merged.slice(0, 200);
   }
 
   async getOne(actor: AuthenticatedRequestUser, id: string) {

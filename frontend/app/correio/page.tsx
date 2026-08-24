@@ -149,7 +149,7 @@ export default function CorreioPage() {
                 <h1 className="text-3xl font-bold text-foreground">Correio</h1>
                 <p className="max-w-2xl text-muted-foreground">
                   Pendências e alertas do portal: rendimento, GMUD, contratos e
-                  chamados. As mensagens são atualizadas ao abrir esta página e
+                  tickets. As mensagens são atualizadas ao abrir esta página e
                   diariamente pelo sistema.
                 </p>
               </div>
@@ -329,9 +329,9 @@ export default function CorreioPage() {
                 <span>
                   <strong>Contratos:</strong> no dia 15 de cada mês o sistema verifica o
                   consumo de horas (alerta abaixo de 30% ou acima de 70%).{" "}
-                  <strong>Chamados:</strong> colaboradores recebem aviso quando um chamado
+                  <strong>Tickets:</strong> colaboradores recebem aviso quando um ticket
                   próprio está aberto há 24h+ sem registro de horas; administradores
-                  recebem alertas de chamados sem atualização há 48h ou 7 dias.
+                  recebem alertas de tickets sem atualização há 48h ou 7 dias.
                 </span>
               </p>
             </div>

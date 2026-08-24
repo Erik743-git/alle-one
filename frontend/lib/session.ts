@@ -22,6 +22,8 @@ export type AuthUser = {
   permissions?: ModulePermission[];
   totpEnabled?: boolean;
   totpAdminMustEnable?: boolean;
+  specialtyId?: string | null;
+  specialtyName?: string | null;
 };
 
 /** @deprecated Sessão usa apenas cookie httpOnly — chave mantida para limpeza de legado. */

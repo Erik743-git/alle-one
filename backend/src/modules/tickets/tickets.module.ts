@@ -14,6 +14,8 @@ import { TicketsReconcileService } from './tickets-reconcile.service';
 import { TicketsQueryService } from './tickets-query.service';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { TicketsService } from './tickets.service';
+import { TicketListPresetsService } from './ticket-list-presets.service';
+import { TicketAutomationService } from './ticket-automation.service';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { TicketsService } from './tickets.service';
     TicketsOutboxService,
     TicketsOutboxJob,
     TicketsReconcileService,
+    TicketListPresetsService,
+    TicketAutomationService,
   ],
   exports: [
     TicketsService,
@@ -43,6 +47,7 @@ import { TicketsService } from './tickets.service';
     TicketsPortalStoreService,
     TicketsOutboxService,
     TicketsReconcileService,
+    TicketAutomationService,
   ],
 })
 export class TicketsModule {}

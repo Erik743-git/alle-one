@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
+  AlertTriangle,
   Clock,
   FolderKanban,
   History,
@@ -45,6 +46,8 @@ function toneDotClass(tone: TicketHistoryTone): string {
       return "bg-emerald-500";
     case "appointment":
       return "bg-primary";
+    case "warning":
+      return "bg-amber-500";
     case "ticket":
       return "bg-sky-500";
   }
@@ -60,12 +63,20 @@ function toneCardClass(tone: TicketHistoryTone): string {
       return "border-emerald-500/25 bg-emerald-500/5";
     case "appointment":
       return "border-primary/25 bg-primary/5";
+    case "warning":
+      return "border-amber-500/30 bg-amber-500/10";
     case "ticket":
       return "border-sky-500/25 bg-sky-500/5";
   }
 }
 
 function HistoryIcon({ eventType }: { eventType: string }) {
+  if (
+    eventType === "APPOINTMENT_WARNING_CREATED" ||
+    eventType === "APPOINTMENT_WARNING_ACKNOWLEDGED"
+  ) {
+    return <AlertTriangle className="h-4 w-4" />;
+  }
   if (eventType.includes("APPOINTMENT")) return <Clock className="h-4 w-4" />;
   if (eventType.startsWith("PROJECT_")) return <FolderKanban className="h-4 w-4" />;
   if (eventType.startsWith("GMUD_")) return <Link2 className="h-4 w-4" />;

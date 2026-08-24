@@ -27,18 +27,20 @@ export const TICKET_HISTORY_FILTER_OPTIONS: Array<{
 const EVENT_LABELS: Record<string, string> = {
   TICKET_CREATED: "Ticket criado",
   TICKET_UPDATED: "Ticket atualizado",
-  TICKET_REOPENED: "Chamado reaberto",
-  TICKET_CLOSED: "Chamado encerrado",
-  TICKET_CANCELLED: "Chamado cancelado",
+  TICKET_REOPENED: "Ticket reaberto",
+  TICKET_CLOSED: "Ticket encerrado",
+  TICKET_CANCELLED: "Ticket cancelado",
   EMAIL_REPLY: "Resposta por e-mail",
   APPOINTMENT_CREATED: "Apontamento registrado",
   APPOINTMENT_UPDATED: "Apontamento alterado",
   APPOINTMENT_DELETED: "Apontamento excluído",
   APPOINTMENT_TIFLUX: "Apontamento histórico",
+  APPOINTMENT_WARNING_CREATED: "Advertência registrada",
+  APPOINTMENT_WARNING_ACKNOWLEDGED: "Advertência lida",
   STAGE_CHANGED: "Estágio alterado",
   RESPONSIBLE_CHANGED: "Responsável alterado",
-  DESK_CHANGED: "Chamado transferido",
-  TICKET_GROUPED: "Chamado agrupado",
+  DESK_CHANGED: "Ticket transferido",
+  TICKET_GROUPED: "Ticket agrupado",
   COMMUNICATION_UPDATED: "Comunicação alterada",
   COMMUNICATION_REMOVED: "Comunicação removida",
   GMUD_LINKED: "GMUD vinculada",
@@ -102,11 +104,18 @@ export function filterTicketHistory(
 export type TicketHistoryTone =
   | "ticket"
   | "appointment"
+  | "warning"
   | "project"
   | "gmud"
   | "stage";
 
 export function ticketHistoryTone(eventType: string): TicketHistoryTone {
+  if (
+    eventType === "APPOINTMENT_WARNING_CREATED" ||
+    eventType === "APPOINTMENT_WARNING_ACKNOWLEDGED"
+  ) {
+    return "warning";
+  }
   if (
     eventType === "STAGE_CHANGED" ||
     eventType === "TICKET_REOPENED" ||

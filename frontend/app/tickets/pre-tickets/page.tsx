@@ -162,7 +162,11 @@ export default function PreTicketsPage() {
                   <tr
                     key={row.id}
                     className="cursor-pointer border-b align-top hover:bg-muted/25"
-                    onClick={() => router.push(`/tickets/pre-tickets/${row.id}`)}
+                    onClick={() =>
+                      row.portalPreTicket && row.ticketNumber
+                        ? router.push(`/tickets/${row.ticketNumber}`)
+                        : router.push(`/tickets/pre-tickets/${row.id}`)
+                    }
                   >
                     <td className="px-3 py-2">
                       <span
@@ -172,6 +176,11 @@ export default function PreTicketsPage() {
                         {row.title}
                       </span>
                       <div className="mt-1 flex flex-wrap gap-1">
+                        {row.portalPreTicket && row.ticketNumber ? (
+                          <span className="rounded bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:text-teal-200">
+                            Ticket #{row.ticketNumber} · aguardando responsável
+                          </span>
+                        ) : null}
                         {row.linkedTicketNumber ? (
                           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">
                             Resposta a #{row.linkedTicketNumber}
@@ -218,17 +227,34 @@ export default function PreTicketsPage() {
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="flex justify-end gap-1.5">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="size-8"
-                          disabled={busy}
-                          title="Abrir ticket"
-                          aria-label={`Abrir ticket: ${row.title}`}
-                          onClick={() => void openTicket(row.id)}
-                        >
-                          <Check className="size-4" />
-                        </Button>
+                        {row.portalPreTicket && row.ticketNumber ? (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8"
+                            disabled={busy}
+                            title="Atribuir responsável"
+                            aria-label={`Atribuir responsável: ${row.title}`}
+                            onClick={() =>
+                              router.push(`/tickets/${row.ticketNumber}`)
+                            }
+                          >
+                            <Check className="size-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8"
+                            disabled={busy}
+                            title="Abrir ticket"
+                            aria-label={`Abrir ticket: ${row.title}`}
+                            onClick={() => void openTicket(row.id)}
+                          >
+                            <Check className="size-4" />
+                          </Button>
+                        )}
+                        {!row.portalPreTicket ? (
                         <Button
                           size="icon"
                           variant="ghost"
@@ -240,6 +266,7 @@ export default function PreTicketsPage() {
                         >
                           <Trash2 className="size-4" />
                         </Button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

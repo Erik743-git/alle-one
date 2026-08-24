@@ -18,6 +18,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { AuditMeta } from '../audit/audit.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { AdminService } from './admin.service';
 import { parseAdminAuditLogsQuery } from './admin-audit.query';
@@ -33,6 +34,16 @@ import {
   UpdateServiceDeskDto,
 } from './desk-classification.dto';
 import { CreateTicketStageDto, UpdateTicketStageDto } from './ticket-stage.dto';
+import {
+  CreateTicketAutoOpenRuleDto,
+  UpdateTicketAutoOpenRuleDto,
+} from './ticket-auto-open.dto';
+import { TicketAutoOpenService } from './ticket-auto-open.service';
+import {
+  CreateTicketAutomationRuleDto,
+  UpdateTicketAutomationRuleDto,
+} from '../tickets/ticket-automation.dto';
+import { TicketAutomationService } from '../tickets/ticket-automation.service';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
@@ -45,6 +56,8 @@ export class AdminController {
     private readonly rendimentoService: RendimentoService,
     private readonly deskClassificationService: DeskClassificationService,
     private readonly ticketStageService: TicketStageService,
+    private readonly ticketAutoOpenService: TicketAutoOpenService,
+    private readonly ticketAutomationService: TicketAutomationService,
     private readonly ticketsOutboxService: TicketsOutboxService,
   ) {}
 
@@ -253,5 +266,113 @@ export class AdminController {
   })
   deleteTicketStage(@Param('id') id: string) {
     return this.ticketStageService.remove(id);
+  }
+
+  @Get('ticket-auto-open-rules')
+  @RequirePermission(PermissionModule.ADMIN, 'canView')
+  listTicketAutoOpenRules() {
+    return this.ticketAutoOpenService.list();
+  }
+
+  @Post('ticket-auto-open-rules')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketAutoOpenRule',
+    action: 'CREATE',
+  })
+  createTicketAutoOpenRule(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() body: CreateTicketAutoOpenRuleDto,
+  ) {
+    return this.ticketAutoOpenService.create(actor, body);
+  }
+
+  @Patch('ticket-auto-open-rules/:id')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketAutoOpenRule',
+    action: 'UPDATE',
+  })
+  updateTicketAutoOpenRule(
+    @Param('id') id: string,
+    @Body() body: UpdateTicketAutoOpenRuleDto,
+  ) {
+    return this.ticketAutoOpenService.update(id, body);
+  }
+
+  @Patch('ticket-auto-open-rules/:id/active')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  setTicketAutoOpenRuleActive(
+    @Param('id') id: string,
+    @Body() body: { active: boolean },
+  ) {
+    return this.ticketAutoOpenService.setActive(id, Boolean(body.active));
+  }
+
+  @Delete('ticket-auto-open-rules/:id')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketAutoOpenRule',
+    action: 'DELETE',
+  })
+  deleteTicketAutoOpenRule(@Param('id') id: string) {
+    return this.ticketAutoOpenService.remove(id);
+  }
+
+  @Post('ticket-auto-open-rules/run-due')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  runDueTicketAutoOpenRules() {
+    return this.ticketAutoOpenService.processDueRules(20);
+  }
+
+  @Get('ticket-automation-rules')
+  @RequirePermission(PermissionModule.ADMIN, 'canView')
+  listTicketAutomationRules() {
+    return this.ticketAutomationService.list();
+  }
+
+  @Post('ticket-automation-rules')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketAutomationRule',
+    action: 'CREATE',
+  })
+  createTicketAutomationRule(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() body: CreateTicketAutomationRuleDto,
+  ) {
+    return this.ticketAutomationService.create(actor, body);
+  }
+
+  @Patch('ticket-automation-rules/:id')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketAutomationRule',
+    action: 'UPDATE',
+  })
+  updateTicketAutomationRule(
+    @Param('id') id: string,
+    @Body() body: UpdateTicketAutomationRuleDto,
+  ) {
+    return this.ticketAutomationService.update(id, body);
+  }
+
+  @Patch('ticket-automation-rules/:id/active')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  setTicketAutomationRuleActive(
+    @Param('id') id: string,
+    @Body() body: { active: boolean },
+  ) {
+    return this.ticketAutomationService.setActive(id, Boolean(body.active));
+  }
+
+  @Delete('ticket-automation-rules/:id')
+  @RequirePermission(PermissionModule.ADMIN, 'canEdit')
+  @AuditMeta({
+    entity: 'TicketAutomationRule',
+    action: 'DELETE',
+  })
+  deleteTicketAutomationRule(@Param('id') id: string) {
+    return this.ticketAutomationService.remove(id);
   }
 }

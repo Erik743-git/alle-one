@@ -40,6 +40,8 @@ export type PreTicketListItem = {
   receivedAt: string;
   possibleDuplicateSubject?: boolean;
   linkedTicketNumber?: number | null;
+  ticketNumber?: number | null;
+  portalPreTicket?: boolean;
   company?: { id: string; name: string } | null;
   desk?: { id: string; name: string } | null;
   specialty?: { id: string; name: string } | null;

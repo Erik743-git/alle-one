@@ -36,6 +36,100 @@ export type TicketStage = {
   sortOrder: number;
 };
 
+export type TicketAutoOpenPeriodicity = "DAILY" | "WEEKLY" | "MONTHLY";
+
+export type TicketAutoOpenRule = {
+  id: string;
+  name: string;
+  active: boolean;
+  periodicity: TicketAutoOpenPeriodicity;
+  periodicityLabel: string;
+  nextScheduledDate: string;
+  scheduleTime: string;
+  deskExternalId: number;
+  clientExternalId: number;
+  responsibleExternalId: number | null;
+  priorityExternalId: number | null;
+  servicesCatalogsItemId: number | null;
+  classificationId: string | null;
+  title: string;
+  description: string;
+  requestorName: string;
+  requestorEmail: string;
+  requestorTelephone: string | null;
+  requestorExternalId: number | null;
+  externalGmudRef: string | null;
+  ccEmails: string[];
+  parentTicketNumber: number | null;
+  lastRunAt: string | null;
+  lastTicketNumber: number | null;
+  createdAt: string;
+};
+
+export type TicketAutoOpenRulePayload = {
+  name: string;
+  active?: boolean;
+  periodicity: TicketAutoOpenPeriodicity;
+  nextScheduledDate: string;
+  scheduleTime: string;
+  deskId: number;
+  clientId: number;
+  responsibleId?: number | null;
+  priorityId?: number;
+  servicesCatalogsItemId?: number;
+  classificationId?: string;
+  title: string;
+  description: string;
+  requestorName: string;
+  requestorEmail: string;
+  requestorTelephone?: string;
+  requestorId?: number;
+  externalGmudRef?: string;
+  ccEmails?: string[];
+  parentTicketNumber?: number;
+};
+
+export type TicketAutomationTrigger = "STAGE_CHANGE";
+
+export type TicketAutomationConditions = {
+  deskExternalId?: number | null;
+  clientExternalId?: number | null;
+  classificationId?: string | null;
+  stageOnEntry?: string | null;
+  stageOnExit?: string | null;
+};
+
+export type TicketAutomationAction =
+  | { type: "SET_STAGE"; stageName: string }
+  | { type: "SET_RESPONSIBLE"; responsibleExternalId: number }
+  | {
+      type: "ADD_APPOINTMENT";
+      description: string;
+      notifyClient?: boolean;
+    };
+
+export type TicketAutomationRule = {
+  id: string;
+  name: string;
+  description: string | null;
+  active: boolean;
+  trigger: TicketAutomationTrigger;
+  conditions: TicketAutomationConditions;
+  actions: TicketAutomationAction[];
+  sortOrder: number;
+  createdAt: string;
+};
+
+export type TicketAutomationRulePayload = {
+  name: string;
+  description?: string;
+  active?: boolean;
+  trigger?: TicketAutomationTrigger;
+  conditions: TicketAutomationConditions;
+  actions: TicketAutomationAction[];
+  sortOrder?: number;
+};
+
 export const adminService = {
   async overviewStats() {
     return apiRequest<AdminOverviewStats>("/admin/overview-stats");
@@ -116,5 +210,84 @@ export const adminService = {
     return apiRequest<{ ok: boolean }>(`/admin/ticket-stages/${id}`, {
       method: "DELETE",
     });
+  },
+
+  async listTicketAutoOpenRules() {
+    return apiRequest<TicketAutoOpenRule[]>("/admin/ticket-auto-open-rules");
+  },
+
+  async createTicketAutoOpenRule(body: TicketAutoOpenRulePayload) {
+    return apiRequest<TicketAutoOpenRule>("/admin/ticket-auto-open-rules", {
+      method: "POST",
+      body,
+    });
+  },
+
+  async updateTicketAutoOpenRule(id: string, body: TicketAutoOpenRulePayload) {
+    return apiRequest<TicketAutoOpenRule>(
+      `/admin/ticket-auto-open-rules/${id}`,
+      {
+        method: "PATCH",
+        body,
+      },
+    );
+  },
+
+  async setTicketAutoOpenRuleActive(id: string, active: boolean) {
+    return apiRequest<TicketAutoOpenRule>(
+      `/admin/ticket-auto-open-rules/${id}/active`,
+      {
+        method: "PATCH",
+        body: { active },
+      },
+    );
+  },
+
+  async deleteTicketAutoOpenRule(id: string) {
+    return apiRequest<{ ok: boolean }>(
+      `/admin/ticket-auto-open-rules/${id}`,
+      { method: "DELETE" },
+    );
+  },
+
+  async listTicketAutomationRules() {
+    return apiRequest<TicketAutomationRule[]>("/admin/ticket-automation-rules");
+  },
+
+  async createTicketAutomationRule(body: TicketAutomationRulePayload) {
+    return apiRequest<TicketAutomationRule>("/admin/ticket-automation-rules", {
+      method: "POST",
+      body,
+    });
+  },
+
+  async updateTicketAutomationRule(
+    id: string,
+    body: TicketAutomationRulePayload,
+  ) {
+    return apiRequest<TicketAutomationRule>(
+      `/admin/ticket-automation-rules/${id}`,
+      {
+        method: "PATCH",
+        body,
+      },
+    );
+  },
+
+  async setTicketAutomationRuleActive(id: string, active: boolean) {
+    return apiRequest<TicketAutomationRule>(
+      `/admin/ticket-automation-rules/${id}/active`,
+      {
+        method: "PATCH",
+        body: { active },
+      },
+    );
+  },
+
+  async deleteTicketAutomationRule(id: string) {
+    return apiRequest<{ ok: boolean }>(
+      `/admin/ticket-automation-rules/${id}`,
+      { method: "DELETE" },
+    );
   },
 };

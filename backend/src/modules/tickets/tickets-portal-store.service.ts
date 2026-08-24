@@ -21,10 +21,13 @@ export type UpsertPortalTicketInput = {
   requestorTelephone?: string | null;
   isClosed?: boolean;
   origin?: PortalTicketOrigin;
+  isPreTicket?: boolean;
+  becamePreTicketAt?: Date | null;
   createdAtSource?: Date | null;
   updatedAtSource?: Date | null;
   createdBy?: string | null;
   specialtyId?: string | null;
+  classificationId?: string | null;
   emailConversationId?: string | null;
   parentTicketNumber?: number | null;
 };
@@ -121,7 +124,10 @@ export class TicketsPortalStoreService {
       requestorTelephone: input.requestorTelephone ?? null,
       isClosed: input.isClosed ?? false,
       origin: input.origin ?? PortalTicketOrigin.TIFLUX,
+      isPreTicket: input.isPreTicket ?? false,
+      becamePreTicketAt: input.becamePreTicketAt ?? null,
       specialtyId: input.specialtyId ?? null,
+      classificationId: input.classificationId ?? null,
       emailConversationId: input.emailConversationId ?? null,
       createdAtSource: input.createdAtSource ?? null,
       updatedAtSource: input.updatedAtSource ?? new Date(),
@@ -147,8 +153,17 @@ export class TicketsPortalStoreService {
         requestorEmail: data.requestorEmail,
         requestorTelephone: data.requestorTelephone,
         isClosed: data.isClosed,
+        ...(input.isPreTicket !== undefined
+          ? { isPreTicket: input.isPreTicket }
+          : {}),
+        ...(input.becamePreTicketAt !== undefined
+          ? { becamePreTicketAt: input.becamePreTicketAt }
+          : {}),
         ...(input.specialtyId !== undefined
           ? { specialtyId: input.specialtyId }
+          : {}),
+        ...(input.classificationId !== undefined
+          ? { classificationId: input.classificationId }
           : {}),
         ...(input.emailConversationId !== undefined
           ? { emailConversationId: input.emailConversationId }
