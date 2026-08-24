@@ -56,9 +56,28 @@ const nextConfig: NextConfig = {
     root: frontendRoot,
   },
   async rewrites() {
+    /** Rotas de UI em app/tickets/* — não reescrever para a API (evita tela branca com JSON). */
+    const ticketApiRewrites = [
+      {
+        source: "/tickets/catalogs/:path*",
+        destination: `${apiRewriteBase}/tickets/catalogs/:path*`,
+      },
+      {
+        source: "/tickets/list-presets/:path*",
+        destination: `${apiRewriteBase}/tickets/list-presets/:path*`,
+      },
+      {
+        source: "/tickets/attachments/:path*",
+        destination: `${apiRewriteBase}/tickets/attachments/:path*`,
+      },
+      {
+        source: "/tickets/:ticketNumber(\\d+)/:subpath+",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/:subpath+`,
+      },
+    ];
+
     const apiPrefixes = [
       "admin",
-      "tickets",
       "users",
       "permissions",
       "financial",
@@ -80,6 +99,7 @@ const nextConfig: NextConfig = {
       "pre-tickets",
     ];
     return [
+      ...ticketApiRewrites,
       ...apiPrefixes.flatMap((prefix) => [
         {
           source: `/${prefix}/:path*`,

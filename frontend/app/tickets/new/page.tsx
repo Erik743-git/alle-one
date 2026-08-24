@@ -504,7 +504,13 @@ export default function NewTicketPage() {
       if (res.isPreTicket) {
         refreshPreTicketsBadge();
       }
-      router.push(`/tickets/${res.ticketNumber}`);
+      const createdNumber = Number(res.ticketNumber);
+      if (!Number.isFinite(createdNumber) || createdNumber <= 0) {
+        notifyError("Chamado criado, mas não foi possível abrir a página.");
+        router.replace("/tickets");
+        return;
+      }
+      router.replace(`/tickets/${createdNumber}`);
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível criar o ticket.",
