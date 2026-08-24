@@ -26,6 +26,9 @@ export const TICKET_HISTORY_FILTER_OPTIONS: Array<{
 
 const EVENT_LABELS: Record<string, string> = {
   TICKET_CREATED: "Ticket criado",
+  PRE_TICKET_CREATED: "Pré-ticket",
+  AUTOMATION_EXECUTED: "Automação",
+  AUTOMATION_FAILED: "Automação (falha)",
   TICKET_UPDATED: "Ticket atualizado",
   TICKET_REOPENED: "Ticket reaberto",
   TICKET_CLOSED: "Ticket encerrado",
@@ -72,7 +75,10 @@ export function ticketHistoryFilterCategory(
     eventType === "TICKET_CANCELLED" ||
     eventType === "EMAIL_REPLY" ||
     eventType === "COMMUNICATION_UPDATED" ||
-    eventType === "COMMUNICATION_REMOVED"
+    eventType === "COMMUNICATION_REMOVED" ||
+    eventType === "PRE_TICKET_CREATED" ||
+    eventType === "AUTOMATION_EXECUTED" ||
+    eventType === "AUTOMATION_FAILED"
   ) {
     return "TICKET";
   }
