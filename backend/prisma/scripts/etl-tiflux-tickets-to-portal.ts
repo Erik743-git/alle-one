@@ -170,17 +170,21 @@ async function main() {
     await prisma.$executeRawUnsafe(sql);
   }
 
-  // Unifica labels já gravados (Pending / Em Execução / …)
+  // Unifica labels já gravados (Pending / Em Execução / …) — um comando por statement (Prisma prepared).
   await prisma.$executeRawUnsafe(`
     UPDATE portal_tickets SET stage_name = 'Pendente', updated_at = NOW()
     WHERE lower(trim(stage_name)) = 'pending'
-       OR (lower(trim(stage_name)) LIKE '%pendente%' AND stage_name IS DISTINCT FROM 'Pendente');
+       OR (lower(trim(stage_name)) LIKE '%pendente%' AND stage_name IS DISTINCT FROM 'Pendente')
+  `);
+  await prisma.$executeRawUnsafe(`
     UPDATE portal_tickets SET stage_name = 'Aguardando usuário', updated_at = NOW()
     WHERE lower(trim(stage_name)) LIKE '%aguardando%'
-      AND stage_name IS DISTINCT FROM 'Aguardando usuário';
+      AND stage_name IS DISTINCT FROM 'Aguardando usuário'
+  `);
+  await prisma.$executeRawUnsafe(`
     UPDATE portal_tickets SET stage_name = 'Em execução', updated_at = NOW()
     WHERE (lower(trim(stage_name)) LIKE '%execu%' OR lower(trim(stage_name)) LIKE '%in progress%')
-      AND stage_name IS DISTINCT FROM 'Em execução';
+      AND stage_name IS DISTINCT FROM 'Em execução'
   `);
 
   const after = await prisma.portalTicket.count();

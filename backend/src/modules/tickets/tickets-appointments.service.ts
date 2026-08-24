@@ -345,6 +345,7 @@ export class TicketsAppointmentsService {
       tifluxAppointmentExternalId: number | null;
       syncStatus: PortalTicketAppointmentSyncStatus;
       syncPausedAt: Date | null;
+      isWarning: boolean;
       creator: { name: string };
       attachments: Array<{
         id: string;
