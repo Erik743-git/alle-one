@@ -2,7 +2,6 @@ import { canonicalizeStageName } from './tickets-stage-groups';
 import type {
   TicketAutomationAction,
   TicketAutomationConditions,
-  TicketAutomationEmailRecipient,
   TicketAutomationSetFieldName,
   TicketAutomationTicketContext,
   TicketAutomationTrigger,
@@ -82,9 +81,7 @@ export function matchesTicketContextConditions(
 
   const idleStageName = conditions.idleStageName?.trim() ?? '';
   if (idleStageName) {
-    if (
-      normalizeStage(ctx.stageName) !== normalizeStage(idleStageName)
-    ) {
+    if (normalizeStage(ctx.stageName) !== normalizeStage(idleStageName)) {
       return false;
     }
   }
@@ -192,11 +189,7 @@ export function normalizeAutomationActions(
         break;
       }
       case 'SET_FIELD': {
-        const field = SET_FIELD_NAMES.includes(
-          item.field as TicketAutomationSetFieldName,
-        )
-          ? (item.field as TicketAutomationSetFieldName)
-          : null;
+        const field = SET_FIELD_NAMES.includes(item.field) ? item.field : null;
         if (!field) break;
         const value = parseSetFieldValue(field, item.value);
         if (value === null) break;
@@ -219,7 +212,7 @@ export function normalizeAutomationActions(
         }
         actions.push({
           type: 'SEND_EMAIL',
-          recipient: recipient as TicketAutomationEmailRecipient,
+          recipient: recipient,
           customTo:
             typeof item.customTo === 'string' ? item.customTo.trim() : null,
           subject,
@@ -251,19 +244,19 @@ export function hasAnyAutomationCondition(
 ): boolean {
   const common = Boolean(
     conditions.deskExternalId != null ||
-      conditions.clientExternalId != null ||
-      conditions.classificationId ||
-      conditions.idleStageName,
+    conditions.clientExternalId != null ||
+    conditions.classificationId ||
+    conditions.idleStageName,
   );
 
   if (trigger === 'STAGE_CHANGE') {
-    return Boolean(
-      common || conditions.stageOnEntry || conditions.stageOnExit,
-    );
+    return Boolean(common || conditions.stageOnEntry || conditions.stageOnExit);
   }
 
   if (trigger === 'TICKET_IDLE') {
-    return Boolean(conditions.idleMinutes != null && conditions.idleMinutes > 0);
+    return Boolean(
+      conditions.idleMinutes != null && conditions.idleMinutes > 0,
+    );
   }
 
   return common;
@@ -278,4 +271,29 @@ export function renderAutomationTemplate(
     if (value == null) return '';
     return String(value);
   });
+}
+
+/** Resumo legível das ações para o histórico do ticket. */
+export function summarizeAutomationActions(
+  actions: TicketAutomationAction[],
+): string {
+  const parts = actions.map((action) => {
+    switch (action.type) {
+      case 'SET_STAGE':
+        return `alterou estágio para "${action.stageName}"`;
+      case 'SET_RESPONSIBLE':
+        return 'definiu responsável';
+      case 'ADD_APPOINTMENT':
+        return 'registrou apontamento';
+      case 'SET_FIELD':
+        return `alterou ${action.field}`;
+      case 'SEND_EMAIL':
+        return 'enviou e-mail';
+      case 'TRIGGER_WEBHOOK':
+        return 'disparou webhook';
+      default:
+        return 'executou ação';
+    }
+  });
+  return parts.length > 0 ? parts.join(', ') : 'executou ações configuradas';
 }

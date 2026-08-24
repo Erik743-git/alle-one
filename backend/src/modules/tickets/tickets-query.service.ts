@@ -1161,6 +1161,10 @@ export class TicketsQueryService {
     // Evita "Ticket atualizado" genérico quando já há evento específico
     // (reabrir/fechar/estágio) no mesmo instante.
     const LIFECYCLE_HISTORY_TYPES = new Set([
+      'TICKET_CREATED',
+      'PRE_TICKET_CREATED',
+      'AUTOMATION_EXECUTED',
+      'AUTOMATION_FAILED',
       'TICKET_REOPENED',
       'TICKET_CLOSED',
       'TICKET_CANCELLED',

@@ -21,7 +21,9 @@ import {
   normalizeAutomationActions,
   normalizeAutomationConditions,
   renderAutomationTemplate,
+  summarizeAutomationActions,
 } from './ticket-automation.helper';
+import { recordPortalTicketHistory } from './portal-ticket-history';
 import type {
   TicketAutomationAction,
   TicketAutomationConditions,
@@ -212,13 +214,18 @@ export class TicketAutomationService {
     actor: AuthenticatedRequestUser,
     ctx: TicketStageChangeContext,
   ) {
-    await this.dispatchTrigger(actor, 'STAGE_CHANGE', {
-      ...ctx,
-      stageName: ctx.toStageName,
-    }, {
-      fromStageName: ctx.fromStageName,
-      toStageName: ctx.toStageName,
-    });
+    await this.dispatchTrigger(
+      actor,
+      'STAGE_CHANGE',
+      {
+        ...ctx,
+        stageName: ctx.toStageName,
+      },
+      {
+        fromStageName: ctx.fromStageName,
+        toStageName: ctx.toStageName,
+      },
+    );
   }
 
   async handleTicketOpened(
@@ -230,10 +237,7 @@ export class TicketAutomationService {
     await this.dispatchTrigger(actor, 'TICKET_OPENED', ctx);
   }
 
-  async handleNewReply(
-    actor: AuthenticatedRequestUser,
-    ticketNumber: number,
-  ) {
+  async handleNewReply(actor: AuthenticatedRequestUser, ticketNumber: number) {
     const ctx = await this.loadTicketContext(ticketNumber);
     if (!ctx) return;
     await this.dispatchTrigger(actor, 'TICKET_NEW_REPLY', ctx);
@@ -353,6 +357,13 @@ export class TicketAutomationService {
               },
             },
           });
+          await this.recordAutomationRunHistory(
+            ticket.ticketNumber,
+            rule,
+            'TICKET_IDLE',
+            actions,
+            'SUCCESS',
+          );
           processed += 1;
         } catch (error) {
           errors += 1;
@@ -371,6 +382,14 @@ export class TicketAutomationService {
               detail: { message, actions },
             },
           });
+          await this.recordAutomationRunHistory(
+            ticket.ticketNumber,
+            rule,
+            'TICKET_IDLE',
+            actions,
+            'FAILED',
+            message,
+          );
         }
       }
     }
@@ -410,6 +429,13 @@ export class TicketAutomationService {
             detail: { trigger, ...detailExtra, actions },
           },
         });
+        await this.recordAutomationRunHistory(
+          ctx.ticketNumber,
+          rule,
+          trigger,
+          actions,
+          'SUCCESS',
+        );
       } catch (error) {
         const message =
           error instanceof Error
@@ -426,6 +452,14 @@ export class TicketAutomationService {
             detail: { trigger, message, actions },
           },
         });
+        await this.recordAutomationRunHistory(
+          ctx.ticketNumber,
+          rule,
+          trigger,
+          actions,
+          'FAILED',
+          message,
+        );
       }
     }
   }
@@ -496,6 +530,40 @@ export class TicketAutomationService {
     }
 
     return fallback;
+  }
+
+  private async recordAutomationRunHistory(
+    ticketNumber: number,
+    rule: { id: string; name: string },
+    trigger: TicketAutomationTrigger,
+    actions: TicketAutomationAction[],
+    status: 'SUCCESS' | 'FAILED',
+    errorMessage?: string,
+  ): Promise<void> {
+    const actionSummary = summarizeAutomationActions(actions);
+    const summary =
+      status === 'SUCCESS'
+        ? `Automação "${rule.name}": ${actionSummary}`
+        : `Automação "${rule.name}" falhou (${actionSummary}): ${
+            errorMessage ?? 'erro desconhecido'
+          }`;
+
+    await recordPortalTicketHistory(this.prisma, {
+      ticketNumber,
+      eventType:
+        status === 'SUCCESS' ? 'AUTOMATION_EXECUTED' : 'AUTOMATION_FAILED',
+      summary,
+      actorName: 'Automação',
+      externalKey: `automation:${rule.id}:${ticketNumber}:${Date.now()}`,
+      payload: {
+        ruleId: rule.id,
+        ruleName: rule.name,
+        trigger,
+        actions,
+        status,
+        errorMessage: errorMessage ?? null,
+      },
+    });
   }
 
   private async executeActions(
@@ -646,7 +714,9 @@ export class TicketAutomationService {
       },
     });
     if (!ticket) {
-      throw new BadRequestException('Ticket não encontrado para envio de e-mail.');
+      throw new BadRequestException(
+        'Ticket não encontrado para envio de e-mail.',
+      );
     }
 
     const vars = {

@@ -407,6 +407,7 @@ export class TicketsService {
         }
       }
     } else if (
+      responsibleId != null &&
       allowedResponsibles.length > 0 &&
       !allowedResponsibles.some((row) => row.id === responsibleId)
     ) {
@@ -565,17 +566,35 @@ export class TicketsService {
         })
         .catch(() => undefined);
 
-      if (!isPreTicket) {
-        void this.ticketAutomation
-          .handleTicketOpened(actor, ticketNumber)
-          .catch((err) =>
-            this.logger.warn(
-              `Automações TICKET_OPENED falharam #${ticketNumber}: ${
-                err instanceof Error ? err.message : err
-              }`,
-            ),
-          );
+      const actorName = await actorDisplayName(this.prisma, actor);
+      await recordPortalTicketHistory(this.prisma, {
+        ticketNumber,
+        eventType: 'TICKET_CREATED',
+        summary: `${actorName} abriu o chamado`,
+        actorName,
+        externalKey: `ticket_created:${ticketNumber}`,
+      });
+
+      if (isPreTicket) {
+        await recordPortalTicketHistory(this.prisma, {
+          ticketNumber,
+          eventType: 'PRE_TICKET_CREATED',
+          summary:
+            'Chamado em triagem (pré-ticket) aguardando atribuição de responsável',
+          actorName,
+          externalKey: `pre_ticket_created:${ticketNumber}`,
+        });
       }
+
+      void this.ticketAutomation
+        .handleTicketOpened(actor, ticketNumber)
+        .catch((err) =>
+          this.logger.warn(
+            `Automações TICKET_OPENED falharam #${ticketNumber}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          ),
+        );
 
       return {
         ok: true,
@@ -777,7 +796,8 @@ export class TicketsService {
         portal,
         title: title ?? portal?.title ?? null,
         responsibleId,
-        clientExternalId: nextClientExternalId ?? portal?.clientExternalId ?? null,
+        clientExternalId:
+          nextClientExternalId ?? portal?.clientExternalId ?? null,
         deskExternalId: nextDeskExternalId ?? portal?.deskExternalId ?? null,
         actorUserId: actor.userId,
       });
@@ -1060,7 +1080,9 @@ export class TicketsService {
     }
 
     const communicationChanged =
-      descriptionRaw != null && nextPlain !== previousPlain && Boolean(nextPlain);
+      descriptionRaw != null &&
+      nextPlain !== previousPlain &&
+      Boolean(nextPlain);
     if (communicationChanged) {
       void this.ticketAutomation
         .handleNewReply(actor, ticketNumber)
@@ -1147,10 +1169,10 @@ export class TicketsService {
         : dto.deskId != null
           ? `Ticket transferido para o catálogo "${nextDeskName}".`
           : isClearingPreTicket
-          ? 'Responsável atribuído. Ticket sincronizado com TiFlux.'
-          : writeTiflux && nextOrigin !== PortalTicketOrigin.PORTAL
-            ? 'Ticket atualizado.'
-            : 'Ticket atualizado no portal.',
+            ? 'Responsável atribuído. Ticket sincronizado com TiFlux.'
+            : writeTiflux && nextOrigin !== PortalTicketOrigin.PORTAL
+              ? 'Ticket atualizado.'
+              : 'Ticket atualizado no portal.',
     };
   }
 
@@ -1319,7 +1341,8 @@ export class TicketsService {
       responsible_id: input.responsibleId,
       requestor_name: input.portal?.requestorName?.trim() || 'Solicitante',
       requestor_email: input.portal?.requestorEmail?.trim() || undefined,
-      requestor_telephone: input.portal?.requestorTelephone?.trim() || undefined,
+      requestor_telephone:
+        input.portal?.requestorTelephone?.trim() || undefined,
     };
 
     const raw = await this.tiflux.createTicket(payload);
