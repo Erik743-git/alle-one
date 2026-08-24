@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (!hydrated) return;
 
-    let debounceId: ReturnType<typeof window.setTimeout> | null = null;
+    let debounceId: number | null = null;
     const onFocus = () => {
       if (debounceId != null) window.clearTimeout(debounceId);
       debounceId = window.setTimeout(() => {
