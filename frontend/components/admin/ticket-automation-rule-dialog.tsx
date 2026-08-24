@@ -488,7 +488,7 @@ export function TicketAutomationRuleDialog({
         side="right"
         className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
       >
-        <SheetHeader className="border-b border-border px-6 py-4">
+        <SheetHeader className="shrink-0 border-b border-border px-6 py-4">
           <SheetTitle>
             {editing ? "Editar automação" : "Nova automação"}
           </SheetTitle>
@@ -895,16 +895,22 @@ export function TicketAutomationRuleDialog({
           </div>
         </div>
 
-        <SheetFooter className="border-t border-border px-6 py-4">
+        <SheetFooter className="!pb-4 mt-0 shrink-0 flex-row justify-end gap-2 border-t border-border bg-muted/40 px-6 py-4">
           <Button
             type="button"
             variant="outline"
+            size="sm"
             onClick={() => onOpenChange(false)}
             disabled={saving}
           >
             Cancelar
           </Button>
-          <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => void handleSave()}
+            disabled={saving}
+          >
             {saving ? (
               <>
                 <Loader2 className="mr-2 size-4 animate-spin" />
