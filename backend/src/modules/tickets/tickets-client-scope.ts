@@ -1,4 +1,5 @@
 import { ForbiddenException } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type { TenantScopeService } from '../../common/security/tenant-scope.service';
 import {
@@ -137,4 +138,39 @@ export async function resolveClientListFilter(
     mineOnlyForcedOff: true,
     mineOnlyForcedOn: false,
   };
+}
+
+/** Tickets em que o usuário é responsável, solicitante, criador ou seguidor (CC). */
+export function buildPortalMineOnlyOr(params: {
+  actorUserId: string;
+  actorEmail: string;
+  responsibleExternalId: number | null;
+  watcherTicketNumbers: number[];
+}): Prisma.PortalTicketWhereInput[] {
+  const email = normalizeEmail(params.actorEmail);
+  const mineOr: Prisma.PortalTicketWhereInput[] = [
+    { createdBy: params.actorUserId },
+    ...(email
+      ? [
+          {
+            requestorEmail: {
+              equals: email,
+              mode: 'insensitive' as const,
+            },
+          },
+        ]
+      : []),
+  ];
+
+  if (params.responsibleExternalId != null) {
+    mineOr.unshift({
+      responsibleExternalId: params.responsibleExternalId,
+    });
+  }
+
+  if (params.watcherTicketNumbers.length > 0) {
+    mineOr.push({ ticketNumber: { in: params.watcherTicketNumbers } });
+  }
+
+  return mineOr;
 }

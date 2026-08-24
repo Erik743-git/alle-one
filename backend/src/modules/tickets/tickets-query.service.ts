@@ -28,8 +28,10 @@ import {
 } from './tickets-appointments.service';
 import {
   assertTicketClientScope,
+  buildPortalMineOnlyOr,
   resolveClientListFilter,
 } from './tickets-client-scope';
+import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
@@ -173,6 +175,23 @@ export class TicketsQueryService {
     email: string,
   ): Promise<{ externalId: number; name: string | null } | null> {
     const normalized = this.normalizeEmail(email);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalized, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: { id: true, name: true },
+    });
+
+    if (isTifluxDisconnected()) {
+      const name = user?.name?.trim();
+      if (!user || !name) return null;
+      return {
+        externalId: portalResponsibleSyntheticId(user.id),
+        name,
+      };
+    }
+
     try {
       const rows =
         (await this.prisma.$queryRaw<
@@ -196,16 +215,8 @@ export class TicketsQueryService {
       /* schema tiflux.* ausente */
     }
 
-    // Fallback canônico: User portal → nome → responsible_external_id em portal_tickets
-    const user = await this.prisma.user.findFirst({
-      where: {
-        email: { equals: normalized, mode: 'insensitive' },
-        deletedAt: null,
-      },
-      select: { name: true },
-    });
     const name = user?.name?.trim();
-    if (!name) return null;
+    if (!name || !user) return null;
 
     const ticket = await this.prisma.portalTicket.findFirst({
       where: {
@@ -215,7 +226,12 @@ export class TicketsQueryService {
       select: { responsibleExternalId: true, responsibleName: true },
       orderBy: { updatedAtSource: 'desc' },
     });
-    if (ticket?.responsibleExternalId == null) return null;
+    if (ticket?.responsibleExternalId == null) {
+      return {
+        externalId: portalResponsibleSyntheticId(user.id),
+        name,
+      };
+    }
     return {
       externalId: ticket.responsibleExternalId,
       name: ticket.responsibleName,
@@ -307,10 +323,6 @@ export class TicketsQueryService {
 
     let responsibleFilter: number | null = null;
     let responsibleName: string | null = null;
-    let portalMineFallback: {
-      createdBy: string;
-      email: string;
-    } | null = null;
     const actorEmail = this.normalizeEmail(actor.email);
 
     if (mineOnly) {
@@ -319,10 +331,6 @@ export class TicketsQueryService {
         responsibleFilter = mine.externalId;
         responsibleName = mine.name;
       } else {
-        portalMineFallback = {
-          createdBy: actor.userId,
-          email: actorEmail,
-        };
         responsibleName = actor.email;
       }
     } else {
@@ -344,38 +352,14 @@ export class TicketsQueryService {
         ).map((w) => w.ticketNumber)
       : [];
 
-    const mineOr: Prisma.PortalTicketWhereInput[] = [];
-    if (mineOnly) {
-      if (responsibleFilter != null) {
-        mineOr.push({ responsibleExternalId: responsibleFilter });
-      }
-      if (portalMineFallback) {
-        mineOr.push({ createdBy: portalMineFallback.createdBy });
-        mineOr.push({
-          requestorEmail: {
-            equals: portalMineFallback.email,
-            mode: 'insensitive',
-          },
-        });
-      }
-      if (watcherTicketNumbers.length > 0) {
-        mineOr.push({ ticketNumber: { in: watcherTicketNumbers } });
-      }
-    }
-
     const andParts: Prisma.PortalTicketWhereInput[] = [];
     if (mineOnly) {
-      if (mineOr.length === 0) {
-        return {
-          total: 0,
-          mineOnly: true,
-          responsibleExternalId: responsibleFilter,
-          responsibleName,
-          tifluxUserResolved: responsibleFilter != null,
-          message: portalMineFallback ? 'Filtrando pelos seus tickets.' : null,
-          groups: [],
-        };
-      }
+      const mineOr = buildPortalMineOnlyOr({
+        actorUserId: actor.userId,
+        actorEmail,
+        responsibleExternalId: responsibleFilter,
+        watcherTicketNumbers,
+      });
       andParts.push({ OR: mineOr });
     }
     if (search) {
