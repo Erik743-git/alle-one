@@ -588,8 +588,8 @@ export default function AdminTicketPage() {
           </div>
 
           <Dialog open={stageModalOpen} onOpenChange={setStageModalOpen}>
-            <DialogContent className="w-[min(96vw,520px)] max-w-[520px]">
-              <DialogHeader>
+            <DialogContent className="flex w-[min(96vw,520px)] max-w-[520px] flex-col gap-0 overflow-hidden p-0">
+              <DialogHeader className="px-6 pt-6 pb-2">
                 <DialogTitle>
                   {editingStage ? "Editar estágio" : "Adicionar estágio"}
                 </DialogTitle>
@@ -597,7 +597,7 @@ export default function AdminTicketPage() {
                   Defina o nome do estágio usado nos tickets.
                 </DialogDescription>
               </DialogHeader>
-              <div className="space-y-2">
+              <div className="space-y-2 px-6 pb-4">
                 <Label htmlFor="stage-name">Nome do estágio *</Label>
                 <Input
                   id="stage-name"
@@ -606,10 +606,11 @@ export default function AdminTicketPage() {
                   maxLength={120}
                 />
               </div>
-              <DialogFooter>
+              <DialogFooter className="!mx-0 !mb-0 !pb-4 shrink-0 flex-row justify-end gap-2 rounded-none border-t bg-muted/40 px-6 py-4">
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => setStageModalOpen(false)}
                   disabled={saving}
                 >
@@ -617,6 +618,7 @@ export default function AdminTicketPage() {
                 </Button>
                 <Button
                   type="button"
+                  size="sm"
                   onClick={() => void handleSaveStage()}
                   disabled={saving}
                 >
