@@ -89,7 +89,26 @@ export type TicketAutoOpenRulePayload = {
   parentTicketNumber?: number;
 };
 
-export type TicketAutomationTrigger = "STAGE_CHANGE";
+export type TicketAutomationTrigger =
+  | "STAGE_CHANGE"
+  | "TICKET_OPENED"
+  | "TICKET_IDLE"
+  | "TICKET_NEW_REPLY";
+
+export type TicketAutomationSetFieldName =
+  | "title"
+  | "stageName"
+  | "statusName"
+  | "isClosed"
+  | "clientId"
+  | "deskId"
+  | "responsibleId";
+
+export type TicketAutomationEmailRecipient =
+  | "REQUESTOR"
+  | "RESPONSIBLE"
+  | "WATCHERS"
+  | "CUSTOM";
 
 export type TicketAutomationConditions = {
   deskExternalId?: number | null;
@@ -97,6 +116,8 @@ export type TicketAutomationConditions = {
   classificationId?: string | null;
   stageOnEntry?: string | null;
   stageOnExit?: string | null;
+  idleMinutes?: number | null;
+  idleStageName?: string | null;
 };
 
 export type TicketAutomationAction =
@@ -106,7 +127,46 @@ export type TicketAutomationAction =
       type: "ADD_APPOINTMENT";
       description: string;
       notifyClient?: boolean;
+    }
+  | {
+      type: "SET_FIELD";
+      field: TicketAutomationSetFieldName;
+      value: string | number | boolean;
+    }
+  | {
+      type: "SEND_EMAIL";
+      recipient: TicketAutomationEmailRecipient;
+      customTo?: string | null;
+      subject: string;
+      body: string;
+    }
+  | {
+      type: "TRIGGER_WEBHOOK";
+      url: string;
+      secret?: string | null;
     };
+
+export const TICKET_AUTOMATION_TRIGGER_OPTIONS: Array<{
+  value: TicketAutomationTrigger;
+  label: string;
+}> = [
+  { value: "STAGE_CHANGE", label: "Ticket alterar o estágio" },
+  { value: "TICKET_OPENED", label: "Ticket aberto" },
+  { value: "TICKET_IDLE", label: "Ticket permanece por um tempo" },
+  { value: "TICKET_NEW_REPLY", label: "Nova resposta no ticket" },
+];
+
+export const TICKET_AUTOMATION_ACTION_OPTIONS: Array<{
+  value: TicketAutomationAction["type"];
+  label: string;
+}> = [
+  { value: "SET_STAGE", label: "Alterar estágio" },
+  { value: "SET_RESPONSIBLE", label: "Definir responsável" },
+  { value: "ADD_APPOINTMENT", label: "Registrar apontamento" },
+  { value: "SET_FIELD", label: "Alterar campo" },
+  { value: "SEND_EMAIL", label: "Enviar e-mail" },
+  { value: "TRIGGER_WEBHOOK", label: "Disparar webhook" },
+];
 
 export type TicketAutomationRule = {
   id: string;

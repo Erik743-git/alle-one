@@ -19,10 +19,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { notifyError } from "@/lib/notify";
 import {
+  TICKET_AUTOMATION_ACTION_OPTIONS,
+  TICKET_AUTOMATION_TRIGGER_OPTIONS,
   adminService,
   type TicketAutomationAction,
   type TicketAutomationRule,
   type TicketAutomationRulePayload,
+  type TicketAutomationSetFieldName,
+  type TicketAutomationTrigger,
   type TicketStage,
 } from "@/lib/services/admin.service";
 import {
@@ -37,6 +41,26 @@ type Props = {
   stages: TicketStage[];
   onSaved: () => void;
 };
+
+const SET_FIELD_OPTIONS: Array<{
+  value: TicketAutomationSetFieldName;
+  label: string;
+}> = [
+  { value: "title", label: "Título" },
+  { value: "stageName", label: "Estágio" },
+  { value: "statusName", label: "Status" },
+  { value: "isClosed", label: "Fechado" },
+  { value: "clientId", label: "Cliente" },
+  { value: "deskId", label: "Catálogo / mesa" },
+  { value: "responsibleId", label: "Responsável" },
+];
+
+const EMAIL_RECIPIENT_OPTIONS = [
+  { value: "REQUESTOR", label: "Solicitante" },
+  { value: "RESPONSIBLE", label: "Responsável" },
+  { value: "WATCHERS", label: "Seguidores (CC)" },
+  { value: "CUSTOM", label: "E-mail personalizado" },
+] as const;
 
 function FlowStep({
   title,
@@ -71,6 +95,83 @@ function emptyAction(): TicketAutomationAction {
   return { type: "SET_STAGE", stageName: "" };
 }
 
+function normalizeActionForType(
+  type: TicketAutomationAction["type"],
+  prev?: TicketAutomationAction,
+): TicketAutomationAction {
+  switch (type) {
+    case "SET_STAGE":
+      return {
+        type: "SET_STAGE",
+        stageName: prev?.type === "SET_STAGE" ? prev.stageName : "",
+      };
+    case "SET_RESPONSIBLE":
+      return {
+        type: "SET_RESPONSIBLE",
+        responsibleExternalId:
+          prev?.type === "SET_RESPONSIBLE" ? prev.responsibleExternalId : 0,
+      };
+    case "ADD_APPOINTMENT":
+      return {
+        type: "ADD_APPOINTMENT",
+        description: prev?.type === "ADD_APPOINTMENT" ? prev.description : "",
+        notifyClient:
+          prev?.type === "ADD_APPOINTMENT" ? prev.notifyClient : false,
+      };
+    case "SET_FIELD":
+      return {
+        type: "SET_FIELD",
+        field: prev?.type === "SET_FIELD" ? prev.field : "title",
+        value: prev?.type === "SET_FIELD" ? prev.value : "",
+      };
+    case "SEND_EMAIL":
+      return {
+        type: "SEND_EMAIL",
+        recipient:
+          prev?.type === "SEND_EMAIL" ? prev.recipient : "REQUESTOR",
+        customTo: prev?.type === "SEND_EMAIL" ? prev.customTo : "",
+        subject: prev?.type === "SEND_EMAIL" ? prev.subject : "",
+        body: prev?.type === "SEND_EMAIL" ? prev.body : "",
+      };
+    case "TRIGGER_WEBHOOK":
+      return {
+        type: "TRIGGER_WEBHOOK",
+        url: prev?.type === "TRIGGER_WEBHOOK" ? prev.url : "",
+        secret: prev?.type === "TRIGGER_WEBHOOK" ? prev.secret : "",
+      };
+    default:
+      return emptyAction();
+  }
+}
+
+function isValidAction(action: TicketAutomationAction): boolean {
+  switch (action.type) {
+    case "SET_STAGE":
+      return Boolean(action.stageName.trim());
+    case "SET_RESPONSIBLE":
+      return Number.isFinite(action.responsibleExternalId) &&
+        action.responsibleExternalId > 0;
+    case "ADD_APPOINTMENT":
+      return Boolean(action.description.trim());
+    case "SET_FIELD":
+      if (action.field === "isClosed") return typeof action.value === "boolean";
+      if (
+        action.field === "clientId" ||
+        action.field === "deskId" ||
+        action.field === "responsibleId"
+      ) {
+        return Number.isFinite(Number(action.value)) && Number(action.value) > 0;
+      }
+      return String(action.value ?? "").trim().length > 0;
+    case "SEND_EMAIL":
+      return Boolean(action.subject.trim() && action.body.trim());
+    case "TRIGGER_WEBHOOK":
+      return /^https?:\/\//i.test(action.url.trim());
+    default:
+      return false;
+  }
+}
+
 export function TicketAutomationRuleDialog({
   open,
   onOpenChange,
@@ -85,11 +186,14 @@ export function TicketAutomationRuleDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [active, setActive] = useState(true);
+  const [trigger, setTrigger] = useState<TicketAutomationTrigger>("STAGE_CHANGE");
   const [deskId, setDeskId] = useState("");
   const [clientId, setClientId] = useState("");
   const [classificationId, setClassificationId] = useState<string | null>(null);
   const [stageOnEntry, setStageOnEntry] = useState("");
   const [stageOnExit, setStageOnExit] = useState("");
+  const [idleMinutes, setIdleMinutes] = useState("");
+  const [idleStageName, setIdleStageName] = useState("");
   const [actions, setActions] = useState<TicketAutomationAction[]>([
     emptyAction(),
   ]);
@@ -134,6 +238,7 @@ export function TicketAutomationRuleDialog({
       setName(editing.name);
       setDescription(editing.description ?? "");
       setActive(editing.active);
+      setTrigger(editing.trigger);
       setDeskId(
         editing.conditions.deskExternalId != null
           ? String(editing.conditions.deskExternalId)
@@ -147,6 +252,12 @@ export function TicketAutomationRuleDialog({
       setClassificationId(editing.conditions.classificationId ?? null);
       setStageOnEntry(editing.conditions.stageOnEntry ?? "");
       setStageOnExit(editing.conditions.stageOnExit ?? "");
+      setIdleMinutes(
+        editing.conditions.idleMinutes != null
+          ? String(editing.conditions.idleMinutes)
+          : "",
+      );
+      setIdleStageName(editing.conditions.idleStageName ?? "");
       setActions(
         editing.actions.length ? editing.actions : [emptyAction()],
       );
@@ -158,11 +269,14 @@ export function TicketAutomationRuleDialog({
       setName("");
       setDescription("");
       setActive(true);
+      setTrigger("STAGE_CHANGE");
       setDeskId("");
       setClientId("");
       setClassificationId(null);
       setStageOnEntry("");
       setStageOnExit("");
+      setIdleMinutes("");
+      setIdleStageName("");
       setActions([emptyAction()]);
       void loadCatalogs();
     }
@@ -193,6 +307,25 @@ export function TicketAutomationRuleDialog({
     );
   }
 
+  function hasValidConditions(): boolean {
+    const common =
+      Boolean(deskId) ||
+      Boolean(clientId) ||
+      Boolean(classificationId) ||
+      Boolean(idleStageName.trim());
+
+    if (trigger === "STAGE_CHANGE") {
+      return Boolean(
+        common || stageOnEntry.trim() || stageOnExit.trim(),
+      );
+    }
+    if (trigger === "TICKET_IDLE") {
+      const mins = Number(idleMinutes);
+      return Number.isFinite(mins) && mins > 0;
+    }
+    return common;
+  }
+
   async function handleSave() {
     const trimmedName = name.trim();
     if (!trimmedName) {
@@ -200,44 +333,41 @@ export function TicketAutomationRuleDialog({
       return;
     }
 
-    const hasCondition =
-      deskId ||
-      clientId ||
-      classificationId ||
-      stageOnEntry.trim() ||
-      stageOnExit.trim();
-    if (!hasCondition) {
+    if (!hasValidConditions()) {
       notifyError("Informe ao menos uma condição.");
       return;
     }
 
-    const normalizedActions = actions.filter((action) => {
-      if (action.type === "SET_STAGE") return action.stageName.trim();
-      if (action.type === "SET_RESPONSIBLE") {
-        return Number.isFinite(action.responsibleExternalId);
-      }
-      if (action.type === "ADD_APPOINTMENT") {
-        return action.description.trim();
-      }
-      return false;
-    });
+    const normalizedActions = actions.filter(isValidAction);
 
     if (!normalizedActions.length) {
       notifyError("Informe ao menos uma ação válida.");
       return;
     }
 
+    const parsedIdleMinutes = idleMinutes ? Number(idleMinutes) : null;
+
     const payload: TicketAutomationRulePayload = {
       name: trimmedName,
       description: description.trim() || undefined,
       active,
-      trigger: "STAGE_CHANGE",
+      trigger,
       conditions: {
         deskExternalId: deskId ? Number(deskId) : null,
         clientExternalId: clientId ? Number(clientId) : null,
         classificationId,
-        stageOnEntry: stageOnEntry.trim() || null,
-        stageOnExit: stageOnExit.trim() || null,
+        stageOnEntry:
+          trigger === "STAGE_CHANGE" ? stageOnEntry.trim() || null : null,
+        stageOnExit:
+          trigger === "STAGE_CHANGE" ? stageOnExit.trim() || null : null,
+        idleMinutes:
+          trigger === "TICKET_IDLE" &&
+          parsedIdleMinutes != null &&
+          Number.isFinite(parsedIdleMinutes)
+            ? Math.floor(parsedIdleMinutes)
+            : null,
+        idleStageName:
+          trigger === "TICKET_IDLE" ? idleStageName.trim() || null : null,
       },
       actions: normalizedActions,
     };
@@ -258,6 +388,98 @@ export function TicketAutomationRuleDialog({
     } finally {
       setSaving(false);
     }
+  }
+
+  function renderSetFieldValueInput(
+    action: Extract<TicketAutomationAction, { type: "SET_FIELD" }>,
+    index: number,
+  ) {
+    if (action.field === "isClosed") {
+      return (
+        <SearchableSelectField
+          value={String(action.value)}
+          onChange={(value) =>
+            updateAction(index, {
+              ...action,
+              value: value === "true",
+            })
+          }
+          options={[
+            { value: "true", label: "Sim (fechado)" },
+            { value: "false", label: "Não (aberto)" },
+          ]}
+        />
+      );
+    }
+
+    if (action.field === "stageName") {
+      return (
+        <SearchableSelectField
+          value={String(action.value ?? "")}
+          onChange={(value) => updateAction(index, { ...action, value })}
+          options={stageOptions}
+          placeholder="Estágio"
+        />
+      );
+    }
+
+    if (action.field === "clientId") {
+      return (
+        <SearchableSelectField
+          value={String(action.value ?? "")}
+          onChange={(value) =>
+            updateAction(index, { ...action, value: Number(value) })
+          }
+          options={(catalogs?.clients ?? []).map((client) => ({
+            value: String(client.id),
+            label: client.name,
+          }))}
+          placeholder="Cliente"
+        />
+      );
+    }
+
+    if (action.field === "deskId") {
+      return (
+        <SearchableSelectField
+          value={String(action.value ?? "")}
+          onChange={(value) =>
+            updateAction(index, { ...action, value: Number(value) })
+          }
+          options={(catalogs?.desks ?? []).map((desk) => ({
+            value: String(desk.id),
+            label: desk.name,
+          }))}
+          placeholder="Catálogo"
+        />
+      );
+    }
+
+    if (action.field === "responsibleId") {
+      return (
+        <SearchableSelectField
+          value={String(action.value ?? "")}
+          onChange={(value) =>
+            updateAction(index, { ...action, value: Number(value) })
+          }
+          options={(catalogs?.responsibles ?? []).map((row) => ({
+            value: String(row.id),
+            label: row.name,
+          }))}
+          placeholder="Responsável"
+        />
+      );
+    }
+
+    return (
+      <Input
+        value={String(action.value ?? "")}
+        onChange={(e) =>
+          updateAction(index, { ...action, value: e.target.value })
+        }
+        placeholder="Valor"
+      />
+    );
   }
 
   return (
@@ -304,15 +526,14 @@ export function TicketAutomationRuleDialog({
             <div className="rounded-xl border border-border/70 bg-muted/10 p-5">
               <FlowStep title="Quando isto acontecer">
                 <SearchableSelectField
-                  value="STAGE_CHANGE"
-                  onChange={() => undefined}
-                  options={[
-                    {
-                      value: "STAGE_CHANGE",
-                      label: "Ticket alterar o estágio",
-                    },
-                  ]}
-                  disabled
+                  value={trigger}
+                  onChange={(value) =>
+                    setTrigger(value as TicketAutomationTrigger)
+                  }
+                  options={TICKET_AUTOMATION_TRIGGER_OPTIONS.map((opt) => ({
+                    value: opt.value,
+                    label: opt.label,
+                  }))}
                 />
               </FlowStep>
 
@@ -324,6 +545,77 @@ export function TicketAutomationRuleDialog({
                   </div>
                 ) : (
                   <div className="space-y-3 text-sm">
+                    {trigger === "TICKET_IDLE" ? (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-muted-foreground">
+                            permanece por
+                          </span>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={idleMinutes}
+                            onChange={(e) => setIdleMinutes(e.target.value)}
+                            className="w-24"
+                            placeholder="60"
+                          />
+                          <span className="text-muted-foreground">
+                            minuto(s)
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-muted-foreground">no estágio</span>
+                          <SearchableSelectField
+                            value={idleStageName}
+                            onChange={setIdleStageName}
+                            options={[
+                              { value: "", label: "Qualquer" },
+                              ...stageOptions,
+                            ]}
+                            placeholder="Selecione o estágio"
+                            className="min-w-[180px]"
+                          />
+                        </div>
+                      </>
+                    ) : null}
+
+                    {trigger === "STAGE_CHANGE" ? (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-muted-foreground">e</span>
+                          <span className="font-medium">estágio</span>
+                          <span className="text-muted-foreground">igual a</span>
+                          <SearchableSelectField
+                            value={stageOnEntry}
+                            onChange={setStageOnEntry}
+                            options={[
+                              { value: "", label: "Qualquer" },
+                              ...stageOptions,
+                            ]}
+                            placeholder="Selecione o estágio"
+                            className="min-w-[180px]"
+                          />
+                          <span className="text-muted-foreground">na entrada</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-muted-foreground">ou</span>
+                          <span className="font-medium">estágio</span>
+                          <span className="text-muted-foreground">igual a</span>
+                          <SearchableSelectField
+                            value={stageOnExit}
+                            onChange={setStageOnExit}
+                            options={[
+                              { value: "", label: "Qualquer" },
+                              ...stageOptions,
+                            ]}
+                            placeholder="Selecione o estágio"
+                            className="min-w-[180px]"
+                          />
+                          <span className="text-muted-foreground">na saída</span>
+                        </div>
+                      </>
+                    ) : null}
+
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-muted-foreground">se</span>
                       <span className="font-medium">catálogo</span>
@@ -341,40 +633,6 @@ export function TicketAutomationRuleDialog({
                         placeholder="Selecione"
                         className="min-w-[180px]"
                       />
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-muted-foreground">e</span>
-                      <span className="font-medium">estágio</span>
-                      <span className="text-muted-foreground">igual a</span>
-                      <SearchableSelectField
-                        value={stageOnEntry}
-                        onChange={setStageOnEntry}
-                        options={[
-                          { value: "", label: "Qualquer" },
-                          ...stageOptions,
-                        ]}
-                        placeholder="Selecione o estágio"
-                        className="min-w-[180px]"
-                      />
-                      <span className="text-muted-foreground">na entrada</span>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-muted-foreground">ou</span>
-                      <span className="font-medium">estágio</span>
-                      <span className="text-muted-foreground">igual a</span>
-                      <SearchableSelectField
-                        value={stageOnExit}
-                        onChange={setStageOnExit}
-                        options={[
-                          { value: "", label: "Qualquer" },
-                          ...stageOptions,
-                        ]}
-                        placeholder="Selecione o estágio"
-                        className="min-w-[180px]"
-                      />
-                      <span className="text-muted-foreground">na saída</span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -439,48 +697,19 @@ export function TicketAutomationRuleDialog({
                       </div>
                       <SearchableSelectField
                         value={action.type}
-                        onChange={(value) => {
-                          if (value === "SET_STAGE") {
-                            updateAction(index, {
-                              type: "SET_STAGE",
-                              stageName:
-                                action.type === "SET_STAGE"
-                                  ? action.stageName
-                                  : "",
-                            });
-                          } else if (value === "SET_RESPONSIBLE") {
-                            updateAction(index, {
-                              type: "SET_RESPONSIBLE",
-                              responsibleExternalId:
-                                action.type === "SET_RESPONSIBLE"
-                                  ? action.responsibleExternalId
-                                  : 0,
-                            });
-                          } else {
-                            updateAction(index, {
-                              type: "ADD_APPOINTMENT",
-                              description:
-                                action.type === "ADD_APPOINTMENT"
-                                  ? action.description
-                                  : "",
-                              notifyClient:
-                                action.type === "ADD_APPOINTMENT"
-                                  ? action.notifyClient
-                                  : false,
-                            });
-                          }
-                        }}
-                        options={[
-                          { value: "SET_STAGE", label: "Alterar estágio" },
-                          {
-                            value: "SET_RESPONSIBLE",
-                            label: "Definir responsável",
-                          },
-                          {
-                            value: "ADD_APPOINTMENT",
-                            label: "Registrar apontamento",
-                          },
-                        ]}
+                        onChange={(value) =>
+                          updateAction(
+                            index,
+                            normalizeActionForType(
+                              value as TicketAutomationAction["type"],
+                              action,
+                            ),
+                          )
+                        }
+                        options={TICKET_AUTOMATION_ACTION_OPTIONS.map((opt) => ({
+                          value: opt.value,
+                          label: opt.label,
+                        }))}
                         className="mb-3"
                       />
 
@@ -550,6 +779,102 @@ export function TicketAutomationRuleDialog({
                           </label>
                         </div>
                       ) : null}
+
+                      {action.type === "SET_FIELD" ? (
+                        <div className="space-y-2">
+                          <SearchableSelectField
+                            value={action.field}
+                            onChange={(value) =>
+                              updateAction(index, {
+                                type: "SET_FIELD",
+                                field: value as TicketAutomationSetFieldName,
+                                value: "",
+                              })
+                            }
+                            options={SET_FIELD_OPTIONS.map((opt) => ({
+                              value: opt.value,
+                              label: opt.label,
+                            }))}
+                          />
+                          {renderSetFieldValueInput(action, index)}
+                        </div>
+                      ) : null}
+
+                      {action.type === "SEND_EMAIL" ? (
+                        <div className="space-y-2">
+                          <SearchableSelectField
+                            value={action.recipient}
+                            onChange={(value) =>
+                              updateAction(index, {
+                                ...action,
+                                recipient: value as typeof action.recipient,
+                              })
+                            }
+                            options={EMAIL_RECIPIENT_OPTIONS.map((opt) => ({
+                              value: opt.value,
+                              label: opt.label,
+                            }))}
+                          />
+                          {action.recipient === "CUSTOM" ? (
+                            <Input
+                              value={action.customTo ?? ""}
+                              onChange={(e) =>
+                                updateAction(index, {
+                                  ...action,
+                                  customTo: e.target.value,
+                                })
+                              }
+                              placeholder="e-mails separados por vírgula"
+                            />
+                          ) : null}
+                          <Input
+                            value={action.subject}
+                            onChange={(e) =>
+                              updateAction(index, {
+                                ...action,
+                                subject: e.target.value,
+                              })
+                            }
+                            placeholder="Assunto (use {{ticketNumber}}, {{title}}…)"
+                          />
+                          <Textarea
+                            value={action.body}
+                            onChange={(e) =>
+                              updateAction(index, {
+                                ...action,
+                                body: e.target.value,
+                              })
+                            }
+                            placeholder="Corpo do e-mail"
+                            rows={4}
+                          />
+                        </div>
+                      ) : null}
+
+                      {action.type === "TRIGGER_WEBHOOK" ? (
+                        <div className="space-y-2">
+                          <Input
+                            value={action.url}
+                            onChange={(e) =>
+                              updateAction(index, {
+                                ...action,
+                                url: e.target.value,
+                              })
+                            }
+                            placeholder="https://…"
+                          />
+                          <Input
+                            value={action.secret ?? ""}
+                            onChange={(e) =>
+                              updateAction(index, {
+                                ...action,
+                                secret: e.target.value,
+                              })
+                            }
+                            placeholder="Secret (opcional, header X-Webhook-Secret)"
+                          />
+                        </div>
+                      ) : null}
                     </div>
                   ))}
 
@@ -596,12 +921,17 @@ export function TicketAutomationRuleDialog({
 }
 
 function formatAutomationSummary(rule: TicketAutomationRule): string {
-  const parts: string[] = ["Ticket alterar o estágio"];
+  const triggerLabel =
+    TICKET_AUTOMATION_TRIGGER_OPTIONS.find((opt) => opt.value === rule.trigger)
+      ?.label ?? rule.trigger;
+  const parts: string[] = [triggerLabel];
   const { conditions } = rule;
   const cond: string[] = [];
   if (conditions.deskExternalId != null) cond.push("catálogo");
   if (conditions.stageOnEntry) cond.push(`entrada → ${conditions.stageOnEntry}`);
   if (conditions.stageOnExit) cond.push(`saída → ${conditions.stageOnExit}`);
+  if (conditions.idleMinutes) cond.push(`${conditions.idleMinutes} min parado`);
+  if (conditions.idleStageName) cond.push(`estágio ${conditions.idleStageName}`);
   if (conditions.clientExternalId != null) cond.push("cliente");
   if (conditions.classificationId) cond.push("classificação");
   if (cond.length) parts.push(cond.join(" · "));

@@ -712,6 +712,9 @@ model TicketAutoOpenRule {
 
 enum TicketAutomationTrigger {
   STAGE_CHANGE
+  TICKET_OPENED
+  TICKET_IDLE
+  TICKET_NEW_REPLY
 }
 
 /// Regra de automação de ticket (ex.: ao mudar estágio).

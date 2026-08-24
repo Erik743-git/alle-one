@@ -2,11 +2,13 @@ import {
   BadGatewayException,
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
+  forwardRef,
 } from '@nestjs/common';
 import {
   PortalTicketOrigin,
@@ -45,6 +47,7 @@ import {
   actorDisplayName,
   recordPortalTicketHistory,
 } from './portal-ticket-history';
+import { TicketAutomationService } from './ticket-automation.service';
 
 @Injectable()
 export class TicketsService {
@@ -58,6 +61,8 @@ export class TicketsService {
     private readonly portalStore: TicketsPortalStoreService,
     private readonly emailTemplates: EmailTemplatesService,
     private readonly tenantScope: TenantScopeService,
+    @Inject(forwardRef(() => TicketAutomationService))
+    private readonly ticketAutomation: TicketAutomationService,
   ) {}
 
   /** Autocomplete de usuários do portal para pessoas em cópia (seguidores). */
@@ -547,6 +552,18 @@ export class TicketsService {
         })
         .catch(() => undefined);
 
+      if (!isPreTicket) {
+        void this.ticketAutomation
+          .handleTicketOpened(actor, ticketNumber)
+          .catch((err) =>
+            this.logger.warn(
+              `Automações TICKET_OPENED falharam #${ticketNumber}: ${
+                err instanceof Error ? err.message : err
+              }`,
+            ),
+          );
+      }
+
       return {
         ok: true,
         ticketNumber,
@@ -1027,6 +1044,20 @@ export class TicketsService {
           nextLength: nextPlain.length,
         },
       });
+    }
+
+    const communicationChanged =
+      descriptionRaw != null && nextPlain !== previousPlain && Boolean(nextPlain);
+    if (communicationChanged) {
+      void this.ticketAutomation
+        .handleNewReply(actor, ticketNumber)
+        .catch((err) =>
+          this.logger.warn(
+            `Automações TICKET_NEW_REPLY falharam #${ticketNumber}: ${
+              err instanceof Error ? err.message : err
+            }`,
+          ),
+        );
     }
 
     if (removedAttachmentNames.length > 0) {

@@ -7,6 +7,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUrl,
   MaxLength,
   Min,
   ValidateNested,
@@ -15,6 +16,8 @@ import { Type } from 'class-transformer';
 import type {
   TicketAutomationAction,
   TicketAutomationConditions,
+  TicketAutomationEmailRecipient,
+  TicketAutomationSetFieldName,
   TicketAutomationTrigger,
 } from './ticket-automation.types';
 
@@ -42,11 +45,28 @@ export class TicketAutomationConditionsDto implements TicketAutomationConditions
   @IsString()
   @MaxLength(120)
   stageOnExit?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  idleMinutes?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  idleStageName?: string | null;
 }
 
 class TicketAutomationActionDto {
   @IsString()
-  @IsIn(['SET_STAGE', 'SET_RESPONSIBLE', 'ADD_APPOINTMENT'])
+  @IsIn([
+    'SET_STAGE',
+    'SET_RESPONSIBLE',
+    'ADD_APPOINTMENT',
+    'SET_FIELD',
+    'SEND_EMAIL',
+    'TRIGGER_WEBHOOK',
+  ])
   type!: TicketAutomationAction['type'];
 
   @IsOptional()
@@ -66,7 +86,58 @@ class TicketAutomationActionDto {
   @IsOptional()
   @IsBoolean()
   notifyClient?: boolean;
+
+  @IsOptional()
+  @IsIn([
+    'title',
+    'stageName',
+    'statusName',
+    'isClosed',
+    'clientId',
+    'deskId',
+    'responsibleId',
+  ])
+  field?: TicketAutomationSetFieldName;
+
+  @IsOptional()
+  value?: string | number | boolean;
+
+  @IsOptional()
+  @IsIn(['REQUESTOR', 'RESPONSIBLE', 'WATCHERS', 'CUSTOM'])
+  recipient?: TicketAutomationEmailRecipient;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  customTo?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  subject?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  body?: string;
+
+  @IsOptional()
+  @IsUrl({ require_tld: false })
+  @MaxLength(2000)
+  url?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  secret?: string | null;
 }
+
+const AUTOMATION_TRIGGERS = [
+  'STAGE_CHANGE',
+  'TICKET_OPENED',
+  'TICKET_IDLE',
+  'TICKET_NEW_REPLY',
+] as const satisfies readonly TicketAutomationTrigger[];
 
 export class CreateTicketAutomationRuleDto {
   @IsString()
@@ -84,7 +155,7 @@ export class CreateTicketAutomationRuleDto {
   active?: boolean;
 
   @IsOptional()
-  @IsIn(['STAGE_CHANGE'])
+  @IsIn(AUTOMATION_TRIGGERS)
   trigger?: TicketAutomationTrigger;
 
   @IsObject()
@@ -119,7 +190,7 @@ export class UpdateTicketAutomationRuleDto {
   active?: boolean;
 
   @IsOptional()
-  @IsIn(['STAGE_CHANGE'])
+  @IsIn(AUTOMATION_TRIGGERS)
   trigger?: TicketAutomationTrigger;
 
   @IsOptional()

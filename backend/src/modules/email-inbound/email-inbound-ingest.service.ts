@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import { QueueService } from '../../common/redis/queue.service';
+import { TicketAutomationService } from '../tickets/ticket-automation.service';
 import {
   MicrosoftGraphMailClient,
   type GraphMailMessage,
@@ -18,6 +19,7 @@ export class EmailInboundIngestService {
     private readonly graph: MicrosoftGraphMailClient,
     private readonly files: FileStorageService,
     private readonly queue: QueueService,
+    private readonly ticketAutomation: TicketAutomationService,
   ) {}
 
   async getOrCreateSettings() {
@@ -568,6 +570,16 @@ export class EmailInboundIngestService {
     } catch {
       /* ignore */
     }
+
+    void this.ticketAutomation
+      .dispatchNewReplyForUser(uploader, params.ticketNumber)
+      .catch((err) =>
+        this.logger.warn(
+          `Automações TICKET_NEW_REPLY (e-mail) falharam #${params.ticketNumber}: ${
+            err instanceof Error ? err.message : err
+          }`,
+        ),
+      );
   }
 
   /**

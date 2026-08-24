@@ -2,6 +2,10 @@ import { canonicalizeStageName } from './tickets-stage-groups';
 import type {
   TicketAutomationAction,
   TicketAutomationConditions,
+  TicketAutomationEmailRecipient,
+  TicketAutomationSetFieldName,
+  TicketAutomationTicketContext,
+  TicketAutomationTrigger,
   TicketStageChangeContext,
 } from './ticket-automation.types';
 
@@ -10,9 +14,9 @@ function normalizeStage(value: string | null | undefined): string {
   return canonicalizeStageName(value.trim()) ?? value.trim();
 }
 
-export function matchesAutomationConditions(
+function matchesCommonFilters(
   conditions: TicketAutomationConditions,
-  ctx: TicketStageChangeContext,
+  ctx: TicketAutomationTicketContext,
 ): boolean {
   if (
     conditions.deskExternalId != null &&
@@ -32,6 +36,17 @@ export function matchesAutomationConditions(
     conditions.classificationId?.trim() &&
     conditions.classificationId !== (ctx.classificationId ?? '')
   ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function matchesStageChangeConditions(
+  conditions: TicketAutomationConditions,
+  ctx: TicketStageChangeContext,
+): boolean {
+  if (!matchesCommonFilters(conditions, ctx)) {
     return false;
   }
 
@@ -57,9 +72,44 @@ export function matchesAutomationConditions(
   return true;
 }
 
+export function matchesTicketContextConditions(
+  conditions: TicketAutomationConditions,
+  ctx: TicketAutomationTicketContext,
+): boolean {
+  if (!matchesCommonFilters(conditions, ctx)) {
+    return false;
+  }
+
+  const idleStageName = conditions.idleStageName?.trim() ?? '';
+  if (idleStageName) {
+    if (
+      normalizeStage(ctx.stageName) !== normalizeStage(idleStageName)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function matchesAutomationConditions(
+  trigger: TicketAutomationTrigger,
+  conditions: TicketAutomationConditions,
+  ctx: TicketAutomationTicketContext,
+): boolean {
+  if (trigger === 'STAGE_CHANGE') {
+    return matchesStageChangeConditions(
+      conditions,
+      ctx as TicketStageChangeContext,
+    );
+  }
+  return matchesTicketContextConditions(conditions, ctx);
+}
+
 export function normalizeAutomationConditions(
   raw: TicketAutomationConditions,
 ): TicketAutomationConditions {
+  const idleMinutesRaw = Number(raw.idleMinutes);
   return {
     deskExternalId:
       raw.deskExternalId != null && Number.isFinite(Number(raw.deskExternalId))
@@ -73,7 +123,40 @@ export function normalizeAutomationConditions(
     classificationId: raw.classificationId?.trim() || null,
     stageOnEntry: raw.stageOnEntry?.trim() || null,
     stageOnExit: raw.stageOnExit?.trim() || null,
+    idleMinutes:
+      Number.isFinite(idleMinutesRaw) && idleMinutesRaw > 0
+        ? Math.floor(idleMinutesRaw)
+        : null,
+    idleStageName: raw.idleStageName?.trim() || null,
   };
+}
+
+const SET_FIELD_NAMES: TicketAutomationSetFieldName[] = [
+  'title',
+  'stageName',
+  'statusName',
+  'isClosed',
+  'clientId',
+  'deskId',
+  'responsibleId',
+];
+
+function parseSetFieldValue(
+  field: TicketAutomationSetFieldName,
+  raw: unknown,
+): string | number | boolean | null {
+  if (field === 'isClosed') {
+    if (typeof raw === 'boolean') return raw;
+    if (raw === 'true' || raw === '1') return true;
+    if (raw === 'false' || raw === '0') return false;
+    return null;
+  }
+  if (field === 'clientId' || field === 'deskId' || field === 'responsibleId') {
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return null;
 }
 
 export function normalizeAutomationActions(
@@ -108,6 +191,53 @@ export function normalizeAutomationActions(
         }
         break;
       }
+      case 'SET_FIELD': {
+        const field = SET_FIELD_NAMES.includes(
+          item.field as TicketAutomationSetFieldName,
+        )
+          ? (item.field as TicketAutomationSetFieldName)
+          : null;
+        if (!field) break;
+        const value = parseSetFieldValue(field, item.value);
+        if (value === null) break;
+        actions.push({ type: 'SET_FIELD', field, value });
+        break;
+      }
+      case 'SEND_EMAIL': {
+        const subject =
+          typeof item.subject === 'string' ? item.subject.trim() : '';
+        const body = typeof item.body === 'string' ? item.body.trim() : '';
+        const recipient = item.recipient;
+        if (
+          !subject ||
+          !body ||
+          !['REQUESTOR', 'RESPONSIBLE', 'WATCHERS', 'CUSTOM'].includes(
+            String(recipient),
+          )
+        ) {
+          break;
+        }
+        actions.push({
+          type: 'SEND_EMAIL',
+          recipient: recipient as TicketAutomationEmailRecipient,
+          customTo:
+            typeof item.customTo === 'string' ? item.customTo.trim() : null,
+          subject,
+          body,
+        });
+        break;
+      }
+      case 'TRIGGER_WEBHOOK': {
+        const url = typeof item.url === 'string' ? item.url.trim() : '';
+        if (!url.startsWith('http://') && !url.startsWith('https://')) break;
+        actions.push({
+          type: 'TRIGGER_WEBHOOK',
+          url,
+          secret:
+            typeof item.secret === 'string' ? item.secret.trim() || null : null,
+        });
+        break;
+      }
       default:
         break;
     }
@@ -116,13 +246,36 @@ export function normalizeAutomationActions(
 }
 
 export function hasAnyAutomationCondition(
+  trigger: TicketAutomationTrigger,
   conditions: TicketAutomationConditions,
 ): boolean {
-  return Boolean(
+  const common = Boolean(
     conditions.deskExternalId != null ||
-    conditions.clientExternalId != null ||
-    conditions.classificationId ||
-    conditions.stageOnEntry ||
-    conditions.stageOnExit,
+      conditions.clientExternalId != null ||
+      conditions.classificationId ||
+      conditions.idleStageName,
   );
+
+  if (trigger === 'STAGE_CHANGE') {
+    return Boolean(
+      common || conditions.stageOnEntry || conditions.stageOnExit,
+    );
+  }
+
+  if (trigger === 'TICKET_IDLE') {
+    return Boolean(conditions.idleMinutes != null && conditions.idleMinutes > 0);
+  }
+
+  return common;
+}
+
+export function renderAutomationTemplate(
+  template: string,
+  vars: Record<string, string | number | null | undefined>,
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    const value = vars[key];
+    if (value == null) return '';
+    return String(value);
+  });
 }
