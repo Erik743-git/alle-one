@@ -217,9 +217,26 @@ model Company {
   userMemberships      UserCompany[]
   dashboardChartPresets DashboardChartPreset[]
   ticketListPresets     TicketListPreset[]
+  ticketSpecialties     CompanyTicketSpecialty[]
 
   @@unique([cnpj])
   @@map("companies")
+}
+
+/// Especialidades liberadas para abertura de ticket pelo portal do cliente.
+/// Vazio = todas as especialidades ativas (comportamento legado).
+model CompanyTicketSpecialty {
+  id          String   @id @default(uuid())
+  companyId   String   @map("company_id")
+  specialtyId String   @map("specialty_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, specialtyId])
+  @@index([companyId])
+  @@map("company_ticket_specialties")
 }
 
 /// Vínculo usuário ↔ empresa (mesmo e-mail pode atender mais de um cliente).
@@ -361,6 +378,7 @@ model Specialty {
   emailInboundRoutes  EmailInboundRoute[]
   preTickets          PreTicket[]
   portalTickets       PortalTicket[]
+  companyTicketSpecialties CompanyTicketSpecialty[]
 
   @@map("specialties")
 }

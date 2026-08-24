@@ -22,6 +22,7 @@ import {
   sanitizeTicketRequestors,
   type TicketRequestorOption,
 } from './ticket-requestors.helper';
+import { resolveAllowedDeskExternalIdsForCompany } from './company-ticket-specialties.helper';
 
 export type TicketClassificationNode = {
   id: string;
@@ -72,6 +73,20 @@ export class TicketsCatalogsService {
     private readonly tiflux: TifluxService,
     private readonly tenantScope: TenantScopeService,
   ) {}
+
+  private async filterDesksForClientCompany<T extends { id: number }>(
+    actor: AuthenticatedRequestUser,
+    companyId: string | null | undefined,
+    desks: T[],
+  ): Promise<T[]> {
+    if (!isClientPortalRole(actor.role)) return desks;
+    const allowed = await resolveAllowedDeskExternalIdsForCompany(
+      this.prisma,
+      companyId ?? actor.companyId,
+    );
+    if (allowed == null) return desks;
+    return desks.filter((desk) => allowed.has(Number(desk.id)));
+  }
 
   async listTifluxResponsiblesForTicketCreate(): Promise<
     Array<{ id: number; name: string; email: string | null }>
@@ -735,6 +750,28 @@ export class TicketsCatalogsService {
       }
     }
 
+    const deskOptionsRaw = desksRaw
+      .map((d) => ({
+        id: Number(d.id),
+        name: String(d.display_name ?? d.name ?? `Mesa ${String(d.id)}`),
+        appointmentType: String(d.appointment_type ?? ''),
+        requireServiceCatalog: Boolean(d.require_service_catalog_open_ticket),
+      }))
+      .filter((d) => Number.isFinite(d.id));
+
+    const scopedCompanyForDesks =
+      scopedClientId != null
+        ? companiesForMap.find(
+            (c) => Number(c.tifluxClientId) === scopedClientId,
+          )?.id
+        : actor.companyId;
+
+    const deskOptions = await this.filterDesksForClientCompany(
+      actor,
+      scopedCompanyForDesks ?? null,
+      deskOptionsRaw,
+    );
+
     return {
       clients: clientsRaw
         .map((c) => {
@@ -753,14 +790,7 @@ export class TicketsCatalogsService {
             Number.isFinite(c.id) &&
             (allowedSet == null || allowedSet.has(c.id)),
         ),
-      desks: desksRaw
-        .map((d) => ({
-          id: Number(d.id),
-          name: String(d.display_name ?? d.name ?? `Mesa ${String(d.id)}`),
-          appointmentType: String(d.appointment_type ?? ''),
-          requireServiceCatalog: Boolean(d.require_service_catalog_open_ticket),
-        }))
-        .filter((d) => Number.isFinite(d.id)),
+      desks: deskOptions,
       responsibles,
       requestors,
       portalServiceDesk,
@@ -830,7 +860,7 @@ export class TicketsCatalogsService {
           Number.isFinite(c.id) && (allowedSet == null || allowedSet.has(c.id)),
       );
 
-    const deskOptions = desks
+    const deskOptionsRaw = desks
       .map((d) => ({
         id: Number(d.externalId),
         name: d.name,
@@ -842,6 +872,27 @@ export class TicketsCatalogsService {
     let portalServiceDesk: { id: string; name: string } | null = null;
     let classification: TicketCreateCatalogs['classification'] = null;
     let deskMeta: TicketCreateCatalogs['desk'] = null;
+
+    let requestors: TicketRequestorOption[] = [];
+    const scopedClientId =
+      allowedSet != null
+        ? clientId != null && allowedSet.has(Number(clientId))
+          ? Number(clientId)
+          : allowedClientIds?.[0] != null
+            ? Number(allowedClientIds[0])
+            : undefined
+        : clientId;
+
+    const scopedCompanyForDesks =
+      scopedClientId != null
+        ? companies.find((c) => Number(c.tifluxClientId) === scopedClientId)?.id
+        : actor.companyId;
+
+    const deskOptions = await this.filterDesksForClientCompany(
+      actor,
+      scopedCompanyForDesks ?? null,
+      deskOptionsRaw,
+    );
 
     if (deskId != null && Number.isFinite(deskId)) {
       const matched = desks.find((d) => Number(d.externalId) === deskId);
@@ -858,15 +909,6 @@ export class TicketsCatalogsService {
       };
     }
 
-    let requestors: TicketRequestorOption[] = [];
-    const scopedClientId =
-      allowedSet != null
-        ? clientId != null && allowedSet.has(Number(clientId))
-          ? Number(clientId)
-          : allowedClientIds?.[0] != null
-            ? Number(allowedClientIds[0])
-            : undefined
-        : clientId;
     if (
       scopedClientId != null &&
       Number.isFinite(scopedClientId) &&

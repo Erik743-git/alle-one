@@ -30,6 +30,7 @@ import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { UpdateCompanyModulesDto } from './dto/update-company-modules.dto';
+import { UpdateCompanyTicketSpecialtiesDto } from './dto/update-company-ticket-specialties.dto';
 import { PermissionsService } from '../permissions/permissions.service';
 import { COMPANY_PACK_MODULES } from '../permissions/company-pack.constants';
 import {
@@ -117,6 +118,22 @@ export class CompaniesController {
     @Body() body: UpdateCompanyModulesDto,
   ) {
     return this.permissionsService.replaceCompanyModules(id, body.modules);
+  }
+
+  @Get(':id/ticket-specialties')
+  @RequirePermission(PermissionModule.COMPANIES, 'canView')
+  listTicketSpecialties(@Param('id') id: string) {
+    return this.companiesService.listTicketSpecialties(id);
+  }
+
+  @Put(':id/ticket-specialties')
+  @RequirePermission(PermissionModule.COMPANIES, 'canEdit')
+  @AuditMeta({ entity: 'Company', action: 'UPDATE', entityIdParam: 'id' })
+  replaceTicketSpecialties(
+    @Param('id') id: string,
+    @Body() body: UpdateCompanyTicketSpecialtiesDto,
+  ) {
+    return this.companiesService.replaceTicketSpecialties(id, body.specialtyIds);
   }
 
   @Get(':id')

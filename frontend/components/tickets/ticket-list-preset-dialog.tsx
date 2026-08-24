@@ -219,14 +219,23 @@ export function TicketListPresetDialog({
       return;
     }
 
-    const config = {
+    const config: TicketListPreset["config"] = {
       rules: rules.filter((r) => r.value.trim() || r.field === "unassigned"),
       groupBy,
       visibleColumns: visibleColumns as TicketListPageState["visibleColumns"],
-      columnFilters: pageState.columnFilters,
-      sortKey: pageState.sortKey,
-      sortDir: pageState.sortDir,
     };
+    if (pageState.sortKey) {
+      config.sortKey = pageState.sortKey;
+    }
+    if (pageState.sortDir) {
+      config.sortDir = pageState.sortDir;
+    }
+    const hasColumnFilters = Object.values(pageState.columnFilters).some(
+      (f) => f.query.trim() || (f.selected != null && f.selected.length > 0),
+    );
+    if (hasColumnFilters) {
+      config.columnFilters = pageState.columnFilters;
+    }
 
     try {
       setSaving(true);
@@ -258,12 +267,12 @@ export function TicketListPresetDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto font-sans sm:max-w-xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[min(90vh,720px)] flex-col gap-0 overflow-hidden p-0 font-sans sm:max-w-xl">
+        <DialogHeader className="shrink-0 border-b border-border px-6 py-4">
           <DialogTitle>{editing ? "Editar filtro" : "Novo filtro"}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-6 py-5">
           <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
             <div className="space-y-2">
               <FieldLabel required>Nome</FieldLabel>
@@ -407,7 +416,7 @@ export function TicketListPresetDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-2">
+        <DialogFooter className="mx-0 shrink-0 gap-2 rounded-none border-t px-6 py-4">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>

@@ -207,8 +207,10 @@ export default function NewTicketPage() {
       missing.push("Serviço");
     }
     if (requiresPriority && !priorityId) missing.push("Prioridade");
-    if (!requestorName.trim()) missing.push("Solicitante");
-    if (!requestorEmail.trim()) missing.push("E-mail do solicitante");
+    if (!isClientUser) {
+      if (!requestorName.trim()) missing.push("Solicitante");
+      if (!requestorEmail.trim()) missing.push("E-mail do solicitante");
+    }
     // Responsável agora é opcional - se não for selecionado, vira pré-ticket
     return missing;
   }, [
@@ -224,6 +226,7 @@ export default function NewTicketPage() {
     priorityId,
     requestorName,
     requestorEmail,
+    isClientUser,
   ]);
 
   const canSubmit =
@@ -248,6 +251,11 @@ export default function NewTicketPage() {
         setLoading(true);
         const data = await ticketsService.createCatalogs(params);
         setCatalogs(data);
+        setDeskId((prev) => {
+          if (!prev) return prev;
+          const stillAllowed = data.desks.some((d) => String(d.id) === prev);
+          return stillAllowed ? prev : "";
+        });
         setClientId((prev) => {
           if (data.clients.length === 1) {
             return String(data.clients[0].id);
@@ -358,6 +366,11 @@ export default function NewTicketPage() {
   }
 
   useEffect(() => {
+    if (isClientUser) {
+      setGmudOptions([]);
+      setExternalGmudRef("");
+      return;
+    }
     const companyId = selectedClient?.companyId;
     if (!companyId) {
       setGmudOptions([]);
@@ -380,7 +393,7 @@ export default function NewTicketPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedClient?.companyId]);
+  }, [selectedClient?.companyId, isClientUser]);
 
   function handleClientChange(nextClientId: string) {
     const nextClient =
@@ -458,6 +471,10 @@ export default function NewTicketPage() {
 
     try {
       setSaving(true);
+      const resolvedRequestorName =
+        requestorName.trim() || user?.name?.trim() || "";
+      const resolvedRequestorEmail =
+        requestorEmail.trim() || user?.email?.trim() || "";
       const res = await ticketsService.createTicket(
         {
           title: title.trim(),
@@ -471,10 +488,13 @@ export default function NewTicketPage() {
           classificationId: classificationId ?? undefined,
           responsibleId: resolvedResponsibleId,
           requestorId: requestorId ? Number(requestorId) : undefined,
-          requestorName: requestorName.trim(),
-          requestorEmail: requestorEmail.trim(),
+          requestorName: resolvedRequestorName,
+          requestorEmail: resolvedRequestorEmail,
           requestorTelephone: requestorTelephone.trim() || undefined,
-          externalGmudRef: externalGmudRef.trim() || undefined,
+          externalGmudRef:
+            !isClientUser && externalGmudRef.trim()
+              ? externalGmudRef.trim()
+              : undefined,
           ccEmails:
             ccPeople.length > 0 ? ccPeople.map((p) => p.email) : undefined,
         },
@@ -527,12 +547,19 @@ export default function NewTicketPage() {
       return;
     }
 
-    if (!requestorName.trim()) {
+    if (!requestorName.trim() && !isClientUser) {
       notifyError("Informe o nome do solicitante.");
       return;
     }
-    if (!requestorEmail.trim()) {
+    if (!requestorEmail.trim() && !isClientUser) {
       notifyError("Informe o e-mail do solicitante.");
+      return;
+    }
+    if (
+      isClientUser &&
+      !(requestorEmail.trim() || user?.email?.trim())
+    ) {
+      notifyError("Não foi possível identificar seu e-mail para abrir o ticket.");
       return;
     }
     if (requestorTelephone.trim() && !isValidBrPhone(requestorTelephone)) {
@@ -748,118 +775,99 @@ export default function NewTicketPage() {
                   </CardContent>
                 </Card>
 
+                {!isClientUser ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <UserRound className="size-4 text-primary" />
-                      {isClientUser ? "Solicitante" : "Responsável e solicitante"}
+                      Responsável e solicitante
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {!isClientUser ? (
-                      <div className="space-y-2">
-                        <FieldLabel optional>Responsável</FieldLabel>
-                        <SearchableSelectField
-                          value={responsibleId}
-                          onChange={handleResponsibleChange}
-                          options={responsibleOptions}
-                          loading={loading}
-                          preserveOrder
-                          emptyLabel={
-                            responsibleOptions.length === 0
-                              ? "Nenhum atendente encontrado"
-                              : "Selecione o responsável (opcional)"
-                          }
-                          placeholder="Selecione o responsável (opcional)"
-                        />
-                        {!responsibleId && (
-                          <p className="text-xs text-muted-foreground">
-                            Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
-                          </p>
-                        )}
-                      </div>
-                    ) : null}
+                    <div className="space-y-2">
+                      <FieldLabel optional>Responsável</FieldLabel>
+                      <SearchableSelectField
+                        value={responsibleId}
+                        onChange={handleResponsibleChange}
+                        options={responsibleOptions}
+                        loading={loading}
+                        preserveOrder
+                        emptyLabel={
+                          responsibleOptions.length === 0
+                            ? "Nenhum atendente encontrado"
+                            : "Selecione o responsável (opcional)"
+                        }
+                        placeholder="Selecione o responsável (opcional)"
+                      />
+                      {!responsibleId && (
+                        <p className="text-xs text-muted-foreground">
+                          Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
+                        </p>
+                      )}
+                    </div>
                     <div className="space-y-3">
                       <FieldLabel required>Solicitante</FieldLabel>
-                      {isClientUser ? (
-                        <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-sm">
-                          <p className="font-medium text-foreground">
-                            {requestorName || user?.name || "Você"}
-                          </p>
-                          <p className="text-muted-foreground">
-                            {requestorEmail || user?.email}
-                          </p>
-                          {requestorTelephone ? (
-                            <p className="mt-1 text-muted-foreground">
-                              {requestorTelephone}
-                            </p>
-                          ) : null}
+                      {requestorOptions.length > 0 ? (
+                        <SearchableSelectField
+                          value={requestorId}
+                          onChange={handleRequestorSuggestion}
+                          options={requestorOptions}
+                          loading={loading}
+                          emptyLabel="Selecione o solicitante"
+                          placeholder="Selecione o solicitante"
+                        />
+                      ) : null}
+                      <div className="space-y-2">
+                        <FieldLabel required>Nome</FieldLabel>
+                        <Input
+                          value={requestorName}
+                          onChange={(e) => {
+                            setRequestorName(e.target.value);
+                            setRequestorId("");
+                          }}
+                          placeholder="Nome de quem está solicitando"
+                          className="h-11"
+                          disabled={saving}
+                          required
+                        />
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <FieldLabel required>E-mail do solicitante</FieldLabel>
+                          <Input
+                            type="email"
+                            value={requestorEmail}
+                            onChange={(e) => {
+                              setRequestorEmail(e.target.value);
+                              setRequestorId("");
+                            }}
+                            placeholder="email@empresa.com"
+                            className="h-11"
+                            disabled={saving}
+                            required
+                          />
                         </div>
-                      ) : (
-                        <>
-                          {requestorOptions.length > 0 ? (
-                            <SearchableSelectField
-                              value={requestorId}
-                              onChange={handleRequestorSuggestion}
-                              options={requestorOptions}
-                              loading={loading}
-                              emptyLabel="Selecione o solicitante"
-                              placeholder="Selecione o solicitante"
-                            />
-                          ) : null}
-                          <div className="space-y-2">
-                            <FieldLabel required>Nome</FieldLabel>
-                            <Input
-                              value={requestorName}
-                              onChange={(e) => {
-                                setRequestorName(e.target.value);
-                                setRequestorId("");
-                              }}
-                              placeholder="Nome de quem está solicitando"
-                              className="h-11"
-                              disabled={saving}
-                              required
-                            />
-                          </div>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-2">
-                              <FieldLabel required>E-mail do solicitante</FieldLabel>
-                              <Input
-                                type="email"
-                                value={requestorEmail}
-                                onChange={(e) => {
-                                  setRequestorEmail(e.target.value);
-                                  setRequestorId("");
-                                }}
-                                placeholder="email@empresa.com"
-                                className="h-11"
-                                disabled={saving}
-                                required
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <FieldLabel optional>Telefone</FieldLabel>
-                              <Input
-                                value={requestorTelephone}
-                                onChange={(e) => {
-                                  setRequestorTelephone(
-                                    formatBrPhone(e.target.value),
-                                  );
-                                  setRequestorId("");
-                                }}
-                                placeholder="(00) 00000-0000"
-                                className="h-11"
-                                disabled={saving}
-                                inputMode="tel"
-                              />
-                            </div>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Não está na lista? Preencha nome e e-mail abaixo (ex.:
-                            caixa compartilhada).
-                          </p>
-                        </>
-                      )}
+                        <div className="space-y-2">
+                          <FieldLabel optional>Telefone</FieldLabel>
+                          <Input
+                            value={requestorTelephone}
+                            onChange={(e) => {
+                              setRequestorTelephone(
+                                formatBrPhone(e.target.value),
+                              );
+                              setRequestorId("");
+                            }}
+                            placeholder="(00) 00000-0000"
+                            className="h-11"
+                            disabled={saving}
+                            inputMode="tel"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Não está na lista? Preencha nome e e-mail abaixo (ex.:
+                        caixa compartilhada).
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -885,6 +893,7 @@ export default function NewTicketPage() {
                     </div>
                   </CardContent>
                 </Card>
+                ) : null}
 
                 <div className="space-y-3">
                   {!canSubmit && !loading && !saving ? (
