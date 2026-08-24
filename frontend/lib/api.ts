@@ -1,4 +1,4 @@
-import { API_URL, getBrowserApiBase } from "@/lib/env";
+import { API_URL, buildApiUrl } from "@/lib/env";
 import { isPublicRoute } from "@/lib/auth";
 import { endSession } from "@/lib/session";
 
@@ -86,6 +86,14 @@ function resolveApiErrorMessage(
     return `Erro no servidor (${status}). Tente novamente em instantes.`;
   }
 
+  const lowered = trimmed.toLowerCase();
+  if (
+    lowered.includes("server action not found") ||
+    lowered.includes("failed to find server action")
+  ) {
+    return "Não foi possível comunicar com a API. Recarregue a página; se persistir, o deploy pode estar desatualizado.";
+  }
+
   if (trimmed.length > 280) {
     return `Erro ao processar a requisição (${status}).`;
   }
@@ -93,14 +101,8 @@ function resolveApiErrorMessage(
   return trimmed;
 }
 
-function buildApiUrl(endpoint: string): string {
-  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  const base =
-    typeof window !== "undefined"
-      ? getBrowserApiBase()
-      : API_URL.replace(/\/$/, "");
-  if (base) return `${base}${path}`;
-  return path;
+function buildApiUrlForRequest(endpoint: string): string {
+  return buildApiUrl(endpoint);
 }
 
 export async function apiRequest<T>(
@@ -123,7 +125,7 @@ export async function apiRequest<T>(
     headerRecord["X-Alleone-Api"] = "1";
   }
 
-  const response = await fetch(buildApiUrl(endpoint), {
+  const response = await fetch(buildApiUrlForRequest(endpoint), {
     method,
     credentials: "include",
     headers,
