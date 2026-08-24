@@ -1,9 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { TifluxModule } from '../tiflux/tiflux.module';
 import { ProjetosModule } from '../projetos/projetos.module';
 import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
+import { PermissionsModule } from '../permissions/permissions.module';
 import { TicketsController } from './tickets.controller';
 import { FileStorageModule } from '../../common/storage/file-storage.module';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
@@ -16,6 +17,7 @@ import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { TicketsService } from './tickets.service';
 import { TicketListPresetsService } from './ticket-list-presets.service';
 import { TicketAutomationService } from './ticket-automation.service';
+import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
 
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { TicketAutomationService } from './ticket-automation.service';
     ProjetosModule,
     AuditModule,
     MailModule,
+    PermissionsModule,
   ],
   controllers: [TicketsController],
   providers: [
@@ -38,6 +41,7 @@ import { TicketAutomationService } from './ticket-automation.service';
     TicketsReconcileService,
     TicketListPresetsService,
     TicketAutomationService,
+    TicketAutomationIdleJob,
   ],
   exports: [
     TicketsService,

@@ -2021,6 +2021,7 @@ export class TicketsQueryService {
         ticketNumber,
         fromStageName: partial.fromStageName,
         toStageName: partial.toStageName,
+        stageName: partial.toStageName,
         stageId: partial.stageId,
         deskExternalId:
           portalRow?.deskExternalId ?? partial.deskExternalId ?? null,
