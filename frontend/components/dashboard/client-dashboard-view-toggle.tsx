@@ -85,6 +85,7 @@ export function ClientDashboardViewToggle({ viewMode, onChange }: Props) {
           />
           {DASHBOARD_CLIENT_INTERNAL_LABEL}
         </button>
+        </div>
       </div>
 
       <p
