@@ -28,7 +28,8 @@ fi
 
 cd "$ROOT"
 echo "==> git pull ($ROOT)"
-git pull
+git fetch origin
+git pull origin feat/cutover-tiflux-hardening-20260727
 
 cd "$BACKEND"
 echo "==> backend: npm ci"
