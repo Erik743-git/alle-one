@@ -521,7 +521,7 @@ export class TicketsQueryService {
       responsibleExternalId: responsibleFilter,
       responsibleName,
       tifluxUserResolved: responsibleFilter != null || !mineOnly,
-      message: portalMineFallback ? 'Filtrando pelos seus tickets.' : null,
+      message: mineOnly ? 'Filtrando pelos seus tickets.' : null,
       groups,
       source: 'portal_tickets',
     };
