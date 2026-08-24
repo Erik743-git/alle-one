@@ -18,6 +18,7 @@ import {
   Phone,
   Send,
 } from "lucide-react";
+import { getDefaultAppRoute } from "@/lib/access-control";
 import { AlleOneTitle } from "@/components/brand/alle-one-title";
 import { AuthShell, AuthShellFallback } from "@/components/auth/auth-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -241,7 +242,7 @@ function LoginPageContent() {
           if (data?.user) {
             establishSession(data.user);
             router.replace(
-              data.user.firstAccess ? "/primeiro-acesso" : "/dashboard",
+              data.user.firstAccess ? "/primeiro-acesso" : getDefaultAppRoute(),
             );
           }
         }
@@ -316,7 +317,7 @@ function LoginPageContent() {
           router.push("/primeiro-acesso");
           return;
         }
-        router.push("/dashboard");
+        router.push(getDefaultAppRoute());
       } catch {
         setErro(LOGIN_CONNECTION_ERROR);
       } finally {
@@ -408,7 +409,7 @@ function LoginPageContent() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push(getDefaultAppRoute());
     } catch {
       setErro(LOGIN_CONNECTION_ERROR);
     } finally {

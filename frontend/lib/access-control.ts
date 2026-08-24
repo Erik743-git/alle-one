@@ -75,12 +75,9 @@ const PJ_DEFAULT_VIEW: PermissionModuleKey[] = [
 ];
 
 export function hasPermission(module: PermissionModuleKey, flag: PermissionFlag) {
-  if (flag === "canView" && module === "DASHBOARD" && isClient()) {
-    return true;
-  }
-
   if (flag === "canView" && isClient()) {
     const clientMatrixModules: PermissionModuleKey[] = [
+      "DASHBOARD",
       "FINANCIAL",
       "RENDIMENTO",
       "GMUD",
@@ -145,7 +142,22 @@ export function canAccessRelatorios() {
 }
 
 export function canAccessDashboard() {
-  return isClient() || canViewModule("DASHBOARD");
+  return canViewModule("DASHBOARD");
+}
+
+/** Primeira rota acessível quando o usuário não tem o módulo atual. */
+export function getDefaultAppRoute(): string {
+  const candidates: Array<{ ok: boolean; path: string }> = [
+    { ok: canViewModule("DASHBOARD"), path: "/dashboard" },
+    { ok: canAccessTickets(), path: "/tickets" },
+    { ok: canAccessGmud(), path: "/gmud" },
+    { ok: canAccessFinanceiro(), path: "/financeiro" },
+    { ok: canAccessInventario(), path: "/inventario" },
+    { ok: canAccessProjetos(), path: "/projetos" },
+    { ok: canAccessConsole(), path: "/console" },
+    { ok: canAccessRendimento(), path: "/apontamentos" },
+  ];
+  return candidates.find((c) => c.ok)?.path ?? "/tickets";
 }
 
 export function canAccessRendimento() {

@@ -889,20 +889,34 @@ export default function DashboardPage() {
       <PermissionGate module="DASHBOARD">
       <AppShell>
         <div className="font-sans w-full space-y-6 sm:space-y-8">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold sm:text-3xl">Dashboard</h1>
-              <p className="text-muted-foreground">Tudo sobre seu ambiente.</p>
-              {isClientUser ? (
-                <ClientDashboardViewToggle
-                  viewMode={clientViewMode}
-                  onChange={setClientViewMode}
+          <div className="space-y-4 border-b border-border/50 pb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-2xl font-bold sm:text-3xl">Dashboard</h1>
+                <p className="text-muted-foreground">Tudo sobre seu ambiente.</p>
+              </div>
+              <Button
+                onClick={() => void loadDashboard("manual")}
+                disabled={refreshButtonDisabled}
+                className="hidden h-10 shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+              >
+                <RefreshCcw
+                  size={16}
+                  className={manualRefreshing ? "animate-spin" : ""}
                 />
-              ) : null}
+                {refreshButtonLabel}
+              </Button>
             </div>
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end xl:w-auto xl:justify-end">
-              <div className="w-full rounded-xl border border-border bg-card px-3 py-2.5 sm:min-w-[240px] sm:max-w-[320px]">
+            {isClientUser ? (
+              <ClientDashboardViewToggle
+                viewMode={clientViewMode}
+                onChange={setClientViewMode}
+              />
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+              <div className="rounded-xl border border-border bg-card px-3 py-2.5">
                 <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Empresa
                 </p>
@@ -956,7 +970,7 @@ export default function DashboardPage() {
               <Button
                 onClick={() => void loadDashboard("manual")}
                 disabled={refreshButtonDisabled}
-                className="h-10 shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:mb-0.5"
+                className="h-10 w-full shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2 lg:col-span-1"
               >
                 <RefreshCcw
                   size={16}
