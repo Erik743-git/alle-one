@@ -464,7 +464,6 @@ export function TicketAutoOpenRuleDialog({
             key={composerKey}
             ref={composerRef}
             disabled={saving}
-            label="Descrição *"
             initialDescription={editing?.description ?? null}
           />
         </div>
