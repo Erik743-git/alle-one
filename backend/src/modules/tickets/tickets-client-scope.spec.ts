@@ -2,6 +2,7 @@ import { ForbiddenException } from '@nestjs/common';
 import {
   assertTicketClientScope,
   assertTicketCreateClientScope,
+  buildPortalMineOnlyOr,
   resolveClientListFilter,
 } from './tickets-client-scope';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -122,6 +123,50 @@ describe('tickets-client-scope', () => {
       await expect(
         resolveClientListFilter(tenantScope, clientActor, 99),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+  });
+
+  describe('buildPortalMineOnlyOr', () => {
+    it('inclui responsável, criador e solicitante', () => {
+      const clauses = buildPortalMineOnlyOr({
+        actorUserId: 'user-1',
+        actorEmail: 'Cliente@empresa.com',
+        responsibleExternalId: 999,
+        watcherTicketNumbers: [10, 20],
+      });
+
+      expect(clauses).toEqual(
+        expect.arrayContaining([
+          { responsibleExternalId: 999 },
+          { createdBy: 'user-1' },
+          {
+            requestorEmail: {
+              equals: 'cliente@empresa.com',
+              mode: 'insensitive',
+            },
+          },
+          { ticketNumber: { in: [10, 20] } },
+        ]),
+      );
+    });
+
+    it('inclui criador e solicitante mesmo sem id de responsável', () => {
+      const clauses = buildPortalMineOnlyOr({
+        actorUserId: 'user-1',
+        actorEmail: 'a@b.com',
+        responsibleExternalId: null,
+        watcherTicketNumbers: [],
+      });
+
+      expect(clauses).toEqual([
+        { createdBy: 'user-1' },
+        {
+          requestorEmail: {
+            equals: 'a@b.com',
+            mode: 'insensitive',
+          },
+        },
+      ]);
     });
   });
 });
