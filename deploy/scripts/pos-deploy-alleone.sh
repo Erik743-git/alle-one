@@ -47,6 +47,16 @@ echo "==> health Web"
 curl -sf -o /dev/null -w "web:%{http_code}\n" "http://127.0.0.1:3000/login" || true
 
 echo ""
+echo "==> smoke rotas portal (produção)"
+if [[ -f "$ROOT/deploy/scripts/smoke-portal-routes.sh" ]]; then
+  PORTAL_BASE="${ALLEONE_PORTAL_BASE:-https://alleone.alletecnologia.com}" \
+    API_PREFIX="${ALLEONE_API_PREFIX:-/api}" \
+    bash "$ROOT/deploy/scripts/smoke-portal-routes.sh" || {
+      echo "AVISO: smoke-portal-routes falhou — verifique Nginx e NEXT_PUBLIC_API_URL"
+    }
+fi
+
+echo ""
 echo "Próximo passo (outro usuário com sudo), se Nginx mudou:"
 echo "  sudo cp $ROOT/deploy/nginx-alleone-https.conf /etc/nginx/sites-available/alleone"
 echo "  sudo nginx -t && sudo systemctl reload nginx"

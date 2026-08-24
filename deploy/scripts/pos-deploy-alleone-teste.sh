@@ -97,6 +97,16 @@ echo "==> health Web ($WEB_URL)"
 curl -sf -o /dev/null -w "web:%{http_code}\n" "$WEB_URL" || true
 
 echo ""
+echo "==> smoke rotas portal (teste)"
+if [[ -f "$ROOT/deploy/scripts/smoke-portal-routes.sh" ]]; then
+  PORTAL_BASE="${ALLEONE_PORTAL_BASE:-https://alleone-teste.alletecnologia.com}" \
+    API_PREFIX="${ALLEONE_API_PREFIX:-/api}" \
+    bash "$ROOT/deploy/scripts/smoke-portal-routes.sh" || {
+      echo "AVISO: smoke-portal-routes falhou — verifique Nginx e NEXT_PUBLIC_API_URL"
+    }
+fi
+
+echo ""
 echo "OK — teste atualizado."
 echo "Público: https://alleone-teste.alletecnologia.com"
 echo "Se Nginx de teste mudou (sudo em outro usuário):"
