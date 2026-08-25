@@ -187,6 +187,18 @@ const SidebarNav = memo(function SidebarNav({
   const [modalAplicativos, setModalAplicativos] = useState(false);
 
   const menu = useMemo(() => buildMenuItems(), [user]);
+  const visibleMenu = useMemo(
+    () => menu.filter((item) => item.visible),
+    [menu],
+  );
+  const pinnedItems = useMemo(
+    () => visibleMenu.filter((item) => item.highlight),
+    [visibleMenu],
+  );
+  const scrollItems = useMemo(
+    () => visibleMenu.filter((item) => !item.highlight),
+    [visibleMenu],
+  );
 
   const iconSize = collapsed ? 18 : 20;
 
@@ -210,102 +222,102 @@ const SidebarNav = memo(function SidebarNav({
           : "text-sidebar-foreground/80 hover:bg-muted",
     );
 
+  function renderMenuItem(item: MenuItem) {
+    const Icon = item.icon;
+    const active =
+      item.href
+        ? pathname === item.href || pathname.startsWith(`${item.href}/`)
+        : item.active;
+
+    if (item.name === "Aplicativos") {
+      return (
+        <button
+          key={item.name}
+          type="button"
+          title={collapsed ? item.name : undefined}
+          onClick={() => {
+            setModalAplicativos(true);
+            onNavigate?.();
+          }}
+          className={cn(itemClass(modalAplicativos), !collapsed && "w-full text-left")}
+        >
+          <NavIconSlot collapsed={collapsed}>
+            <Icon size={iconSize} className="block shrink-0" strokeWidth={2} />
+          </NavIconSlot>
+          {!collapsed ? (
+            <span className="min-w-0 flex-1 truncate text-left tracking-tight">
+              {item.name}
+            </span>
+          ) : null}
+        </button>
+      );
+    }
+
+    return (
+      <Link
+        key={item.href ?? item.name}
+        href={item.href!}
+        title={collapsed ? item.name : undefined}
+        onClick={() => onNavigate?.()}
+        className={cn(itemClass(!!active, item.highlight), !collapsed && "w-full")}
+      >
+        <NavIconSlot collapsed={collapsed} className={item.highlight ? "size-8" : undefined}>
+          <Icon
+            size={item.highlight ? 16 : iconSize}
+            className="block shrink-0"
+            strokeWidth={2}
+          />
+        </NavIconSlot>
+        {!collapsed ? (
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-left tracking-tight",
+              item.highlight && "text-[13px]",
+            )}
+          >
+            {item.name}
+          </span>
+        ) : null}
+      </Link>
+    );
+  }
+
   return (
     <>
       <nav
         className={cn(
-          "sidebar-nav-scroll flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden overscroll-contain pb-2 pt-2",
+          "sidebar-nav-scroll flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain",
           collapsed ? "items-center px-0" : "px-2.5 md:px-3",
         )}
         aria-label="Módulos do portal"
       >
-        {menu
-          .filter((item) => item.visible)
-          .map((item) => {
-            const Icon = item.icon;
-            const active =
-              item.href
-                ? pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`)
-                : item.active;
+        {pinnedItems.length > 0 ? (
+          <div
+            className={cn(
+              "sticky top-0 z-10 w-full shrink-0 bg-sidebar pt-2 pb-1",
+              collapsed && "flex justify-center",
+            )}
+          >
+            <div className={cn("flex w-full flex-col gap-1", collapsed && "w-auto items-center")}>
+              {pinnedItems.map((item) => renderMenuItem(item))}
+            </div>
+            {!collapsed ? (
+              <div
+                className="mx-0.5 mt-1.5 h-px bg-sidebar-border/60"
+                aria-hidden
+              />
+            ) : null}
+          </div>
+        ) : null}
 
-            if (item.name === "Aplicativos") {
-              return (
-                <button
-                  key={item.name}
-                  type="button"
-                  title={collapsed ? item.name : undefined}
-                  onClick={() => {
-                    setModalAplicativos(true);
-                    onNavigate?.();
-                  }}
-                  className={cn(
-                    itemClass(modalAplicativos),
-                    !collapsed && "w-full text-left",
-                  )}
-                >
-                  <NavIconSlot collapsed={collapsed}>
-                    <Icon
-                      size={iconSize}
-                      className="block shrink-0"
-                      strokeWidth={2}
-                    />
-                  </NavIconSlot>
-                  {!collapsed ? (
-                    <span className="min-w-0 flex-1 truncate text-left tracking-tight">
-                      {item.name}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            }
-
-            const link = (
-              <Link
-                href={item.href!}
-                title={collapsed ? item.name : undefined}
-                onClick={() => onNavigate?.()}
-                className={cn(
-                  itemClass(!!active, item.highlight),
-                  !collapsed && "w-full",
-                )}
-              >
-                <NavIconSlot collapsed={collapsed} className={item.highlight ? "size-8" : undefined}>
-                  <Icon
-                    size={item.highlight ? 16 : iconSize}
-                    className="block shrink-0"
-                    strokeWidth={2}
-                  />
-                </NavIconSlot>
-                {!collapsed ? (
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-left tracking-tight",
-                      item.highlight && "text-[13px]",
-                    )}
-                  >
-                    {item.name}
-                  </span>
-                ) : null}
-              </Link>
-            );
-
-            if (!item.highlight || collapsed) {
-              return (
-                <div key={item.href ?? item.name}>{link}</div>
-              );
-            }
-
-            return (
-              <div key={item.href} className="mb-1">
-                {link}
-                <div
-                  className="mx-3 mt-1.5 h-px bg-sidebar-border/60"
-                  aria-hidden
-                />
-              </div>
-            );
-          })}
+        <div
+          className={cn(
+            "flex w-full flex-col gap-1 pb-2 pt-1",
+            collapsed && "items-center",
+          )}
+        >
+          {scrollItems.map((item) => renderMenuItem(item))}
+        </div>
       </nav>
 
       <ModalAplicativos

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   ExternalLink,
   Filter,
+  MoreVertical,
   Pencil,
   Pin,
   PinOff,
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -23,6 +25,7 @@ import { notifyError, notifySuccess } from "@/lib/notify";
 import type { TicketListPreset } from "@/lib/tickets/list-presets";
 import { ticketListPresetsService } from "@/lib/services/ticket-list-presets.service";
 import { cn } from "@/lib/utils";
+import { isAdmin } from "@/lib/access-control";
 
 type Props = {
   presets: TicketListPreset[];
@@ -33,31 +36,81 @@ type Props = {
   onEdit: (preset: TicketListPreset) => void;
 };
 
+function canManagePreset(preset: TicketListPreset) {
+  return preset.isOwner || isAdmin();
+}
+
 function PresetPill({
   preset,
   active,
   onClick,
+  onEdit,
+  onTogglePin,
+  onRemove,
 }: {
   preset: TicketListPreset;
   active: boolean;
   onClick: () => void;
+  onEdit: () => void;
+  onTogglePin: () => void;
+  onRemove: () => void;
 }) {
+  const manageable = canManagePreset(preset);
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-9 max-w-[220px] items-center gap-2 rounded-full border px-3 text-sm font-medium text-white shadow-sm transition hover:brightness-110",
-        active && "ring-2 ring-white/50 ring-offset-2 ring-offset-background",
-      )}
-      style={{ backgroundColor: preset.color, borderColor: preset.color }}
-      title={preset.isPublic ? "Filtro público" : preset.name}
-    >
-      <span className="truncate">{preset.name}</span>
-      {preset.isPublic ? (
-        <ExternalLink className="size-3.5 shrink-0 opacity-80" aria-hidden />
+    <div className="inline-flex max-w-[240px] items-center">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "inline-flex h-9 min-w-0 flex-1 items-center gap-2 rounded-l-full border border-r-0 px-3 text-sm font-medium text-white shadow-sm transition hover:brightness-110",
+          !manageable && "rounded-r-full border-r",
+          active && "ring-2 ring-white/50 ring-offset-2 ring-offset-background",
+        )}
+        style={{ backgroundColor: preset.color, borderColor: preset.color }}
+        title={preset.isPublic ? "Filtro público" : preset.name}
+      >
+        <span className="truncate">{preset.name}</span>
+        {preset.isPublic ? (
+          <ExternalLink className="size-3.5 shrink-0 opacity-80" aria-hidden />
+        ) : null}
+      </button>
+      {manageable ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-9 shrink-0 items-center justify-center rounded-r-full border px-2 text-white transition hover:brightness-110",
+                active && "ring-2 ring-white/50 ring-offset-2 ring-offset-background",
+              )}
+              style={{ backgroundColor: preset.color, borderColor: preset.color }}
+              title="Opções do filtro"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MoreVertical className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-44">
+            <DropdownMenuItem onClick={onEdit}>
+              <Pencil className="mr-2 size-3.5" />
+              Editar
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onTogglePin}>
+              <PinOff className="mr-2 size-3.5" />
+              Desafixar
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onRemove}
+            >
+              <Trash2 className="mr-2 size-3.5" />
+              Remover
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
-    </button>
+    </div>
   );
 }
 
@@ -174,7 +227,7 @@ export function TicketListPresetsToolbar({
                       </span>
                     ) : null}
                   </button>
-                  {preset.isOwner ? (
+                  {canManagePreset(preset) ? (
                     <>
                       <Button
                         type="button"
@@ -239,6 +292,9 @@ export function TicketListPresetsToolbar({
           preset={preset}
           active={activePresetId === preset.id}
           onClick={() => onApply(preset)}
+          onEdit={() => onEdit(preset)}
+          onTogglePin={() => void togglePin(preset)}
+          onRemove={() => void removePreset(preset)}
         />
       ))}
     </div>

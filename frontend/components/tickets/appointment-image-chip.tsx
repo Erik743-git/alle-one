@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ZoomableImagePreview } from "@/components/ui/zoomable-image-preview";
 import { blobToDataUrl, fileToDataUrl } from "@/lib/blob-to-data-url";
 import { ticketsService } from "@/lib/services/tickets.service";
 import { cn } from "@/lib/utils";
@@ -289,18 +290,17 @@ export function AppointmentImageChip({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="flex min-h-[240px] flex-1 items-center justify-center overflow-auto bg-muted/20 p-6">
+          <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden bg-muted/20 p-6">
             {loading ? (
-              <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              <div className="flex flex-1 items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-muted-foreground" />
+              </div>
             ) : error ? (
               <p className="max-w-md text-center text-sm text-destructive">{error}</p>
             ) : previewSrc ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={previewSrc.slice(0, 48)}
+              <ZoomableImagePreview
                 src={previewSrc}
                 alt={filename || "Print"}
-                className="max-h-[min(62vh,560px)] max-w-full object-contain"
               />
             ) : (
               <p className="text-sm text-muted-foreground">Nenhuma imagem para exibir.</p>
