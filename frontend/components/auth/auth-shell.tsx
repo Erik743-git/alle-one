@@ -31,7 +31,11 @@ export function AuthShell({
   return (
     <main
       className={cn(
-        "font-sans relative flex h-dvh max-h-dvh items-center justify-center overflow-hidden bg-[#0a1018] px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(400px,460px)_minmax(2rem,12vw)] lg:justify-items-end lg:px-0",
+        "font-sans relative flex min-h-dvh w-full justify-center",
+        "overflow-x-hidden overflow-y-auto overscroll-y-contain",
+        "bg-[#0a1018] px-4 py-5 sm:px-5 sm:py-6",
+        "lg:h-dvh lg:max-h-dvh lg:items-center lg:overflow-hidden lg:py-0",
+        "lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(400px,460px)_minmax(2rem,12vw)] lg:justify-items-end lg:px-0",
         className,
       )}
     >
@@ -42,16 +46,17 @@ export function AuthShell({
         alt=""
         decoding="sync"
         fetchPriority="high"
-        className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-[left_center] [image-rendering:auto]"
+        className="pointer-events-none fixed inset-0 -z-10 h-full w-full select-none object-cover object-[center_22%] sm:object-[center_30%] lg:object-[left_center] [image-rendering:auto]"
       />
       <div
         aria-hidden
-        className="absolute inset-0 bg-[#0a1018]/5 lg:bg-gradient-to-r lg:from-transparent lg:via-[#0a1018]/10 lg:to-[#0a1018]/55"
+        className="pointer-events-none fixed inset-0 -z-10 bg-gradient-to-b from-[#0a1018]/80 via-[#0a1018]/55 to-[#0a1018]/90 lg:bg-gradient-to-r lg:from-transparent lg:via-[#0a1018]/10 lg:to-[#0a1018]/55"
       />
 
       <div
         className={cn(
-          "relative z-10 w-full max-w-[380px] animate-[fadeIn_0.5s_ease-out] sm:max-w-[430px] lg:col-start-2 lg:max-w-none lg:-translate-x-10",
+          "relative z-10 my-auto w-full max-w-[min(100%,22.5rem)] animate-[fadeIn_0.5s_ease-out] sm:max-w-[27rem]",
+          "lg:col-start-2 lg:my-0 lg:max-w-none lg:-translate-x-10",
           contentClassName,
         )}
       >

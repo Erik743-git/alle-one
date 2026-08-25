@@ -103,13 +103,16 @@ export function UserAccountMenu({ collapsed = false }: Props) {
             size="icon"
             className={
               collapsed
-                ? "relative h-10 w-10 shrink-0 rounded-xl border-border bg-card/60 p-0 text-foreground hover:bg-accent hover:text-accent-foreground"
+                ? "relative h-10 w-10 shrink-0 rounded-xl border-border bg-card/60 p-0 text-foreground hover:bg-accent hover:text-accent-foreground xl:h-11 xl:w-11 2xl:h-12 2xl:w-12"
                 : "relative h-9 w-9 shrink-0 rounded-xl border-border bg-card/60 p-0 text-foreground hover:bg-accent hover:text-accent-foreground"
             }
             title="Conta e notificações"
             aria-label="Conta e notificações"
           >
-            <User2 size={collapsed ? 18 : 16} strokeWidth={2} />
+            <User2
+              className={collapsed ? "size-[18px] xl:size-5 2xl:size-[22px]" : "size-4"}
+              strokeWidth={2}
+            />
             {unread > 0 ? (
               <span className="absolute -right-0.5 -top-0.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-rose-600 px-1 text-[9px] font-bold leading-4 text-white">
                 {unread > 99 ? "99+" : unread}

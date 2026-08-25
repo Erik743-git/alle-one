@@ -17,6 +17,7 @@ function AppShellMain({ children }: { children: React.ReactNode }) {
           variant="outline"
           size="icon"
           aria-label="Abrir menu"
+          className="size-11 shrink-0"
           onClick={() => setMobileOpen(true)}
         >
           <Menu className="size-5" />

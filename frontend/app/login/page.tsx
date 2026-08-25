@@ -485,20 +485,20 @@ function LoginPageContent() {
 
   return (
     <AuthShell>
-        <Card className="gap-3 rounded-[20px] border border-white/10 bg-[#08182f]/88 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-          <CardHeader className="space-y-4 px-6 pb-1 pt-5">
-            <div className="relative space-y-1.5 text-center">
+        <Card className="gap-3 rounded-[20px] border border-white/10 bg-[#08182f]/92 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+          <CardHeader className="space-y-4 px-4 pb-1 pt-4 sm:px-6 sm:pt-5">
+            <div className="relative space-y-1.5 px-9 text-center sm:px-10">
               <a
                 href="https://alletecnologia.com"
                 target="_blank"
                 rel="noreferrer"
                 title="Ir para Alle Tecnologia.com"
-                className="absolute right-0 top-0 flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-white sm:h-9 sm:w-9"
               >
                 <ArrowUpRight size={18} />
               </a>
 
-              <AlleOneTitle className="text-[1.75rem] sm:text-[1.95rem] lg:text-[2.15rem]" />
+              <AlleOneTitle className="text-[1.6rem] sm:text-[1.95rem] lg:text-[2.15rem]" />
 
               <p className="font-sans text-sm font-medium text-slate-300">
                 {requires2fa
@@ -508,7 +508,7 @@ function LoginPageContent() {
             </div>
           </CardHeader>
 
-          <CardContent className="px-6 pb-5 pt-1">
+          <CardContent className="px-4 pb-5 pt-1 sm:px-6">
             <form onSubmit={handleLogin} className="space-y-4">
               {requires2fa ? (
                 <>
@@ -681,7 +681,7 @@ function LoginPageContent() {
                         </span>
                         <div className="h-px flex-1 bg-white/10" />
                       </div>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
                         <div className="h-11 animate-pulse rounded-xl bg-white/5" />
                         <div className="h-11 animate-pulse rounded-xl bg-white/5" />
                       </div>
@@ -699,7 +699,7 @@ function LoginPageContent() {
                         <div className="h-px flex-1 bg-white/10" />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
                         {oauthProviders.google ? (
                           <Button
                             type="button"
