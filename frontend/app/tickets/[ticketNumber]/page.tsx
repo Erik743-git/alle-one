@@ -428,7 +428,7 @@ export default function TicketDetailPage() {
     const ok = await confirm({
       title: "Trocar cliente do ticket?",
       description:
-        "GMUD vinculada e dados do solicitante serão limpos. Confirme se o cliente está correto.",
+        "A GMUD vinculada será removida. Confirme se o novo cliente está correto.",
       confirmText: "Trocar cliente",
     });
     if (!ok) return;
@@ -1331,7 +1331,7 @@ export default function TicketDetailPage() {
                   emptyLabel="Nenhum cliente"
                 />
                 <p className="text-xs text-muted-foreground">
-                  GMUD e solicitante atuais serão limpos após a troca.
+                  A GMUD vinculada será removida após a troca de cliente.
                 </p>
               </div>
               <DialogFooter>

@@ -762,11 +762,18 @@ export class TicketsService {
         : dto.responsibleName?.trim() || null;
 
     if (responsibleId != null) {
-      const allowed = await this.catalogs.listResponsiblesForCatalogs();
+      const deskForResponsible =
+        dto.deskId != null ? dto.deskId : (portal?.deskExternalId ?? null);
+      const allowed =
+        deskForResponsible != null
+          ? await this.catalogs.listResponsiblesForDeskExternalId(
+              deskForResponsible,
+            )
+          : await this.catalogs.listResponsiblesForCatalogs();
       const match = allowed.find((r) => r.id === responsibleId);
       if (!match) {
         throw new BadRequestException(
-          'O responsável selecionado não é válido (precisa estar ativo e marcado como responsável no cadastro).',
+          'O responsável selecionado não é válido para a mesa de destino (precisa estar ativo, marcado como responsável e vinculado à especialidade).',
         );
       }
       if (!responsibleName) {
@@ -856,12 +863,9 @@ export class TicketsService {
       clientExternalId: nextClientExternalId,
       deskName: nextDeskName,
       deskExternalId: nextDeskExternalId,
-      requestorName:
-        dto.clientId != null ? null : (portal?.requestorName ?? null),
-      requestorEmail:
-        dto.clientId != null ? null : (portal?.requestorEmail ?? null),
-      requestorTelephone:
-        dto.clientId != null ? null : (portal?.requestorTelephone ?? null),
+      requestorName: portal?.requestorName ?? null,
+      requestorEmail: portal?.requestorEmail ?? null,
+      requestorTelephone: portal?.requestorTelephone ?? null,
       priorityName: portal?.priorityName ?? null,
       createdByWayOf: portal?.createdByWayOf ?? null,
       statusName: resolvedStatusName,

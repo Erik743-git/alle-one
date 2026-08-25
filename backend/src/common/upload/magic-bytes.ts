@@ -11,6 +11,7 @@ export type DetectedUploadKind =
   | '7z'
   | 'ole'
   | 'text'
+  | 'video'
   | 'unknown';
 
 function startsWithBytes(buffer: Buffer, bytes: number[]): boolean {
@@ -54,6 +55,22 @@ export function detectUploadKind(
     buffer.toString('ascii', 8, 12) === 'WEBP'
   ) {
     return 'webp';
+  }
+  // MP4 / MOV (....ftyp)
+  if (buffer.length >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp') {
+    return 'video';
+  }
+  // WebM / Matroska (EBML)
+  if (startsWithBytes(buffer, [0x1a, 0x45, 0xdf, 0xa3])) {
+    return 'video';
+  }
+  // AVI (RIFF....AVI )
+  if (
+    buffer.length >= 12 &&
+    buffer.toString('ascii', 0, 4) === 'RIFF' &&
+    buffer.toString('ascii', 8, 11) === 'AVI'
+  ) {
+    return 'video';
   }
   // ZIP / OOXML (docx, xlsx, …)
   if (
@@ -118,6 +135,10 @@ const MIME_TO_KINDS: Array<{
   {
     match: (m) => m.startsWith('image/'),
     kinds: ['png', 'jpeg', 'gif', 'webp'],
+  },
+  {
+    match: (m) => m.startsWith('video/'),
+    kinds: ['video'],
   },
   {
     match: (m) =>

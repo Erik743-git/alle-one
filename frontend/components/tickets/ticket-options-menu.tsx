@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle,
   ChevronDown,
@@ -75,6 +75,11 @@ export function TicketOptionsMenu({
     Array<{ value: string; label: string }>
   >([]);
   const [loadingDesks, setLoadingDesks] = useState(false);
+  const [responsibleId, setResponsibleId] = useState("");
+  const [responsibleOptions, setResponsibleOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [loadingResponsibles, setLoadingResponsibles] = useState(false);
   const [groupQuery, setGroupQuery] = useState("");
   const [groupResults, setGroupResults] = useState<TicketListItem[]>([]);
   const [groupSearching, setGroupSearching] = useState(false);
@@ -170,6 +175,8 @@ export function TicketOptionsMenu({
   async function openTransferDialog() {
     setTransferOpen(true);
     setDeskId(currentDeskValue);
+    setResponsibleId("");
+    setResponsibleOptions([]);
     setLoadingDesks(true);
     try {
       const catalogs = await ticketsService.createCatalogs();
@@ -191,6 +198,46 @@ export function TicketOptionsMenu({
     }
   }
 
+  async function loadResponsiblesForDesk(nextDeskId: string) {
+    const parsed = Number(nextDeskId);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setResponsibleId("");
+      setResponsibleOptions([]);
+      return;
+    }
+    setLoadingResponsibles(true);
+    try {
+      const catalogs = await ticketsService.createCatalogs({ deskId: parsed });
+      const options = (catalogs.responsibles ?? []).map((row) => ({
+        value: String(row.id),
+        label: row.name,
+      }));
+      setResponsibleOptions(options);
+      setResponsibleId(options.length === 1 ? options[0]!.value : "");
+    } catch (err) {
+      setResponsibleOptions([]);
+      setResponsibleId("");
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os responsáveis da mesa.",
+      );
+    } finally {
+      setLoadingResponsibles(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!transferOpen || !deskId || deskId === currentDeskValue) {
+      if (!transferOpen || !deskId) {
+        setResponsibleId("");
+        setResponsibleOptions([]);
+      }
+      return;
+    }
+    void loadResponsiblesForDesk(deskId);
+  }, [transferOpen, deskId, currentDeskValue]);
+
   async function confirmTransfer() {
     const nextDeskId = Number(deskId);
     if (!Number.isFinite(nextDeskId) || nextDeskId <= 0) {
@@ -201,11 +248,20 @@ export function TicketOptionsMenu({
       notifyError("Selecione um catálogo diferente do atual.");
       return;
     }
+    if (responsibleOptions.length > 0 && !responsibleId) {
+      notifyError("Selecione o responsável da mesa de destino.");
+      return;
+    }
     const deskLabel =
       deskOptions.find((row) => row.value === deskId)?.label ?? deskId;
+    const responsibleLabel =
+      responsibleOptions.find((row) => row.value === responsibleId)?.label ??
+      null;
     const ok = await confirm({
       title: "Transferir Ticket?",
-      description: `o ticket sai da fila atual e vai para "${deskLabel}".`,
+      description: responsibleLabel
+        ? `o ticket sai da fila atual, vai para "${deskLabel}" e o responsável passa a ser "${responsibleLabel}".`
+        : `o ticket sai da fila atual e vai para "${deskLabel}".`,
       confirmText: "Transferir",
     });
     if (!ok) return;
@@ -213,6 +269,7 @@ export function TicketOptionsMenu({
       setBusy(true);
       const res = await ticketsService.updateTicket(ticketNumber, {
         deskId: nextDeskId,
+        ...(responsibleId ? { responsibleId: Number(responsibleId) } : {}),
       });
       notifySuccess(res.message);
       setTransferOpen(false);
@@ -382,7 +439,11 @@ export function TicketOptionsMenu({
             <Label>Catálogo de destino</Label>
             <SearchableSelectField
               value={deskId}
-              onChange={setDeskId}
+              onChange={(value) => {
+                setDeskId(value);
+                setResponsibleId("");
+                setResponsibleOptions([]);
+              }}
               options={deskOptions}
               loading={loadingDesks}
               placeholder="Selecione o catálogo"
@@ -390,6 +451,28 @@ export function TicketOptionsMenu({
             <p className="text-xs text-muted-foreground">
               Use para passar o ticket de Infra para Sistemas, por exemplo.
             </p>
+            {deskId && deskId !== currentDeskValue ? (
+              <div className="space-y-2 pt-2">
+                <Label>Responsável na mesa de destino</Label>
+                <SearchableSelectField
+                  value={responsibleId}
+                  onChange={setResponsibleId}
+                  options={responsibleOptions}
+                  loading={loadingResponsibles}
+                  placeholder={
+                    loadingResponsibles
+                      ? "Carregando responsáveis…"
+                      : responsibleOptions.length === 0
+                        ? "Nenhum responsável nesta especialidade"
+                        : "Selecione o responsável"
+                  }
+                  disabled={loadingResponsibles || responsibleOptions.length === 0}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Lista filtrada pela especialidade da mesa selecionada.
+                </p>
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button
@@ -401,7 +484,13 @@ export function TicketOptionsMenu({
             </Button>
             <Button
               type="button"
-              disabled={busy || loadingDesks || !deskId}
+              disabled={
+                busy ||
+                loadingDesks ||
+                loadingResponsibles ||
+                !deskId ||
+                (responsibleOptions.length > 0 && !responsibleId)
+              }
               onClick={() => void confirmTransfer()}
             >
               {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}

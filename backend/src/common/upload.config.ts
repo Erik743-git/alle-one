@@ -21,6 +21,7 @@ export const ticketAppointmentUploadLimits = {
 
 const ALLOWED_MIME_PREFIXES = [
   'image/',
+  'video/',
   'text/',
   'application/pdf',
   'application/msword',
@@ -47,6 +48,11 @@ const ALLOWED_EXTENSIONS = new Set([
   '.gif',
   '.webp',
   '.bmp',
+  '.mp4',
+  '.m4v',
+  '.mov',
+  '.webm',
+  '.avi',
   '.pdf',
   '.txt',
   '.csv',
@@ -85,6 +91,11 @@ const EXTENSION_TO_KINDS: Record<string, DetectedUploadKind[]> = {
   '.zip': ['zip'],
   '.rar': ['rar'],
   '.7z': ['7z'],
+  '.mp4': ['video'],
+  '.m4v': ['video'],
+  '.mov': ['video'],
+  '.webm': ['video'],
+  '.avi': ['video'],
 };
 
 /** Tipos detectáveis por magic bytes quando o browser manda octet-stream. */
@@ -99,6 +110,7 @@ const OCTET_STREAM_SAFE_KINDS = new Set<DetectedUploadKind>([
   'webp',
   'ole',
   'text',
+  'video',
 ]);
 
 export type UploadLike = {
@@ -108,7 +120,7 @@ export type UploadLike = {
 };
 
 const UPLOAD_TYPE_HINT =
-  'Tipo de arquivo não permitido. Use imagem, PDF, Word, Excel, PowerPoint, texto, ZIP, RAR ou 7z.';
+  'Tipo de arquivo não permitido. Use imagem, vídeo, PDF, Word, Excel, PowerPoint, texto, ZIP, RAR ou 7z.';
 
 function fileExtension(name: string | null | undefined): string {
   const base = (name || '').trim().toLowerCase();

@@ -23,7 +23,7 @@ type Props = {
   onRemove?: () => void;
   disabled?: boolean;
   className?: string;
-  variant?: "chip" | "thumbnail";
+  variant?: "chip" | "thumbnail" | "inline";
 };
 
 function isLikelyImageBlob(blob: Blob, mimeType: string, filename: string) {
@@ -100,6 +100,9 @@ export function AppointmentImageChip({
   useEffect(() => {
     if (previewDataUrl) {
       setThumbSrc(previewDataUrl);
+      return;
+    }
+    if (variant === "inline") {
       return;
     }
     if (variant !== "thumbnail" || thumbLoadedRef.current || disabled) return;
@@ -184,7 +187,36 @@ export function AppointmentImageChip({
   }
 
   const trigger =
-    variant === "thumbnail" ? (
+    variant === "inline" ? (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => void handleOpen()}
+        className={cn(
+          "block max-w-full cursor-zoom-in overflow-hidden rounded-md border border-border/50 bg-muted/20 transition",
+          "hover:border-primary/50 hover:ring-2 hover:ring-primary/20",
+          disabled && "pointer-events-none opacity-50",
+          className,
+        )}
+        title={filename || "Ver imagem"}
+      >
+        {thumbSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumbSrc}
+            alt={filename || "Imagem"}
+            className="h-auto max-h-[360px] w-auto max-w-full object-contain"
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewDataUrl ?? ""}
+            alt={filename || "Imagem"}
+            className="h-auto max-h-[360px] w-auto max-w-full object-contain"
+          />
+        )}
+      </button>
+    ) : variant === "thumbnail" ? (
       <button
         type="button"
         disabled={disabled}

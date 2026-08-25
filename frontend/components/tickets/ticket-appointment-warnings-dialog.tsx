@@ -49,6 +49,7 @@ export function TicketAppointmentWarningsDialog({
   onAcknowledged,
 }: Props) {
   const [loadingList, setLoadingList] = useState(false);
+  const [listLoaded, setListLoaded] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ackBusy, setAckBusy] = useState(false);
   const [warnings, setWarnings] = useState<TicketAppointmentWarningListItem[]>([]);
@@ -71,6 +72,7 @@ export function TicketAppointmentWarningsDialog({
     if (!Number.isFinite(ticketNumber)) return;
     try {
       setLoadingList(true);
+      setListLoaded(false);
       const res = await ticketsService.pendingAppointmentWarnings(ticketNumber);
       setWarnings(res.warnings);
     } catch (err) {
@@ -82,6 +84,7 @@ export function TicketAppointmentWarningsDialog({
       setWarnings([]);
     } finally {
       setLoadingList(false);
+      setListLoaded(true);
     }
   }, [ticketNumber]);
 
@@ -91,6 +94,7 @@ export function TicketAppointmentWarningsDialog({
       setDetail(null);
       setDontShowAgain(false);
       setSessionDismissed(new Set());
+      setListLoaded(false);
       return;
     }
     void loadWarnings();
@@ -157,11 +161,11 @@ export function TicketAppointmentWarningsDialog({
   }
 
   useEffect(() => {
-    if (!open || loadingList) return;
+    if (!open || loadingList || !listLoaded) return;
     if (visibleWarnings.length === 0) {
       onOpenChange(false);
     }
-  }, [open, loadingList, visibleWarnings.length, onOpenChange]);
+  }, [open, loadingList, listLoaded, visibleWarnings.length, onOpenChange]);
 
   async function handleConfirmRead() {
     if (!selectedId) return;

@@ -119,6 +119,8 @@ fi
 
 check_status "GET /login (Next)" "${PORTAL_BASE}/login" "200"
 
+check_status "GET /tickets/1/edit (Next UI)" "${PORTAL_BASE}/tickets/1/edit" "200"
+
 echo ""
 if [[ "$failed" -ne 0 ]]; then
   echo "Smoke FALHOU — corrija antes de liberar usuários."

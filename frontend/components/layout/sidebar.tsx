@@ -20,6 +20,7 @@ import {
   FolderKanban,
   Ticket,
   MonitorDot,
+  Plus,
 } from "lucide-react";
 import {
   canAccessAdmin,
@@ -33,6 +34,7 @@ import {
   canAccessRelatorios,
   canAccessRendimento,
   canAccessTickets,
+  canCreateTicket,
 } from "@/lib/access-control";
 import ThemeToggle from "@/components/theme/theme-toggle";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
@@ -72,6 +74,12 @@ type MenuItem = {
 /** Recalculado no render — não usar `visible` no topo do módulo (SSR/login). */
 function buildMenuItems(): MenuItem[] {
   return [
+    {
+      name: "Novo ticket",
+      href: "/tickets/new",
+      icon: Plus,
+      visible: canCreateTicket(),
+    },
     {
       name: "Dashboard",
       href: "/dashboard",
