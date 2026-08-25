@@ -164,7 +164,7 @@ function NavIconSlot({
     <span
       className={cn(
         "relative flex shrink-0 items-center justify-center",
-        collapsed ? "h-10 w-10" : "size-9",
+        collapsed ? "h-10 w-10" : "size-8",
         className,
       )}
     >
@@ -200,16 +200,16 @@ const SidebarNav = memo(function SidebarNav({
     [visibleMenu],
   );
 
-  const iconSize = collapsed ? 18 : 20;
+  const iconSize = collapsed ? 17 : 18;
 
   const itemClass = (active: boolean, highlight?: boolean) =>
     cn(
-      "flex items-center overflow-hidden rounded-lg text-sm font-semibold transition-colors duration-150",
+      "flex items-center overflow-hidden rounded-lg text-[13px] font-semibold transition-colors duration-150",
       collapsed
-        ? "mx-auto h-9 w-9 shrink-0 justify-center gap-0 p-0"
+        ? "mx-auto h-8 w-8 shrink-0 justify-center gap-0 p-0"
         : highlight
-          ? "h-9 w-full gap-2 px-3"
-          : "min-h-[2.875rem] w-full gap-3 px-3.5 py-3",
+          ? "h-8 w-full gap-2 px-2.5"
+          : "min-h-10 w-full gap-2.5 px-3 py-2",
       highlight
         ? cn(
             "text-white shadow-sm shadow-[#12b5d9]/20",
@@ -261,9 +261,9 @@ const SidebarNav = memo(function SidebarNav({
         onClick={() => onNavigate?.()}
         className={cn(itemClass(!!active, item.highlight), !collapsed && "w-full")}
       >
-        <NavIconSlot collapsed={collapsed} className={item.highlight ? "size-8" : undefined}>
+        <NavIconSlot collapsed={collapsed} className={item.highlight ? "size-7" : undefined}>
           <Icon
-            size={item.highlight ? 16 : iconSize}
+            size={item.highlight ? 15 : iconSize}
             className="block shrink-0"
             strokeWidth={2}
           />
@@ -272,7 +272,7 @@ const SidebarNav = memo(function SidebarNav({
           <span
             className={cn(
               "min-w-0 flex-1 truncate text-left tracking-tight",
-              item.highlight && "text-[13px]",
+              item.highlight && "text-xs",
             )}
           >
             {item.name}
