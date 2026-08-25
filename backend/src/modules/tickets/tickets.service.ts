@@ -679,7 +679,10 @@ export class TicketsService {
         dto.stageName != null ||
         dto.statusName != null ||
         dto.clientId != null ||
-        dto.deskId != null;
+        dto.deskId != null ||
+        dto.requestorName != null ||
+        dto.requestorEmail != null ||
+        dto.requestorTelephone !== undefined;
       if (touchingOpenFields) {
         throw new BadRequestException(
           'Não é possível editar um ticket fechado. Reabra o ticket antes.',
@@ -784,6 +787,38 @@ export class TicketsService {
     const isRemovingResponsible =
       responsibleId === null && portal?.responsibleExternalId != null;
 
+    let nextRequestorName = portal?.requestorName ?? null;
+    let nextRequestorEmail = portal?.requestorEmail ?? null;
+    let nextRequestorTelephone = portal?.requestorTelephone ?? null;
+    const requestorTouched =
+      dto.requestorName != null ||
+      dto.requestorEmail != null ||
+      dto.requestorTelephone !== undefined;
+    if (requestorTouched) {
+      const name = dto.requestorName?.trim() ?? nextRequestorName ?? '';
+      const email = dto.requestorEmail?.trim() ?? nextRequestorEmail ?? '';
+      if (name.length < 2) {
+        throw new BadRequestException(
+          'Informe o nome do solicitante (mínimo 2 caracteres).',
+        );
+      }
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new BadRequestException(
+          'Informe um e-mail de solicitante válido.',
+        );
+      }
+      const phone = dto.requestorTelephone?.trim() || null;
+      if (phone) {
+        const digits = phone.replace(/\D/g, '');
+        if (digits.length !== 10 && digits.length !== 11) {
+          throw new BadRequestException('Telefone do solicitante inválido.');
+        }
+      }
+      nextRequestorName = name;
+      nextRequestorEmail = email;
+      nextRequestorTelephone = phone;
+    }
+
     const nextResponsibleIdForPreTicket =
       responsibleId !== undefined
         ? responsibleId
@@ -863,9 +898,9 @@ export class TicketsService {
       clientExternalId: nextClientExternalId,
       deskName: nextDeskName,
       deskExternalId: nextDeskExternalId,
-      requestorName: portal?.requestorName ?? null,
-      requestorEmail: portal?.requestorEmail ?? null,
-      requestorTelephone: portal?.requestorTelephone ?? null,
+      requestorName: nextRequestorName,
+      requestorEmail: nextRequestorEmail,
+      requestorTelephone: nextRequestorTelephone,
       priorityName: portal?.priorityName ?? null,
       createdByWayOf: portal?.createdByWayOf ?? null,
       statusName: resolvedStatusName,

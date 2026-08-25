@@ -208,6 +208,31 @@ export class UpdateTicketDto {
   deskId?: number;
 
   @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  requestorId?: number;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(255)
+  requestorName?: string;
+
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(255)
+  requestorEmail?: string;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(30)
+  @Matches(BR_PHONE_PATTERN, {
+    message: 'Telefone inválido (use 10 ou 11 dígitos).',
+  })
+  requestorTelephone?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   removeAttachmentFileIds?: string[];

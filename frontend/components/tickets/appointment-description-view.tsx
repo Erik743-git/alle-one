@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ZoomableImagePreview } from "@/components/ui/zoomable-image-preview";
 import { cn } from "@/lib/utils";
 
 type Attachment = {
@@ -199,14 +200,9 @@ function HtmlDescriptionWithLightbox({
               {lightbox?.alt || "Imagem"}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex min-h-[240px] flex-1 items-center justify-center overflow-auto bg-muted/20 p-6">
+          <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden bg-muted/20 p-6">
             {lightbox ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={lightbox.src}
-                alt={lightbox.alt}
-                className="max-h-[min(62vh,560px)] max-w-full object-contain"
-              />
+              <ZoomableImagePreview src={lightbox.src} alt={lightbox.alt} />
             ) : null}
           </div>
           <div className="flex shrink-0 justify-end border-t border-border bg-muted/30 px-5 pt-4 pb-6">

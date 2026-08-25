@@ -67,12 +67,14 @@ import {
 import { useAuth } from "@/lib/use-auth";
 import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
 import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
+import { formatBrPhone, isValidBrPhone } from "@/lib/ticket-form";
 import {
   ticketsService,
   type PortalAppointmentEditContext,
   type TicketAppointment,
   type TicketDetailResponse,
   type TicketFilterCatalogs,
+  type TicketCreateCatalogs,
   type TicketStagesResponse,
 } from "@/lib/services/tickets.service";
 import {
@@ -207,6 +209,19 @@ export default function TicketDetailPage() {
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [changeClientOpen, setChangeClientOpen] = useState(false);
+  const [changeRequestorOpen, setChangeRequestorOpen] = useState(false);
+  const [requestorId, setRequestorId] = useState("");
+  const [requestorName, setRequestorName] = useState("");
+  const [requestorEmail, setRequestorEmail] = useState("");
+  const [requestorTelephone, setRequestorTelephone] = useState("");
+  const [requestorOptions, setRequestorOptions] = useState<
+    Array<{ value: string; label: string }>
+  >([]);
+  const [requestorCatalog, setRequestorCatalog] = useState<
+    TicketCreateCatalogs["requestors"]
+  >([]);
+  const [loadingRequestors, setLoadingRequestors] = useState(false);
+  const [requestorSaving, setRequestorSaving] = useState(false);
   const [clientOptions, setClientOptions] = useState<
     Array<{ value: string; label: string }>
   >([]);
@@ -311,10 +326,6 @@ export default function TicketDetailPage() {
       value: String(stage.id),
       label: stage.firstStage ? `${stage.name} (inicial)` : stage.name,
     }));
-  const stageChanged =
-    stageIdInput !== "" &&
-    stagesData?.currentStageId != null &&
-    Number(stageIdInput) !== stagesData.currentStageId;
 
   async function applyOptionsChange(patch?: TicketOptionsChange) {
     if (patch) {
@@ -354,16 +365,21 @@ export default function TicketDetailPage() {
     await Promise.all([load(true), loadStages()]);
   }
 
-  async function handleSaveStage() {
-    if (!Number.isFinite(ticketNumber) || !stageIdInput) return;
-    const stageId = Number(stageIdInput);
+  async function handleSaveStage(nextStageId?: string) {
+    const raw = nextStageId ?? stageIdInput;
+    if (!Number.isFinite(ticketNumber) || !raw) return;
+    const stageId = Number(raw);
     if (!Number.isFinite(stageId) || stageId <= 0) {
       notifyError("Selecione um estágio válido.");
+      return;
+    }
+    if (stagesData?.currentStageId != null && stageId === stagesData.currentStageId) {
       return;
     }
     try {
       setStageSaving(true);
       const res = await ticketsService.updateStage(ticketNumber, stageId);
+      setStageIdInput(String(res.stageId));
       setData((prev) =>
         prev?.ticket
           ? {
@@ -386,12 +402,107 @@ export default function TicketDetailPage() {
           : prev,
       );
       notifySuccess(res.message);
+      setHistoryRefreshToken((value) => value + 1);
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível atualizar o estágio.",
       );
+      if (stagesData?.currentStageId != null) {
+        setStageIdInput(String(stagesData.currentStageId));
+      }
     } finally {
       setStageSaving(false);
+    }
+  }
+
+  function handleStageChange(nextStageId: string) {
+    setStageIdInput(nextStageId);
+    if (!nextStageId) return;
+    void handleSaveStage(nextStageId);
+  }
+
+  async function openChangeRequestorDialog() {
+    if (!ticket) return;
+    setChangeRequestorOpen(true);
+    setRequestorId("");
+    setRequestorName(ticket.requestorName ?? "");
+    setRequestorEmail(ticket.requestorEmail ?? "");
+    setRequestorTelephone(
+      ticket.requestorTelephone ? formatBrPhone(ticket.requestorTelephone) : "",
+    );
+    setLoadingRequestors(true);
+    try {
+      const catalogs = await ticketsService.createCatalogs(
+        ticket.clientExternalId != null
+          ? { clientId: ticket.clientExternalId }
+          : undefined,
+      );
+      setRequestorCatalog(catalogs.requestors ?? []);
+      setRequestorOptions(
+        (catalogs.requestors ?? []).map((row) => ({
+          value: String(row.id),
+          label: row.email ? `${row.name} (${row.email})` : row.name,
+        })),
+      );
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os solicitantes.",
+      );
+      setChangeRequestorOpen(false);
+    } finally {
+      setLoadingRequestors(false);
+    }
+  }
+
+  function handleRequestorSuggestion(nextRequestorId: string) {
+    setRequestorId(nextRequestorId);
+    if (!nextRequestorId) return;
+    const selected = requestorCatalog.find(
+      (row) => String(row.id) === nextRequestorId,
+    );
+    if (!selected) return;
+    setRequestorName(selected.name ?? "");
+    setRequestorEmail(selected.email ?? "");
+    setRequestorTelephone(
+      selected.telephone ? formatBrPhone(selected.telephone) : "",
+    );
+  }
+
+  async function confirmChangeRequestor() {
+    if (!requestorName.trim()) {
+      notifyError("Informe o nome do solicitante.");
+      return;
+    }
+    if (!requestorEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestorEmail)) {
+      notifyError("Informe um e-mail de solicitante válido.");
+      return;
+    }
+    if (requestorTelephone.trim() && !isValidBrPhone(requestorTelephone)) {
+      notifyError("Telefone do solicitante inválido.");
+      return;
+    }
+    try {
+      setRequestorSaving(true);
+      await ticketsService.updateTicket(ticketNumber, {
+        requestorId: requestorId ? Number(requestorId) : undefined,
+        requestorName: requestorName.trim(),
+        requestorEmail: requestorEmail.trim(),
+        requestorTelephone: requestorTelephone.trim() || null,
+      });
+      notifySuccess("Solicitante atualizado.");
+      setChangeRequestorOpen(false);
+      await load(true);
+      setHistoryRefreshToken((n) => n + 1);
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível atualizar o solicitante.",
+      );
+    } finally {
+      setRequestorSaving(false);
     }
   }
 
@@ -849,16 +960,48 @@ export default function TicketDetailPage() {
                     <CardHeader>
                       <CardTitle className="text-base">Solicitante</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-1 text-sm">
-                      <p className="font-semibold">{ticket.requestorName ?? "—"}</p>
-                      <p className="text-muted-foreground">{ticket.requestorEmail ?? "—"}</p>
-                      <p className="text-muted-foreground">
-                        {ticket.requestorTelephone ?? "—"}
-                      </p>
-                      <p className="pt-2">
-                        <span className="text-muted-foreground">Cliente: </span>
-                        {ticket.clientName ?? "—"}
-                      </p>
+                    <CardContent className="space-y-3 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 space-y-1">
+                          <p className="font-semibold">{ticket.requestorName ?? "—"}</p>
+                          <p className="text-muted-foreground">
+                            {ticket.requestorEmail ?? "—"}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {ticket.requestorTelephone ?? "—"}
+                          </p>
+                        </div>
+                        {canChangeTicketStage() && !ticket.isClosed ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            title="Editar solicitante"
+                            onClick={() => void openChangeRequestorDialog()}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                        <p className="min-w-0">
+                          <span className="text-muted-foreground">Cliente: </span>
+                          {ticket.clientName ?? "—"}
+                        </p>
+                        {data.canChangeClient && !ticket.isClosed ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 shrink-0"
+                            title="Trocar cliente"
+                            onClick={() => void openChangeClientDialog()}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        ) : null}
+                      </div>
                     </CardContent>
                   </Card>
 
@@ -930,51 +1073,20 @@ export default function TicketDetailPage() {
                             </p>
                           ) : (
                             <>
-                              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                                <div className="flex-1">
-                                  <SearchableSelectField
-                                    value={stageIdInput}
-                                    onChange={setStageIdInput}
-                                    options={stageOptions}
-                                    loading={stagesLoading}
-                                    disabled={stageSaving || stagesLoading}
-                                    placeholder="Selecione o estágio"
-                                    preserveOrder
-                                  />
-                                </div>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  className="h-11 shrink-0"
-                                  disabled={
-                                    stageSaving || stagesLoading || !stageChanged
-                                  }
-                                  onClick={() => void handleSaveStage()}
-                                >
-                                  {stageSaving ? (
-                                    <Loader2 className="mr-2 size-4 animate-spin" />
-                                  ) : null}
-                                  Salvar estágio
-                                </Button>
-                              </div>
+                              <SearchableSelectField
+                                value={stageIdInput}
+                                onChange={handleStageChange}
+                                options={stageOptions}
+                                loading={stagesLoading || stageSaving}
+                                disabled={stageSaving || stagesLoading}
+                                placeholder="Selecione o estágio"
+                                preserveOrder
+                              />
                               <p className="text-xs text-muted-foreground">
                                 Andamento do atendimento. Fechar, cancelar e reabrir ficam em Opções.
                               </p>
                             </>
                           )}
-                        </div>
-                      ) : null}
-                      {data.canChangeClient && !ticket.isClosed ? (
-                        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-9"
-                            disabled={lifecycleBusy}
-                            onClick={() => void openChangeClientDialog()}
-                          >
-                            Trocar cliente
-                          </Button>
                         </div>
                       ) : null}
                     </CardContent>
@@ -1314,6 +1426,85 @@ export default function TicketDetailPage() {
               </>
             )}
           </div>
+
+          <Dialog open={changeRequestorOpen} onOpenChange={setChangeRequestorOpen}>
+            <DialogContent className="sm:max-w-md" showCloseButton>
+              <DialogHeader>
+                <DialogTitle>Editar solicitante</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                {requestorOptions.length > 0 ? (
+                  <div className="space-y-2">
+                    <Label>Solicitante cadastrado</Label>
+                    <SearchableSelectField
+                      value={requestorId}
+                      onChange={handleRequestorSuggestion}
+                      options={requestorOptions}
+                      loading={loadingRequestors}
+                      placeholder="Selecione o solicitante"
+                      emptyLabel="Nenhum solicitante"
+                    />
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={requestorName}
+                    onChange={(e) => {
+                      setRequestorName(e.target.value);
+                      setRequestorId("");
+                    }}
+                    placeholder="Nome de quem está solicitando"
+                    disabled={requestorSaving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>E-mail</Label>
+                  <Input
+                    type="email"
+                    value={requestorEmail}
+                    onChange={(e) => {
+                      setRequestorEmail(e.target.value);
+                      setRequestorId("");
+                    }}
+                    placeholder="email@empresa.com"
+                    disabled={requestorSaving}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Telefone</Label>
+                  <Input
+                    value={requestorTelephone}
+                    onChange={(e) => {
+                      setRequestorTelephone(formatBrPhone(e.target.value));
+                      setRequestorId("");
+                    }}
+                    placeholder="(00) 00000-0000"
+                    disabled={requestorSaving}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setChangeRequestorOpen(false)}
+                >
+                  Fechar
+                </Button>
+                <Button
+                  type="button"
+                  disabled={requestorSaving}
+                  onClick={() => void confirmChangeRequestor()}
+                >
+                  {requestorSaving ? (
+                    <Loader2 className="mr-2 size-4 animate-spin" />
+                  ) : null}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={changeClientOpen} onOpenChange={setChangeClientOpen}>
             <DialogContent className="sm:max-w-md" showCloseButton>

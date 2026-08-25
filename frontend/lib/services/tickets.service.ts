@@ -81,6 +81,7 @@ export type TicketDetailResponse = {
   ticket: TicketListItem & {
     deskName: string | null;
     deskExternalId?: number | null;
+    clientExternalId?: number | null;
     isClosed: boolean;
     isPreTicket?: boolean;
     requestorName: string | null;
@@ -335,6 +336,10 @@ export type UpdateTicketPayload = {
   /** tiflux client id — só ADMIN */
   clientId?: number;
   deskId?: number;
+  requestorId?: number;
+  requestorName?: string;
+  requestorEmail?: string;
+  requestorTelephone?: string | null;
   removeAttachmentFileIds?: string[];
 };
 
