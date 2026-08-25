@@ -36,8 +36,9 @@ import {
 } from "@/components/ui/dialog";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import {
+  clearDeviceTrustToken,
   readDeviceTrustToken,
-  writeDeviceTrustToken,
+  syncDeviceTrustFromResponse,
 } from "@/lib/device-trust";
 import { setSession, type AuthUser } from "@/lib/session";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
@@ -97,7 +98,12 @@ const SESSION_REASON_MESSAGES: Record<string, string> = {
 function buildOAuthUrl(provider: "google" | "microsoft") {
   // Mesma origem (rewrite Next → API): cookie de state e callback ficam alinhados.
   if (typeof window !== "undefined") {
-    return `${window.location.origin}/auth/${provider}`;
+    const url = new URL(`${window.location.origin}/auth/${provider}`);
+    const trust = readDeviceTrustToken();
+    if (trust) {
+      url.searchParams.set("deviceTrustToken", trust);
+    }
+    return url.toString();
   }
   const base = getBrowserApiBase();
   const root = base || API_URL.replace(/\/$/, "");
@@ -295,7 +301,7 @@ function LoginPageContent() {
           return;
         }
         const loginData = data as LoginResponse;
-        writeDeviceTrustToken(loginData.deviceTrustToken);
+        syncDeviceTrustFromResponse(loginData.deviceTrustToken);
         setSession(undefined, loginData.user);
         establishSession(loginData.user);
         let user: AuthUser = loginData.user;
@@ -305,6 +311,7 @@ function LoginPageContent() {
           });
           if (meRes.ok) {
             const meData = (await meRes.json()) as LoginResponse;
+            syncDeviceTrustFromResponse(meData.deviceTrustToken);
             if (meData?.user) {
               user = meData.user;
               establishSession(user);
@@ -353,7 +360,7 @@ function LoginPageContent() {
           email: email.trim().toLowerCase(),
           password: senha,
           ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
-          ...(requires2fa && rememberDevice ? { rememberDevice: true } : {}),
+          ...(totpCode.trim() && rememberDevice ? { rememberDevice: true } : {}),
           ...(deviceTrustToken ? { deviceTrustToken } : {}),
         }),
       });
@@ -370,6 +377,9 @@ function LoginPageContent() {
           mensagem === "2FA_REQUIRED" ||
           (data as { requires2fa?: boolean }).requires2fa
         ) {
+          if (deviceTrustToken) {
+            clearDeviceTrustToken();
+          }
           setRequires2fa(true);
           setRememberDevice(true);
           setTotpCode("");
@@ -384,7 +394,7 @@ function LoginPageContent() {
       }
 
       const loginData = data as LoginResponse;
-      writeDeviceTrustToken(loginData.deviceTrustToken);
+      syncDeviceTrustFromResponse(loginData.deviceTrustToken);
 
       setSession(undefined, loginData.user);
       establishSession(loginData.user);
@@ -396,6 +406,7 @@ function LoginPageContent() {
         });
         if (meRes.ok) {
           const meData = (await meRes.json()) as LoginResponse;
+          syncDeviceTrustFromResponse(meData.deviceTrustToken);
           if (meData?.user) {
             user = meData.user;
             establishSession(user);

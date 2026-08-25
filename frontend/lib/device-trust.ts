@@ -28,6 +28,15 @@ export function writeDeviceTrustToken(token: string | null | undefined) {
   }
 }
 
+/** Persiste trust retornado por /auth/login, /auth/me ou complete-2fa. */
+export function syncDeviceTrustFromResponse(
+  deviceTrustToken: string | null | undefined,
+) {
+  if (deviceTrustToken?.trim()) {
+    writeDeviceTrustToken(deviceTrustToken);
+  }
+}
+
 export function clearDeviceTrustToken() {
   writeDeviceTrustToken(null);
 }

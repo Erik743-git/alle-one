@@ -89,7 +89,11 @@ export class TotpService {
       throw new BadRequestException('2FA já está ativo.');
     }
     const secret = this.decryptSecret(user.totpSecretEncrypted);
-    const result = verifySync({ token: code.trim(), secret });
+    const result = verifySync({
+      token: this.normalizeTotpCode(code),
+      secret,
+      epochTolerance: 30,
+    });
     if (!result.valid) throw new UnauthorizedException('Código 2FA inválido.');
 
     const backupCodes = Array.from({ length: 8 }, () =>
@@ -141,7 +145,15 @@ export class TotpService {
     return { ok: true };
   }
 
+  private normalizeTotpCode(code: string): string {
+    return code.trim().replace(/\s+/g, '');
+  }
+
   async assertValidCode(userId: string, code: string) {
+    const normalized = this.normalizeTotpCode(code);
+    if (!/^\d{6,8}$/.test(normalized)) {
+      throw new UnauthorizedException('Código 2FA inválido.');
+    }
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
       select: {
@@ -154,7 +166,11 @@ export class TotpService {
       throw new BadRequestException('2FA não está ativo.');
     }
     const secret = this.decryptSecret(user.totpSecretEncrypted);
-    const result = verifySync({ token: code.trim(), secret });
+    const result = verifySync({
+      token: normalized,
+      secret,
+      epochTolerance: 30,
+    });
     if (result.valid) {
       return;
     }
@@ -163,7 +179,7 @@ export class TotpService {
       ? (JSON.parse(user.totpBackupCodesHash) as string[])
       : [];
     for (let i = 0; i < hashes.length; i++) {
-      if (await bcrypt.compare(code.trim(), hashes[i])) {
+      if (await bcrypt.compare(normalized, hashes[i])) {
         hashes.splice(i, 1);
         await this.prisma.user.update({
           where: { id: userId },

@@ -5,6 +5,9 @@ import { isAuthCookieSecure } from './auth-cookie.helper';
 /** Cookie httpOnly: confiar neste dispositivo e pular 2FA por N dias. */
 export const TOTP_TRUST_COOKIE = 'alleone_totp_trust';
 
+/** Transporta trust do localStorage no início do OAuth (callback lê antes do redirect). */
+export const DEVICE_TRUST_HINT_COOKIE = 'alleone_device_trust_hint';
+
 const DEFAULT_TRUST_DAYS = 14;
 
 export function totpTrustDays(): number {
@@ -61,6 +64,29 @@ export function createTotpTrustToken(
   };
   const payloadPart = b64url(JSON.stringify(payload));
   return `${payloadPart}.${sign(payloadPart)}`;
+}
+
+export function resolveDeviceTrustToken(sources: {
+  cookie?: string;
+  hintCookie?: string;
+  header?: string | string[];
+  body?: string;
+}): string | undefined {
+  const candidates = [
+    sources.cookie,
+    sources.hintCookie,
+    sources.body,
+    typeof sources.header === 'string'
+      ? sources.header
+      : Array.isArray(sources.header)
+        ? sources.header[0]
+        : undefined,
+  ];
+  for (const raw of candidates) {
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (value) return value;
+  }
+  return undefined;
 }
 
 export function verifyTotpTrustToken(
@@ -123,12 +149,55 @@ export function attachTotpTrustCookie(res: Response, token: string): void {
   });
 }
 
+export function attachDeviceTrustHintCookie(
+  res: Response,
+  token: string,
+): void {
+  const { domain, sameSite, secure } = cookieFlags();
+  res.cookie(DEVICE_TRUST_HINT_COOKIE, token, {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: '/auth',
+    maxAge: 15 * 60_000,
+    ...(domain ? { domain } : {}),
+  });
+}
+
+export function clearDeviceTrustHintCookie(res: Response): void {
+  const { domain, sameSite, secure } = cookieFlags();
+  const variants: Array<{ secure: boolean; domain?: string }> = [
+    { secure },
+    { secure: !secure },
+    ...(domain
+      ? [
+          { secure, domain },
+          { secure: !secure, domain },
+        ]
+      : []),
+  ];
+  for (const variant of variants) {
+    res.clearCookie(DEVICE_TRUST_HINT_COOKIE, {
+      httpOnly: true,
+      secure: variant.secure,
+      sameSite,
+      path: '/auth',
+      ...(variant.domain ? { domain: variant.domain } : {}),
+    });
+  }
+}
+
 export function clearTotpTrustCookie(res: Response): void {
   const { domain, sameSite, secure } = cookieFlags();
   const variants: Array<{ secure: boolean; domain?: string }> = [
     { secure },
     { secure: !secure },
-    ...(domain ? [{ secure, domain }, { secure: !secure, domain }] : []),
+    ...(domain
+      ? [
+          { secure, domain },
+          { secure: !secure, domain },
+        ]
+      : []),
   ];
   for (const variant of variants) {
     res.clearCookie(TOTP_TRUST_COOKIE, {

@@ -29,6 +29,7 @@ import {
   TOTP_TRUST_COOKIE,
   attachTotpTrustCookie,
   clearTotpTrustCookie,
+  resolveDeviceTrustToken,
 } from './totp-trust-cookie.helper';
 import { Public } from '../../common/decorators/public.decorator';
 import { IsBoolean, IsOptional, IsString } from 'class-validator';
@@ -77,8 +78,12 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('google')
-  googleLogin(@Res() res: Response, @Query('email') email?: string): void {
-    this.authOAuth.startGoogle(res, email);
+  googleLogin(
+    @Res() res: Response,
+    @Query('email') email?: string,
+    @Query('deviceTrustToken') deviceTrustToken?: string,
+  ): void {
+    this.authOAuth.startGoogle(res, email, deviceTrustToken);
   }
 
   @Public()
@@ -94,8 +99,12 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('microsoft')
-  microsoftLogin(@Res() res: Response, @Query('email') email?: string): void {
-    this.authOAuth.startMicrosoft(res, email);
+  microsoftLogin(
+    @Res() res: Response,
+    @Query('email') email?: string,
+    @Query('deviceTrustToken') deviceTrustToken?: string,
+  ): void {
+    this.authOAuth.startMicrosoft(res, email, deviceTrustToken);
   }
 
   @Public()
@@ -127,17 +136,14 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const headerTrust = req.headers['x-alleone-device-trust'];
-    const trustCookie =
-      (typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
-        ? req.cookies[TOTP_TRUST_COOKIE]
-        : undefined) ||
-      (typeof data.deviceTrustToken === 'string' && data.deviceTrustToken
-        ? data.deviceTrustToken
-        : undefined) ||
-      (typeof headerTrust === 'string' && headerTrust.trim()
-        ? headerTrust.trim()
-        : undefined);
+    const trustCookie = resolveDeviceTrustToken({
+      cookie:
+        typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+          ? req.cookies[TOTP_TRUST_COOKIE]
+          : undefined,
+      body: data.deviceTrustToken,
+      header: req.headers['x-alleone-device-trust'],
+    });
     const result = await this.authService.login(data, { trustCookie });
     attachAccessTokenCookie(res, result.accessToken);
     if (result.totpTrustToken) {
@@ -197,8 +203,31 @@ export class AuthController {
   @Throttle({ default: { limit: 120, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  me(@Req() req: AuthenticatedRequest) {
-    return this.authService.me(req.user.userId);
+  async me(
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.me(req.user.userId);
+    const trustCookie = resolveDeviceTrustToken({
+      cookie:
+        typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+          ? req.cookies[TOTP_TRUST_COOKIE]
+          : undefined,
+      header: req.headers['x-alleone-device-trust'],
+    });
+    const deviceTrustToken = this.authService.renewDeviceTrustToken(
+      req.user.userId,
+      trustCookie,
+      result.totpEnabledAt ?? null,
+    );
+    if (deviceTrustToken) {
+      attachTotpTrustCookie(res, deviceTrustToken);
+    }
+    const { totpEnabledAt: _omit, ...safe } = result;
+    return {
+      ...safe,
+      ...(deviceTrustToken ? { deviceTrustToken } : {}),
+    };
   }
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

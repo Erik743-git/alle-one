@@ -9,6 +9,7 @@ import {
   setStoredUser,
   type AuthUser,
 } from "./session";
+import { syncDeviceTrustFromResponse, readDeviceTrustToken } from "./device-trust";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { authService } from "@/lib/services/auth.service";
@@ -38,15 +39,20 @@ const AuthContext = React.createContext<AuthContextValue | null>(null);
 
 async function tryRestoreSessionFromCookie(): Promise<AuthUser | null> {
   try {
+    const deviceTrustToken = readDeviceTrustToken();
     const res = await fetch(authMeUrl(), {
       method: "GET",
       credentials: "include",
+      headers: deviceTrustToken
+        ? { "X-Alleone-Device-Trust": deviceTrustToken }
+        : undefined,
     });
     if (!res.ok) {
       return null;
     }
-    const data = (await res.json()) as { user?: AuthUser };
+    const data = (await res.json()) as { user?: AuthUser; deviceTrustToken?: string };
     if (data?.user) {
+      syncDeviceTrustFromResponse(data.deviceTrustToken);
       setStoredUser(data.user);
       return data.user;
     }
