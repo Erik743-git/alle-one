@@ -69,6 +69,7 @@ type MenuItem = {
   visible: boolean;
   action?: () => void;
   active?: boolean;
+  highlight?: boolean;
 };
 
 /** Recalculado no render — não usar `visible` no topo do módulo (SSR/login). */
@@ -79,6 +80,7 @@ function buildMenuItems(): MenuItem[] {
       href: "/tickets/new",
       icon: Plus,
       visible: canCreateTicket(),
+      highlight: true,
     },
     {
       name: "Dashboard",
@@ -188,15 +190,24 @@ const SidebarNav = memo(function SidebarNav({
 
   const iconSize = collapsed ? 18 : 20;
 
-  const itemClass = (active: boolean) =>
+  const itemClass = (active: boolean, highlight?: boolean) =>
     cn(
-      "flex items-center overflow-hidden rounded-xl text-sm font-semibold transition-colors duration-150",
+      "flex items-center overflow-hidden rounded-lg text-sm font-semibold transition-colors duration-150",
       collapsed
-        ? "mx-auto h-10 w-10 shrink-0 justify-center gap-0 p-0"
-        : "min-h-[2.875rem] w-full gap-3 px-3.5 py-3",
-      active
-        ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
-        : "text-sidebar-foreground/80 hover:bg-muted",
+        ? "mx-auto h-9 w-9 shrink-0 justify-center gap-0 p-0"
+        : highlight
+          ? "h-9 w-full gap-2 px-3"
+          : "min-h-[2.875rem] w-full gap-3 px-3.5 py-3",
+      highlight
+        ? cn(
+            "text-white shadow-sm shadow-[#12b5d9]/20",
+            active
+              ? "bg-[#0e9cb8]"
+              : "bg-[#12b5d9] hover:bg-[#14c4eb]",
+          )
+        : active
+          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_0_0_1px_rgba(18,181,217,0.25)]"
+          : "text-sidebar-foreground/80 hover:bg-muted",
     );
 
   return (
@@ -249,27 +260,50 @@ const SidebarNav = memo(function SidebarNav({
               );
             }
 
-            return (
+            const link = (
               <Link
-                key={item.href}
                 href={item.href!}
                 title={collapsed ? item.name : undefined}
                 onClick={() => onNavigate?.()}
-                className={cn(itemClass(!!active), !collapsed && "w-full")}
+                className={cn(
+                  itemClass(!!active, item.highlight),
+                  !collapsed && "w-full",
+                )}
               >
-                <NavIconSlot collapsed={collapsed}>
+                <NavIconSlot collapsed={collapsed} className={item.highlight ? "size-8" : undefined}>
                   <Icon
-                    size={iconSize}
+                    size={item.highlight ? 16 : iconSize}
                     className="block shrink-0"
                     strokeWidth={2}
                   />
                 </NavIconSlot>
                 {!collapsed ? (
-                  <span className="min-w-0 flex-1 truncate text-left tracking-tight">
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate text-left tracking-tight",
+                      item.highlight && "text-[13px]",
+                    )}
+                  >
                     {item.name}
                   </span>
                 ) : null}
               </Link>
+            );
+
+            if (!item.highlight || collapsed) {
+              return (
+                <div key={item.href ?? item.name}>{link}</div>
+              );
+            }
+
+            return (
+              <div key={item.href} className="mb-1">
+                {link}
+                <div
+                  className="mx-3 mt-1.5 h-px bg-sidebar-border/60"
+                  aria-hidden
+                />
+              </div>
             );
           })}
       </nav>

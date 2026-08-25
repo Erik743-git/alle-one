@@ -774,6 +774,12 @@ export class TicketsCatalogsService {
           maxPages: 30,
         });
         requestors = sanitizeTicketRequestors(raw, { clientName });
+        if (!isClientPortalRole(actor.role)) {
+          requestors = await this.appendActorAsRequestorIfMissing(
+            actor,
+            requestors,
+          );
+        }
       }
     }
 
@@ -987,6 +993,12 @@ export class TicketsCatalogsService {
         companyId: company?.id ?? null,
         clientName,
       });
+      if (!isClientPortalRole(actor.role)) {
+        requestors = await this.appendActorAsRequestorIfMissing(
+          actor,
+          requestors,
+        );
+      }
     }
 
     return {
@@ -1065,5 +1077,33 @@ export class TicketsCatalogsService {
     }
 
     return sanitizeTicketRequestors(rows, { clientName: params.clientName });
+  }
+
+  /** Colaborador interno abrindo ticket: inclui o usuário logado na lista de solicitantes. */
+  private async appendActorAsRequestorIfMissing(
+    actor: AuthenticatedRequestUser,
+    requestors: TicketRequestorOption[],
+  ): Promise<TicketRequestorOption[]> {
+    const email = actor.email?.trim();
+    if (!email) return requestors;
+    const normalized = email.toLowerCase();
+    if (
+      requestors.some((row) => row.email?.trim().toLowerCase() === normalized)
+    ) {
+      return requestors;
+    }
+    const dbUser = await this.prisma.user.findFirst({
+      where: { id: actor.userId, deletedAt: null },
+      select: { name: true },
+    });
+    return [
+      {
+        id: portalRequestorSyntheticId(email),
+        name: dbUser?.name?.trim() || email,
+        email,
+        telephone: null,
+      },
+      ...requestors,
+    ];
   }
 }

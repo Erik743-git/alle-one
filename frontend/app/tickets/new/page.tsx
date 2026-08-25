@@ -38,6 +38,7 @@ import {
   formatBrPhone,
   isValidBrPhone,
   pinCurrentUserFirst,
+  portalRequestorSyntheticId,
 } from "@/lib/ticket-form";
 import {
   ticketsService,
@@ -171,14 +172,28 @@ export default function NewTicketPage() {
     });
   }, [catalogs, user?.email]);
 
-  const requestorOptions = useMemo(
-    () =>
-      (catalogs?.requestors ?? []).map((r) => ({
+  const requestorOptions = useMemo(() => {
+    const base = [...(catalogs?.requestors ?? [])];
+    if (
+      user?.email?.trim() &&
+      !base.some((row) => emailsMatch(row.email, user.email))
+    ) {
+      base.push({
+        id: portalRequestorSyntheticId(user.email),
+        name: user.name?.trim() || user.email,
+        email: user.email,
+        telephone: null,
+      });
+    }
+    const sorted = pinCurrentUserFirst(base, user?.email);
+    return sorted.map((r) => {
+      const label = r.email ? `${r.name} (${r.email})` : r.name;
+      return {
         value: String(r.id),
-        label: r.email ? `${r.name} (${r.email})` : r.name,
-      })),
-    [catalogs],
-  );
+        label: emailsMatch(r.email, user?.email) ? `${label} — você` : label,
+      };
+    });
+  }, [catalogs?.requestors, user?.email, user?.name]);
 
   const gmudSelectOptions = useMemo(
     () =>
@@ -239,11 +254,16 @@ export default function NewTicketPage() {
   const responsiblePrefillDone = useRef(false);
   const responsiblePrefillSkipped = useRef(false);
   const clientRequestorPrefillDone = useRef(false);
+  const internalRequestorPrefillDone = useRef(false);
 
   useEffect(() => {
     responsiblePrefillDone.current = false;
     responsiblePrefillSkipped.current = false;
   }, [deskId, clientId]);
+
+  useEffect(() => {
+    internalRequestorPrefillDone.current = false;
+  }, [clientId]);
 
   const loadCatalogs = useCallback(
     async (params?: { deskId?: number; clientId?: number }) => {
@@ -335,6 +355,26 @@ export default function NewTicketPage() {
   }, [isClientUser, user?.name, user?.email, catalogs?.requestors]);
 
   useEffect(() => {
+    if (isClientUser || internalRequestorPrefillDone.current) return;
+    if (!user?.email?.trim() || !clientId) return;
+
+    const matched = findByEmail(catalogs?.requestors ?? [], user.email);
+    const id = matched
+      ? String(matched.id)
+      : String(portalRequestorSyntheticId(user.email));
+    setRequestorId(id);
+    setRequestorName(matched?.name?.trim() || user.name?.trim() || "");
+    setRequestorEmail(matched?.email?.trim() || user.email.trim());
+    internalRequestorPrefillDone.current = true;
+  }, [
+    isClientUser,
+    user?.name,
+    user?.email,
+    clientId,
+    catalogs?.requestors,
+  ]);
+
+  useEffect(() => {
     if (
       isClientUser ||
       responsiblePrefillDone.current ||
@@ -408,6 +448,10 @@ export default function NewTicketPage() {
     setClientId(nextClientId);
     if (!isClientUser) {
       setRequestorId("");
+      setRequestorName("");
+      setRequestorEmail("");
+      setRequestorTelephone("");
+      internalRequestorPrefillDone.current = false;
     }
     setExternalGmudRef("");
   }
