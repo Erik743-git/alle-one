@@ -26,6 +26,10 @@ import {
 import {
   TOTP_TRUST_COOKIE,
   attachTotpTrustCookie,
+  attachDeviceTrustHintCookie,
+  clearDeviceTrustHintCookie,
+  DEVICE_TRUST_HINT_COOKIE,
+  resolveDeviceTrustToken,
 } from './totp-trust-cookie.helper';
 import { attachAccessTokenCookie } from './auth-cookie.helper';
 import {
@@ -82,18 +86,27 @@ export class AuthOAuthService {
     );
   }
 
-  startGoogle(res: Response, emailHint?: string): void {
-    void this.startProvider(res, 'google', emailHint);
+  startGoogle(
+    res: Response,
+    emailHint?: string,
+    deviceTrustToken?: string,
+  ): void {
+    void this.startProvider(res, 'google', emailHint, deviceTrustToken);
   }
 
-  startMicrosoft(res: Response, emailHint?: string): void {
-    void this.startProvider(res, 'microsoft', emailHint);
+  startMicrosoft(
+    res: Response,
+    emailHint?: string,
+    deviceTrustToken?: string,
+  ): void {
+    void this.startProvider(res, 'microsoft', emailHint, deviceTrustToken);
   }
 
   private async startProvider(
     res: Response,
     provider: OAuthProvider,
     _emailHint?: string,
+    deviceTrustToken?: string,
   ): Promise<void> {
     if (provider === 'google' && !this.isGoogleConfigured()) {
       throw new BadRequestException('Login com Google não está configurado.');
@@ -106,6 +119,10 @@ export class AuthOAuthService {
 
     const state = createOAuthState(provider);
     attachOAuthStateCookie(res, state);
+    const trustHint = deviceTrustToken?.trim();
+    if (trustHint) {
+      attachDeviceTrustHintCookie(res, trustHint);
+    }
 
     if (provider === 'google') {
       const params = new URLSearchParams({
@@ -198,10 +215,17 @@ export class AuthOAuthService {
         throw new UnauthorizedException('oauth_profile');
       }
 
-      const trustCookie =
-        typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
-          ? req.cookies[TOTP_TRUST_COOKIE]
-          : undefined;
+      const trustCookie = resolveDeviceTrustToken({
+        cookie:
+          typeof req.cookies?.[TOTP_TRUST_COOKIE] === 'string'
+            ? req.cookies[TOTP_TRUST_COOKIE]
+            : undefined,
+        hintCookie:
+          typeof req.cookies?.[DEVICE_TRUST_HINT_COOKIE] === 'string'
+            ? req.cookies[DEVICE_TRUST_HINT_COOKIE]
+            : undefined,
+      });
+      clearDeviceTrustHintCookie(res);
 
       const result = await this.authService.loginWithOAuth(
         {

@@ -1,5 +1,6 @@
 import {
   createTotpTrustToken,
+  resolveDeviceTrustToken,
   totpTrustDays,
   verifyTotpTrustToken,
 } from './totp-trust-cookie.helper';
@@ -25,6 +26,28 @@ describe('totp-trust-cookie.helper', () => {
     const token = createTotpTrustToken(userId, enabledAt);
     const almostSame = new Date(enabledAt.getTime() + 400);
     expect(verifyTotpTrustToken(token, userId, almostSame)).toBe(true);
+  });
+
+  it('resolveDeviceTrustToken prioriza cookie principal', () => {
+    expect(
+      resolveDeviceTrustToken({
+        cookie: 'cookie-token',
+        body: 'body-token',
+      }),
+    ).toBe('cookie-token');
+  });
+
+  it('resolveDeviceTrustToken usa hint e header como fallback', () => {
+    expect(
+      resolveDeviceTrustToken({
+        hintCookie: 'hint-token',
+      }),
+    ).toBe('hint-token');
+    expect(
+      resolveDeviceTrustToken({
+        header: 'header-token',
+      }),
+    ).toBe('header-token');
   });
 
   it('rejeita token ausente ou inválido', () => {

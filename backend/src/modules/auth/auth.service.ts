@@ -383,7 +383,21 @@ export class AuthService {
         specialtyId: user.specialtyId ?? null,
         specialtyName: user.specialty?.name ?? null,
       },
+      totpEnabledAt: user.totpEnabledAt,
     };
+  }
+
+  /** Valida trust existente e devolve token renovado para o frontend persistir. */
+  renewDeviceTrustToken(
+    userId: string,
+    trustToken: string | undefined,
+    totpEnabledAt: Date | null,
+  ): string | undefined {
+    if (!trustToken || !totpEnabledAt) return undefined;
+    if (!verifyTotpTrustToken(trustToken, userId, totpEnabledAt)) {
+      return undefined;
+    }
+    return createTotpTrustToken(userId, totpEnabledAt);
   }
 
   beginTotpSetup(userId: string) {
