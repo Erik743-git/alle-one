@@ -45,11 +45,7 @@ import {
   SheetContent,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  useSidebar,
-  SIDEBAR_WIDTH_COLLAPSED,
-  SIDEBAR_WIDTH_EXPANDED,
-} from "./sidebar-context";
+import { useSidebar } from "./sidebar-context";
 import { useAuth } from "@/lib/use-auth";
 import { SidebarCompanySwitcher } from "./sidebar-company-switcher";
 
@@ -150,7 +146,7 @@ function buildMenuItems(): MenuItem[] {
   ];
 }
 
-/** Caixa fixa para ícones — mesma medida dos botões recolhidos (40×40). */
+/** Caixa fixa para ícones — escala em telas grandes quando o menu está recolhido. */
 function NavIconSlot({
   children,
   collapsed,
@@ -164,7 +160,9 @@ function NavIconSlot({
     <span
       className={cn(
         "relative flex shrink-0 items-center justify-center",
-        collapsed ? "h-10 w-10" : "size-8",
+        collapsed
+          ? "h-9 w-9 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11"
+          : "size-8 max-md:size-10 xl:size-9",
         className,
       )}
     >
@@ -200,16 +198,22 @@ const SidebarNav = memo(function SidebarNav({
     [visibleMenu],
   );
 
-  const iconSize = collapsed ? 17 : 18;
+  const navIconClass = collapsed
+    ? "size-[18px] xl:size-5 2xl:size-[22px]"
+    : "size-[18px] max-md:size-5 xl:size-[19px]";
+  const highlightIconClass = collapsed
+    ? "size-4 xl:size-[18px] 2xl:size-5"
+    : "size-4 max-md:size-[18px]";
 
   const itemClass = (active: boolean, highlight?: boolean) =>
     cn(
-      "flex items-center overflow-hidden rounded-lg text-[13px] font-semibold transition-colors duration-150",
+      "flex items-center overflow-hidden rounded-lg font-semibold transition-colors duration-150",
       collapsed
-        ? "mx-auto h-8 w-8 shrink-0 justify-center gap-0 p-0"
+        ? "mx-auto h-9 w-9 shrink-0 justify-center gap-0 p-0 xl:h-10 xl:w-10 2xl:h-11 2xl:w-11"
         : highlight
-          ? "h-8 w-full gap-2 px-2.5"
-          : "min-h-10 w-full gap-2.5 px-3 py-2",
+          ? "h-9 w-full gap-2 px-2.5 max-md:h-11 max-md:px-3"
+          : "min-h-10 w-full gap-2.5 px-3 py-2 max-md:min-h-12 max-md:gap-3 max-md:px-4 max-md:py-2.5",
+      !collapsed && "text-[13px] max-md:text-sm xl:text-sm",
       highlight
         ? cn(
             "text-white shadow-sm shadow-[#12b5d9]/20",
@@ -242,7 +246,7 @@ const SidebarNav = memo(function SidebarNav({
           className={cn(itemClass(modalAplicativos), !collapsed && "w-full text-left")}
         >
           <NavIconSlot collapsed={collapsed}>
-            <Icon size={iconSize} className="block shrink-0" strokeWidth={2} />
+            <Icon className={cn("block shrink-0", navIconClass)} strokeWidth={2} />
           </NavIconSlot>
           {!collapsed ? (
             <span className="min-w-0 flex-1 truncate text-left tracking-tight">
@@ -261,10 +265,15 @@ const SidebarNav = memo(function SidebarNav({
         onClick={() => onNavigate?.()}
         className={cn(itemClass(!!active, item.highlight), !collapsed && "w-full")}
       >
-        <NavIconSlot collapsed={collapsed} className={item.highlight ? "size-7" : undefined}>
+        <NavIconSlot
+          collapsed={collapsed}
+          className={item.highlight ? "size-8 xl:size-9 2xl:size-10" : undefined}
+        >
           <Icon
-            size={item.highlight ? 15 : iconSize}
-            className="block shrink-0"
+            className={cn(
+              "block shrink-0",
+              item.highlight ? highlightIconClass : navIconClass,
+            )}
             strokeWidth={2}
           />
         </NavIconSlot>
@@ -272,7 +281,7 @@ const SidebarNav = memo(function SidebarNav({
           <span
             className={cn(
               "min-w-0 flex-1 truncate text-left tracking-tight",
-              item.highlight && "text-xs",
+              item.highlight && "text-xs max-md:text-sm",
             )}
           >
             {item.name}
@@ -335,9 +344,9 @@ const SidebarBrand = memo(function SidebarBrand({
 }) {
   if (collapsed) {
     return (
-      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border py-3">
+      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border py-3 xl:gap-2.5 xl:py-3.5">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#08182f]"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#08182f] xl:h-11 xl:w-11 2xl:h-12 2xl:w-12"
           title="Alle One"
         >
           <Image
@@ -345,7 +354,7 @@ const SidebarBrand = memo(function SidebarBrand({
             alt="Alle"
             width={24}
             height={24}
-            className="h-6 w-6 object-contain"
+            className="h-6 w-6 object-contain xl:h-7 xl:w-7 2xl:h-8 2xl:w-8"
             priority
           />
         </div>
@@ -377,7 +386,6 @@ const SidebarBrand = memo(function SidebarBrand({
 
 function DesktopSidebar() {
   const { collapsed, toggleCollapsed, endLayoutAnimation } = useSidebar();
-  const width = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
 
   return (
     <aside
@@ -386,8 +394,10 @@ function DesktopSidebar() {
         "border-r border-sidebar-border bg-sidebar shadow-[2px_0_16px_rgba(0,0,0,0.12)]",
         "transition-[width] duration-200 ease-out motion-reduce:transition-none",
         "[contain:layout_style_paint] md:flex",
+        collapsed
+          ? "w-[76px] xl:w-[88px] 2xl:w-[92px]"
+          : "w-[272px]",
       )}
-      style={{ width }}
       onTransitionEnd={(event) => {
         if (event.propertyName === "width") {
           endLayoutAnimation();
@@ -412,14 +422,14 @@ function DesktopSidebar() {
           className={cn(
             "overflow-hidden text-sidebar-foreground/80",
             collapsed
-              ? "mx-auto h-10 w-10 shrink-0"
+              ? "mx-auto h-10 w-10 shrink-0 xl:h-11 xl:w-11"
               : "w-full justify-start gap-2",
           )}
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
         >
           {collapsed ? (
-            <PanelLeftOpen className="size-[18px] shrink-0" strokeWidth={2} />
+            <PanelLeftOpen className="size-[18px] shrink-0 xl:size-5 2xl:size-[22px]" strokeWidth={2} />
           ) : (
             <>
               <PanelLeftClose className="size-4 shrink-0" />
@@ -439,7 +449,7 @@ function MobileSidebar() {
     <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
       <SheetContent
         side="left"
-        className="w-[min(100vw-2rem,300px)] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+        className="w-[min(100vw-1.25rem,20rem)] border-sidebar-border bg-sidebar p-0 text-sidebar-foreground sm:w-[min(100vw-2rem,22rem)]"
         showCloseButton
       >
         <SheetTitle className="sr-only">Menu de navegação</SheetTitle>

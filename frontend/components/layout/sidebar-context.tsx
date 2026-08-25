@@ -43,8 +43,14 @@ function persistCollapsed(next: boolean) {
 }
 
 function applySidebarWidth(collapsed: boolean) {
-  const width = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH_EXPANDED;
-  document.documentElement.style.setProperty("--sidebar-width", `${width}px`);
+  if (collapsed) {
+    document.documentElement.style.removeProperty("--sidebar-width");
+  } else {
+    document.documentElement.style.setProperty(
+      "--sidebar-width",
+      `${SIDEBAR_WIDTH_EXPANDED}px`,
+    );
+  }
   document.documentElement.dataset.sidebarCollapsed = collapsed ? "true" : "false";
 }
 

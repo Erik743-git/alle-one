@@ -258,6 +258,22 @@ html.dark {
   html[data-sidebar-resizing="true"] .app-shell-main {
     transition: padding-left 200ms ease-out;
   }
+
+  html[data-sidebar-collapsed="true"] {
+    --sidebar-width: 76px;
+  }
+
+  @media (min-width: 1280px) {
+    html[data-sidebar-collapsed="true"] {
+      --sidebar-width: 88px;
+    }
+  }
+
+  @media (min-width: 1536px) {
+    html[data-sidebar-collapsed="true"] {
+      --sidebar-width: 92px;
+    }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -287,10 +303,17 @@ body {
 
 html.login-lock,
 html.login-lock body {
-  height: 100%;
-  overflow: hidden;
+  min-height: 100%;
   overscroll-behavior: none;
   scrollbar-gutter: auto;
+}
+
+@media (min-width: 1024px) {
+  html.login-lock,
+  html.login-lock body {
+    height: 100%;
+    overflow: hidden;
+  }
 }
 
 * {

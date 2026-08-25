@@ -32,13 +32,17 @@ export default function ThemeToggle({ collapsed = false }: { collapsed?: boolean
       onClick={toggle}
       className={
         collapsed
-          ? "h-10 w-10 shrink-0 rounded-xl border-border bg-card/60 p-0 text-foreground hover:bg-accent hover:text-accent-foreground"
+          ? "h-10 w-10 shrink-0 rounded-xl border-border bg-card/60 p-0 text-foreground hover:bg-accent hover:text-accent-foreground xl:h-11 xl:w-11 2xl:h-12 2xl:w-12"
           : "h-9 w-9 rounded-xl border-border bg-card/60 p-0 text-foreground hover:bg-accent hover:text-accent-foreground"
       }
       title={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
       aria-label={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
     >
-      {isDark ? <Sun size={collapsed ? 18 : 16} /> : <Moon size={collapsed ? 18 : 16} />}
+      {isDark ? (
+        <Sun className={collapsed ? "size-[18px] xl:size-5 2xl:size-[22px]" : "size-4"} />
+      ) : (
+        <Moon className={collapsed ? "size-[18px] xl:size-5 2xl:size-[22px]" : "size-4"} />
+      )}
     </Button>
   );
 }
