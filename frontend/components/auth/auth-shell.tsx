@@ -1,12 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Cache-bust quando a arte do login mudar. */
-export const AUTH_HERO_SRC = "/login-hero.png?v=6";
+export const AUTH_HERO_SRC = "/login-hero.jpg?v=8";
 
 type AuthShellProps = {
   children: ReactNode;
@@ -32,28 +31,27 @@ export function AuthShell({
   return (
     <main
       className={cn(
-        "font-sans relative flex h-dvh max-h-dvh items-center justify-center overflow-hidden bg-[#020b1b] px-4 lg:grid lg:grid-cols-[minmax(0,0.75fr)_minmax(420px,470px)_minmax(8rem,20vw)] lg:px-0",
+        "font-sans relative flex h-dvh max-h-dvh items-center justify-center overflow-hidden bg-[#0a1018] px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(400px,460px)_minmax(2rem,12vw)] lg:justify-items-end lg:px-0",
         className,
       )}
     >
-      <Image
+      {/* img nativo + sem scale evita borrar JPEG em telas grandes */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={AUTH_HERO_SRC}
         alt=""
-        fill
-        priority
-        unoptimized
-        quality={100}
-        sizes="100vw"
-        className="pointer-events-none select-none object-cover object-[48%_42%] scale-[1.22] origin-center"
+        decoding="sync"
+        fetchPriority="high"
+        className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover object-[left_center] [image-rendering:auto]"
       />
       <div
         aria-hidden
-        className="absolute inset-0 bg-[#020b1b]/10 lg:bg-gradient-to-r lg:from-transparent lg:via-transparent lg:to-[#020b1b]/40"
+        className="absolute inset-0 bg-[#0a1018]/5 lg:bg-gradient-to-r lg:from-transparent lg:via-[#0a1018]/10 lg:to-[#0a1018]/55"
       />
 
       <div
         className={cn(
-          "relative z-10 w-full max-w-[380px] animate-[fadeIn_0.5s_ease-out] sm:max-w-[430px] lg:col-start-2 lg:max-w-none",
+          "relative z-10 w-full max-w-[380px] animate-[fadeIn_0.5s_ease-out] sm:max-w-[430px] lg:col-start-2 lg:max-w-none lg:-translate-x-10",
           contentClassName,
         )}
       >

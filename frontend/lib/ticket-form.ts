@@ -84,3 +84,14 @@ export function findByEmail<T extends { email?: string | null }>(
   if (!email) return undefined;
   return items.find((item) => emailsMatch(item.email, email));
 }
+
+/** Id estável para solicitante do portal (espelha o backend). */
+export function portalRequestorSyntheticId(email: string): number {
+  let hash = 0;
+  const key = email.trim().toLowerCase();
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) | 0;
+  }
+  const positive = Math.abs(hash) || 1;
+  return 1_000_000_000 + (positive % 900_000_000);
+}
