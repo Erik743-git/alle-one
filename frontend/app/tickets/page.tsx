@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
@@ -562,9 +562,10 @@ export default function TicketsPage() {
                 options={responsibleSelectOptions}
                 compact
                 disabled={isDoneStage(ticket.stageName)}
-                onUpdated={(next) =>
-                  applyResponsibleUpdate(ticket.ticketNumber, next)
-                }
+                onUpdated={(next) => {
+                  applyResponsibleUpdate(ticket.ticketNumber, next);
+                  if (mineOnly) void load(true);
+                }}
               />
             ) : (
               ticket.responsibleName ?? "—"
@@ -883,13 +884,6 @@ export default function TicketsPage() {
                     : "Nenhum ticket pendente encontrado. Marque “Incluir resolvidos, encerrados e cancelados” para ver o histórico."}
                 </CardContent>
               </Card>
-            ) : filteredTotal === 0 ? (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  Nenhum ticket corresponde aos filtros da tabela.
-                  {activeTableFiltersCount > 0 ? " Use “Limpar tabela”." : ""}
-                </CardContent>
-              </Card>
             ) : (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
@@ -925,69 +919,86 @@ export default function TicketsPage() {
                 <Card className="overflow-hidden">
                   <CardContent className="p-0">
                     <div className="relative isolate max-h-[min(72vh,780px)] overflow-auto">
-                      {displaySections.map((section) => (
-                        <div key={section.key}>
-                          {section.label ? (
-                            <div className="sticky top-0 z-10 border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              {section.label}{" "}
-                              <span className="font-normal">
-                                ({section.tickets.length})
-                              </span>
-                            </div>
-                          ) : null}
-                          <table className="w-full min-w-[920px] border-collapse text-left text-sm">
-                            {section.key === "all" ? (
-                              <thead className="sticky top-0 z-30 bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
-                                <tr>
-                                  {activeColumns.map((col) => (
-                                    <ExcelColumnHeader
-                                      key={col.key}
-                                      label={col.label}
-                                      columnKey={col.key}
-                                      sortKey={sortKey}
-                                      sortDir={sortDir}
-                                      onSort={handleSort}
-                                      filter={columnFilters[col.key]}
-                                      onFilterChange={(next) =>
-                                        setColumnFilters((prev) => ({
-                                          ...prev,
-                                          [col.key]: next,
-                                        }))
-                                      }
-                                      distinctValues={
-                                        distinctByColumn[col.key]
-                                      }
-                                      align={
-                                        col.key === "number" ? "right" : "left"
-                                      }
-                                    />
-                                  ))}
-                                </tr>
-                              </thead>
-                            ) : null}
-                            <tbody className="relative z-0">
-                              {section.tickets.map((ticket, index) => (
-                                <tr
-                                  key={ticket.ticketNumber}
-                                  className={cn(
-                                    "relative z-0 cursor-pointer border-b border-border/40 transition hover:bg-muted/30",
-                                    index % 2 === 1 && "bg-muted/10",
-                                  )}
-                                  onClick={() =>
-                                    router.push(`/tickets/${ticket.ticketNumber}`)
-                                  }
-                                >
-                                  {activeColumns.map((col) => (
-                                    <span key={col.key} className="contents">
-                                      {renderTicketCell(ticket, col.key)}
-                                    </span>
-                                  ))}
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ))}
+                      <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+                        <thead className="sticky top-0 z-30 bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
+                          <tr>
+                            {activeColumns.map((col) => (
+                              <ExcelColumnHeader
+                                key={col.key}
+                                label={col.label}
+                                columnKey={col.key}
+                                sortKey={sortKey}
+                                sortDir={sortDir}
+                                onSort={handleSort}
+                                filter={columnFilters[col.key]}
+                                onFilterChange={(next) =>
+                                  setColumnFilters((prev) => ({
+                                    ...prev,
+                                    [col.key]: next,
+                                  }))
+                                }
+                                distinctValues={distinctByColumn[col.key]}
+                                align={
+                                  col.key === "number" ? "right" : "left"
+                                }
+                              />
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="relative z-0">
+                          {filteredTotal === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={activeColumns.length}
+                                className="px-3 py-12 text-center text-muted-foreground"
+                              >
+                                Nenhum ticket corresponde aos filtros da tabela.
+                                {activeTableFiltersCount > 0
+                                  ? " Use “Limpar tabela”."
+                                  : ""}
+                              </td>
+                            </tr>
+                          ) : (
+                            displaySections.map((section) => (
+                              <Fragment key={section.key}>
+                                {section.label ? (
+                                  <tr className="bg-muted/20">
+                                    <td
+                                      colSpan={activeColumns.length}
+                                      className="sticky top-10 z-20 border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                                    >
+                                      {section.label}{" "}
+                                      <span className="font-normal">
+                                        ({section.tickets.length})
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ) : null}
+                                {section.tickets.map((ticket, index) => (
+                                  <tr
+                                    key={ticket.ticketNumber}
+                                    className={cn(
+                                      "relative z-0 cursor-pointer border-b border-border/40 transition hover:bg-muted/30",
+                                      index % 2 === 1 && "bg-muted/10",
+                                    )}
+                                    onClick={() =>
+                                      router.push(
+                                        `/tickets/${ticket.ticketNumber}`,
+                                      )
+                                    }
+                                  >
+                                    {activeColumns.map((col) => (
+                                      <span key={col.key} className="contents">
+                                        {renderTicketCell(ticket, col.key)}
+                                      </span>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </Fragment>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
                     </div>
                   </CardContent>
                 </Card>

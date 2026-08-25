@@ -213,6 +213,58 @@ export class TicketsCatalogsService {
     return this.listResponsiblesFromPortalUsers();
   }
 
+  /** Responsáveis ativos da especialidade vinculada à mesa (externalId). */
+  async listResponsiblesForDeskExternalId(
+    deskExternalId: number,
+  ): Promise<Array<{ id: number; name: string; email: string | null }>> {
+    const specialty = await this.prisma.specialty.findFirst({
+      where: {
+        deletedAt: null,
+        active: true,
+        externalId: deskExternalId,
+      },
+      select: { id: true },
+    });
+    if (!specialty) return [];
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+        responsible: true,
+        specialtyId: specialty.id,
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+      take: 500,
+    });
+
+    if (users.length === 0) return [];
+
+    const emailToTifluxId = await this.mapTifluxUserIdsByEmail(
+      users.map((u) => u.email),
+    );
+
+    return users
+      .map((u) => {
+        const email = u.email.trim();
+        const name = u.name.trim();
+        if (!name) return null;
+        return {
+          id: this.responsibleCatalogId(
+            u.id,
+            emailToTifluxId.get(email.toLowerCase()),
+          ),
+          name,
+          email: email || null,
+        };
+      })
+      .filter((r): r is { id: number; name: string; email: string | null } =>
+        Boolean(r),
+      );
+  }
+
   /**
    * Usuários ativos da empresa do cliente (qualquer perfil) —
    * usados como opções de responsável no portal cliente.
@@ -677,7 +729,7 @@ export class TicketsCatalogsService {
       return this.getCreateCatalogsFromPortal(actor, deskId, clientId);
     }
 
-    const [clientsRaw, desksRaw, responsibles, companiesForMap] =
+    const [clientsRaw, desksRaw, defaultResponsibles, companiesForMap] =
       await Promise.all([
         this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
         this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
@@ -688,6 +740,8 @@ export class TicketsCatalogsService {
           take: 2000,
         }),
       ]);
+
+    let responsibles = defaultResponsibles;
 
     const allowedClientIds = isClientPortalRole(actor.role)
       ? await this.tenantScope.resolveTifluxClientIdsForTicketCreate(actor)
@@ -747,6 +801,10 @@ export class TicketsCatalogsService {
       } else {
         const rows = await this.tiflux.getDeskPriorities(deskId);
         priorities = rows.map((row) => this.mapCatalogItem(row));
+      }
+
+      if (!isClientPortalRole(actor.role)) {
+        responsibles = await this.listResponsiblesForDeskExternalId(deskId);
       }
     }
 
@@ -819,7 +877,7 @@ export class TicketsCatalogsService {
     deskId?: number,
     clientId?: number,
   ): Promise<TicketCreateCatalogs> {
-    const [companies, desks, responsibles] = await Promise.all([
+    const [companies, desks, defaultResponsibles] = await Promise.all([
       this.prisma.company.findMany({
         where: {
           deletedAt: null,
@@ -842,6 +900,8 @@ export class TicketsCatalogsService {
       }),
       this.resolveResponsiblesForCreateCatalogs(actor),
     ]);
+
+    let responsibles = defaultResponsibles;
 
     const allowedClientIds = isClientPortalRole(actor.role)
       ? await this.tenantScope.resolveTifluxClientIdsForTicketCreate(actor)
@@ -907,6 +967,9 @@ export class TicketsCatalogsService {
         requireServiceCatalog: false,
         requiredFields: {},
       };
+      if (!isClientPortalRole(actor.role)) {
+        responsibles = await this.listResponsiblesForDeskExternalId(deskId);
+      }
     }
 
     if (

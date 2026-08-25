@@ -339,21 +339,22 @@ function LoginPageContent() {
     try {
       setCarregando(true);
 
+      const deviceTrustToken = readDeviceTrustToken();
       const response = await fetch(authApiUrl("/auth/login"), {
         method: "POST",
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          ...(deviceTrustToken
+            ? { "X-Alleone-Device-Trust": deviceTrustToken }
+            : {}),
         },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
           password: senha,
           ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {}),
           ...(requires2fa && rememberDevice ? { rememberDevice: true } : {}),
-          ...(() => {
-            const deviceTrustToken = readDeviceTrustToken();
-            return deviceTrustToken ? { deviceTrustToken } : {};
-          })(),
+          ...(deviceTrustToken ? { deviceTrustToken } : {}),
         }),
       });
 

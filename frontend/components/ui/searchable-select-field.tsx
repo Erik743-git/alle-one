@@ -51,9 +51,15 @@ export function SearchableSelectField({
 }: SearchableSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [highlightedIndex, setHighlightedIndex] = React.useState(-1);
+  const listRef = React.useRef<HTMLUListElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    if (!open) setQuery("");
+    if (!open) {
+      setQuery("");
+      setHighlightedIndex(-1);
+    }
   }, [open]);
 
   const sortedOptions = React.useMemo(() => {
@@ -80,6 +86,148 @@ export function SearchableSelectField({
 
   const showSearch = alwaysShowSearch || sortedOptions.length > 8;
 
+  const listOptions = React.useMemo(() => {
+    const items = filteredOptions.map((item) => ({
+      value: item.value,
+      label: item.label,
+      description: item.description,
+      isEmptyOption: false,
+    }));
+    if (emptyLabel) {
+      items.unshift({
+        value: "",
+        label: emptyLabel,
+        description: undefined,
+        isEmptyOption: true,
+      });
+    }
+    return items;
+  }, [filteredOptions, emptyLabel]);
+
+  React.useEffect(() => {
+    if (!open || highlightedIndex < 0) return;
+    const element = listRef.current?.children[highlightedIndex] as
+      | HTMLElement
+      | undefined;
+    element?.scrollIntoView({ block: "nearest" });
+  }, [highlightedIndex, open, listOptions.length]);
+
+  const selectOption = React.useCallback(
+    (nextValue: string) => {
+      onChange(nextValue);
+      setOpen(false);
+    },
+    [onChange],
+  );
+
+  const moveHighlight = React.useCallback(
+    (delta: number) => {
+      if (listOptions.length === 0) return;
+      setHighlightedIndex((current) => {
+        const start =
+          current < 0
+            ? delta > 0
+              ? -1
+              : listOptions.length
+            : current;
+        const next = start + delta;
+        if (next < 0) return listOptions.length - 1;
+        if (next >= listOptions.length) return 0;
+        return next;
+      });
+    },
+    [listOptions.length],
+  );
+
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (disabled || loading) return;
+    if (
+      event.key === "ArrowDown" ||
+      event.key === "ArrowUp" ||
+      event.key === "Enter" ||
+      event.key === " "
+    ) {
+      event.preventDefault();
+      if (!open) {
+        const selectedIndex = listOptions.findIndex((item) => item.value === value);
+        setHighlightedIndex(selectedIndex >= 0 ? selectedIndex : 0);
+        setOpen(true);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        moveHighlight(event.key === "ArrowDown" ? 1 : -1);
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        const item =
+          highlightedIndex >= 0
+            ? listOptions[highlightedIndex]
+            : listOptions.find((entry) => entry.value === value);
+        if (item) selectOption(item.value);
+      }
+    }
+  };
+
+  const handleSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveHighlight(1);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveHighlight(-1);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const item =
+        highlightedIndex >= 0
+          ? listOptions[highlightedIndex]
+          : listOptions[0];
+      if (item) selectOption(item.value);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  const handleListKeyDown = (event: React.KeyboardEvent<HTMLUListElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveHighlight(1);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveHighlight(-1);
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const item = listOptions[highlightedIndex];
+      if (item) selectOption(item.value);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setOpen(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => {
+      if (showSearch) {
+        searchInputRef.current?.focus();
+        return;
+      }
+      listRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, showSearch]);
+
   const handleListWheel = React.useCallback(
     (event: React.WheelEvent<HTMLUListElement>) => {
       const element = event.currentTarget;
@@ -103,6 +251,7 @@ export function SearchableSelectField({
             className,
           )}
           title={selectedLabel || undefined}
+          onKeyDown={handleTriggerKeyDown}
         >
           <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
           <ChevronDown className="ml-2 size-4 shrink-0 opacity-60" />
@@ -125,8 +274,13 @@ export function SearchableSelectField({
       >
         {showSearch ? (
           <Input
+            ref={searchInputRef}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setHighlightedIndex(0);
+            }}
+            onKeyDown={handleSearchKeyDown}
             placeholder={searchPlaceholder}
             className="mb-2 h-9 font-sans"
             autoFocus
@@ -134,51 +288,33 @@ export function SearchableSelectField({
         ) : null}
 
         <ul
-          className="max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border"
+          ref={listRef}
+          tabIndex={showSearch ? -1 : 0}
+          className="max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           role="listbox"
           onWheelCapture={handleListWheel}
+          onKeyDown={handleListKeyDown}
         >
-          {emptyLabel ? (
-            <li>
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
-                  !value && "bg-muted/60 font-medium",
-                )}
-                onClick={() => {
-                  onChange("");
-                  setOpen(false);
-                }}
-              >
-                {!value ? (
-                  <Check className="size-4 shrink-0" />
-                ) : (
-                  <span className="size-4 shrink-0" />
-                )}
-                <span className="text-muted-foreground">{emptyLabel}</span>
-              </button>
-            </li>
-          ) : null}
-
-          {filteredOptions.length === 0 ? (
+          {listOptions.length === 0 ? (
             <li className="px-3 py-3 text-sm text-muted-foreground">
               Nenhuma opção encontrada.
             </li>
           ) : (
-            filteredOptions.map((item) => {
+            listOptions.map((item, index) => {
               const selected = item.value === value;
+              const highlighted = index === highlightedIndex;
               return (
-                <li key={item.value}>
+                <li key={item.value || "__empty__"}>
                   <button
                     type="button"
                     className={cn(
                       "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted",
-                      selected && "bg-primary/10 font-medium text-foreground",
+                      (selected || highlighted) &&
+                        "bg-primary/10 font-medium text-foreground",
                     )}
+                    onMouseEnter={() => setHighlightedIndex(index)}
                     onClick={() => {
-                      onChange(item.value);
-                      setOpen(false);
+                      selectOption(item.value);
                     }}
                   >
                     {selected ? (
@@ -187,7 +323,12 @@ export function SearchableSelectField({
                       <span className="size-4 shrink-0" />
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block break-words text-sm leading-snug">
+                      <span
+                        className={cn(
+                          "block break-words text-sm leading-snug",
+                          item.isEmptyOption && "text-muted-foreground",
+                        )}
+                      >
                         {item.label}
                       </span>
                       {item.description ? (

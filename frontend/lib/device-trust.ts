@@ -16,7 +16,10 @@ export function writeDeviceTrustToken(token: string | null | undefined) {
   try {
     const value = token?.trim();
     if (!value) {
-      window.localStorage.removeItem(DEVICE_TRUST_STORAGE_KEY);
+      // Só limpa com null explícito — login sem token não deve apagar trust 2FA válido.
+      if (token === null) {
+        window.localStorage.removeItem(DEVICE_TRUST_STORAGE_KEY);
+      }
       return;
     }
     window.localStorage.setItem(DEVICE_TRUST_STORAGE_KEY, value);

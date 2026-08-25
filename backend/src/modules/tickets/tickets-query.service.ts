@@ -14,7 +14,11 @@ import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import type { TicketsListQueryDto } from './tickets.dto';
-import { PORTAL_DONE_STAGES, isDonePortalStage } from './portal-ticket-stages';
+import {
+  PORTAL_DONE_STAGES,
+  isDonePortalStage,
+  PORTAL_STAGES_ORDER,
+} from './portal-ticket-stages';
 import {
   canonicalizeStageName,
   resolveTicketStageGroup,
@@ -616,6 +620,40 @@ export class TicketsQueryService {
     return ref || null;
   }
 
+  private async loadTifluxRequestorMeta(ticketNumber: number): Promise<{
+    requestorName: string | null;
+    requestorEmail: string | null;
+    requestorTelephone: string | null;
+  } | null> {
+    try {
+      const rows =
+        (await this.prisma.$queryRaw<
+          Array<{
+            requestor_name: string | null;
+            requestor_email: string | null;
+            requestor_telephone: string | null;
+          }>
+        >`
+          SELECT
+            t.requestor_name,
+            t.requestor_email,
+            t.requestor_telephone
+          FROM tiflux.tickets t
+          WHERE t.ticket_number = ${ticketNumber}
+          LIMIT 1
+        `) ?? [];
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        requestorName: row.requestor_name,
+        requestorEmail: row.requestor_email,
+        requestorTelephone: row.requestor_telephone,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   /** CLIENT só acessa tickets do cliente TiFlux da própria empresa (ou Alle se envolvido). */
   private async assertTicketClientScope(
     actor: AuthenticatedRequestUser,
@@ -928,6 +966,18 @@ export class TicketsQueryService {
           this.loadPortalTicketDescription(ticketNumber),
           this.loadTicketGrouping(ticketNumber),
         ]);
+      let requestorName = portal.requestorName;
+      let requestorEmail = portal.requestorEmail;
+      let requestorTelephone = portal.requestorTelephone;
+      if (!requestorName?.trim() && !requestorEmail?.trim()) {
+        const tifluxRequestor =
+          await this.loadTifluxRequestorMeta(ticketNumber);
+        if (tifluxRequestor) {
+          requestorName = tifluxRequestor.requestorName;
+          requestorEmail = tifluxRequestor.requestorEmail;
+          requestorTelephone = tifluxRequestor.requestorTelephone;
+        }
+      }
       const row: TicketRow & {
         requestor_name?: string | null;
         requestor_email?: string | null;
@@ -948,9 +998,9 @@ export class TicketsQueryService {
         created_at_source: portal.createdAtSource,
         updated_at_source: portal.updatedAtSource,
         is_closed: portal.isClosed,
-        requestor_name: portal.requestorName,
-        requestor_email: portal.requestorEmail,
-        requestor_telephone: portal.requestorTelephone,
+        requestor_name: requestorName,
+        requestor_email: requestorEmail,
+        requestor_telephone: requestorTelephone,
       };
       return {
         ticket: {
@@ -1654,43 +1704,46 @@ export class TicketsQueryService {
     };
   }
 
-  private mapDeskStageOptions(raw: Array<Record<string, unknown>>): Array<{
-    id: number;
-    name: string;
-    firstStage: boolean;
-    lastStage: boolean;
-  }> {
-    return raw
-      .map((row) => ({
-        id: Number(row.id),
-        name: String(row.name ?? '').trim(),
-        firstStage: Boolean(row.first_stage),
-        lastStage: Boolean(row.last_stage),
-      }))
-      .filter(
-        (row) => Number.isFinite(row.id) && row.id > 0 && row.name.length > 0,
-      )
-      .sort((a, b) => a.id - b.id);
-  }
+  private async loadPortalTicketStageOptions(
+    currentStageName: string | null,
+  ): Promise<
+    Array<{
+      id: number;
+      name: string;
+      firstStage: boolean;
+      lastStage: boolean;
+    }>
+  > {
+    const rows = await this.prisma.ticketStage.findMany({
+      where: { deletedAt: null, active: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+    });
 
-  private async resolveCurrentStageId(params: {
-    ticketNumber: number;
-    deskExternalId: number;
-    stageName: string | null;
-    stages: Array<{ id: number; name: string }>;
-  }): Promise<number | null> {
-    if (this.allowRuntimeTifluxApi || isTicketsTifluxWriteEnabled()) {
-      try {
-        const apiTicket = await this.tiflux.getTicket(params.ticketNumber);
-        const fromApi = Number(apiTicket?.stage?.id);
-        if (Number.isFinite(fromApi) && fromApi > 0) {
-          return fromApi;
-        }
-      } catch {
-        // segue para match por nome
-      }
+    let names =
+      rows.length > 0
+        ? rows.map((row) => row.name.trim()).filter(Boolean)
+        : [...PORTAL_STAGES_ORDER];
+
+    const current = currentStageName?.trim();
+    if (
+      current &&
+      !names.some((n) => normalizeDeskName(n) === normalizeDeskName(current))
+    ) {
+      names = [current, ...names];
     }
 
+    return names.map((name, index) => ({
+      id: index + 1,
+      name,
+      firstStage: index === 0,
+      lastStage: name === 'Encerrado' || name === 'Cancelado',
+    }));
+  }
+
+  private resolveCurrentStageId(params: {
+    stageName: string | null;
+    stages: Array<{ id: number; name: string }>;
+  }): number | null {
     const normalized = normalizeDeskName(params.stageName);
     if (!normalized) return null;
 
@@ -1732,60 +1785,12 @@ export class TicketsQueryService {
         ? deskExternalId
         : null;
 
-    let stages: Array<{
-      id: number;
-      name: string;
-      firstStage: boolean;
-      lastStage: boolean;
-    }> = [];
+    const stages = await this.loadPortalTicketStageOptions(ticket.stage_name);
 
-    if (deskOk != null && isTicketsTifluxWriteEnabled()) {
-      try {
-        stages = this.mapDeskStageOptions(
-          await this.tiflux.getDeskStages(deskOk),
-        );
-      } catch {
-        stages = [];
-      }
-    }
-
-    if (stages.length === 0) {
-      const names = [
-        'Novo',
-        'Em Atendimento',
-        'Aguardando Cliente',
-        'Resolvido',
-        'Encerrado',
-        'Cancelado',
-      ];
-      const current = ticket.stage_name?.trim();
-      if (
-        current &&
-        !names.some((n) => normalizeDeskName(n) === normalizeDeskName(current))
-      ) {
-        names.unshift(current);
-      }
-      stages = names.map((name, index) => ({
-        id: index + 1,
-        name,
-        firstStage: index === 0,
-        lastStage: name === 'Encerrado' || name === 'Cancelado',
-      }));
-    }
-
-    const currentStageId =
-      deskOk != null
-        ? await this.resolveCurrentStageId({
-            ticketNumber,
-            deskExternalId: deskOk,
-            stageName: ticket.stage_name,
-            stages,
-          })
-        : (stages.find(
-            (s) =>
-              normalizeDeskName(s.name) ===
-              normalizeDeskName(ticket.stage_name),
-          )?.id ?? null);
+    const currentStageId = this.resolveCurrentStageId({
+      stageName: ticket.stage_name,
+      stages,
+    });
 
     return {
       deskExternalId: deskOk,

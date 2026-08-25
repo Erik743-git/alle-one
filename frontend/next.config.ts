@@ -57,22 +57,38 @@ const nextConfig: NextConfig = {
   },
   async rewrites() {
     /** Rotas de UI em app/tickets/* — não reescrever para a API (evita tela branca com JSON). */
-    const ticketApiRewrites = [
+    const ticketNumberApiRewrites = [
       {
-        source: "/tickets/catalogs/:path*",
-        destination: `${apiRewriteBase}/tickets/catalogs/:path*`,
+        source: "/tickets/:ticketNumber(\\d+)/catalogs/:path*",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/catalogs/:path*`,
       },
       {
-        source: "/tickets/list-presets/:path*",
-        destination: `${apiRewriteBase}/tickets/list-presets/:path*`,
+        source: "/tickets/:ticketNumber(\\d+)/warnings/:path*",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/warnings/:path*`,
       },
       {
-        source: "/tickets/attachments/:path*",
-        destination: `${apiRewriteBase}/tickets/attachments/:path*`,
+        source: "/tickets/:ticketNumber(\\d+)/stages",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/stages`,
       },
       {
-        source: "/tickets/:ticketNumber(\\d+)/:subpath+",
-        destination: `${apiRewriteBase}/tickets/:ticketNumber/:subpath+`,
+        source: "/tickets/:ticketNumber(\\d+)/stage",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/stage`,
+      },
+      {
+        source: "/tickets/:ticketNumber(\\d+)/history",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/history`,
+      },
+      {
+        source: "/tickets/:ticketNumber(\\d+)/gmud",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/gmud`,
+      },
+      {
+        source: "/tickets/:ticketNumber(\\d+)/group",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/group`,
+      },
+      {
+        source: "/tickets/:ticketNumber(\\d+)/appointments/:path*",
+        destination: `${apiRewriteBase}/tickets/:ticketNumber/appointments/:path*`,
       },
     ];
 
@@ -97,6 +113,21 @@ const nextConfig: NextConfig = {
       "health",
       "email-inbound",
       "pre-tickets",
+    ];
+    const ticketApiRewrites = [
+      {
+        source: "/tickets/catalogs/:path*",
+        destination: `${apiRewriteBase}/tickets/catalogs/:path*`,
+      },
+      {
+        source: "/tickets/list-presets/:path*",
+        destination: `${apiRewriteBase}/tickets/list-presets/:path*`,
+      },
+      {
+        source: "/tickets/attachments/:path*",
+        destination: `${apiRewriteBase}/tickets/attachments/:path*`,
+      },
+      ...ticketNumberApiRewrites,
     ];
     return [
       ...ticketApiRewrites,
