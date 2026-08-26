@@ -396,7 +396,7 @@ smoke_other_modules() {
 
   if ! should_skip_module "gmud"; then
     api_request_any GET "/gmuds/companies" "GET /gmuds/companies" 200 403
-    api_request_any GET "/gmuds?limit=5" "GET /gmuds" 200 403
+    api_request_any GET "/gmuds" "GET /gmuds" 200 403
   fi
 
   if ! should_skip_module "rendimento"; then
