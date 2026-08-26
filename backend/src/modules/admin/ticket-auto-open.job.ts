@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { shouldRunScheduledJobs } from '../../common/scheduling/should-run-scheduled-jobs';
 import { TicketAutoOpenService } from './ticket-auto-open.service';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class TicketAutoOpenJob {
 
   @Cron('0 * * * * *')
   async tick() {
+    if (!shouldRunScheduledJobs()) return;
     if (this.running) return;
     this.running = true;
     try {

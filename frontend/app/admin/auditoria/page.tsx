@@ -14,13 +14,10 @@ import {
 } from "@/lib/services/admin.service";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { formatDateTime } from "@/lib/date-utils";
 import { cn } from "@/lib/utils";
+import { DataTable } from "@/components/ui/data-table";
 
-function formatDateTime(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("pt-BR");
-}
 
 function prettyJson(value: unknown) {
   try {
@@ -231,68 +228,72 @@ export default function AdminAuditoriaPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="overflow-x-auto rounded-2xl border border-border">
-                  <table className="min-w-[980px] w-full text-left text-sm">
-                    <thead className="bg-primary/15 text-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Quando</th>
-                        <th className="px-4 py-3">Admin</th>
-                        <th className="px-4 py-3">Ação</th>
-                        <th className="px-4 py-3">Entidade</th>
-                        <th className="px-4 py-3">EntityId</th>
-                        <th className="px-4 py-3">Detalhes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loading ? (
-                        <tr>
-                          <td className="px-4 py-4 text-muted-foreground" colSpan={6}>
-                            Carregando…
-                          </td>
-                        </tr>
-                      ) : items.length === 0 ? (
-                        <tr>
-                          <td className="px-4 py-4 text-muted-foreground" colSpan={6}>
-                            Nenhum registro encontrado.
-                          </td>
-                        </tr>
-                      ) : (
-                        items.map((row) => (
-                          <tr key={row.id} className="border-t border-border/60 align-top">
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              {formatDateTime(row.createdAt)}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="font-semibold">
-                                {row.user?.name ?? "—"}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {row.user?.email ?? row.userId ?? "—"}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={cn("font-semibold", row.action.includes("[ERROR]") && "text-destructive")}>
-                                {row.action}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">{row.entity}</td>
-                            <td className="px-4 py-3">{row.entityId ?? "—"}</td>
-                            <td className="px-4 py-3">
-                              <details className="max-w-[520px]">
-                                <summary className="cursor-pointer select-none text-primary font-semibold">
-                                  Ver JSON
-                                </summary>
-                                <pre className="mt-2 max-h-72 overflow-auto rounded-xl border border-border bg-muted/30 p-3 text-xs">
-                                  {prettyJson(row.payload)}
-                                </pre>
-                              </details>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <DataTable
+                  minWidthClassName="min-w-[980px]"
+                  loading={loading}
+                  rows={items}
+                  rowKey={(row) => row.id}
+                  columns={[
+                    {
+                      id: "when",
+                      header: "Quando",
+                      cellClassName: "whitespace-nowrap",
+                      cell: (row) => formatDateTime(row.createdAt),
+                    },
+                    {
+                      id: "admin",
+                      header: "Admin",
+                      cell: (row) => (
+                        <>
+                          <div className="font-semibold">
+                            {row.user?.name ?? "—"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {row.user?.email ?? row.userId ?? "—"}
+                          </div>
+                        </>
+                      ),
+                    },
+                    {
+                      id: "action",
+                      header: "Ação",
+                      cell: (row) => (
+                        <span
+                          className={cn(
+                            "font-semibold",
+                            row.action.includes("[ERROR]") && "text-destructive",
+                          )}
+                        >
+                          {row.action}
+                        </span>
+                      ),
+                    },
+                    {
+                      id: "entity",
+                      header: "Entidade",
+                      cell: (row) => row.entity,
+                    },
+                    {
+                      id: "entityId",
+                      header: "EntityId",
+                      cell: (row) => row.entityId ?? "—",
+                    },
+                    {
+                      id: "details",
+                      header: "Detalhes",
+                      cell: (row) => (
+                        <details className="max-w-[520px]">
+                          <summary className="cursor-pointer select-none text-primary font-semibold">
+                            Ver JSON
+                          </summary>
+                          <pre className="mt-2 max-h-72 overflow-auto rounded-xl border border-border bg-muted/30 p-3 text-xs">
+                            {prettyJson(row.payload)}
+                          </pre>
+                        </details>
+                      ),
+                    },
+                  ]}
+                />
               </CardContent>
             </Card>
           </div>

@@ -1869,9 +1869,27 @@ export class ProjetosService {
   private async loadProjectActivities(
     projectId: string,
   ): Promise<ActivityRow[]> {
-    return this.prisma.projectActivity.findMany({
-      where: { projectId, deletedAt: null },
-      orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { wbsCode: 'asc' }],
+    const map = await this.loadProjectActivitiesByProjectIds([projectId]);
+    return map.get(projectId) ?? [];
+  }
+
+  private async loadProjectActivitiesByProjectIds(
+    projectIds: string[],
+  ): Promise<Map<string, ActivityRow[]>> {
+    const uniqueIds = [...new Set(projectIds.filter(Boolean))];
+    const byProject = new Map<string, ActivityRow[]>();
+    if (uniqueIds.length === 0) {
+      return byProject;
+    }
+
+    const rows = await this.prisma.projectActivity.findMany({
+      where: { projectId: { in: uniqueIds }, deletedAt: null },
+      orderBy: [
+        { projectId: 'asc' },
+        { level: 'asc' },
+        { sortOrder: 'asc' },
+        { wbsCode: 'asc' },
+      ],
       include: {
         assignee: { select: { name: true } },
         predecessors: { select: { predecessorId: true } },
@@ -1893,6 +1911,36 @@ export class ProjetosService {
         },
       },
     });
+
+    for (const row of rows) {
+      const list = byProject.get(row.projectId) ?? [];
+      list.push(row as ActivityRow);
+      byProject.set(row.projectId, list);
+    }
+
+    return byProject;
+  }
+
+  private async countProjectDocumentsByProjectIds(
+    projectIds: string[],
+  ): Promise<Map<string, number>> {
+    const uniqueIds = [...new Set(projectIds.filter(Boolean))];
+    const counts = new Map<string, number>();
+    if (uniqueIds.length === 0) {
+      return counts;
+    }
+
+    const rows = await this.prisma.projectDocument.groupBy({
+      by: ['projectId'],
+      where: { projectId: { in: uniqueIds } },
+      _count: { _all: true },
+    });
+
+    for (const row of rows) {
+      counts.set(row.projectId, row._count._all);
+    }
+
+    return counts;
   }
 
   private buildProjectSummary(
@@ -1994,22 +2042,21 @@ export class ProjetosService {
       orderBy: [{ updatedAt: 'desc' }, { code: 'desc' }],
     });
 
-    const summaries: ProjectSummaryDto[] = [];
     const hideDurations = this.isClientView(user);
-    for (const project of projects) {
-      const activities = await this.loadProjectActivities(project.id);
-      const documentsCount = await this.prisma.projectDocument.count({
-        where: { projectId: project.id },
-      });
-      summaries.push(
-        this.buildProjectSummary(
-          project,
-          activities,
-          documentsCount,
-          hideDurations,
-        ),
-      );
-    }
+    const projectIds = projects.map((project) => project.id);
+    const [activitiesByProject, documentCounts] = await Promise.all([
+      this.loadProjectActivitiesByProjectIds(projectIds),
+      this.countProjectDocumentsByProjectIds(projectIds),
+    ]);
+
+    const summaries = projects.map((project) =>
+      this.buildProjectSummary(
+        project,
+        activitiesByProject.get(project.id) ?? [],
+        documentCounts.get(project.id) ?? 0,
+        hideDurations,
+      ),
+    );
 
     return { company, projects: summaries };
   }

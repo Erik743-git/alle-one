@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { shouldRunScheduledJobs } from '../../common/scheduling/should-run-scheduled-jobs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { MailService } from '../mail/mail.service';
@@ -18,6 +19,7 @@ export class UsageAlertsJob {
   // 09:00 do dia 15 de cada mês
   @Cron('0 0 9 15 * *')
   async runMonthly(): Promise<void> {
+    if (!shouldRunScheduledJobs()) return;
     await this.runForDay(new Date());
   }
 
