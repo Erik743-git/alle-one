@@ -108,6 +108,23 @@ if [[ -f "$ROOT/deploy/scripts/smoke-portal-routes.sh" ]]; then
     }
 fi
 
+if [[ -n "${ALLEONE_SMOKE_EMAIL:-}" && -n "${ALLEONE_SMOKE_PASSWORD:-}" ]]; then
+  echo ""
+  echo "==> smoke autenticado (API tickets + módulos)"
+  PORTAL_BASE="${ALLEONE_PORTAL_BASE:-https://alleone-teste.alletecnologia.com}" \
+    API_PREFIX="${ALLEONE_API_PREFIX:-/api}" \
+    ALLEONE_SMOKE_EMAIL="$ALLEONE_SMOKE_EMAIL" \
+    ALLEONE_SMOKE_PASSWORD="$ALLEONE_SMOKE_PASSWORD" \
+    ALLEONE_SMOKE_TOTP="${ALLEONE_SMOKE_TOTP:-}" \
+    SMOKE_TICKETS_WRITE="${SMOKE_TICKETS_WRITE:-0}" \
+    bash "$ROOT/deploy/scripts/smoke-portal-authenticated.sh" || {
+      echo "AVISO: smoke-portal-authenticated falhou — revise credenciais/2FA"
+    }
+else
+  echo ""
+  echo "==> smoke autenticado pulado (defina ALLEONE_SMOKE_EMAIL e ALLEONE_SMOKE_PASSWORD no ambiente)"
+fi
+
 echo ""
 echo "OK — teste atualizado."
 echo "Público: https://alleone-teste.alletecnologia.com"
