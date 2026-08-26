@@ -77,6 +77,11 @@ export class TicketsListQueryDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  requestorName?: string;
+
+  @IsOptional()
+  @IsString()
   from?: string;
 
   @IsOptional()

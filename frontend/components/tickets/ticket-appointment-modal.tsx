@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, User2 } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 
 import { FieldLabel } from "@/components/ui/field-label";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
@@ -38,7 +38,7 @@ import { cn } from "@/lib/utils";
 import { TicketAppointmentNotStartedDialog } from "@/components/tickets/ticket-appointment-not-started-dialog";
 import { TICKET_APPOINTMENT_WARNING_HINT } from "@/lib/module-copy";
 
-const SERVICE_TYPES = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
+const SERVICE_TYPES_FALLBACK = ["HORA NORMAL", "HORA EXTRA", "PLANTÃO"] as const;
 
 const DEFAULT_ATTENDANCE = "Remote" as const;
 
@@ -54,6 +54,8 @@ type Props = {
   editingAppointment?: PortalAppointmentEditContext | null;
   /** Quando definido, vincula automaticamente à atividade e oculta o seletor. */
   fixedActivityId?: string;
+  /** Comunicação: alerta sem horas trabalhadas (início = fim no clique). */
+  variant?: "appointment" | "communication";
 };
 
 function nowTime() {
@@ -114,8 +116,10 @@ export function TicketAppointmentModal({
   onCreated,
   editingAppointment = null,
   fixedActivityId,
+  variant = "appointment",
 }: Props) {
-  const isEdit = Boolean(editingAppointment?.portalAppointmentId);
+  const isCommunication = variant === "communication";
+  const isEdit = Boolean(editingAppointment?.portalAppointmentId) && !isCommunication;
   const { user } = useAuth();
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -131,15 +135,19 @@ export function TicketAppointmentModal({
   const [overnight, setOvernight] = useState(false);
   const [serviceName, setServiceName] = useState("");
   const [projectActivityId, setProjectActivityId] = useState("");
-  const [notifyClient, setNotifyClient] = useState(false);
+  const [notifyClient, setNotifyClient] = useState(true);
   const [isWarning, setIsWarning] = useState(false);
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
+  const [serviceTypes, setServiceTypes] = useState<string[]>([
+    ...SERVICE_TYPES_FALLBACK,
+  ]);
   const [composerKey, setComposerKey] = useState(0);
   const saveModeRef = useRef<SaveMode>("save");
+  const communicationOpenedAtRef = useRef<string | null>(null);
 
   const serviceTypeOptions = useMemo(
-    () => SERVICE_TYPES.map((s) => ({ value: s, label: s })),
-    [],
+    () => serviceTypes.map((s) => ({ value: s, label: s })),
+    [serviceTypes],
   );
 
   const canCloseTicket = canChangeTicketStage() && !ticketClosed;
@@ -155,6 +163,11 @@ export function TicketAppointmentModal({
       ]);
       setTicketMeta(data.ticket);
       setProjectLink(data.projectLink ?? null);
+      setServiceTypes(
+        data.serviceTypes?.length
+          ? data.serviceTypes
+          : [...SERVICE_TYPES_FALLBACK],
+      );
       setTicketClosed(Boolean(stages?.isClosed));
     } catch {
       setTicketMeta(null);
@@ -166,7 +179,19 @@ export function TicketAppointmentModal({
 
   useEffect(() => {
     if (open) {
-      if (editingAppointment) {
+      if (isCommunication) {
+        const clickedAt = nowTime();
+        communicationOpenedAtRef.current = clickedAt;
+        setDate(new Date().toISOString().slice(0, 10));
+        setInitTime(clickedAt);
+        setEndTime(clickedAt);
+        setOvernight(false);
+        setServiceName("HORA NORMAL");
+        setProjectActivityId("");
+        setNotifyClient(true);
+        setIsWarning(true);
+        setComposerKey((k) => k + 1);
+      } else if (editingAppointment) {
         setDate(editingAppointment.date);
         setInitTime(editingAppointment.initTime);
         setEndTime(editingAppointment.endTime);
@@ -184,13 +209,15 @@ export function TicketAppointmentModal({
         setEndTime(addMinutesToTime(start, 15));
         setOvernight(false);
         setProjectActivityId(fixedActivityId ?? "");
-        setNotifyClient(false);
+        setNotifyClient(true);
         setIsWarning(false);
         setComposerKey((k) => k + 1);
       }
       void loadTicketMeta();
+    } else {
+      communicationOpenedAtRef.current = null;
     }
-  }, [open, loadTicketMeta, editingAppointment, fixedActivityId]);
+  }, [open, loadTicketMeta, editingAppointment, fixedActivityId, isCommunication]);
 
   useEffect(() => {
     if (!open || isEdit || loadingMeta || !ticketMeta || !user) {
@@ -285,7 +312,7 @@ export function TicketAppointmentModal({
     const mode = saveModeRef.current;
     saveModeRef.current = "save";
 
-    if (!serviceName.trim()) {
+    if (!isCommunication && !serviceName.trim()) {
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
@@ -301,11 +328,11 @@ export function TicketAppointmentModal({
       setNotStartedDialogOpen(true);
       return;
     }
-    if (durationMinutes <= 0) {
+    if (!isCommunication && durationMinutes <= 0) {
       notifyError("Horário final deve ser depois do horário inicial.");
       return;
     }
-    if (durationMinutes > 24 * 60) {
+    if (!isCommunication && durationMinutes > 24 * 60) {
       notifyError(
         "Apontamento não pode passar de 24 horas. Use o + só quando o fim for no dia seguinte.",
       );
@@ -317,16 +344,17 @@ export function TicketAppointmentModal({
       return;
     }
 
+    const alertTime = communicationOpenedAtRef.current ?? nowTime();
     const payload: CreateAppointmentPayload = {
-      date,
-      initTime,
-      endTime,
-      ...(overnight ? { endDate } : {}),
+      date: isCommunication ? new Date().toISOString().slice(0, 10) : date,
+      initTime: isCommunication ? alertTime : initTime,
+      endTime: isCommunication ? alertTime : endTime,
+      ...(overnight && !isCommunication ? { endDate } : {}),
       description: exported.description,
-      serviceName: serviceName.trim(),
+      serviceName: isCommunication ? "HORA NORMAL" : serviceName.trim(),
       attendance: DEFAULT_ATTENDANCE,
-      notifyClient,
-      isWarning,
+      notifyClient: isCommunication ? true : notifyClient,
+      isWarning: isCommunication ? true : isWarning,
       ...(projectActivityId ? { projectActivityId } : {}),
       ...(isEdit
         ? { removeAttachmentFileIds: exported.removeAttachmentFileIds }
@@ -405,9 +433,11 @@ export function TicketAppointmentModal({
       >
         <SheetHeader className="shrink-0 space-y-3 border-b border-border px-6 py-5 pr-14">
           <SheetTitle className="text-lg font-bold">
-            {isEdit
-              ? `Editar apontamento · ticket #${ticketNumber}`
-              : `Apontar no ticket #${ticketNumber}`}
+            {isCommunication
+              ? `Comunicação no ticket #${ticketNumber}`
+              : isEdit
+                ? `Editar apontamento · ticket #${ticketNumber}`
+                : `Apontar no ticket #${ticketNumber}`}
           </SheetTitle>
           {loadingMeta ? (
             <SheetDescription>Carregando dados do ticket…</SheetDescription>
@@ -418,18 +448,6 @@ export function TicketAppointmentModal({
             </SheetDescription>
           ) : null}
 
-          {user ? (
-            <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/30 p-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <User2 className="size-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">Você está apontando como</p>
-                <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
-                <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-              </div>
-            </div>
-          ) : null}
         </SheetHeader>
 
         <form
@@ -437,6 +455,7 @@ export function TicketAppointmentModal({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+            {!isCommunication ? (
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
@@ -459,8 +478,15 @@ export function TicketAppointmentModal({
                   onChange={(e) => {
                     const next = e.target.value;
                     setInitTime(next);
-                    if (overnight) return;
-                    if (timeToMinutes(endTime) <= timeToMinutes(next)) {
+                    if (timeToMinutes(endTime) >= timeToMinutes(next)) {
+                      setOvernight(false);
+                    } else if (timeToMinutes(endTime) < timeToMinutes(next)) {
+                      setOvernight(true);
+                    }
+                    if (
+                      !overnight &&
+                      timeToMinutes(endTime) <= timeToMinutes(next)
+                    ) {
                       setEndTime(addMinutesToTime(next, 15));
                     }
                   }}
@@ -481,6 +507,8 @@ export function TicketAppointmentModal({
                       setEndTime(next);
                       if (timeToMinutes(next) < timeToMinutes(initTime)) {
                         setOvernight(true);
+                      } else {
+                        setOvernight(false);
                       }
                     }}
                     className={cn(FIELD_INPUT, "flex-1")}
@@ -527,7 +555,9 @@ export function TicketAppointmentModal({
                 </p>
               </div>
             </div>
+            ) : null}
 
+            {!isCommunication ? (
             <div className="space-y-2">
               <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
                 Tipo de atendimento
@@ -541,6 +571,7 @@ export function TicketAppointmentModal({
                 modal
               />
             </div>
+            ) : null}
 
             {!isEdit && fixedActivityId ? (
               <div className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
@@ -584,6 +615,8 @@ export function TicketAppointmentModal({
               }
             />
 
+            {!isCommunication ? (
+            <>
             <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/20 px-3 py-3 text-sm text-foreground">
               <FlipCheckbox
                 checked={notifyClient}
@@ -613,6 +646,8 @@ export function TicketAppointmentModal({
                 </span>
               </span>
             </label>
+            </>
+            ) : null}
           </div>
 
           <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -625,7 +660,7 @@ export function TicketAppointmentModal({
             >
               Cancelar
             </Button>
-            {!isEdit ? (
+            {!isCommunication && !isEdit ? (
               <>
                 <Button
                   type="submit"
@@ -665,10 +700,12 @@ export function TicketAppointmentModal({
             >
               {saving ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               {saving
-                ? "Salvando..."
-                : isEdit
-                  ? "Salvar alterações"
-                  : "Salvar"}
+                ? "Enviando..."
+                : isCommunication
+                  ? "Enviar"
+                  : isEdit
+                    ? "Salvar alterações"
+                    : "Salvar"}
             </Button>
           </SheetFooter>
         </form>

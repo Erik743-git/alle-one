@@ -62,8 +62,9 @@ import { cn } from "@/lib/utils";
 
 const MAX_ATTACHMENTS = 10;
 /** Largura padrão dos prints no editor (cabem bem na tela). */
-const DEFAULT_IMAGE_WIDTH = 280;
-const MAX_IMAGE_WIDTH = 360;
+const DEFAULT_IMAGE_WIDTH = 640;
+const MAX_IMAGE_WIDTH = 1600;
+const MAX_IMAGE_HEIGHT = 900;
 
 const FONT_SIZE_OPTIONS = [
   "8px",
@@ -543,7 +544,7 @@ export const AppointmentDescriptionComposer = forwardRef<
       image.className = "block h-auto max-w-full select-none rounded-md border border-border/50";
       image.style.width = "100%";
       image.style.height = "auto";
-      image.style.maxHeight = "280px";
+      image.style.maxHeight = `${MAX_IMAGE_HEIGHT}px`;
       image.style.objectFit = "contain";
 
       const removeButton = document.createElement("button");

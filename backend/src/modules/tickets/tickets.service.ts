@@ -35,12 +35,16 @@ import {
   isTicketsTifluxWriteEnabled,
   isTifluxDisconnected,
 } from './tickets-portal.config';
+import { applyClientTitlePrefix } from './ticket-title.util';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
-import { assertTicketCreateClientScope } from './tickets-client-scope';
+import {
+  assertTicketClientScope,
+  assertTicketCreateClientScope,
+} from './tickets-client-scope';
 import { assertDeskAllowedForCompany } from './company-ticket-specialties.helper';
 import { canonicalizeStageName } from './tickets-stage-groups';
 import { PORTAL_STAGE } from './portal-ticket-stages';
@@ -691,7 +695,7 @@ export class TicketsService {
     }
 
     const writeTiflux = isTicketsTifluxWriteEnabled();
-    const title = dto.title?.trim();
+    let resolvedTitle = dto.title?.trim();
     const stageName = canonicalizeStageName(dto.stageName?.trim()) ?? undefined;
     const statusName =
       canonicalizeStageName(dto.statusName?.trim()) ?? undefined;
@@ -739,6 +743,20 @@ export class TicketsService {
       }
       nextClientExternalId = company.tifluxClientId;
       nextClientName = company.name;
+      if (!dto.title?.trim()) {
+        const clientNames = (
+          await this.prisma.company.findMany({
+            where: { deletedAt: null, tifluxClientId: { not: null } },
+            select: { name: true },
+            take: 5000,
+          })
+        ).map((row) => row.name);
+        resolvedTitle = applyClientTitlePrefix(
+          portal?.title ?? resolvedTitle,
+          clientNames,
+          nextClientName,
+        );
+      }
       // GMUD da empresa antiga não se aplica ao novo cliente
       await this.prisma.portalTicketGmudLink.deleteMany({
         where: { ticketNumber },
@@ -830,13 +848,34 @@ export class TicketsService {
     const isClearingPreTicket =
       isAssigningResponsible && Boolean(portal?.isPreTicket);
 
+    let nextClassificationId = portal?.classificationId ?? null;
+    if (dto.classificationId !== undefined) {
+      const deskForClassification =
+        nextDeskExternalId ?? portal?.deskExternalId ?? null;
+      if (dto.classificationId) {
+        if (deskForClassification == null) {
+          throw new BadRequestException(
+            'Não é possível classificar sem catálogo definido no ticket.',
+          );
+        }
+        await this.catalogs.assertValidClassificationForDesk(
+          deskForClassification,
+          dto.classificationId,
+          nextDeskName ?? portal?.deskName,
+        );
+        nextClassificationId = dto.classificationId.trim();
+      } else {
+        nextClassificationId = null;
+      }
+    }
+
     let nextOrigin = portal?.origin;
 
     if (writeTiflux && isClearingPreTicket && responsibleId != null) {
       await this.promotePreTicketToTiflux({
         ticketNumber,
         portal,
-        title: title ?? portal?.title ?? null,
+        title: resolvedTitle ?? portal?.title ?? null,
         responsibleId,
         clientExternalId:
           nextClientExternalId ?? portal?.clientExternalId ?? null,
@@ -850,7 +889,7 @@ export class TicketsService {
       !isRemovingResponsible
     ) {
       const payload: Record<string, unknown> = {};
-      if (title) payload.title = title;
+      if (resolvedTitle) payload.title = resolvedTitle;
       if (descriptionRaw) {
         payload.description = appointmentDescriptionToPlainText(descriptionRaw);
       }
@@ -893,7 +932,7 @@ export class TicketsService {
 
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
-      title: title ?? portal?.title ?? null,
+      title: resolvedTitle ?? portal?.title ?? null,
       clientName: nextClientName,
       clientExternalId: nextClientExternalId,
       deskName: nextDeskName,
@@ -905,6 +944,7 @@ export class TicketsService {
       createdByWayOf: portal?.createdByWayOf ?? null,
       statusName: resolvedStatusName,
       stageName: resolvedStageName,
+      classificationId: nextClassificationId,
       responsibleExternalId:
         responsibleId !== undefined
           ? responsibleId
@@ -1454,5 +1494,76 @@ export class TicketsService {
         description,
       },
     });
+  }
+
+  async addTicketWatcher(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    email: string,
+  ) {
+    const normalized = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      throw new BadRequestException('E-mail de seguidor inválido.');
+    }
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+      select: { clientExternalId: true, createdBy: true, requestorEmail: true },
+    });
+    if (!portal) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+    await assertTicketClientScope(
+      this.tenantScope,
+      actor,
+      portal.clientExternalId,
+      {
+        createdBy: portal.createdBy,
+        requestorEmail: portal.requestorEmail,
+      },
+    );
+
+    await this.prisma.portalTicketWatcher.create({
+      data: {
+        ticketNumber,
+        email: normalized,
+        createdBy: actor.userId,
+      },
+    });
+
+    return {
+      ok: true,
+      message: 'Seguidor adicionado.',
+      watcher: { email: normalized },
+    };
+  }
+
+  async removeTicketWatcher(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    email: string,
+  ) {
+    const normalized = email.trim().toLowerCase();
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+      select: { clientExternalId: true, createdBy: true, requestorEmail: true },
+    });
+    if (!portal) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+    await assertTicketClientScope(
+      this.tenantScope,
+      actor,
+      portal.clientExternalId,
+      {
+        createdBy: portal.createdBy,
+        requestorEmail: portal.requestorEmail,
+      },
+    );
+
+    await this.prisma.portalTicketWatcher.deleteMany({
+      where: { ticketNumber, email: normalized },
+    });
+
+    return { ok: true, message: 'Seguidor removido.' };
   }
 }

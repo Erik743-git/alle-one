@@ -362,6 +362,7 @@ export class TicketsQueryService {
         actorUserId: actor.userId,
         actorEmail,
         responsibleExternalId: responsibleFilter,
+        responsibleDisplayName: responsibleName,
         watcherTicketNumbers,
       });
       andParts.push({ OR: mineOr });
@@ -424,6 +425,7 @@ export class TicketsQueryService {
     const includeDone =
       query.includeDone === true ||
       query.ticketNumber != null ||
+      (/^\d+$/.test(search) && search.length > 0) ||
       isDonePortalStage(query.stageName);
 
     if (!includeDone) {
@@ -459,6 +461,24 @@ export class TicketsQueryService {
           : {}),
         ...(query.deskName
           ? { deskName: { contains: query.deskName, mode: 'insensitive' } }
+          : {}),
+        ...(query.requestorName
+          ? {
+              OR: [
+                {
+                  requestorName: {
+                    contains: query.requestorName,
+                    mode: 'insensitive',
+                  },
+                },
+                {
+                  requestorEmail: {
+                    contains: query.requestorName,
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            }
           : {}),
         ...(query.ticketNumber != null
           ? { ticketNumber: query.ticketNumber }
@@ -563,7 +583,7 @@ export class TicketsQueryService {
 
     const [appointments, externalGmudRef, portalDescription, grouping] =
       await Promise.all([
-        this.appointments.listMergedAppointments(ticketNumber),
+        this.appointments.listMergedAppointments(ticketNumber, actor),
         this.loadExternalGmudRef(ticketNumber),
         this.loadPortalTicketDescription(ticketNumber),
         this.loadTicketGrouping(ticketNumber),
@@ -700,6 +720,13 @@ export class TicketsQueryService {
 
     let responsibleFilter: number | null = null;
     let responsibleName: string | null = null;
+    const search = query.search?.trim() ?? '';
+    const ticketNumberFilter = query.ticketNumber ?? null;
+    const includeDone =
+      query.includeDone === true ||
+      ticketNumberFilter != null ||
+      (/^\d+$/.test(search) && search.length > 0) ||
+      isDonePortalStage(query.stageName);
 
     if (mineOnly) {
       const mine = await this.resolveTifluxExternalIdForUser(actor.email);
@@ -724,7 +751,7 @@ export class TicketsQueryService {
         }
         const portalRows = await this.prisma.portalTicket.findMany({
           where: {
-            isClosed: false,
+            ...(includeDone ? {} : { isClosed: false }),
             ticketNumber: { in: watchedNumbers },
           },
           orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
@@ -789,13 +816,9 @@ export class TicketsQueryService {
       ? new Date(`${query.from}T00:00:00`)
       : null;
     const toDate = query.to?.trim() ? new Date(`${query.to}T23:59:59`) : null;
-    const search = query.search?.trim() ?? '';
-    const ticketNumberFilter = query.ticketNumber ?? null;
     const externalGmudRefFilter = query.externalGmudRef?.trim() ?? '';
-    const includeDone =
-      query.includeDone === true ||
-      ticketNumberFilter != null ||
-      isDonePortalStage(query.stageName);
+
+    const actorEmail = this.normalizeEmail(actor.email);
 
     const rows = mineOnly
       ? ((await this.prisma.$queryRaw<TicketRow[]>`
@@ -831,11 +854,15 @@ export class TicketsQueryService {
               )
               AND (
                 t.responsible_external_id = ${responsibleFilter}
+                OR (
+                  ${responsibleName ?? ''}::text <> ''
+                  AND lower(trim(t.responsible_name)) = lower(trim(${responsibleName ?? ''}))
+                )
                 OR EXISTS (
                   SELECT 1
                   FROM portal_ticket_watchers w
                   WHERE w.ticket_number = t.ticket_number
-                    AND lower(w.email) = ${this.normalizeEmail(actor.email)}
+                    AND lower(w.email) = ${actorEmail}
                 )
               )
               AND (${clientExternalIdFilter ?? null}::int IS NULL OR t.client_external_id = ${clientExternalIdFilter ?? null})
@@ -959,13 +986,23 @@ export class TicketsQueryService {
         createdBy: portal.createdBy,
         requestorEmail: portal.requestorEmail,
       });
-      const [appointments, externalGmudRef, portalDescription, grouping] =
-        await Promise.all([
-          this.appointments.listMergedAppointments(ticketNumber),
-          this.loadExternalGmudRef(ticketNumber),
-          this.loadPortalTicketDescription(ticketNumber),
-          this.loadTicketGrouping(ticketNumber),
-        ]);
+      const [
+        appointments,
+        externalGmudRef,
+        portalDescription,
+        grouping,
+        watchers,
+      ] = await Promise.all([
+        this.appointments.listMergedAppointments(ticketNumber, actor),
+        this.loadExternalGmudRef(ticketNumber),
+        this.loadPortalTicketDescription(ticketNumber),
+        this.loadTicketGrouping(ticketNumber),
+        this.prisma.portalTicketWatcher.findMany({
+          where: { ticketNumber },
+          select: { email: true },
+          orderBy: { createdAt: 'asc' },
+        }),
+      ]);
       let requestorName = portal.requestorName;
       let requestorEmail = portal.requestorEmail;
       let requestorTelephone = portal.requestorTelephone;
@@ -1024,6 +1061,8 @@ export class TicketsQueryService {
           actor,
           row.responsible_external_id,
         ),
+        classificationId: portal.classificationId ?? null,
+        watchers: watchers.map((w) => ({ email: w.email })),
       };
     }
 
@@ -1071,7 +1110,7 @@ export class TicketsQueryService {
 
     const [appointments, externalGmudRef, portalDescription, grouping] =
       await Promise.all([
-        this.appointments.listMergedAppointments(ticketNumber),
+        this.appointments.listMergedAppointments(ticketNumber, actor),
         this.loadExternalGmudRef(ticketNumber),
         this.loadPortalTicketDescription(ticketNumber),
         this.loadTicketGrouping(ticketNumber),

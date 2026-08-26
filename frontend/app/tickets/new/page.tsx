@@ -654,12 +654,255 @@ export default function NewTicketPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
+                      <Building2 className="size-4 text-primary" />
+                      Cliente e catálogo
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <FieldLabel required>Cliente</FieldLabel>
+                      {isClientUser && clientOptions.length <= 1 ? (
+                        <Input
+                          value={clientOptions[0]?.label ?? selectedClient?.name ?? ""}
+                          readOnly
+                          disabled
+                          className="h-11"
+                        />
+                      ) : (
+                        <SearchableSelectField
+                          value={clientId}
+                          onChange={handleClientChange}
+                          options={clientOptions}
+                          loading={loading}
+                          emptyLabel="Selecione o cliente"
+                          disabled={isClientUser && clientOptions.length <= 1}
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <FieldLabel required>Catálogo</FieldLabel>
+                      <SearchableSelectField
+                        value={deskId}
+                        onChange={setDeskId}
+                        options={deskOptions}
+                        loading={loading}
+                        emptyLabel="Selecione o catálogo"
+                      />
+                    </div>
+
+                    {deskId && requiresCatalog ? (
+                      <div className="space-y-2 sm:col-span-2">
+                        <FieldLabel required>Serviço</FieldLabel>
+                        <SearchableSelectField
+                          value={catalogItemId}
+                          onChange={setCatalogItemId}
+                          options={catalogItemOptions}
+                          loading={loading}
+                          emptyLabel={
+                            catalogItemOptions.length === 0
+                              ? "Nenhum serviço cadastrado neste catálogo"
+                              : "Selecione o serviço"
+                          }
+                        />
+                        {catalogBlocked ? (
+                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                            Este catálogo exige serviços, mas não há itens
+                            cadastrados. Cadastre serviços no catálogo{" "}
+                            <strong>{catalogs?.desk?.name ?? "selecionado"}</strong>{" "}
+                            antes de abrir tickets.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {deskId && requiresPriority ? (
+                      <div className="space-y-2 sm:col-span-2">
+                        <FieldLabel required>Prioridade</FieldLabel>
+                        <SearchableSelectField
+                          value={priorityId}
+                          onChange={setPriorityId}
+                          options={priorityOptions}
+                          loading={loading}
+                          emptyLabel="Selecione a prioridade"
+                        />
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
                       <FileText className="size-4 text-primary" />
                       Conteúdo do ticket
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
+                      <FieldLabel required>Título</FieldLabel>
+                      <Input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder={
+                          selectedClient
+                            ? `${selectedClient.name.toUpperCase()} - Resumo do problema`
+                            : "Resumo do problema ou solicitação"
+                        }
+                        className="h-11"
+                        required
+                      />
+                    </div>
+                    <AppointmentDescriptionComposer
+                      ref={descriptionComposerRef}
+                      disabled={saving}
+                      labelClassName="text-xs font-semibold text-muted-foreground"
+                      placeholder="Detalhe o que precisa ser atendido"
+                      hintText="Escreva e cole prints na descrição (Ctrl+V). Arraste a alça para ajustar o tamanho do print. ZIP/PDF em Anexos."
+                      appendButtonLabel="Anexar arquivo"
+                    />
+                  </CardContent>
+                </Card>
+
+                {!isClientUser ? (
+                <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <UserRound className="size-4 text-primary" />
+                      Solicitante
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      Escolha um solicitante cadastrado ou preencha os dados manualmente
+                      (ex.: caixa compartilhada).
+                    </p>
+                    {requestorOptions.length > 0 ? (
+                      <div className="space-y-2">
+                        <FieldLabel required>Solicitante cadastrado</FieldLabel>
+                        <SearchableSelectField
+                          value={requestorId}
+                          onChange={handleRequestorSuggestion}
+                          options={requestorOptions}
+                          loading={loading}
+                          emptyLabel="Selecione o solicitante"
+                          placeholder="Selecione o solicitante"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      <FieldLabel required>Nome</FieldLabel>
+                      <Input
+                        value={requestorName}
+                        onChange={(e) => {
+                          setRequestorName(e.target.value);
+                          setRequestorId("");
+                        }}
+                        placeholder="Nome de quem está solicitando"
+                        className="h-11"
+                        disabled={saving}
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <FieldLabel required>E-mail do solicitante</FieldLabel>
+                        <Input
+                          type="email"
+                          value={requestorEmail}
+                          onChange={(e) => {
+                            setRequestorEmail(e.target.value);
+                            setRequestorId("");
+                          }}
+                          placeholder="email@empresa.com"
+                          className="h-11"
+                          disabled={saving}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <FieldLabel optional>Telefone</FieldLabel>
+                        <Input
+                          value={requestorTelephone}
+                          onChange={(e) => {
+                            setRequestorTelephone(
+                              formatBrPhone(e.target.value),
+                            );
+                            setRequestorId("");
+                          }}
+                          placeholder="(00) 00000-0000"
+                          className="h-11"
+                          disabled={saving}
+                          inputMode="tel"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 border-t border-border pt-4">
+                      <FieldLabel optional>GMUD do cliente</FieldLabel>
+                      <SearchableSelectField
+                        value={externalGmudRef}
+                        onChange={setExternalGmudRef}
+                        options={gmudSelectOptions}
+                        loading={loadingGmuds}
+                        emptyLabel={
+                          !selectedClient?.companyId
+                            ? "Selecione o cliente para listar GMUDs"
+                            : gmudSelectOptions.length === 0
+                              ? "Nenhuma GMUD cadastrada para este cliente"
+                              : "Selecione a GMUD (opcional)"
+                        }
+                        placeholder="Selecione a GMUD"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Lista das GMUDs cadastradas no portal para a empresa do
+                        cliente. O número fica vinculado ao ticket.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <UserRound className="size-4 text-primary" />
+                      Responsável e classificação
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {deskId && hasPortalClassification ? (
+                      <ClassificationCascadeFields
+                        serviceDeskId={catalogs?.portalServiceDesk?.id ?? null}
+                        tree={catalogs?.classification?.tree ?? null}
+                        value={classificationId}
+                        onChange={setClassificationId}
+                        disabled={loading || saving}
+                        required
+                        levelLabels={classificationLevelLabels}
+                      />
+                    ) : null}
+                    <div className="space-y-2">
+                      <FieldLabel optional>Responsável</FieldLabel>
+                      <SearchableSelectField
+                        value={responsibleId}
+                        onChange={handleResponsibleChange}
+                        options={responsibleOptions}
+                        loading={loading}
+                        preserveOrder
+                        emptyLabel={
+                          responsibleOptions.length === 0
+                            ? "Nenhum atendente encontrado para este catálogo"
+                            : "Selecione o responsável (opcional)"
+                        }
+                        placeholder="Selecione o responsável (opcional)"
+                      />
+                      {!responsibleId ? (
+                        <p className="text-xs text-muted-foreground">
+                          Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2 border-t border-border pt-4">
                       <div className="flex flex-wrap items-end justify-between gap-2">
                         <FieldLabel optional>Seguidores</FieldLabel>
                         <Button
@@ -708,241 +951,9 @@ export default function NewTicketPage() {
                         </p>
                       )}
                     </div>
-
-                    <div className="space-y-2">
-                      <FieldLabel required>Título</FieldLabel>
-                      <Input
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder={
-                          selectedClient
-                            ? `${selectedClient.name.toUpperCase()} - Resumo do problema`
-                            : "Resumo do problema ou solicitação"
-                        }
-                        className="h-11"
-                        required
-                      />
-                    </div>
-                    <AppointmentDescriptionComposer
-                      ref={descriptionComposerRef}
-                      disabled={saving}
-                      labelClassName="text-xs font-semibold text-muted-foreground"
-                      placeholder="Detalhe o que precisa ser atendido"
-                      hintText="Escreva e cole prints na descrição (Ctrl+V). Arraste a alça para ajustar o tamanho do print. ZIP/PDF em Anexos."
-                      appendButtonLabel="Anexar arquivo"
-                    />
                   </CardContent>
                 </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Building2 className="size-4 text-primary" />
-                      Cliente e catálogo
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <FieldLabel required>Cliente</FieldLabel>
-                      {isClientUser && clientOptions.length <= 1 ? (
-                        <Input
-                          value={clientOptions[0]?.label ?? selectedClient?.name ?? ""}
-                          readOnly
-                          disabled
-                          className="h-11"
-                        />
-                      ) : (
-                        <SearchableSelectField
-                          value={clientId}
-                          onChange={handleClientChange}
-                          options={clientOptions}
-                          loading={loading}
-                          emptyLabel="Selecione o cliente"
-                          disabled={isClientUser && clientOptions.length <= 1}
-                        />
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <FieldLabel required>Catálogo</FieldLabel>
-                      <SearchableSelectField
-                        value={deskId}
-                        onChange={setDeskId}
-                        options={deskOptions}
-                        loading={loading}
-                        emptyLabel="Selecione o catálogo"
-                      />
-                    </div>
-
-                    {deskId && hasPortalClassification ? (
-                      <ClassificationCascadeFields
-                        serviceDeskId={catalogs?.portalServiceDesk?.id ?? null}
-                        tree={catalogs?.classification?.tree ?? null}
-                        value={classificationId}
-                        onChange={setClassificationId}
-                        disabled={loading || saving}
-                        required
-                        levelLabels={classificationLevelLabels}
-                      />
-                    ) : null}
-
-                    {deskId && requiresCatalog ? (
-                      <div className="space-y-2 sm:col-span-2">
-                        <FieldLabel required>Serviço</FieldLabel>
-                        <SearchableSelectField
-                          value={catalogItemId}
-                          onChange={setCatalogItemId}
-                          options={catalogItemOptions}
-                          loading={loading}
-                          emptyLabel={
-                            catalogItemOptions.length === 0
-                              ? "Nenhum serviço cadastrado neste catálogo"
-                              : "Selecione o serviço"
-                          }
-                        />
-                        {catalogBlocked ? (
-                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-                            Este catálogo exige serviços, mas não há itens
-                            cadastrados. Cadastre serviços no catálogo{" "}
-                            <strong>{catalogs?.desk?.name ?? "selecionado"}</strong>{" "}
-                            antes de abrir tickets.
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {deskId && requiresPriority ? (
-                      <div className="space-y-2 sm:col-span-2">
-                        <FieldLabel required>Prioridade</FieldLabel>
-                        <SearchableSelectField
-                          value={priorityId}
-                          onChange={setPriorityId}
-                          options={priorityOptions}
-                          loading={loading}
-                          emptyLabel="Selecione a prioridade"
-                        />
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
-
-                {!isClientUser ? (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <UserRound className="size-4 text-primary" />
-                      Responsável e solicitante
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <FieldLabel optional>Responsável</FieldLabel>
-                      <SearchableSelectField
-                        value={responsibleId}
-                        onChange={handleResponsibleChange}
-                        options={responsibleOptions}
-                        loading={loading}
-                        preserveOrder
-                        emptyLabel={
-                          responsibleOptions.length === 0
-                            ? "Nenhum atendente encontrado"
-                            : "Selecione o responsável (opcional)"
-                        }
-                        placeholder="Selecione o responsável (opcional)"
-                      />
-                      {!responsibleId && (
-                        <p className="text-xs text-muted-foreground">
-                          Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-3">
-                      <FieldLabel required>Solicitante</FieldLabel>
-                      {requestorOptions.length > 0 ? (
-                        <SearchableSelectField
-                          value={requestorId}
-                          onChange={handleRequestorSuggestion}
-                          options={requestorOptions}
-                          loading={loading}
-                          emptyLabel="Selecione o solicitante"
-                          placeholder="Selecione o solicitante"
-                        />
-                      ) : null}
-                      <div className="space-y-2">
-                        <FieldLabel required>Nome</FieldLabel>
-                        <Input
-                          value={requestorName}
-                          onChange={(e) => {
-                            setRequestorName(e.target.value);
-                            setRequestorId("");
-                          }}
-                          placeholder="Nome de quem está solicitando"
-                          className="h-11"
-                          disabled={saving}
-                          required
-                        />
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="space-y-2">
-                          <FieldLabel required>E-mail do solicitante</FieldLabel>
-                          <Input
-                            type="email"
-                            value={requestorEmail}
-                            onChange={(e) => {
-                              setRequestorEmail(e.target.value);
-                              setRequestorId("");
-                            }}
-                            placeholder="email@empresa.com"
-                            className="h-11"
-                            disabled={saving}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <FieldLabel optional>Telefone</FieldLabel>
-                          <Input
-                            value={requestorTelephone}
-                            onChange={(e) => {
-                              setRequestorTelephone(
-                                formatBrPhone(e.target.value),
-                              );
-                              setRequestorId("");
-                            }}
-                            placeholder="(00) 00000-0000"
-                            className="h-11"
-                            disabled={saving}
-                            inputMode="tel"
-                          />
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Não está na lista? Preencha nome e e-mail abaixo (ex.:
-                        caixa compartilhada).
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <FieldLabel optional>GMUD do cliente</FieldLabel>
-                      <SearchableSelectField
-                        value={externalGmudRef}
-                        onChange={setExternalGmudRef}
-                        options={gmudSelectOptions}
-                        loading={loadingGmuds}
-                        emptyLabel={
-                          !selectedClient?.companyId
-                            ? "Selecione o cliente para listar GMUDs"
-                            : gmudSelectOptions.length === 0
-                              ? "Nenhuma GMUD cadastrada para este cliente"
-                              : "Selecione a GMUD (opcional)"
-                        }
-                        placeholder="Selecione a GMUD"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Lista das GMUDs cadastradas no portal para a empresa do
-                        cliente. O número fica vinculado ao ticket.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
+                </>
                 ) : null}
 
                 <div className="space-y-3">

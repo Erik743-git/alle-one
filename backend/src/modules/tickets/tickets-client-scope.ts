@@ -145,6 +145,8 @@ export function buildPortalMineOnlyOr(params: {
   actorUserId: string;
   actorEmail: string;
   responsibleExternalId: number | null;
+  /** Fallback quando o espelho portal/TiFlux diverge no ID do responsável. */
+  responsibleDisplayName?: string | null;
   watcherTicketNumbers: number[];
 }): Prisma.PortalTicketWhereInput[] {
   const email = normalizeEmail(params.actorEmail);
@@ -165,6 +167,16 @@ export function buildPortalMineOnlyOr(params: {
   if (params.responsibleExternalId != null) {
     mineOr.unshift({
       responsibleExternalId: params.responsibleExternalId,
+    });
+  }
+
+  const responsibleName = params.responsibleDisplayName?.trim();
+  if (responsibleName) {
+    mineOr.push({
+      responsibleName: {
+        equals: responsibleName,
+        mode: 'insensitive',
+      },
     });
   }
 

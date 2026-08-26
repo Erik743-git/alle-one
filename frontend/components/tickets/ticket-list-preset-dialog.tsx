@@ -124,6 +124,14 @@ export function TicketListPresetDialog({
       })),
     [catalogs],
   );
+  const requestorOptions = useMemo(
+    () =>
+      (catalogs?.requestors ?? []).map((r) => ({
+        value: r.name,
+        label: r.name,
+      })),
+    [catalogs],
+  );
   const deskOptions = useMemo(
     () => (catalogs?.desks ?? []).map((d) => ({ value: d, label: d })),
     [catalogs],
@@ -189,6 +197,26 @@ export function TicketListPresetDialog({
         />
       );
     }
+    if (rule.field === "requestorName") {
+      if (requestorOptions.length > 0) {
+        return (
+          <SearchableSelectField
+            value={rule.value}
+            onChange={setValue}
+            options={requestorOptions}
+            emptyLabel="Selecione o solicitante"
+          />
+        );
+      }
+      return (
+        <Input
+          value={rule.value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="Nome ou e-mail do solicitante"
+          className="h-10"
+        />
+      );
+    }
     if (rule.field === "from" || rule.field === "to") {
       return (
         <Input
@@ -221,7 +249,7 @@ export function TicketListPresetDialog({
 
     const config: TicketListPreset["config"] = {
       rules: rules.filter((r) => r.value.trim() || r.field === "unassigned"),
-      groupBy,
+      groupBy: groupBy || "none",
       visibleColumns: visibleColumns as TicketListPageState["visibleColumns"],
     };
     if (pageState.sortKey) {

@@ -61,14 +61,21 @@ export default function ProjetosCompanyPage() {
       setCompanyName(data.company.name);
       setProjects(data.projects);
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar os projetos.",
-      );
+      // Link legado /projetos/:projectId (sem companyId na URL)
+      try {
+        const project = await projetosService.getProject(companyId);
+        router.replace(`/projetos/${project.companyId}/${project.id}`);
+        return;
+      } catch {
+        notifyError(
+          err instanceof Error ? err.message : "Não foi possível carregar os projetos.",
+        );
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [companyId]);
+  }, [companyId, router]);
 
   useEffect(() => {
     void load();

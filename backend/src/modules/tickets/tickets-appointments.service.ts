@@ -26,6 +26,7 @@ import { ProjetosService } from '../projetos/projetos.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { assertTicketClientScope } from './tickets-client-scope';
 import {
+  getTicketAppointmentServiceTypes,
   isTicketsPortalCanonical,
   isTifluxRuntimeApiEnabled,
 } from './tickets-portal.config';
@@ -63,6 +64,11 @@ import {
   recordPortalTicketHistory,
 } from './portal-ticket-history';
 import { assertCanAppointmentOnNotStartedTicket } from './ticket-appointment-stage-guard';
+import {
+  assertCanManagePortalAppointment,
+  canManagePortalAppointment,
+} from './ticket-appointment-access';
+import { isDonePortalStage } from './portal-ticket-stages';
 import { resolveTicketStageGroup } from './tickets-stage-groups';
 
 type AppointmentRow = {
@@ -85,6 +91,8 @@ export type TicketAppointmentDto = {
   endTime: string | null;
   minutes: number;
   userName: string | null;
+  createdByUserId: string | null;
+  canManage: boolean;
   description: string | null;
   valorizationLabel: string | null;
   attendance: string | null;
@@ -236,6 +244,8 @@ export class TicketsAppointmentsService {
         endTime: this.formatTime(row.end_time),
         minutes: this.appointmentMinutes(row.init_time, row.end_time),
         userName: row.user_name,
+        createdByUserId: null,
+        canManage: false,
         description: row.description,
         valorizationLabel: this.valorizationLabel(row.valorization_raw),
         attendance: null,
@@ -328,6 +338,7 @@ export class TicketsAppointmentsService {
   /** Portal (completo) + TiFlux sync: enriquece com dados do portal; anexos só no portal. */
   async listMergedAppointments(
     ticketNumber: number,
+    actor?: AuthenticatedRequestUser,
   ): Promise<TicketAppointmentDto[]> {
     // Cutover canônico: não mescla espelho tiflux.* (ETL já populou portal_*).
     const syncRows = isTicketsPortalCanonical()
@@ -346,6 +357,7 @@ export class TicketsAppointmentsService {
       syncStatus: PortalTicketAppointmentSyncStatus;
       syncPausedAt: Date | null;
       isWarning: boolean;
+      createdBy: string;
       creator: { name: string };
       attachments: Array<{
         id: string;
@@ -373,7 +385,11 @@ export class TicketsAppointmentsService {
         orderBy: [{ appointmentDate: 'desc' }, { initTime: 'desc' }],
       });
     } catch {
-      return syncRows;
+      return syncRows.map((row) => ({
+        ...row,
+        createdByUserId: null,
+        canManage: false,
+      }));
     }
 
     for (const portal of portalRows) {
@@ -419,6 +435,10 @@ export class TicketsAppointmentsService {
         ? portalByTifluxId.get(sync.externalId)
         : undefined;
       if (portal) claimedPortalIds.add(portal.id);
+      const access = this.appointmentAccessFields(
+        actor,
+        portal?.createdBy ?? null,
+      );
 
       merged.push({
         externalId: sync.externalId,
@@ -428,6 +448,8 @@ export class TicketsAppointmentsService {
         endTime: sync.endTime,
         minutes: sync.minutes,
         userName: sync.userName,
+        createdByUserId: access.createdByUserId,
+        canManage: access.canManage,
         description: portal?.description?.trim() || sync.description,
         valorizationLabel: portal?.serviceName ?? sync.valorizationLabel,
         attendance: portal?.attendance ?? null,
@@ -448,6 +470,7 @@ export class TicketsAppointmentsService {
         portal.attachments,
         previewMap,
       );
+      const access = this.appointmentAccessFields(actor, portal.createdBy);
 
       merged.push({
         externalId: portal.tifluxAppointmentExternalId,
@@ -460,6 +483,8 @@ export class TicketsAppointmentsService {
           portal.endTime,
         ),
         userName: portal.creator.name,
+        createdByUserId: access.createdByUserId,
+        canManage: access.canManage,
         description: portal.description,
         valorizationLabel: portal.serviceName,
         attendance: portal.attendance,
@@ -484,6 +509,44 @@ export class TicketsAppointmentsService {
       if (dateCmp !== 0) return dateCmp;
       return String(b.initTime ?? '').localeCompare(String(a.initTime ?? ''));
     });
+  }
+
+  private appointmentAccessFields(
+    actor: AuthenticatedRequestUser | undefined,
+    createdBy: string | null | undefined,
+  ): { createdByUserId: string | null; canManage: boolean } {
+    const createdByUserId = createdBy ?? null;
+    if (!actor || !createdByUserId) {
+      return { createdByUserId, canManage: false };
+    }
+    return {
+      createdByUserId,
+      canManage: canManagePortalAppointment(actor, createdByUserId),
+    };
+  }
+
+  private async assertCanAddAppointmentToTicket(
+    ticket: NonNullable<Awaited<ReturnType<typeof this.getTicketContext>>>,
+  ) {
+    if (ticket.is_closed) {
+      throw new BadRequestException(
+        'Não é possível apontar em ticket fechado ou cancelado.',
+      );
+    }
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber: ticket.ticket_number },
+      select: { isClosed: true, stageName: true },
+    });
+    if (portal?.isClosed) {
+      throw new BadRequestException(
+        'Não é possível apontar em ticket fechado ou cancelado.',
+      );
+    }
+    if (isDonePortalStage(portal?.stageName ?? ticket.stage_name)) {
+      throw new BadRequestException(
+        'Não é possível apontar em ticket resolvido, encerrado ou cancelado.',
+      );
+    }
   }
 
   async recordOutbox(params: {
@@ -621,7 +684,7 @@ export class TicketsAppointmentsService {
         tifluxSyncAvailable,
       },
       projectLink: await this.projetos.listActivitiesForTicket(ticketNumber),
-      serviceTypes: ['HORA NORMAL', 'HORA EXTRA', 'PLANTÃO'],
+      serviceTypes: getTicketAppointmentServiceTypes(),
       attendances: [
         { value: 'Remote', label: 'Remoto' },
         { value: 'External', label: 'Externo' },
@@ -820,9 +883,15 @@ export class TicketsAppointmentsService {
       endDate,
     });
     if (minutes <= 0) {
-      throw new BadRequestException(
-        'Horário final deve ser depois do horário inicial.',
-      );
+      const zeroDurationAlert =
+        Boolean(dto.isWarning) &&
+        dto.initTime === dto.endTime &&
+        (!endDate || endDate === dto.date);
+      if (!zeroDurationAlert) {
+        throw new BadRequestException(
+          'Horário final deve ser depois do horário inicial.',
+        );
+      }
     }
     if (minutes > 24 * 60) {
       throw new BadRequestException(
@@ -1126,6 +1195,7 @@ export class TicketsAppointmentsService {
       ticketNumber,
       portalAppointmentId,
     );
+    assertCanManagePortalAppointment(actor, row.createdBy);
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
@@ -1313,6 +1383,7 @@ export class TicketsAppointmentsService {
       ticketNumber,
       portalAppointmentId,
     );
+    assertCanManagePortalAppointment(actor, row.createdBy);
 
     if (row.outboxId) {
       const outbox = await this.prisma.portalTifluxOutbox.findUnique({
@@ -1374,6 +1445,7 @@ export class TicketsAppointmentsService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
+    await this.assertCanAddAppointmentToTicket(ticket);
     await this.assertCanCreateAppointment(actor, ticket.stage_name);
 
     this.validateAppointmentDto(dto);
