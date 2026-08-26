@@ -32,8 +32,10 @@ npm ci
 echo "==> frontend: npm run build"
 npm run build
 
-echo "==> pm2 restart"
-pm2 restart alleone-api alleone-web
+echo "==> pm2 API (cluster, 2 instâncias)"
+pm2 delete alleone-api 2>/dev/null || true
+pm2 start "$ROOT/deploy/ecosystem.config.cjs" --only alleone-api --update-env
+pm2 restart alleone-web --update-env
 
 sleep 3
 echo "==> health API"

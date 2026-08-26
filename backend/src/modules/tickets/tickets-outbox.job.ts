@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { shouldRunScheduledJobs } from '../../common/scheduling/should-run-scheduled-jobs';
 import { TicketsOutboxService } from './tickets-outbox.service';
 import { isTifluxDisconnected } from './tickets-portal.config';
 import { isTifluxAppointmentSyncEnabled } from './tiflux-appointment-sync.config';
@@ -18,6 +19,7 @@ export class TicketsOutboxJob {
   /** A cada minuto: envia apontamentos do portal para o TiFlux. */
   @Cron('0 * * * * *')
   async processPendingOutbox(): Promise<void> {
+    if (!shouldRunScheduledJobs()) return;
     if (this.disabled) return;
     if (this.running) return;
     this.running = true;

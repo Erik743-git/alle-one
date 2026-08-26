@@ -89,6 +89,19 @@ enum GmudApproverStatus {
   REJECTED
 }
 
+enum RendimentoDayEventStatus {
+  ACTIVE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum RendimentoGapJustificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id                  String               @id @default(uuid())
   name                String
@@ -117,7 +130,7 @@ model User {
   specialtyId         String?              @map("specialty_id")
   specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
 
-  company             Company?             @relation(fields: [companyId], references: [id])
+  company             Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
   companyMemberships  UserCompany[]
   dashboardChartPresets DashboardChartPreset[]
   ticketListPresets     TicketListPreset[]
@@ -1163,7 +1176,7 @@ model RendimentoDayEvent {
   label                 String?
   description           String?
   reason                String?
-  status                String    @default("ACTIVE")
+  status                RendimentoDayEventStatus @default(ACTIVE)
   debitProtected        Boolean   @default(false) @map("debit_protected")
   sourceKey             String    @map("source_key")
   createdAt             DateTime  @default(now()) @map("created_at")
@@ -1189,7 +1202,7 @@ model RendimentoGapJustification {
   gapType         String    @map("gap_type")
   gapMinutes      Int       @map("gap_minutes")
   kind            String
-  status          String    @default("PENDING")
+  status          RendimentoGapJustificationStatus @default(PENDING)
   reason          String
   debitOvertime   Boolean   @default(false) @map("debit_overtime")
   overtimeMinutes Int       @default(0) @map("overtime_minutes")

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { shouldRunScheduledJobs } from '../../common/scheduling/should-run-scheduled-jobs';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class EmailInboundPollJob {
 
   @Cron(CronExpression.EVERY_MINUTE)
   async handle() {
+    if (!shouldRunScheduledJobs()) return;
     if (process.env.EMAIL_INBOUND_POLL_DISABLED === 'true') return;
     if (this.running) return;
     this.running = true;

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { shouldRunScheduledJobs } from '../common/scheduling/should-run-scheduled-jobs';
 import { UserRole, UserStatus } from '@prisma/client';
 import { AppService } from '../app.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -20,6 +21,7 @@ export class IntegrationsHealthJob {
   /** A cada hora: alerta admins se sync TiFlux estiver stale. */
   @Cron('0 0 * * * *')
   async checkTifluxSyncHealth(): Promise<void> {
+    if (!shouldRunScheduledJobs()) return;
     try {
       if (isTifluxDisconnected()) {
         await this.mailbox.clearTifluxSyncStaleAlerts();

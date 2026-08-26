@@ -68,8 +68,10 @@ npm ci
 echo "==> frontend: npm run build"
 npm run build
 
-echo "==> pm2 restart $API_NAME $WEB_NAME"
-pm2 restart "$API_NAME" "$WEB_NAME" --update-env
+echo "==> pm2 API (cluster, 2 instâncias)"
+pm2 delete "$API_NAME" 2>/dev/null || true
+pm2 start "$ROOT/deploy/ecosystem.teste.config.cjs" --only "$API_NAME" --update-env
+pm2 restart "$WEB_NAME" --update-env
 
 echo "==> health API ($API_HEALTH_URL)"
 API_OK=0

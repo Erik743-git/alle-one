@@ -96,24 +96,7 @@ export function isBulkRowDecided(status: BulkApprovalStatus): boolean {
   return status !== "PENDING";
 }
 
-export function formatDateBr(iso: string) {
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return iso;
-  return `${d}/${m}/${y}`;
-}
-
-export function formatApprovedAt(iso: string | null): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+export { formatApprovedAt, formatDateBr } from "@/lib/date-utils";
 
 export function emailLocalPart(email: string) {
   const local = email.split("@")[0]?.trim();

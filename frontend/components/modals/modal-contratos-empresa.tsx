@@ -24,6 +24,7 @@ import {
 } from "@/lib/services/company-contracts.service";
 import { financialService } from "@/lib/services/financial.service";
 import { usersService, type Specialty } from "@/lib/services/users.service";
+import { formatDateDisplay } from "@/lib/date-utils";
 
 interface Props {
   open: boolean;
@@ -40,13 +41,6 @@ type SpecialtyLineForm = {
   contractValue: string;
   excessHourPrice: string;
 };
-
-function formatDate(date: string | null) {
-  if (!date) return "—";
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("pt-BR");
-}
 
 function toInputDate(value: string | null) {
   if (!value) return "";
@@ -765,9 +759,9 @@ export default function ModalContratosEmpresa({
                             </span>
                           </div>
                           <p className="text-xs text-muted-foreground">
-                            Vigência: {formatDate(c.startDate)}{" "}
+                            Vigência: {formatDateDisplay(c.startDate)}{" "}
                             {c.endDate
-                              ? `→ ${formatDate(c.endDate)}`
+                              ? `→ ${formatDateDisplay(c.endDate)}`
                               : "→ (sem fim)"}
                           </p>
 
