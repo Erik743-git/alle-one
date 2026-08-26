@@ -16,7 +16,9 @@
 #   API_PREFIX               Prefixo API (default: /api)
 #   ALLEONE_SMOKE_EMAIL      E-mail do usuário (obrigatório)
 #   ALLEONE_SMOKE_PASSWORD   Senha (obrigatório)
-#   ALLEONE_SMOKE_TOTP       Código TOTP atual (se conta exige 2FA)
+#   ALLEONE_SMOKE_TOTP       Código TOTP atual (válido ~30s; só na 1ª vez se usar cookie jar)
+#   ALLEONE_SMOKE_COOKIE_JAR Caminho persistente p/ cookies (recomendado no servidor).
+#                            Após login com TOTP + rememberDevice, próximas execuções pulam 2FA.
 #   SMOKE_TICKET_NUMBER      Força um ticket para detalhe (senão usa o 1º da lista)
 #   SMOKE_TICKETS_WRITE      Se "1", cria ticket de smoke e faz PATCH no título
 #   SMOKE_SKIP_MODULES       Lista vírgula para pular: gmud,pretickets,rendimento
@@ -33,6 +35,7 @@ API_URL="${PORTAL_BASE}${API_PREFIX}"
 EMAIL="${ALLEONE_SMOKE_EMAIL:-}"
 PASSWORD="${ALLEONE_SMOKE_PASSWORD:-}"
 TOTP="${ALLEONE_SMOKE_TOTP:-}"
+SMOKE_COOKIE_JAR="${ALLEONE_SMOKE_COOKIE_JAR:-}"
 SMOKE_TICKET_NUMBER="${SMOKE_TICKET_NUMBER:-}"
 SMOKE_TICKETS_WRITE="${SMOKE_TICKETS_WRITE:-0}"
 SMOKE_SKIP_MODULES="${SMOKE_SKIP_MODULES:-}"
@@ -40,6 +43,7 @@ SMOKE_SKIP_MODULES="${SMOKE_SKIP_MODULES:-}"
 failed=0
 warned=0
 COOKIE_JAR=""
+COOKIE_JAR_PERSISTENT=0
 BODY_DIR=""
 
 pass() { echo "OK  $*"; }
@@ -47,7 +51,7 @@ fail() { echo "FAIL $*"; failed=1; }
 warn() { echo "!!  $*"; warned=1; }
 
 cleanup() {
-  if [[ -n "$COOKIE_JAR" && -f "$COOKIE_JAR" ]]; then
+  if [[ "$COOKIE_JAR_PERSISTENT" -eq 0 && -n "$COOKIE_JAR" && -f "$COOKIE_JAR" ]]; then
     rm -f "$COOKIE_JAR"
   fi
   if [[ -n "$BODY_DIR" && -d "$BODY_DIR" ]]; then
@@ -185,14 +189,14 @@ login() {
   local login_body="${BODY_DIR}/login.json"
   local payload
   if [[ -n "$TOTP" ]]; then
-    payload=$(printf '{"email":"%s","password":"%s","totpCode":"%s"}' \
+    payload=$(printf '{"email":"%s","password":"%s","totpCode":"%s","rememberDevice":true}' \
       "$EMAIL" "$PASSWORD" "$TOTP")
   else
     payload=$(printf '{"email":"%s","password":"%s"}' "$EMAIL" "$PASSWORD")
   fi
 
   local code
-  code=$(curl -sk -o "$login_body" -w "%{http_code}" -c "$COOKIE_JAR" \
+  code=$(curl -sk -o "$login_body" -w "%{http_code}" -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
     -X POST \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
@@ -202,8 +206,17 @@ login() {
   local body
   body=$(cat "$login_body" 2>/dev/null || true)
 
-  if echo "$body" | grep -qi '"requires2fa":true\|"requires2FA":true'; then
-    fail "Login exige 2FA — defina ALLEONE_SMOKE_TOTP com o código atual do autenticador."
+  if echo "$body" | grep -qi '"requires2fa":true\|"requires2FA":true\|"message":"2FA_REQUIRED"'; then
+    fail "Login exige 2FA — exporte ALLEONE_SMOKE_TOTP com código NOVO do autenticador (válido ~30s)."
+    echo "    Dica: export ALLEONE_SMOKE_COOKIE_JAR=\"\$HOME/.alleone-smoke-cookies\" para não repetir 2FA."
+    return 1
+  fi
+
+  if echo "$body" | grep -qi 'Código 2FA inválido\|2FA inválido'; then
+    fail "POST /auth/login — código 2FA inválido ou expirado."
+    echo "    Gere um código NOVO no autenticador e rode:"
+    echo "      export ALLEONE_SMOKE_TOTP='\$(código atual)'"
+    echo "      bash deploy/scripts/smoke-portal-authenticated.sh"
     return 1
   fi
 
@@ -219,7 +232,11 @@ login() {
     return 1
   fi
 
-  pass "POST /auth/login — sessão criada ($code)"
+  if [[ -n "$TOTP" ]] && grep -q 'alleone_totp_trust' "$COOKIE_JAR" 2>/dev/null; then
+    pass "POST /auth/login — sessão criada ($code); dispositivo confiável salvo no cookie jar"
+  else
+    pass "POST /auth/login — sessão criada ($code)"
+  fi
 }
 
 pick_ticket_number() {
@@ -413,11 +430,23 @@ main() {
     exit 2
   fi
 
-  COOKIE_JAR=$(mktemp)
+  COOKIE_JAR_PERSISTENT=0
+  if [[ -n "$SMOKE_COOKIE_JAR" ]]; then
+    COOKIE_JAR="$SMOKE_COOKIE_JAR"
+    COOKIE_JAR_PERSISTENT=1
+    mkdir -p "$(dirname "$COOKIE_JAR")" 2>/dev/null || true
+    touch "$COOKIE_JAR"
+    chmod 600 "$COOKIE_JAR" 2>/dev/null || true
+  else
+    COOKIE_JAR=$(mktemp)
+  fi
   BODY_DIR=$(mktemp -d)
 
   echo "==> Smoke autenticado: $PORTAL_BASE (API_PREFIX=$API_PREFIX)"
   echo "    usuário: $EMAIL"
+  if [[ "$COOKIE_JAR_PERSISTENT" -eq 1 ]]; then
+    echo "    cookie jar: $COOKIE_JAR (persistente)"
+  fi
   echo ""
 
   api_request GET "/health" 200 "GET /health"
