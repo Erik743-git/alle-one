@@ -116,6 +116,7 @@ if [[ -n "${ALLEONE_SMOKE_EMAIL:-}" && -n "${ALLEONE_SMOKE_PASSWORD:-}" ]]; then
     ALLEONE_SMOKE_EMAIL="$ALLEONE_SMOKE_EMAIL" \
     ALLEONE_SMOKE_PASSWORD="$ALLEONE_SMOKE_PASSWORD" \
     ALLEONE_SMOKE_TOTP="${ALLEONE_SMOKE_TOTP:-}" \
+    ALLEONE_SMOKE_COOKIE_JAR="${ALLEONE_SMOKE_COOKIE_JAR:-$HOME/.alleone-smoke-cookies}" \
     SMOKE_TICKETS_WRITE="${SMOKE_TICKETS_WRITE:-0}" \
     bash "$ROOT/deploy/scripts/smoke-portal-authenticated.sh" || {
       echo "AVISO: smoke-portal-authenticated falhou — revise credenciais/2FA"
