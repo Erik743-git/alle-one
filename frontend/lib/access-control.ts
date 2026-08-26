@@ -200,6 +200,18 @@ export function canChangeTicketStage() {
   return canCreateTicketAppointment();
 }
 
+/** Autor, admin ou gestor (TICKETS canEdit). */
+export function canManageTicketAppointment(
+  createdByUserId: string | null | undefined,
+  canManageFromApi?: boolean,
+) {
+  if (canManageFromApi != null) return canManageFromApi;
+  if (isAdmin()) return true;
+  if (hasPermission("TICKETS", "canEdit")) return true;
+  const user = getStoredUser();
+  return Boolean(createdByUserId && user?.id === createdByUserId);
+}
+
 export function canCreateTicketsAndAppointments() {
   return canCreateTicket();
 }

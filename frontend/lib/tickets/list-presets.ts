@@ -49,6 +49,7 @@ export type TicketListFilterField =
   | "clientExternalId"
   | "responsibleExternalId"
   | "deskName"
+  | "requestorName"
   | "from"
   | "to"
   | "unassigned";
@@ -66,6 +67,7 @@ export const TICKET_LIST_FILTER_FIELD_LABELS: Record<
   clientExternalId: "Cliente",
   responsibleExternalId: "Responsável",
   deskName: "Catálogo",
+  requestorName: "Solicitante",
   from: "Criado a partir de",
   to: "Criado até",
   unassigned: "Sem responsável",
@@ -116,6 +118,7 @@ export type TicketListPageState = {
   clientExternalId: string;
   stageName: string;
   deskName: string;
+  requestorName: string;
   ticketNumber: string;
   externalGmudRef: string;
   groupBy: TicketListGroupBy;
@@ -163,6 +166,9 @@ export function buildPresetConfigFromPageState(
   if (state.deskName) {
     rules.push({ field: "deskName", value: state.deskName });
   }
+  if (state.requestorName.trim()) {
+    rules.push({ field: "requestorName", value: state.requestorName.trim() });
+  }
   if (state.from) {
     rules.push({ field: "from", value: state.from });
   }
@@ -193,6 +199,7 @@ export function applyPresetConfigToPageState(
     clientExternalId: "",
     stageName: "",
     deskName: "",
+    requestorName: "",
     ticketNumber: "",
     externalGmudRef: "",
     groupBy: config.groupBy ?? "none",
@@ -235,6 +242,9 @@ export function applyPresetConfigToPageState(
         break;
       case "deskName":
         next.deskName = rule.value;
+        break;
+      case "requestorName":
+        next.requestorName = rule.value;
         break;
       case "from":
         next.from = rule.value;
@@ -290,6 +300,9 @@ export function presetConfigToQueryParams(
       }
       case "deskName":
         params.deskName = rule.value;
+        break;
+      case "requestorName":
+        params.requestorName = rule.value;
         break;
       case "from":
         params.from = rule.value;

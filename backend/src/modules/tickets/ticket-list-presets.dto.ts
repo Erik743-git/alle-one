@@ -55,6 +55,7 @@ export const TICKET_LIST_FILTER_FIELDS = [
   'clientExternalId',
   'responsibleExternalId',
   'deskName',
+  'requestorName',
   'from',
   'to',
   'unassigned',

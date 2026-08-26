@@ -236,6 +236,13 @@ export class UpdateTicketDto {
   @IsArray()
   @IsString({ each: true })
   removeAttachmentFileIds?: string[];
+
+  /** Classificação do catálogo (portal). */
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(100)
+  classificationId?: string | null;
 }
 
 export class AcknowledgeAppointmentWarningDto {

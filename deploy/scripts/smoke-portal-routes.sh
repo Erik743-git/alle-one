@@ -119,6 +119,38 @@ fi
 
 check_status "GET /login (Next)" "${PORTAL_BASE}/login" "200"
 
+check_status "GET /projetos (Next UI)" "${PORTAL_BASE}/projetos" "200"
+
+check_status "GET /dashboard (Next UI)" "${PORTAL_BASE}/dashboard" "200"
+
+check_status "GET /tickets (Next UI)" "${PORTAL_BASE}/tickets" "200"
+
+# UUID fictício: não deve devolver JSON da API Nest (404 Cannot GET /api/projetos/...)
+check_not_projetos_api_json() {
+  local label="$1"
+  local url="$2"
+  local body_file
+  body_file=$(mktemp)
+  local code
+  code=$(curl -sk -o "$body_file" -w "%{http_code}" "$url" || echo "000")
+  local body
+  body=$(cat "$body_file")
+  rm -f "$body_file"
+  if echo "$body" | grep -qi '"statusCode":404' && echo "$body" | grep -qi 'Cannot GET /api/projetos'; then
+    fail "$label — caiu na API Nest em vez da UI Next ($url)"
+    return
+  fi
+  if [[ "$code" == "200" ]] || [[ "$code" == "307" ]] || [[ "$code" == "308" ]]; then
+    pass "$label — UI Next ($code)"
+  else
+    warn "$label — HTTP $code (pode exigir login; não é JSON de API projetos)"
+  fi
+}
+
+check_not_projetos_api_json \
+  "GET /projetos/:uuid (não deve ser API JSON)" \
+  "${PORTAL_BASE}/projetos/00000000-0000-4000-8000-000000000001"
+
 check_status "GET /tickets/1/edit (Next UI)" "${PORTAL_BASE}/tickets/1/edit" "200"
 
 echo ""

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { FileText, Loader2, Pencil, UserRound } from "lucide-react";
+import { FileText, Loader2, Pencil, Tags, UserRound } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -12,6 +12,7 @@ import {
   AppointmentDescriptionComposer,
   type AppointmentBlockComposerHandle,
 } from "@/components/tickets/appointment-description-composer";
+import { ClassificationCascadeFields } from "@/components/tickets/classification-cascade-fields";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ import {
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   ticketsService,
+  type TicketCreateCatalogs,
   type TicketDetailResponse,
   type TicketStagesResponse,
 } from "@/lib/services/tickets.service";
@@ -56,33 +58,52 @@ export default function EditTicketPage() {
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<TicketDetailResponse | null>(null);
   const [stages, setStages] = useState<TicketStagesResponse | null>(null);
+  const [catalogs, setCatalogs] = useState<TicketCreateCatalogs | null>(null);
   const [title, setTitle] = useState("");
   const [stageId, setStageId] = useState("");
   const [responsibleId, setResponsibleId] = useState("");
+  const [classificationId, setClassificationId] = useState<string | null>(null);
   const [responsibles, setResponsibles] = useState<
     Array<{ externalId: number; name: string; email: string | null }>
   >([]);
   const descriptionComposerRef = useRef<AppointmentBlockComposerHandle>(null);
   const [composerKey, setComposerKey] = useState(0);
 
+  const hasPortalClassification =
+    (catalogs?.classification?.tree?.length ?? 0) > 0;
+
+  const classificationLevelLabels = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const item of catalogs?.classification?.levelLabels ?? []) {
+      map[item.level] = item.label;
+    }
+    return map;
+  }, [catalogs?.classification?.levelLabels]);
+
   const load = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
     setLoading(true);
     try {
-      const [ticketDetail, stagesRes, catalogs] = await Promise.all([
-        ticketsService.detail(ticketNumber),
+      const ticketDetail = await ticketsService.detail(ticketNumber);
+      const deskId = ticketDetail.ticket.deskExternalId ?? undefined;
+      const [stagesRes, deskCatalogs, filterCatalogs] = await Promise.all([
         ticketsService.listStages(ticketNumber).catch(() => null),
+        deskId
+          ? ticketsService.createCatalogs({ deskId }).catch(() => null)
+          : Promise.resolve(null),
         ticketsService.catalogs().catch(() => null),
       ]);
       setDetail(ticketDetail);
       setStages(stagesRes);
+      setCatalogs(deskCatalogs);
       setTitle(ticketDetail.ticket.title ?? "");
+      setClassificationId(ticketDetail.classificationId ?? null);
       setStageId(
         stagesRes?.currentStageId != null
           ? String(stagesRes.currentStageId)
           : "",
       );
-      const list = catalogs?.responsibles ?? [];
+      const list = filterCatalogs?.responsibles ?? [];
       setResponsibles(list);
       const matched = list.find(
         (r) =>
@@ -139,6 +160,10 @@ export default function EditTicketPage() {
       notifyError("Informe a descrição do ticket (texto e/ou imagens).");
       return;
     }
+    if (hasPortalClassification && !classificationId) {
+      notifyError("Selecione a classificação do catálogo.");
+      return;
+    }
 
     const selectedStage = (stages?.stages ?? []).find(
       (s) => String(s.id) === stageId,
@@ -155,19 +180,19 @@ export default function EditTicketPage() {
           title: title.trim(),
           description,
           stageName: selectedStage?.name,
+          classificationId: hasPortalClassification ? classificationId : undefined,
           removeAttachmentFileIds: content.removeAttachmentFileIds,
-          // Se um responsável foi selecionado, atualiza; se foi removido (campo vazio), envia null
           ...(responsibleId !== "" && selectedResponsible
             ? {
                 responsibleId: selectedResponsible.externalId,
                 responsibleName: selectedResponsible.name,
               }
             : responsibleId === ""
-            ? {
-                responsibleId: null,
-                responsibleName: null,
-              }
-            : {}),
+              ? {
+                  responsibleId: null,
+                  responsibleName: null,
+                }
+              : {}),
         },
         files,
       );
@@ -205,7 +230,7 @@ export default function EditTicketPage() {
               }
               description={
                 canEdit
-                  ? "Atualize título, descrição (com imagens), estágio e responsável."
+                  ? "Atualize título, descrição (com imagens), classificação, estágio e responsável."
                   : TICKETS_CREATE_ADMIN_ONLY_MESSAGE
               }
             />
@@ -256,6 +281,28 @@ export default function EditTicketPage() {
                   </CardContent>
                 </Card>
 
+                {hasPortalClassification ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Tags className="size-4 text-primary" />
+                        Classificação
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ClassificationCascadeFields
+                        serviceDeskId={catalogs?.portalServiceDesk?.id ?? null}
+                        tree={catalogs?.classification?.tree ?? null}
+                        value={classificationId}
+                        onChange={setClassificationId}
+                        disabled={loading || saving || closed}
+                        required
+                        levelLabels={classificationLevelLabels}
+                      />
+                    </CardContent>
+                  </Card>
+                ) : null}
+
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -276,6 +323,10 @@ export default function EditTicketPage() {
                         placeholder="Selecione o estágio"
                         preserveOrder
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Estágios como Plantão podem ser cadastrados em Admin →
+                        Ticket.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs font-semibold text-muted-foreground">
@@ -290,23 +341,21 @@ export default function EditTicketPage() {
                         emptyLabel="Sem responsável"
                         preserveOrder
                       />
-                      {responsibleId && (
+                      {responsibleId ? (
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           className="mt-2"
                           disabled={saving || closed}
-                          onClick={() => {
-                            setResponsibleId("");
-                          }}
+                          onClick={() => setResponsibleId("")}
                         >
                           Remover responsável
                         </Button>
-                      )}
-                      {!responsibleId && (
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Se remover o responsável, o ticket será convertido em pré-ticket e todas as informações serão preservadas.
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Se remover o responsável, o ticket será convertido em
+                          pré-ticket e todas as informações serão preservadas.
                         </p>
                       )}
                     </div>

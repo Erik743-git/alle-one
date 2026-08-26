@@ -631,6 +631,31 @@ export class TicketsCatalogsService {
         externalId: Number(c.client_external_id),
         name: c.client_name,
       })),
+      requestors: isClientPortalRole(actor.role)
+        ? []
+        : (
+            await this.prisma.portalTicket.findMany({
+              where: {
+                ...(clientFilter != null
+                  ? { clientExternalId: clientFilter }
+                  : {}),
+                OR: [
+                  { requestorName: { not: null } },
+                  { requestorEmail: { not: null } },
+                ],
+              },
+              select: { requestorName: true, requestorEmail: true },
+              take: 3000,
+            })
+          )
+            .map(
+              (row) =>
+                row.requestorName?.trim() || row.requestorEmail?.trim() || '',
+            )
+            .filter((name): name is string => Boolean(name))
+            .filter((name, index, arr) => arr.indexOf(name) === index)
+            .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+            .map((name) => ({ name })),
       responsibles: isClientPortalRole(actor.role)
         ? []
         : responsibles.map((r) => ({
@@ -658,6 +683,8 @@ export class TicketsCatalogsService {
           clientExternalId: true,
           clientName: true,
           deskName: true,
+          requestorName: true,
+          requestorEmail: true,
         },
         take: 2000,
       }),
@@ -693,11 +720,22 @@ export class TicketsCatalogsService {
       });
     }
 
+    const requestors = [
+      ...new Set(
+        tickets
+          .map((t) => t.requestorName?.trim() || t.requestorEmail?.trim() || '')
+          .filter(Boolean),
+      ),
+    ]
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .map((name) => ({ name }));
+
     return {
       stages,
       clients: [...clientMap.entries()]
         .map(([externalId, name]) => ({ externalId, name }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+      requestors,
       responsibles: isClientPortalRole(actor.role)
         ? []
         : [...responsibleMap.values()].sort((a, b) =>

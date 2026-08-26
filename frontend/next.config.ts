@@ -92,6 +92,33 @@ const nextConfig: NextConfig = {
       },
     ];
 
+    const projetosApiRewrites = [
+      {
+        source: "/projetos/companies/:path*",
+        destination: `${apiRewriteBase}/projetos/companies/:path*`,
+      },
+      {
+        source: "/projetos/projects/:path*",
+        destination: `${apiRewriteBase}/projetos/projects/:path*`,
+      },
+      {
+        source: "/projetos/activities/:path*",
+        destination: `${apiRewriteBase}/projetos/activities/:path*`,
+      },
+      {
+        source: "/projetos/appointments/:path*",
+        destination: `${apiRewriteBase}/projetos/appointments/:path*`,
+      },
+      {
+        source: "/projetos/users/:path*",
+        destination: `${apiRewriteBase}/projetos/users/:path*`,
+      },
+      {
+        source: "/projetos/import-template",
+        destination: `${apiRewriteBase}/projetos/import-template`,
+      },
+    ];
+
     const apiPrefixes = [
       "admin",
       "users",
@@ -103,7 +130,6 @@ const nextConfig: NextConfig = {
       "zabbix",
       "tiflux",
       "rendimento",
-      "projetos",
       "inventario",
       "dashboard",
       "console",
@@ -131,6 +157,7 @@ const nextConfig: NextConfig = {
     ];
     return [
       ...ticketApiRewrites,
+      ...projetosApiRewrites,
       ...apiPrefixes.flatMap((prefix) => [
         {
           source: `/${prefix}/:path*`,

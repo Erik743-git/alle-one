@@ -346,6 +346,36 @@ export class TicketsController {
     return this.ticketsQueryService.getTicketHistory(actor, ticketNumber);
   }
 
+  @Post(':ticketNumber/watchers')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  addWatcher(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Body() body: { email: string },
+  ) {
+    return this.ticketsService.addTicketWatcher(
+      actor,
+      ticketNumber,
+      body.email ?? '',
+    );
+  }
+
+  @Delete(':ticketNumber/watchers/:email')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  removeWatcher(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
+    @Param('email') email: string,
+  ) {
+    return this.ticketsService.removeTicketWatcher(
+      actor,
+      ticketNumber,
+      decodeURIComponent(email),
+    );
+  }
+
   @Get(':ticketNumber')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')

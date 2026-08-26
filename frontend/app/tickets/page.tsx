@@ -184,6 +184,7 @@ export default function TicketsPage() {
   const [clientExternalId, setClientExternalId] = useState("");
   const [stageName, setStageName] = useState("");
   const [deskName, setDeskName] = useState("");
+  const [requestorName, setRequestorName] = useState("");
   const [ticketNumber, setTicketNumber] = useState("");
   const [externalGmudRef, setExternalGmudRef] = useState("");
 
@@ -198,6 +199,7 @@ export default function TicketsPage() {
       clientExternalId: clientExternalId ? Number(clientExternalId) : undefined,
       stageName: stageName || undefined,
       deskName: deskName || undefined,
+      requestorName: requestorName.trim() || undefined,
       from: from || undefined,
       to: to || undefined,
       ticketNumber:
@@ -214,6 +216,7 @@ export default function TicketsPage() {
     clientExternalId,
     stageName,
     deskName,
+    requestorName,
     from,
     to,
     ticketNumber,
@@ -271,6 +274,7 @@ export default function TicketsPage() {
       clientExternalId,
       stageName,
       deskName,
+      requestorName,
       ticketNumber,
       externalGmudRef,
       groupBy,
@@ -289,6 +293,7 @@ export default function TicketsPage() {
       clientExternalId,
       stageName,
       deskName,
+      requestorName,
       ticketNumber,
       externalGmudRef,
       groupBy,
@@ -299,7 +304,31 @@ export default function TicketsPage() {
     ],
   );
 
+  function clearListFilters() {
+    setIncludeAllResponsibles(isClientGestor());
+    setIncludeDone(false);
+    setSearch("");
+    setFrom("");
+    setTo("");
+    setResponsibleExternalId("");
+    setClientExternalId("");
+    setStageName("");
+    setDeskName("");
+    setRequestorName("");
+    setTicketNumber("");
+    setExternalGmudRef("");
+    setGroupBy("none");
+    setColumnFilters(emptyColumnFilters());
+    setSortKey(null);
+    setSortDir(null);
+    setActivePresetId(null);
+  }
+
   function applyPreset(preset: TicketListPreset) {
+    if (activePresetId === preset.id) {
+      clearListFilters();
+      return;
+    }
     const partial = applyPresetConfigToPageState(preset.config);
     if (partial.includeAllResponsibles !== undefined) {
       setIncludeAllResponsibles(partial.includeAllResponsibles);
@@ -316,6 +345,7 @@ export default function TicketsPage() {
     }
     if (partial.stageName !== undefined) setStageName(partial.stageName);
     if (partial.deskName !== undefined) setDeskName(partial.deskName);
+    if (partial.requestorName !== undefined) setRequestorName(partial.requestorName);
     if (partial.ticketNumber !== undefined) setTicketNumber(partial.ticketNumber);
     if (partial.externalGmudRef !== undefined) {
       setExternalGmudRef(partial.externalGmudRef);

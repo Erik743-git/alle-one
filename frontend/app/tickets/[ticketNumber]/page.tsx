@@ -11,11 +11,15 @@ import {
   History,
   Link2,
   Loader2,
+  MessageSquare,
   MoreVertical,
   Pencil,
   Paperclip,
+  Plus,
   Ticket,
   Trash2,
+  User2,
+  X,
 } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
@@ -33,6 +37,10 @@ import { AppointmentDescriptionView } from "@/components/tickets/appointment-des
 import { AppointmentDescriptionCell } from "@/components/tickets/appointment-description-cell";
 import { TicketAppointmentWarningsDialog } from "@/components/tickets/ticket-appointment-warnings-dialog";
 import { TicketAppointmentModal } from "@/components/tickets/ticket-appointment-modal";
+import {
+  TicketFollowersDialog,
+  type TicketFollowerPerson,
+} from "@/components/tickets/ticket-followers-dialog";
 import { TicketAppointmentNotStartedDialog } from "@/components/tickets/ticket-appointment-not-started-dialog";
 import { TicketHistoryPanel } from "@/components/tickets/ticket-history-panel";
 import { PortalAppointmentTifluxWarningDialog } from "@/components/tickets/portal-appointment-tiflux-warning-dialog";
@@ -48,6 +56,7 @@ import {
   canChangeTicketStage,
   canCreateTicket,
   canCreateTicketAppointment,
+  canManageTicketAppointment,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
 } from "@/lib/access-control";
 import {
@@ -65,7 +74,7 @@ import {
   findExecutionStageOption,
 } from "@/lib/tickets/appointment-stage-guard";
 import { useAuth } from "@/lib/use-auth";
-import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
+import { PORTAL_STAGE, canAddAppointmentToTicket } from "@/lib/portal-ticket-stages";
 import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
 import { formatBrPhone, isValidBrPhone } from "@/lib/ticket-form";
 import {
@@ -187,6 +196,7 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<TicketDetailResponse | null>(null);
   const [appointmentOpen, setAppointmentOpen] = useState(false);
+  const [communicationOpen, setCommunicationOpen] = useState(false);
   const [editingAppointment, setEditingAppointment] =
     useState<PortalAppointmentEditContext | null>(null);
   const [tifluxWarningOpen, setTifluxWarningOpen] = useState(false);
@@ -229,7 +239,12 @@ export default function TicketDetailPage() {
   const [loadingClients, setLoadingClients] = useState(false);
   const [filterCatalogs, setFilterCatalogs] =
     useState<TicketFilterCatalogs | null>(null);
+  const [deskResponsibles, setDeskResponsibles] = useState<
+    ReturnType<typeof mapFilterResponsibles>
+  >([]);
   const [warningsDialogOpen, setWarningsDialogOpen] = useState(false);
+  const [followersOpen, setFollowersOpen] = useState(false);
+  const [followers, setFollowers] = useState<TicketFollowerPerson[]>([]);
 
   const checkPendingWarnings = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
@@ -249,6 +264,9 @@ export default function TicketDetailPage() {
       if (!silent) setLoading(true);
       const res = await ticketsService.detail(ticketNumber);
       setData(res);
+      setFollowers(
+        (res.watchers ?? []).map((watcher) => ({ email: watcher.email })),
+      );
       setHistoryRefreshToken((value) => value + 1);
     } catch (err) {
       notifyError(
@@ -310,11 +328,70 @@ export default function TicketDetailPage() {
   }, []);
 
   useEffect(() => {
+    const deskId = data?.ticket?.deskExternalId;
+    const responsibleId = data?.ticket?.responsibleExternalId;
+    const responsibleName = data?.ticket?.responsibleName;
+    if (!canChangeTicketStage() || deskId == null) {
+      setDeskResponsibles(
+        mapFilterResponsibles(filterCatalogs?.responsibles ?? []),
+      );
+      return;
+    }
+    let cancelled = false;
+    void ticketsService
+      .createCatalogs({ deskId })
+      .then((catalogs) => {
+        if (cancelled) return;
+        const options = mapFilterResponsibles(
+          (catalogs.responsibles ?? []).map((row) => ({
+            externalId: row.id,
+            name: row.name,
+            email: row.email,
+          })),
+        );
+        if (
+          responsibleId != null &&
+          responsibleName &&
+          !options.some((row) => row.id === responsibleId)
+        ) {
+          options.unshift({
+            id: responsibleId,
+            name: responsibleName,
+            email: null,
+          });
+        }
+        setDeskResponsibles(options);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDeskResponsibles(
+            mapFilterResponsibles(filterCatalogs?.responsibles ?? []),
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    data?.ticket?.deskExternalId,
+    data?.ticket?.responsibleExternalId,
+    data?.ticket?.responsibleName,
+    filterCatalogs?.responsibles,
+  ]);
+
+  useEffect(() => {
     setExternalGmudRefInput(data?.externalGmudRef ?? "");
   }, [data?.externalGmudRef]);
 
   const ticket = data?.ticket;
   const externalGmudRef = data?.externalGmudRef;
+  const canAddAppointment =
+    Boolean(ticket) &&
+    canCreateTicketAppointment() &&
+    canAddAppointmentToTicket({
+      isClosed: ticket!.isClosed,
+      stageName: ticket!.stageName,
+    });
   const stageOptions = (stagesData?.stages ?? [])
     .filter(
       (stage) =>
@@ -561,6 +638,34 @@ export default function TicketDetailPage() {
     }
   }
 
+  async function addFollower(person: TicketFollowerPerson) {
+    try {
+      await ticketsService.addWatcher(ticketNumber, person.email);
+      setFollowers((prev) => {
+        if (prev.some((item) => item.email === person.email)) return prev;
+        return [...prev, person];
+      });
+      notifySuccess("Seguidor adicionado.");
+      setFollowersOpen(false);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível adicionar seguidor.",
+      );
+    }
+  }
+
+  async function removeFollower(email: string) {
+    try {
+      await ticketsService.removeWatcher(ticketNumber, email);
+      setFollowers((prev) => prev.filter((item) => item.email !== email));
+      notifySuccess("Seguidor removido.");
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível remover seguidor.",
+      );
+    }
+  }
+
   async function resumePausedSync(portalAppointmentId: string | null) {
     if (!portalAppointmentId || !Number.isFinite(ticketNumber)) return;
     try {
@@ -574,6 +679,17 @@ export default function TicketDetailPage() {
   function requestNewAppointment() {
     if (!ticket) return;
     if (
+      !canAddAppointmentToTicket({
+        isClosed: ticket.isClosed,
+        stageName: ticket.stageName,
+      })
+    ) {
+      notifyError(
+        "Não é possível apontar em ticket resolvido, encerrado ou cancelado.",
+      );
+      return;
+    }
+    if (
       !canAppointmentOnTicketStage({
         stageName: ticket.stageName,
         user,
@@ -584,7 +700,36 @@ export default function TicketDetailPage() {
     }
     setEditingAppointment(null);
     setPendingResumeId(null);
+    setCommunicationOpen(false);
     setAppointmentOpen(true);
+  }
+
+  function requestCommunication() {
+    if (!ticket) return;
+    if (
+      !canAddAppointmentToTicket({
+        isClosed: ticket.isClosed,
+        stageName: ticket.stageName,
+      })
+    ) {
+      notifyError(
+        "Não é possível enviar comunicação em ticket resolvido, encerrado ou cancelado.",
+      );
+      return;
+    }
+    if (
+      !canAppointmentOnTicketStage({
+        stageName: ticket.stageName,
+        user,
+      })
+    ) {
+      setNotStartedDialogOpen(true);
+      return;
+    }
+    setEditingAppointment(null);
+    setPendingResumeId(null);
+    setAppointmentOpen(false);
+    setCommunicationOpen(true);
   }
 
   async function handleMoveToExecutionAndAppointment() {
@@ -750,40 +895,70 @@ export default function TicketDetailPage() {
       <PermissionGate module="TICKETS">
         <AppShell>
           <div className="font-sans w-full space-y-6">
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="sm" className="w-fit">
-                <Link href="/tickets">
-                  <ArrowLeft className="mr-2 size-4" />
-                  Voltar à lista
-                </Link>
-              </Button>
-              {ticket && canCreateTicketAppointment() ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={requestNewAppointment}
-                >
-                  <Clock className="mr-2 size-4" />
-                  Apontar
-                </Button>
-              ) : null}
-              {ticket && canChangeTicketStage() ? (
-                <Button type="button" variant="outline" size="sm" asChild>
-                  <Link href={`/tickets/${ticket.ticketNumber}/edit`}>
-                    <Pencil className="mr-2 size-4" />
-                    Editar
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {user && canCreateTicketAppointment() ? (
+                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2.5">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <User2 className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                      {user.companyName ?? "—"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Você está apontando como</p>
+                    <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1" />
+              )}
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <Button asChild variant="outline" size="sm" className="w-fit">
+                  <Link href="/tickets">
+                    <ArrowLeft className="mr-2 size-4" />
+                    Voltar à lista
                   </Link>
                 </Button>
-              ) : null}
-              {ticket && canChangeTicketStage() ? (
-                <TicketOptionsMenu
-                  ticketNumber={ticket.ticketNumber}
-                  isClosed={ticket.isClosed}
-                  currentDeskId={ticket.deskExternalId}
-                  disabled={lifecycleBusy}
-                  onChanged={applyOptionsChange}
-                />
-              ) : null}
+                {ticket && canAddAppointment ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={requestNewAppointment}
+                    >
+                      <Clock className="mr-2 size-4" />
+                      Apontar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="bg-[#0e9cb8] text-white shadow-sm shadow-[#12b5d9]/20 hover:bg-[#14c4eb]"
+                      onClick={requestCommunication}
+                    >
+                      <MessageSquare className="mr-2 size-4" />
+                      Comunicação
+                    </Button>
+                  </>
+                ) : null}
+                {ticket && canChangeTicketStage() ? (
+                  <Button type="button" variant="outline" size="sm" asChild>
+                    <Link href={`/tickets/${ticket.ticketNumber}/edit`}>
+                      <Pencil className="mr-2 size-4" />
+                      Editar
+                    </Link>
+                  </Button>
+                ) : null}
+                {ticket && canChangeTicketStage() ? (
+                  <TicketOptionsMenu
+                    ticketNumber={ticket.ticketNumber}
+                    isClosed={ticket.isClosed}
+                    currentDeskId={ticket.deskExternalId}
+                    disabled={lifecycleBusy}
+                    onChanged={applyOptionsChange}
+                  />
+                ) : null}
+              </div>
             </div>
 
             {loading ? (
@@ -852,37 +1027,6 @@ export default function TicketDetailPage() {
                     .
                   </p>
                 ) : null}
-
-                <div className="grid gap-4 md:grid-cols-4">
-                  <Card>
-                    <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">Atendentes</p>
-                      <p className="text-2xl font-bold">{data?.summary.attendantsCount ?? 0}</p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">Horas</p>
-                      <p className="text-2xl font-bold">
-                        {data?.summary.totalHoursFormatted ?? "00:00"}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">Apontamentos</p>
-                      <p className="text-2xl font-bold">
-                        {data?.summary.appointmentsCount ?? 0}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">Catálogo</p>
-                      <p className="text-lg font-semibold">{ticket.deskName ?? "—"}</p>
-                    </CardContent>
-                  </Card>
-                </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   {data?.portalDescription ? (
@@ -1002,6 +1146,54 @@ export default function TicketDetailPage() {
                           </Button>
                         ) : null}
                       </div>
+                      <div className="space-y-2 border-t border-border pt-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            Seguidores
+                          </p>
+                          {canChangeTicketStage() && !ticket.isClosed ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8"
+                              onClick={() => setFollowersOpen(true)}
+                            >
+                              <Plus className="mr-1 size-3.5" />
+                              Novo seguidor
+                            </Button>
+                          ) : null}
+                        </div>
+                        {followers.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {followers.map((person) => (
+                              <span
+                                key={person.email}
+                                className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
+                              >
+                                {person.name
+                                  ? `${person.name} (${person.email})`
+                                  : person.email}
+                                {canChangeTicketStage() && !ticket.isClosed ? (
+                                  <button
+                                    type="button"
+                                    className="text-muted-foreground hover:text-foreground"
+                                    onClick={() => void removeFollower(person.email)}
+                                    aria-label={`Remover seguidor ${person.email}`}
+                                  >
+                                    <X className="size-3.5" />
+                                  </button>
+                                ) : null}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Nenhum seguidor. Use &quot;Novo seguidor&quot; para
+                            avisar outras pessoas por e-mail.
+                          </p>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
 
@@ -1028,9 +1220,7 @@ export default function TicketDetailPage() {
                             responsibleId={ticket.responsibleExternalId}
                             responsibleName={ticket.responsibleName}
                             hasAppointments={(data?.appointments?.length ?? 0) > 0}
-                            options={mapFilterResponsibles(
-                              filterCatalogs?.responsibles ?? [],
-                            )}
+                            options={deskResponsibles}
                             disabled={ticket.isClosed}
                             onUpdated={(next) => {
                               setData((prev) =>
@@ -1093,56 +1283,6 @@ export default function TicketDetailPage() {
                   </Card>
                 </div>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <Link2 className="size-4 text-primary" />
-                      GMUD do cliente
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {canCreateTicket() ? (
-                      <div className="space-y-2">
-                        <Label className="text-xs font-semibold text-muted-foreground">
-                          Referência GMUD do cliente
-                        </Label>
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <Input
-                            value={externalGmudRefInput}
-                            onChange={(e) => setExternalGmudRefInput(e.target.value)}
-                            placeholder="Ex.: GMUD-2024-001 (vazio remove)"
-                            className="h-11 flex-1"
-                            disabled={gmudLinking}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-11 shrink-0 sm:min-w-[7rem]"
-                            disabled={gmudLinking}
-                            onClick={() => void handleSaveGmudLink()}
-                          >
-                            {gmudLinking ? (
-                              <Loader2 className="mr-2 size-4 animate-spin" />
-                            ) : null}
-                            Salvar
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
-                        </p>
-                      </div>
-                    ) : externalGmudRef ? (
-                      <p className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm font-medium text-foreground">
-                        {externalGmudRef}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma referência GMUD informada para este ticket.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
@@ -1184,7 +1324,7 @@ export default function TicketDetailPage() {
                         </p>
                       ) : null}
                     </div>
-                    {ticket && canCreateTicketAppointment() ? (
+                    {ticket && canAddAppointment ? (
                       <Button
                         type="button"
                         size="sm"
@@ -1196,6 +1336,7 @@ export default function TicketDetailPage() {
                     ) : null}
                   </CardHeader>
                   <CardContent className="overflow-x-auto p-0">
+                    <div className="max-h-[22rem] overflow-y-auto">
                     <table className="w-full min-w-[860px] text-left text-sm">
                       <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
                         <tr>
@@ -1299,7 +1440,10 @@ export default function TicketDetailPage() {
                                   </ul>
                                 ) : null}
                               </td>
-                              {canCreateTicketAppointment() ? (
+                              {canManageTicketAppointment(
+                                row.createdByUserId,
+                                row.canManage,
+                              ) ? (
                                 <td className="px-4 py-2">
                                   {row.portalAppointmentId ? (
                                     <DropdownMenu modal={false}>
@@ -1363,9 +1507,91 @@ export default function TicketDetailPage() {
                         )}
                       </tbody>
                     </table>
+                    </div>
                   </CardContent>
                 </Card>
                 )}
+
+                <div className="grid gap-4 md:grid-cols-4">
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <p className="text-xs text-muted-foreground">Atendentes</p>
+                      <p className="text-2xl font-bold">{data?.summary.attendantsCount ?? 0}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <p className="text-xs text-muted-foreground">Horas</p>
+                      <p className="text-2xl font-bold">
+                        {data?.summary.totalHoursFormatted ?? "00:00"}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <p className="text-xs text-muted-foreground">Apontamentos</p>
+                      <p className="text-2xl font-bold">
+                        {data?.summary.appointmentsCount ?? 0}
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6 text-center">
+                      <p className="text-xs text-muted-foreground">Catálogo</p>
+                      <p className="text-lg font-semibold">{ticket.deskName ?? "—"}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Link2 className="size-4 text-primary" />
+                      GMUD do cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {canCreateTicket() ? (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
+                          Referência GMUD do cliente
+                        </Label>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <Input
+                            value={externalGmudRefInput}
+                            onChange={(e) => setExternalGmudRefInput(e.target.value)}
+                            placeholder="Ex.: GMUD-2024-001 (vazio remove)"
+                            className="h-11 flex-1"
+                            disabled={gmudLinking}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-11 shrink-0 sm:min-w-[7rem]"
+                            disabled={gmudLinking}
+                            onClick={() => void handleSaveGmudLink()}
+                          >
+                            {gmudLinking ? (
+                              <Loader2 className="mr-2 size-4 animate-spin" />
+                            ) : null}
+                            Salvar
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
+                        </p>
+                      </div>
+                    ) : externalGmudRef ? (
+                      <p className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm font-medium text-foreground">
+                        {externalGmudRef}
+                      </p>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma referência GMUD informada para este ticket.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
 
                 {canCreateTicketAppointment() ? (
                   <>
@@ -1377,6 +1603,17 @@ export default function TicketDetailPage() {
                       onCreated={() => {
                         setEditingAppointment(null);
                         setPendingResumeId(null);
+                        void load();
+                        void loadStages();
+                        void checkPendingWarnings();
+                      }}
+                    />
+                    <TicketAppointmentModal
+                      ticketNumber={ticket.ticketNumber}
+                      variant="communication"
+                      open={communicationOpen}
+                      onOpenChange={setCommunicationOpen}
+                      onCreated={() => {
                         void load();
                         void loadStages();
                         void checkPendingWarnings();
@@ -1505,6 +1742,19 @@ export default function TicketDetailPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <TicketFollowersDialog
+            open={followersOpen}
+            onOpenChange={setFollowersOpen}
+            selected={followers}
+            requestors={requestorCatalog}
+            responsibles={filterCatalogs?.responsibles ?? []}
+            excludeEmails={[
+              data?.ticket?.requestorEmail,
+              user?.email,
+            ]}
+            onAdd={(person) => void addFollower(person)}
+          />
 
           <Dialog open={changeClientOpen} onOpenChange={setChangeClientOpen}>
             <DialogContent className="sm:max-w-md" showCloseButton>

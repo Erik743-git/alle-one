@@ -58,6 +58,8 @@ export type TicketAppointment = {
   syncStatus: "SYNCED" | "PENDING_TIFLUX" | "PORTAL_ONLY";
   syncPaused?: boolean;
   isWarning?: boolean;
+  createdByUserId?: string | null;
+  canManage?: boolean;
   attachmentCount: number;
   attachments: Array<{
     id: string;
@@ -110,6 +112,8 @@ export type TicketDetailResponse = {
   syncPending?: boolean;
   /** ADMIN ou responsável do ticket. */
   canChangeClient?: boolean;
+  classificationId?: string | null;
+  watchers?: Array<{ email: string }>;
   grouping?: {
     parent: {
       ticketNumber: number;
@@ -128,6 +132,7 @@ export type TicketDetailResponse = {
 export type TicketFilterCatalogs = {
   stages: string[];
   clients: Array<{ externalId: number; name: string }>;
+  requestors?: Array<{ name: string }>;
   responsibles: Array<{ externalId: number; name: string; email: string | null }>;
   desks: string[];
   statuses: string[];
@@ -140,6 +145,7 @@ export type TicketsListParams = {
   stageName?: string;
   statusName?: string;
   deskName?: string;
+  requestorName?: string;
   from?: string;
   to?: string;
   ticketNumber?: number;
@@ -162,6 +168,7 @@ function toQuery(params: TicketsListParams): string {
   if (params.stageName?.trim()) q.set("stageName", params.stageName.trim());
   if (params.statusName?.trim()) q.set("statusName", params.statusName.trim());
   if (params.deskName?.trim()) q.set("deskName", params.deskName.trim());
+  if (params.requestorName?.trim()) q.set("requestorName", params.requestorName.trim());
   if (params.from?.trim()) q.set("from", params.from.trim());
   if (params.to?.trim()) q.set("to", params.to.trim());
   if (params.ticketNumber != null) q.set("ticketNumber", String(params.ticketNumber));
@@ -336,6 +343,7 @@ export type UpdateTicketPayload = {
   /** tiflux client id — só ADMIN */
   clientId?: number;
   deskId?: number;
+  classificationId?: string | null;
   requestorId?: number;
   requestorName?: string;
   requestorEmail?: string;
@@ -481,6 +489,20 @@ export const ticketsService = {
       method: "PATCH",
       body,
     });
+  },
+
+  addWatcher(ticketNumber: number, email: string) {
+    return apiRequest<{ ok: boolean; message: string }>(
+      `/tickets/${ticketNumber}/watchers`,
+      { method: "POST", body: { email } },
+    );
+  },
+
+  removeWatcher(ticketNumber: number, email: string) {
+    return apiRequest<{ ok: boolean; message: string }>(
+      `/tickets/${ticketNumber}/watchers/${encodeURIComponent(email)}`,
+      { method: "DELETE" },
+    );
   },
 
   linkGmud(ticketNumber: number, externalGmudRef: string | null) {

@@ -50,6 +50,19 @@ export function isTifluxInboundSyncEnabled(): boolean {
   return !isTifluxDisconnected();
 }
 
+/** Tipos de atendimento disponíveis no apontamento (parametrizável por env). */
+export function getTicketAppointmentServiceTypes(): string[] {
+  const raw = process.env.TICKET_APPOINTMENT_SERVICE_TYPES?.trim();
+  if (raw) {
+    const parsed = raw
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (parsed.length > 0) return parsed;
+  }
+  return ['HORA NORMAL', 'HORA EXTRA', 'PLANTÃO'];
+}
+
 /** Chamadas HTTP à API TiFlux em runtime (histórico live, charts, etc.). */
 export function isTifluxRuntimeApiEnabled(): boolean {
   if (isTifluxDisconnected()) return false;
