@@ -120,6 +120,35 @@ else:
 PY
 }
 
+# Primeira folha da árvore de classificação (subcategoria), se existir.
+pick_classification_leaf() {
+  local file="$1"
+  python3 - "$file" <<'PY' 2>/dev/null || true
+import json, sys
+path = sys.argv[1]
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(0)
+
+def leaves(nodes):
+    for node in nodes or []:
+        children = node.get("children") or []
+        if children:
+            yield from leaves(children)
+        else:
+            leaf_id = node.get("id")
+            if leaf_id:
+                yield str(leaf_id)
+
+tree = (data.get("classification") or {}).get("tree") or []
+for leaf in leaves(tree):
+    print(leaf)
+    break
+PY
+}
+
 api_request() {
   local method="$1"
   local path="$2"
@@ -330,29 +359,75 @@ smoke_tickets_write_full() {
   echo ""
   echo "==> Tickets (criação + PATCH — SMOKE_TICKETS_WRITE=1)"
 
-  local catalogs_file="${BODY_DIR}/catalogs-create.json"
-  curl -sk -b "$COOKIE_JAR" -o "$catalogs_file" \
+  local catalogs_base="${BODY_DIR}/catalogs-create.json"
+  curl -sk -b "$COOKIE_JAR" -o "$catalogs_base" \
     -H "Accept: application/json" \
     "${API_URL}/tickets/catalogs/create" || true
 
   local client_id desk_id client_name
-  client_id=$(json_get '.clients[0].id' "$catalogs_file")
-  desk_id=$(json_get '.desks[0].id' "$catalogs_file")
-  client_name=$(json_get '.clients[0].name' "$catalogs_file")
+  client_id=$(json_get '.clients[0].id' "$catalogs_base")
+  desk_id=$(json_get '.desks[0].id' "$catalogs_base")
+  client_name=$(json_get '.clients[0].name' "$catalogs_base")
 
   if [[ -z "$client_id" || "$client_id" == "null" || -z "$desk_id" || "$desk_id" == "null" ]]; then
     warn "Sem cliente/mesa nos catálogos — pulando criação de ticket"
     return
   fi
 
+  local catalogs_file="${BODY_DIR}/catalogs-scoped.json"
+  curl -sk -b "$COOKIE_JAR" -o "$catalogs_file" \
+    -H "Accept: application/json" \
+    "${API_URL}/tickets/catalogs/create?clientId=${client_id}&deskId=${desk_id}" || true
+
+  local classification_id catalog_item_id priority_id require_catalog
+  classification_id=$(pick_classification_leaf "$catalogs_file")
+  catalog_item_id=$(json_get '.catalogItems[0].id' "$catalogs_file")
+  priority_id=$(json_get '.priorities[0].id' "$catalogs_file")
+  require_catalog=$(json_get '.desk.requireServiceCatalog' "$catalogs_file")
+
+  local tree_has_nodes
+  tree_has_nodes=$(python3 - "$catalogs_file" <<'PY' 2>/dev/null || echo "0"
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    data = json.load(f)
+tree = (data.get("classification") or {}).get("tree") or []
+print("1" if tree else "0")
+PY
+)
+
+  if [[ "$tree_has_nodes" == "1" && ( -z "$classification_id" || "$classification_id" == "null" ) ]]; then
+    warn "Mesa exige classificação mas nenhuma folha encontrada — pulando criação de ticket"
+    return
+  fi
+
+  if [[ "$require_catalog" == "true" && ( -z "$catalog_item_id" || "$catalog_item_id" == "null" ) ]]; then
+    warn "Mesa exige catálogo de serviços mas nenhum item disponível — pulando criação de ticket"
+    return
+  fi
+
   local stamp
   stamp=$(date -u +"%Y%m%d-%H%M%S" 2>/dev/null || date +"%Y%m%d-%H%M%S")
   local title="${client_name:-CLIENTE} - SMOKE API ${stamp}"
+
+  local payload_extra=""
+  if [[ -n "$classification_id" && "$classification_id" != "null" ]]; then
+    payload_extra+=",\"classificationId\":\"${classification_id}\""
+  fi
+  if [[ "$require_catalog" == "true" && -n "$catalog_item_id" && "$catalog_item_id" != "null" ]]; then
+    payload_extra+=",\"servicesCatalogsItemId\":${catalog_item_id}"
+  elif [[ -n "$priority_id" && "$priority_id" != "null" ]]; then
+    payload_extra+=",\"priorityId\":${priority_id}"
+  fi
+
   local payload
   payload=$(cat <<EOF
-{"title":"${title}","description":"<p>Ticket criado pelo smoke autenticado (${stamp}). Pode cancelar.</p>","clientId":${client_id},"deskId":${desk_id},"requestorName":"Smoke Bot","requestorEmail":"${EMAIL}"}
+{"title":"${title}","description":"<p>Ticket criado pelo smoke autenticado (${stamp}). Pode cancelar.</p>","clientId":${client_id},"deskId":${desk_id},"requestorName":"Smoke Bot","requestorEmail":"${EMAIL}"${payload_extra}}
 EOF
 )
+
+  if [[ -n "$classification_id" && "$classification_id" != "null" ]]; then
+    echo "    classificação: ${classification_id}"
+  fi
 
   local create_out="${BODY_DIR}/create-ticket.json"
   local code
