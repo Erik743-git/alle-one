@@ -420,7 +420,10 @@ smoke_other_modules() {
     api_request_any GET "/rendimento/summary" "GET /rendimento/summary" 200 403 404
   fi
 
-  api_request_any GET "/companies/session" "GET /companies/session" 200 403
+  api_request_any GET "/companies/session/accessible" \
+    "GET /companies/session/accessible" 200 403
+  api_request_any GET "/companies/session/mine" \
+    "GET /companies/session/mine" 200 403 404
 }
 
 main() {
