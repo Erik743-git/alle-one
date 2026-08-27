@@ -24,6 +24,7 @@ import {
 import { notifyError } from "@/lib/notify";
 import {
   adminService,
+  TICKET_AUTO_OPEN_PERIODICITY_OPTIONS,
   type TicketAutoOpenRule,
   type TicketAutoOpenRulePayload,
   type TicketAutoOpenPeriodicity,
@@ -32,15 +33,6 @@ import {
   ticketsService,
   type TicketCreateCatalogs,
 } from "@/lib/services/tickets.service";
-
-const PERIODICITY_OPTIONS: Array<{
-  value: TicketAutoOpenPeriodicity;
-  label: string;
-}> = [
-  { value: "DAILY", label: "Todo dia" },
-  { value: "WEEKLY", label: "Semanal" },
-  { value: "MONTHLY", label: "Mensal" },
-];
 
 type Props = {
   open: boolean;
@@ -280,7 +272,7 @@ export function TicketAutoOpenRuleDialog({
                 onChange={(v) =>
                   setPeriodicity(v as TicketAutoOpenPeriodicity)
                 }
-                options={PERIODICITY_OPTIONS.map((o) => ({
+                options={TICKET_AUTO_OPEN_PERIODICITY_OPTIONS.map((o) => ({
                   value: o.value,
                   label: o.label,
                 }))}

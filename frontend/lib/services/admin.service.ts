@@ -36,7 +36,29 @@ export type TicketStage = {
   sortOrder: number;
 };
 
-export type TicketAutoOpenPeriodicity = "DAILY" | "WEEKLY" | "MONTHLY";
+export type TicketAutoOpenPeriodicity =
+  | "ONCE"
+  | "DAILY"
+  | "DAILY_WEEKDAYS"
+  | "WEEKLY"
+  | "BIWEEKLY"
+  | "MONTHLY"
+  | "BIMONTHLY"
+  | "QUARTERLY";
+
+export const TICKET_AUTO_OPEN_PERIODICITY_OPTIONS: Array<{
+  value: TicketAutoOpenPeriodicity;
+  label: string;
+}> = [
+  { value: "ONCE", label: "Apenas uma vez" },
+  { value: "DAILY", label: "Todo dia" },
+  { value: "DAILY_WEEKDAYS", label: "Todo dia (sem fim de semana)" },
+  { value: "WEEKLY", label: "Toda semana" },
+  { value: "BIWEEKLY", label: "A cada duas semanas" },
+  { value: "MONTHLY", label: "Todo mês" },
+  { value: "BIMONTHLY", label: "A cada dois meses" },
+  { value: "QUARTERLY", label: "A cada três meses" },
+];
 
 export type TicketAutoOpenRule = {
   id: string;

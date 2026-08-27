@@ -700,9 +700,14 @@ model TicketStage {
 }
 
 enum TicketAutoOpenPeriodicity {
+  ONCE
   DAILY
+  DAILY_WEEKDAYS
   WEEKLY
+  BIWEEKLY
   MONTHLY
+  BIMONTHLY
+  QUARTERLY
 }
 
 /// Regra de abertura automática de ticket (rotinas / agendamentos).
