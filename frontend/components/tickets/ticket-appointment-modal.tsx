@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, User2 } from "lucide-react";
 
 import { FieldLabel } from "@/components/ui/field-label";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
@@ -650,7 +650,29 @@ export function TicketAppointmentModal({
             ) : null}
           </div>
 
-          <SheetFooter className="shrink-0 flex-col gap-2 border-t border-border px-6 pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
+          <SheetFooter className="shrink-0 flex-col gap-3 border-t border-border px-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            {user && !isCommunication ? (
+              <div className="flex min-w-0 w-full items-center gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2.5 sm:max-w-sm sm:w-auto">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <User2 className="size-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {user.companyName ?? "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Você está apontando como
+                  </p>
+                  <p className="truncate text-sm font-bold text-foreground">
+                    {user.name}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {user.email}
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
             <Button
               type="button"
               variant="outline"
@@ -707,6 +729,7 @@ export function TicketAppointmentModal({
                     ? "Salvar alterações"
                     : "Salvar"}
             </Button>
+            </div>
           </SheetFooter>
         </form>
       </SheetContent>
