@@ -5,6 +5,13 @@ set -euo pipefail
 ROOT="${ALLEONE_ROOT:-/home/alleone/producao}"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
+ECOSYSTEM="$ROOT/deploy/ecosystem.config.cjs"
+API_INTERNAL_URL="${ALLEONE_API_INTERNAL_URL:-http://127.0.0.1:3002/api}"
+API_HEALTH_URL="${ALLEONE_API_HEALTH_URL:-http://127.0.0.1:3002/api/health}"
+WEB_URL="${ALLEONE_WEB_URL:-http://127.0.0.1:3000/login}"
+
+# shellcheck source=lib/deploy-common.sh
+source "$ROOT/deploy/scripts/lib/deploy-common.sh"
 
 if [[ "$(whoami)" != "alleone" ]]; then
   echo "AVISO: rode como usuário alleone (atual: $(whoami))"
@@ -25,28 +32,25 @@ echo "==> prisma generate + migrate deploy"
 echo "==> backend: npm run build"
 npm run build
 
+verify_backend_ready "$BACKEND"
+
 cd "$FRONTEND"
 echo "==> frontend: npm ci"
 npm ci
 
-echo "==> frontend: npm run build"
+echo "==> frontend: npm run build (API_INTERNAL_URL=$API_INTERNAL_URL)"
+export API_INTERNAL_URL
 npm run build
 
-echo "==> pm2 API (cluster, 2 instâncias)"
-pm2 delete alleone-api 2>/dev/null || true
-pm2 start "$ROOT/deploy/ecosystem.config.cjs" --only alleone-api --update-env
-pm2 restart alleone-web --update-env
+echo "==> pm2 API + Web (cluster / env atualizado)"
+pm2 stop alleone-api alleone-web 2>/dev/null || true
+restart_pm2_app "$ECOSYSTEM" alleone-api
+restart_pm2_app "$ECOSYSTEM" alleone-web
 
-sleep 3
-echo "==> health API"
-if ! curl -sf "http://127.0.0.1:3002/api/health" >/dev/null; then
-  echo "ERRO: API health falhou (verifique DB e pm2 logs alleone-api --lines 30)"
-  exit 1
-fi
-echo "API OK"
+wait_api_health "$API_HEALTH_URL" alleone-api
 
-echo "==> health Web"
-curl -sf -o /dev/null -w "web:%{http_code}\n" "http://127.0.0.1:3000/login" || true
+echo "==> health Web ($WEB_URL)"
+curl -sf -o /dev/null -w "web:%{http_code}\n" "$WEB_URL" || true
 
 echo ""
 echo "==> smoke rotas portal (produção)"

@@ -20,6 +20,10 @@ module.exports = {
       instances: 1,
       autorestart: true,
       max_memory_restart: '600M',
+      env: {
+        NODE_ENV: 'production',
+        API_INTERNAL_URL: 'http://127.0.0.1:3002/api',
+      },
     },
     {
       name: 'alleone-outbox',
