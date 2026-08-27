@@ -13,18 +13,20 @@ import {
   CreateTicketAutoOpenRuleDto,
   UpdateTicketAutoOpenRuleDto,
 } from './ticket-auto-open.dto';
+import { TicketAutoOpenPeriodicity } from '@prisma/client';
 import {
   advanceScheduledDate,
   formatYmdUtc,
   parseRuleDueAt,
   TICKET_AUTO_OPEN_PERIODICITY_LABELS,
+  type TicketAutoOpenPeriodicityValue,
 } from './ticket-auto-open.helper';
 
 export type TicketAutoOpenRuleDto = {
   id: string;
   name: string;
   active: boolean;
-  periodicity: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  periodicity: TicketAutoOpenPeriodicityValue;
   periodicityLabel: string;
   nextScheduledDate: string;
   scheduleTime: string;
@@ -62,7 +64,7 @@ export class TicketAutoOpenService {
     id: string;
     name: string;
     active: boolean;
-    periodicity: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+    periodicity: TicketAutoOpenPeriodicityValue;
     nextScheduledDate: Date;
     scheduleTime: string;
     deskExternalId: number;
@@ -287,18 +289,28 @@ export class TicketAutoOpenService {
           this.buildCreateTicketDto(rule),
         );
 
-        const nextDate = advanceScheduledDate(
-          rule.nextScheduledDate,
-          rule.periodicity,
-        );
+        const updateData: {
+          lastRunAt: Date;
+          lastTicketNumber: number;
+          nextScheduledDate?: Date;
+          active?: boolean;
+        } = {
+          lastRunAt: now,
+          lastTicketNumber: result.ticketNumber,
+        };
+
+        if (rule.periodicity === TicketAutoOpenPeriodicity.ONCE) {
+          updateData.active = false;
+        } else {
+          updateData.nextScheduledDate = advanceScheduledDate(
+            rule.nextScheduledDate,
+            rule.periodicity,
+          );
+        }
 
         await this.prisma.ticketAutoOpenRule.update({
           where: { id: rule.id },
-          data: {
-            lastRunAt: now,
-            lastTicketNumber: result.ticketNumber,
-            nextScheduledDate: nextDate,
-          },
+          data: updateData,
         });
 
         if (rule.parentTicketNumber && Number.isFinite(result.ticketNumber)) {

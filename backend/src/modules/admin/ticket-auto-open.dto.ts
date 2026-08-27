@@ -13,6 +13,10 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
+import {
+  TICKET_AUTO_OPEN_PERIODICITY_VALUES,
+  type TicketAutoOpenPeriodicityValue,
+} from './ticket-auto-open.helper';
 
 const HHMM = /^\d{2}:\d{2}$/;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -27,8 +31,8 @@ export class CreateTicketAutoOpenRuleDto {
   @IsBoolean()
   active?: boolean;
 
-  @IsIn(['DAILY', 'WEEKLY', 'MONTHLY'])
-  periodicity!: 'DAILY' | 'WEEKLY' | 'MONTHLY';
+  @IsIn([...TICKET_AUTO_OPEN_PERIODICITY_VALUES])
+  periodicity!: TicketAutoOpenPeriodicityValue;
 
   @IsString()
   @Matches(YMD)
