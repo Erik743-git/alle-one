@@ -12,10 +12,15 @@ set -euo pipefail
 ROOT="${ALLEONE_ROOT:-/home/alleone/teste}"
 BACKEND="$ROOT/backend"
 FRONTEND="$ROOT/frontend"
+ECOSYSTEM="$ROOT/deploy/ecosystem.teste.config.cjs"
 API_NAME="${ALLEONE_API_NAME:-alleone-teste-api}"
 WEB_NAME="${ALLEONE_WEB_NAME:-alleone-teste-web}"
+API_INTERNAL_URL="${ALLEONE_API_INTERNAL_URL:-http://127.0.0.1:3004/api}"
 API_HEALTH_URL="${ALLEONE_API_HEALTH_URL:-http://127.0.0.1:3004/api/health}"
 WEB_URL="${ALLEONE_WEB_URL:-http://127.0.0.1:3001/login}"
+
+# shellcheck source=lib/deploy-common.sh
+source "$ROOT/deploy/scripts/lib/deploy-common.sh"
 
 if [[ "$(whoami)" != "alleone" ]]; then
   echo "AVISO: rode como usuário alleone (atual: $(whoami))"
@@ -61,39 +66,22 @@ echo "==> prisma migrate deploy"
 echo "==> backend: npm run build"
 npm run build
 
+verify_backend_ready "$BACKEND"
+
 cd "$FRONTEND"
 echo "==> frontend: npm ci"
 npm ci
 
-echo "==> frontend: npm run build"
+echo "==> frontend: npm run build (API_INTERNAL_URL=$API_INTERNAL_URL)"
+export API_INTERNAL_URL
 npm run build
 
-echo "==> pm2 API (cluster, 2 instâncias)"
-pm2 delete "$API_NAME" 2>/dev/null || true
-pm2 start "$ROOT/deploy/ecosystem.teste.config.cjs" --only "$API_NAME" --update-env
-pm2 restart "$WEB_NAME" --update-env
+echo "==> pm2 API + Web (cluster / env atualizado)"
+pm2 stop "$API_NAME" "$WEB_NAME" 2>/dev/null || true
+restart_pm2_app "$ECOSYSTEM" "$API_NAME"
+restart_pm2_app "$ECOSYSTEM" "$WEB_NAME"
 
-echo "==> health API ($API_HEALTH_URL)"
-API_OK=0
-ALT_HEALTH="${API_HEALTH_URL%/api/health}/health"
-for _i in $(seq 1 20); do
-  if curl -sf --max-time 3 "$API_HEALTH_URL" >/dev/null; then
-    echo "API OK"
-    API_OK=1
-    break
-  fi
-  if [[ "$ALT_HEALTH" != "$API_HEALTH_URL" ]] && curl -sf --max-time 3 "$ALT_HEALTH" >/dev/null; then
-    echo "API OK via $ALT_HEALTH"
-    API_OK=1
-    break
-  fi
-  sleep 2
-done
-if [[ "$API_OK" -ne 1 ]]; then
-  echo "ERRO: API health falhou (pm2 logs $API_NAME --lines 40)"
-  pm2 logs "$API_NAME" --lines 40 --nostream || true
-  exit 1
-fi
+wait_api_health "$API_HEALTH_URL" "$API_NAME"
 
 echo "==> health Web ($WEB_URL)"
 curl -sf -o /dev/null -w "web:%{http_code}\n" "$WEB_URL" || true

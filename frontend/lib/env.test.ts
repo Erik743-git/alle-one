@@ -44,4 +44,13 @@ describe("getBrowserApiBase", () => {
     expect(getBrowserApiBase()).toBe("");
     expect(buildApiUrl("/tickets")).toBe("/tickets");
   });
+
+  it("usa API_INTERNAL_URL no servidor (SSR)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://alleone.alletecnologia.com/api");
+    vi.stubEnv("API_INTERNAL_URL", "http://127.0.0.1:3002/api");
+    vi.stubGlobal("window", undefined);
+
+    const { buildApiUrl } = await import("./env");
+    expect(buildApiUrl("/tickets")).toBe("http://127.0.0.1:3002/api/tickets");
+  });
 });

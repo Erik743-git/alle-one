@@ -37,6 +37,8 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "3000",
+        // Rewrites Next + proxy /auth: loopback (evita hairpin Cloudflare em produção).
+        API_INTERNAL_URL: "http://127.0.0.1:3002/api",
       },
     },
     {

@@ -1,6 +1,13 @@
-/** URL da API Alle One (definida no build via NEXT_PUBLIC_API_URL). */
+/** URL pública da API (build do browser via NEXT_PUBLIC_API_URL). */
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL?.trim() || "http://localhost:3002";
+
+/** URL interna no servidor (VM → API local, sem hairpin pelo Cloudflare). */
+function getServerApiBase(): string {
+  const internal = process.env.API_INTERNAL_URL?.trim();
+  if (internal) return internal.replace(/\/$/, "");
+  return API_URL.replace(/\/$/, "");
+}
 
 function normalizeApiPath(pathname: string): string {
   const trimmed = pathname.replace(/\/$/, "");
@@ -39,7 +46,7 @@ export function buildApiUrl(endpoint: string): string {
   const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
 
   if (typeof window === "undefined") {
-    return `${API_URL.replace(/\/$/, "")}${path}`;
+    return `${getServerApiBase()}${path}`;
   }
 
   const base = getBrowserApiBase();
