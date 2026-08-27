@@ -18,7 +18,6 @@ import {
   Plus,
   Ticket,
   Trash2,
-  User2,
   X,
 } from "lucide-react";
 
@@ -895,24 +894,7 @@ export default function TicketDetailPage() {
       <PermissionGate module="TICKETS">
         <AppShell>
           <div className="font-sans w-full space-y-6">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              {user && canCreateTicketAppointment() ? (
-                <div className="flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <User2 className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                      {user.companyName ?? "—"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Você está apontando como</p>
-                    <p className="truncate text-sm font-bold text-foreground">{user.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{user.email}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1" />
-              )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Button asChild variant="outline" size="sm" className="w-fit">
                   <Link href="/tickets">
