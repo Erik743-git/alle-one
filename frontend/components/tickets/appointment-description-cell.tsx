@@ -19,8 +19,8 @@ type Props = {
   attachments: Attachment[];
 };
 
-const HOVER_OPEN_MS = 350;
-const HOVER_CLOSE_MS = 200;
+const HOVER_OPEN_MS = 250;
+const HOVER_CLOSE_MS = 500;
 
 function previewText(description: string | null | undefined) {
   const plain = appointmentDescriptionToPlainText(description ?? "")
@@ -51,6 +51,11 @@ export function AppointmentDescriptionCell({
     }
   }, []);
 
+  const keepOpen = useCallback(() => {
+    clearTimers();
+    setOpen(true);
+  }, [clearTimers]);
+
   const scheduleOpen = useCallback(() => {
     clearTimers();
     openTimerRef.current = setTimeout(() => setOpen(true), HOVER_OPEN_MS);
@@ -72,14 +77,17 @@ export function AppointmentDescriptionCell({
           role="button"
           tabIndex={0}
           className={cn(
-            "flex w-full max-w-[240px] cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left",
+            "flex w-full max-w-[280px] cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left",
             "hover:bg-muted/50",
           )}
           title="Ver descrição"
           onMouseEnter={scheduleOpen}
           onMouseLeave={scheduleClose}
           onFocus={scheduleOpen}
-          onBlur={scheduleClose}
+          onBlur={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+            scheduleClose();
+          }}
         >
           <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
             {preview || "Ver descrição"}
@@ -87,17 +95,20 @@ export function AppointmentDescriptionCell({
         </div>
       </PopoverTrigger>
       <PopoverContent
+        side="left"
         align="start"
-        className="w-[min(24rem,calc(100vw-2rem))] p-3"
-        onMouseEnter={() => {
-          if (closeTimerRef.current) {
-            clearTimeout(closeTimerRef.current);
-            closeTimerRef.current = null;
-          }
-        }}
+        sideOffset={0}
+        collisionPadding={16}
+        className={cn(
+          "relative w-[min(42rem,calc(100vw-2rem))] max-w-[42rem] p-5",
+          "before:absolute before:top-0 before:-right-4 before:h-full before:w-4 before:content-['']",
+        )}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+        onCloseAutoFocus={(e) => e.preventDefault()}
+        onMouseEnter={keepOpen}
         onMouseLeave={scheduleClose}
       >
-        <div className="max-h-72 overflow-y-auto overflow-x-hidden break-words [overflow-wrap:anywhere]">
+        <div className="max-h-[36rem] overflow-y-auto overflow-x-hidden break-words [overflow-wrap:anywhere]">
           <AppointmentDescriptionView
             description={description}
             attachments={attachments}

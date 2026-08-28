@@ -88,6 +88,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -236,6 +237,18 @@ export default function TicketDetailPage() {
   >([]);
   const [nextClientId, setNextClientId] = useState("");
   const [loadingClients, setLoadingClients] = useState(false);
+  const [changeClientRequestorId, setChangeClientRequestorId] = useState("");
+  const [changeClientRequestorName, setChangeClientRequestorName] = useState("");
+  const [changeClientRequestorEmail, setChangeClientRequestorEmail] = useState("");
+  const [changeClientRequestorTelephone, setChangeClientRequestorTelephone] =
+    useState("");
+  const [changeClientRequestorOptions, setChangeClientRequestorOptions] =
+    useState<Array<{ value: string; label: string }>>([]);
+  const [changeClientRequestorCatalog, setChangeClientRequestorCatalog] =
+    useState<TicketCreateCatalogs["requestors"]>([]);
+  const [loadingChangeClientRequestors, setLoadingChangeClientRequestors] =
+    useState(false);
+  const [changeClientGmudRef, setChangeClientGmudRef] = useState("");
   const [filterCatalogs, setFilterCatalogs] =
     useState<TicketFilterCatalogs | null>(null);
   const [deskResponsibles, setDeskResponsibles] = useState<
@@ -585,6 +598,13 @@ export default function TicketDetailPage() {
   async function openChangeClientDialog() {
     setChangeClientOpen(true);
     setNextClientId("");
+    setChangeClientRequestorId("");
+    setChangeClientRequestorName("");
+    setChangeClientRequestorEmail("");
+    setChangeClientRequestorTelephone("");
+    setChangeClientRequestorOptions([]);
+    setChangeClientRequestorCatalog([]);
+    setChangeClientGmudRef("");
     setLoadingClients(true);
     try {
       const catalogs = await ticketsService.createCatalogs();
@@ -606,23 +626,121 @@ export default function TicketDetailPage() {
     }
   }
 
+  async function handleChangeClientSelection(nextId: string) {
+    setNextClientId(nextId);
+    setChangeClientRequestorId("");
+    setChangeClientRequestorName("");
+    setChangeClientRequestorEmail("");
+    setChangeClientRequestorTelephone("");
+    setChangeClientGmudRef("");
+    setChangeClientRequestorOptions([]);
+    setChangeClientRequestorCatalog([]);
+
+    const clientId = Number(nextId);
+    if (!nextId || !Number.isFinite(clientId) || clientId <= 0) return;
+
+    setLoadingChangeClientRequestors(true);
+    try {
+      const catalogs = await ticketsService.createCatalogs({ clientId });
+      const requestors = catalogs.requestors ?? [];
+      setChangeClientRequestorCatalog(requestors);
+      setChangeClientRequestorOptions(
+        requestors.map((row) => ({
+          value: String(row.id),
+          label: row.email ? `${row.name} (${row.email})` : row.name,
+        })),
+      );
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar os solicitantes do cliente.",
+      );
+    } finally {
+      setLoadingChangeClientRequestors(false);
+    }
+  }
+
+  function handleChangeClientRequestorSuggestion(nextRequestorId: string) {
+    setChangeClientRequestorId(nextRequestorId);
+    if (!nextRequestorId) return;
+    const selected = changeClientRequestorCatalog.find(
+      (row) => String(row.id) === nextRequestorId,
+    );
+    if (!selected) return;
+    setChangeClientRequestorName(selected.name ?? "");
+    setChangeClientRequestorEmail(selected.email ?? "");
+    setChangeClientRequestorTelephone(
+      selected.telephone ? formatBrPhone(selected.telephone) : "",
+    );
+  }
+
   async function confirmChangeClient() {
     const clientId = Number(nextClientId);
     if (!Number.isFinite(clientId) || clientId <= 0) {
       notifyError("Selecione o novo cliente.");
       return;
     }
-    const ok = await confirm({
-      title: "Trocar cliente do ticket?",
-      description:
-        "A GMUD vinculada será removida. Confirme se o novo cliente está correto.",
-      confirmText: "Trocar cliente",
-    });
-    if (!ok) return;
+    if (ticket?.clientExternalId != null && clientId === ticket.clientExternalId) {
+      notifyError("Selecione um cliente diferente do atual.");
+      return;
+    }
+    if (!changeClientRequestorName.trim()) {
+      notifyError("Informe o nome do novo solicitante.");
+      return;
+    }
+    if (
+      !changeClientRequestorEmail.trim() ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changeClientRequestorEmail)
+    ) {
+      notifyError("Informe um e-mail válido do novo solicitante.");
+      return;
+    }
+    if (changeClientRequestorTelephone.trim() && !isValidBrPhone(changeClientRequestorTelephone)) {
+      notifyError("Telefone do solicitante inválido.");
+      return;
+    }
+
+    const sameRequestor =
+      changeClientRequestorEmail.trim().toLowerCase() ===
+        (ticket?.requestorEmail?.trim().toLowerCase() ?? "") &&
+      changeClientRequestorName.trim().toLowerCase() ===
+        (ticket?.requestorName?.trim().toLowerCase() ?? "");
+    if (sameRequestor) {
+      notifyError("Selecione ou informe outro solicitante para o novo cliente.");
+      return;
+    }
+
+    const hadGmud = Boolean(externalGmudRef?.trim());
+    if (hadGmud) {
+      const nextGmud = changeClientGmudRef.trim();
+      if (!nextGmud) {
+        notifyError("Informe a nova referência GMUD do cliente.");
+        return;
+      }
+      if (nextGmud.toLowerCase() === externalGmudRef!.trim().toLowerCase()) {
+        notifyError("A referência GMUD deve ser diferente da anterior.");
+        return;
+      }
+    }
+
     try {
       setLifecycleBusy(true);
-      await ticketsService.updateTicket(ticketNumber, { clientId });
-      notifySuccess("Cliente do ticket atualizado.");
+      await ticketsService.updateTicket(ticketNumber, {
+        clientId,
+        requestorId: changeClientRequestorId
+          ? Number(changeClientRequestorId)
+          : undefined,
+        requestorName: changeClientRequestorName.trim(),
+        requestorEmail: changeClientRequestorEmail.trim(),
+        requestorTelephone: changeClientRequestorTelephone.trim() || null,
+        ...(hadGmud ? { externalGmudRef: changeClientGmudRef.trim() } : {}),
+      });
+      notifySuccess(
+        hadGmud
+          ? "Cliente, solicitante e GMUD do ticket atualizados."
+          : "Cliente e solicitante do ticket atualizados.",
+      );
       setChangeClientOpen(false);
       await Promise.all([load(), loadStages()]);
       setHistoryRefreshToken((n) => n + 1);
@@ -1739,23 +1857,99 @@ export default function TicketDetailPage() {
           />
 
           <Dialog open={changeClientOpen} onOpenChange={setChangeClientOpen}>
-            <DialogContent className="sm:max-w-md" showCloseButton>
+            <DialogContent className="sm:max-w-lg" showCloseButton>
               <DialogHeader>
                 <DialogTitle>Trocar cliente do ticket</DialogTitle>
+                <DialogDescription>
+                  Ao trocar o cliente, informe o novo solicitante
+                  {externalGmudRef?.trim()
+                    ? " e a nova referência GMUD do cliente."
+                    : "."}
+                </DialogDescription>
               </DialogHeader>
-              <div className="space-y-2">
-                <Label>Novo cliente</Label>
-                <SearchableSelectField
-                  value={nextClientId}
-                  onChange={setNextClientId}
-                  options={clientOptions}
-                  loading={loadingClients}
-                  placeholder="Selecione o cliente"
-                  emptyLabel="Nenhum cliente"
-                />
-                <p className="text-xs text-muted-foreground">
-                  A GMUD vinculada será removida após a troca de cliente.
-                </p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Novo cliente</Label>
+                  <SearchableSelectField
+                    value={nextClientId}
+                    onChange={(value) => void handleChangeClientSelection(value)}
+                    options={clientOptions}
+                    loading={loadingClients}
+                    placeholder="Selecione o cliente"
+                    emptyLabel="Nenhum cliente"
+                  />
+                </div>
+
+                {nextClientId ? (
+                  <>
+                    {changeClientRequestorOptions.length > 0 ? (
+                      <div className="space-y-2">
+                        <Label>Solicitante cadastrado</Label>
+                        <SearchableSelectField
+                          value={changeClientRequestorId}
+                          onChange={handleChangeClientRequestorSuggestion}
+                          options={changeClientRequestorOptions}
+                          loading={loadingChangeClientRequestors}
+                          placeholder="Selecione o solicitante"
+                          emptyLabel="Nenhum solicitante"
+                        />
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      <Label>Nome do solicitante</Label>
+                      <Input
+                        value={changeClientRequestorName}
+                        onChange={(e) => {
+                          setChangeClientRequestorName(e.target.value);
+                          setChangeClientRequestorId("");
+                        }}
+                        placeholder="Nome de quem está solicitando"
+                        disabled={lifecycleBusy || loadingChangeClientRequestors}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>E-mail do solicitante</Label>
+                      <Input
+                        type="email"
+                        value={changeClientRequestorEmail}
+                        onChange={(e) => {
+                          setChangeClientRequestorEmail(e.target.value);
+                          setChangeClientRequestorId("");
+                        }}
+                        placeholder="email@empresa.com"
+                        disabled={lifecycleBusy || loadingChangeClientRequestors}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Telefone do solicitante</Label>
+                      <Input
+                        value={changeClientRequestorTelephone}
+                        onChange={(e) => {
+                          setChangeClientRequestorTelephone(formatBrPhone(e.target.value));
+                          setChangeClientRequestorId("");
+                        }}
+                        placeholder="(00) 00000-0000"
+                        disabled={lifecycleBusy || loadingChangeClientRequestors}
+                      />
+                    </div>
+                  </>
+                ) : null}
+
+                {externalGmudRef?.trim() ? (
+                  <div className="space-y-2">
+                    <Label>Referência GMUD do cliente</Label>
+                    <Input
+                      value={changeClientGmudRef}
+                      onChange={(e) => setChangeClientGmudRef(e.target.value)}
+                      placeholder="Informe a GMUD do novo cliente"
+                      disabled={lifecycleBusy}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      GMUD atual: {externalGmudRef}. Informe uma referência
+                      diferente para o novo cliente.
+                    </p>
+                  </div>
+                ) : null}
               </div>
               <DialogFooter>
                 <Button
@@ -1767,7 +1961,13 @@ export default function TicketDetailPage() {
                 </Button>
                 <Button
                   type="button"
-                  disabled={lifecycleBusy || !nextClientId}
+                  disabled={
+                    lifecycleBusy ||
+                    !nextClientId ||
+                    !changeClientRequestorName.trim() ||
+                    !changeClientRequestorEmail.trim() ||
+                    (Boolean(externalGmudRef?.trim()) && !changeClientGmudRef.trim())
+                  }
                   onClick={() => void confirmChangeClient()}
                 >
                   Confirmar

@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { isClientPortalRole } from '../../../common/security/client-portal-role';
 import type { AuthenticatedRequestUser } from '../auth-request-user';
@@ -34,6 +39,6 @@ export class RolesGuard implements CanActivate {
     if (roles.includes('CLIENT') && isClientPortalRole(user.role)) {
       return true;
     }
-    return false;
+    throw new ForbiddenException('Sem permissão para este recurso.');
   }
 }

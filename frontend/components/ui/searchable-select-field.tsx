@@ -32,6 +32,9 @@ type SearchableSelectFieldProps = {
   alwaysShowSearch?: boolean;
   /** Largura mínima do painel aberto (útil para nomes longos de grupos Zabbix). */
   popoverMinWidth?: string;
+  /** Lado preferido do painel (ex.: `left` na coluna direita do ticket). */
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
 };
 
 export function SearchableSelectField({
@@ -48,6 +51,8 @@ export function SearchableSelectField({
   preserveOrder = false,
   alwaysShowSearch = false,
   popoverMinWidth,
+  side = "bottom",
+  align = "start",
 }: SearchableSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -259,8 +264,8 @@ export function SearchableSelectField({
       </PopoverTrigger>
 
       <PopoverContent
-        side="bottom"
-        align="start"
+        side={side}
+        align={align}
         sideOffset={8}
         collisionPadding={16}
         collisionBoundary={

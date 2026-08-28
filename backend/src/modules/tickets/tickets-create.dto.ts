@@ -243,6 +243,12 @@ export class UpdateTicketDto {
   @IsString()
   @MaxLength(100)
   classificationId?: string | null;
+
+  /** Referência GMUD do cliente (obrigatória ao trocar cliente se já havia GMUD). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  externalGmudRef?: string;
 }
 
 export class AcknowledgeAppointmentWarningDto {

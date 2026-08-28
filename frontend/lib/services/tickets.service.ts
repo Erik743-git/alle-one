@@ -349,6 +349,7 @@ export type UpdateTicketPayload = {
   requestorEmail?: string;
   requestorTelephone?: string | null;
   removeAttachmentFileIds?: string[];
+  externalGmudRef?: string;
 };
 
 export type UpdateTicketResult = {
