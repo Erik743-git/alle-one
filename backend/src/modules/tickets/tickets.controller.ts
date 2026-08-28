@@ -387,7 +387,7 @@ export class TicketsController {
   }
 
   @Patch(':ticketNumber/gmud')
-  @Roles('ADMIN')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   linkGmud(
     @CurrentUser() actor: AuthenticatedRequestUser,

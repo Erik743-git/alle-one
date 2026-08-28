@@ -705,6 +705,9 @@ export class TicketsService {
     let nextClientName = portal?.clientName ?? null;
     let nextDeskExternalId = portal?.deskExternalId ?? null;
     let nextDeskName = portal?.deskName ?? null;
+    const isClientChanging =
+      dto.clientId != null &&
+      dto.clientId !== (portal?.clientExternalId ?? null);
     if (dto.clientId != null) {
       let responsibleExternalId = portal?.responsibleExternalId ?? null;
       if (responsibleExternalId == null) {
@@ -731,6 +734,52 @@ export class TicketsService {
         throw new ForbiddenException(
           'Somente o administrador ou o responsável do chamado podem alterar o cliente.',
         );
+      }
+      if (isClientChanging) {
+        const requestorNameInput = dto.requestorName?.trim() ?? '';
+        const requestorEmailInput = dto.requestorEmail?.trim() ?? '';
+        if (requestorNameInput.length < 2) {
+          throw new BadRequestException(
+            'Ao trocar o cliente, informe o nome do novo solicitante.',
+          );
+        }
+        if (
+          !requestorEmailInput ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestorEmailInput)
+        ) {
+          throw new BadRequestException(
+            'Ao trocar o cliente, informe um e-mail válido do novo solicitante.',
+          );
+        }
+        const sameRequestor =
+          requestorEmailInput.toLowerCase() ===
+            (portal?.requestorEmail?.trim().toLowerCase() ?? '') &&
+          requestorNameInput.toLowerCase() ===
+            (portal?.requestorName?.trim().toLowerCase() ?? '');
+        if (sameRequestor) {
+          throw new BadRequestException(
+            'Ao trocar o cliente, selecione ou informe outro solicitante.',
+          );
+        }
+
+        const existingGmud = await this.prisma.portalTicketGmudLink.findUnique({
+          where: { ticketNumber },
+          select: { externalGmudRef: true },
+        });
+        const previousGmud = existingGmud?.externalGmudRef?.trim() ?? '';
+        if (previousGmud) {
+          const nextGmud = this.normalizeExternalGmudRef(dto.externalGmudRef);
+          if (!nextGmud) {
+            throw new BadRequestException(
+              'Ao trocar o cliente, informe a nova referência GMUD do cliente.',
+            );
+          }
+          if (nextGmud.toLowerCase() === previousGmud.toLowerCase()) {
+            throw new BadRequestException(
+              'A referência GMUD deve ser diferente da anterior ao trocar o cliente.',
+            );
+          }
+        }
       }
       const company = await this.prisma.company.findFirst({
         where: { tifluxClientId: dto.clientId, deletedAt: null },
@@ -977,6 +1026,13 @@ export class TicketsService {
       updatedAtSource: new Date(),
       createdBy: portal?.createdBy ?? actor.userId,
     });
+
+    if (isClientChanging && dto.externalGmudRef !== undefined) {
+      const normalizedGmud = this.normalizeExternalGmudRef(dto.externalGmudRef);
+      if (normalizedGmud) {
+        await this.upsertTicketGmudLink(actor, ticketNumber, normalizedGmud);
+      }
+    }
 
     const nextIsClosed =
       dto.isClosed !== undefined

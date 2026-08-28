@@ -148,6 +148,10 @@ export function TicketResponsibleSelect({
         disabled={disabled || saving}
         preserveOrder
         alwaysShowSearch
+        modal
+        side={compact ? "bottom" : "left"}
+        align={compact ? "start" : "center"}
+        popoverMinWidth="min(24rem, calc(100vw - 2rem))"
         emptyLabel={compact ? undefined : "Sem responsável"}
         placeholder="Selecione o responsável"
         className={compact ? "h-9" : undefined}
