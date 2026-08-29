@@ -115,6 +115,13 @@ export default function NewTicketPage() {
     catalogs?.desk?.requireServiceCatalog ?? selectedDesk?.requireServiceCatalog,
   );
 
+  const usesServiceCatalogTree = Boolean(
+    catalogs?.classification?.usesServiceCatalogTree ??
+      catalogs?.classification?.syncedFromTiflux,
+  );
+
+  const showCatalogPicker = requiresCatalog && !usesServiceCatalogTree;
+
   const classificationLevelLabels = useMemo(() => {
     const labels: Record<number, string> = {};
     for (const item of catalogs?.classification?.levelLabels ?? []) {
@@ -205,10 +212,10 @@ export default function NewTicketPage() {
   );
 
   const catalogBlocked =
-    requiresCatalog && deskId !== "" && catalogItemOptions.length === 0;
+    showCatalogPicker && deskId !== "" && catalogItemOptions.length === 0;
 
   const requiresPriority =
-    Boolean(deskId) && !requiresCatalog && !hasPortalClassification;
+    Boolean(deskId) && !showCatalogPicker && !hasPortalClassification;
 
   const missingRequired = useMemo(() => {
     const missing: string[] = [];
@@ -218,7 +225,7 @@ export default function NewTicketPage() {
     if (deskId && hasPortalClassification && !classificationId) {
       missing.push("Classificação");
     }
-    if (deskId && requiresCatalog && !catalogBlocked && !catalogItemId) {
+    if (deskId && showCatalogPicker && !catalogBlocked && !catalogItemId) {
       missing.push("Serviço");
     }
     if (requiresPriority && !priorityId) missing.push("Prioridade");
@@ -234,7 +241,7 @@ export default function NewTicketPage() {
     deskId,
     hasPortalClassification,
     classificationId,
-    requiresCatalog,
+    showCatalogPicker,
     catalogBlocked,
     catalogItemId,
     requiresPriority,
@@ -587,12 +594,12 @@ export default function NewTicketPage() {
       return;
     }
 
-    if (requiresCatalog && !catalogItemId) {
+    if (showCatalogPicker && !catalogItemId) {
       notifyError("Selecione o serviço do catálogo.");
       return;
     }
 
-    if (!requiresCatalog && !hasPortalClassification && !priorityId) {
+    if (!showCatalogPicker && !hasPortalClassification && !priorityId) {
       notifyError("Selecione a prioridade.");
       return;
     }
@@ -690,7 +697,7 @@ export default function NewTicketPage() {
                       />
                     </div>
 
-                    {deskId && requiresCatalog ? (
+                    {deskId && showCatalogPicker ? (
                       <div className="space-y-2 sm:col-span-2">
                         <FieldLabel required>Serviço</FieldLabel>
                         <SearchableSelectField

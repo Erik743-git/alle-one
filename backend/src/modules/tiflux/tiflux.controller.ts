@@ -18,7 +18,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import { TifluxService } from './tiflux.service';
-import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
+import { isTifluxRuntimeApiEnabled } from '../tickets/tickets-portal.config';
 import { PrismaService } from '../../prisma/prisma.service';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
@@ -51,6 +51,52 @@ export class TifluxController {
     }
   }
 
+  private assertTifluxRuntimeApiEnabled(): void {
+    if (!isTifluxRuntimeApiEnabled()) {
+      throw new BadRequestException(
+        'API TiFlux em runtime desabilitada. Use dados do portal (portal_* / tiflux.* espelho).',
+      );
+    }
+  }
+
+  private async listPortalClients(name?: string) {
+    const companies = await this.prisma.company.findMany({
+      where: {
+        deletedAt: null,
+        tifluxClientId: { not: null },
+        ...(name?.trim()
+          ? {
+              OR: [
+                { name: { contains: name.trim(), mode: 'insensitive' } },
+                {
+                  tifluxClientName: {
+                    contains: name.trim(),
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        tifluxClientId: true,
+        tifluxClientName: true,
+        name: true,
+        status: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 500,
+    });
+    return companies
+      .filter((c) => c.tifluxClientId != null)
+      .map((c) => ({
+        id: Number(c.tifluxClientId),
+        name: (c.tifluxClientName?.trim() || c.name).trim(),
+        social_name: c.name,
+        active: c.status,
+      }));
+  }
+
   @Get('test')
   @Roles('ADMIN')
   testConnection() {
@@ -62,82 +108,14 @@ export class TifluxController {
   @Roles('ADMIN', 'COLLABORATOR', 'PJ')
   @RequirePermission(PermissionModule.COMPANIES, 'canView')
   async getClients(
-    @Query('active') active?: string,
+    @Query('active') _active?: string,
     @Query('name') name?: string,
-    @Query('social_revenue') socialRevenue?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string,
-    @Query('all') all?: string,
+    @Query('social_revenue') _socialRevenue?: string,
+    @Query('limit') _limit?: string,
+    @Query('offset') _offset?: string,
+    @Query('all') _all?: string,
   ) {
-    // Desvinculado: clientes = empresas do portal com ID externo legado (sem API).
-    if (isTifluxDisconnected()) {
-      const companies = await this.prisma.company.findMany({
-        where: {
-          deletedAt: null,
-          tifluxClientId: { not: null },
-          ...(name?.trim()
-            ? {
-                OR: [
-                  { name: { contains: name.trim(), mode: 'insensitive' } },
-                  {
-                    tifluxClientName: {
-                      contains: name.trim(),
-                      mode: 'insensitive',
-                    },
-                  },
-                ],
-              }
-            : {}),
-        },
-        select: {
-          tifluxClientId: true,
-          tifluxClientName: true,
-          name: true,
-          status: true,
-        },
-        orderBy: { name: 'asc' },
-        take: 500,
-      });
-      return companies
-        .filter((c) => c.tifluxClientId != null)
-        .map((c) => ({
-          id: Number(c.tifluxClientId),
-          name: (c.tifluxClientName?.trim() || c.name).trim(),
-          social_name: c.name,
-          active: c.status,
-        }));
-    }
-
-    const wantsAll = all === 'true' || all === '1';
-    const parsedLimit = limit ? Number(limit) : undefined;
-    const parsedOffset = offset ? Number(offset) : undefined;
-
-    if (limit && Number.isNaN(parsedLimit)) {
-      throw new BadRequestException('O parâmetro "limit" deve ser numérico.');
-    }
-
-    if (offset && Number.isNaN(parsedOffset)) {
-      throw new BadRequestException('O parâmetro "offset" deve ser numérico.');
-    }
-
-    const activeBool =
-      active === undefined ? undefined : active === 'true' || active === '1';
-
-    if (wantsAll) {
-      return this.tifluxService.getClientsAll({
-        active: activeBool,
-        name,
-        social_revenue: socialRevenue,
-      });
-    }
-
-    return this.tifluxService.getClients({
-      active: activeBool,
-      name,
-      social_revenue: socialRevenue,
-      limit: parsedLimit,
-      offset: parsedOffset,
-    });
+    return this.listPortalClients(name);
   }
 
   @Get('users')
@@ -152,6 +130,7 @@ export class TifluxController {
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
   ) {
+    this.assertTifluxRuntimeApiEnabled();
     const parsedLimit = limit ? Number(limit) : undefined;
     const parsedOffset = offset ? Number(offset) : undefined;
 
@@ -206,6 +185,7 @@ export class TifluxController {
     @Query('update_start_datetime') updateStartDatetime?: string,
     @Query('update_end_datetime') updateEndDatetime?: string,
   ) {
+    this.assertTifluxRuntimeApiEnabled();
     const parsedOffset = offset ? Number(offset) : undefined;
     const parsedLimit = limit ? Number(limit) : undefined;
     const parsedStatusId = statusId ? Number(statusId) : undefined;

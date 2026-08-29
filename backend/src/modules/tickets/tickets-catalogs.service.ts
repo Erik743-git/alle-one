@@ -4,7 +4,6 @@ import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
-import { TifluxService } from '../tiflux/tiflux.service';
 import { normalizeDeskName } from './tiflux-portal-desk.config';
 import { resolveClientListFilter } from './tickets-client-scope';
 import {
@@ -53,6 +52,8 @@ export type TicketCreateCatalogs = {
   classification: {
     levelLabels: Array<{ level: number; label: string }>;
     tree: TicketClassificationNode[];
+    syncedFromTiflux?: boolean;
+    usesServiceCatalogTree?: boolean;
   } | null;
   desk: {
     id: number;
@@ -78,7 +79,6 @@ export type TicketCreateCatalogs = {
 export class TicketsCatalogsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tiflux: TifluxService,
     private readonly tenantScope: TenantScopeService,
   ) {}
 
@@ -94,45 +94,6 @@ export class TicketsCatalogsService {
     );
     if (allowed == null) return desks;
     return desks.filter((desk) => allowed.has(Number(desk.id)));
-  }
-
-  async listTifluxResponsiblesForTicketCreate(): Promise<
-    Array<{ id: number; name: string; email: string | null }>
-  > {
-    const [attendants, admins] = await Promise.all([
-      this.tiflux.getUsersAll({
-        active: true,
-        type: 'attendant',
-        limitPerPage: 100,
-        maxPages: 20,
-      }),
-      this.tiflux.getUsersAll({
-        active: true,
-        type: 'admin',
-        limitPerPage: 100,
-        maxPages: 10,
-      }),
-    ]);
-
-    const byId = new Map<
-      number,
-      { id: number; name: string; email: string | null }
-    >();
-    for (const user of [...attendants, ...admins]) {
-      const id = Number(user.id);
-      if (!Number.isFinite(id) || id <= 0) continue;
-      const name = String(user.name ?? '').trim();
-      if (!name) continue;
-      byId.set(id, {
-        id,
-        name,
-        email: user.email != null ? String(user.email).trim() : null,
-      });
-    }
-
-    return [...byId.values()].sort((a, b) =>
-      a.name.localeCompare(b.name, 'pt-BR'),
-    );
   }
 
   /** Responsáveis a partir do mirror `tiflux.users` (sem API). */
@@ -221,19 +182,16 @@ export class TicketsCatalogsService {
     return this.listResponsiblesFromPortalUsers();
   }
 
-  /** Responsáveis ativos da especialidade vinculada à mesa (externalId). */
+  /** Responsáveis ativos da especialidade vinculada à mesa. */
   async listResponsiblesForDeskExternalId(
     deskExternalId: number,
+    deskNameHint?: string | null,
   ): Promise<Array<{ id: number; name: string; email: string | null }>> {
-    const specialty = await this.prisma.specialty.findFirst({
-      where: {
-        deletedAt: null,
-        active: true,
-        externalId: deskExternalId,
-      },
-      select: { id: true },
-    });
-    if (!specialty) return [];
+    const portalDesk = await this.findPortalDeskForTifluxDesk(
+      deskExternalId,
+      deskNameHint,
+    );
+    if (!portalDesk) return [];
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -242,8 +200,8 @@ export class TicketsCatalogsService {
         responsible: true,
         role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
         OR: [
-          { userSpecialties: { some: { specialtyId: specialty.id } } },
-          { specialtyId: specialty.id },
+          { userSpecialties: { some: { specialtyId: portalDesk.id } } },
+          { specialtyId: portalDesk.id },
         ],
       },
       select: { id: true, name: true, email: true },
@@ -380,10 +338,8 @@ export class TicketsCatalogsService {
       sortOrder: number;
       parentId: string | null;
     }>,
+    maxLevel = 3,
   ): TicketClassificationNode[] {
-    // Portal: no máximo 2 níveis (categoria → subcategoria).
-    // Filhos com level > 2 (legado) ficam de fora da árvore e da validação.
-    const maxLevel = 2;
     const byParent = new Map<string | null, typeof rows>();
     for (const row of rows) {
       if (row.level > maxLevel) continue;
@@ -480,20 +436,53 @@ export class TicketsCatalogsService {
         active: true,
         sortOrder: true,
         parentId: true,
+        catalogNodeKind: true,
       },
     });
+
+    const usesServiceCatalogTree =
+      rows.some((row) => row.level >= 3) ||
+      rows.some((row) => row.catalogNodeKind != null);
+    const maxLevel = usesServiceCatalogTree ? 3 : 2;
+    const levelLabels = usesServiceCatalogTree
+      ? [
+          { level: 1, label: 'Catálogo' },
+          { level: 2, label: 'Área' },
+          { level: 3, label: 'Serviço' },
+        ]
+      : [
+          { level: 1, label: 'Categoria' },
+          { level: 2, label: 'Subcategoria' },
+        ];
 
     return {
       portalServiceDesk: portalDesk,
       portalSpecialty: portalDesk,
       classification: {
-        levelLabels: [
-          { level: 1, label: 'Categoria' },
-          { level: 2, label: 'Subcategoria' },
-        ],
-        tree: this.buildClassificationTree(rows),
+        levelLabels,
+        tree: this.buildClassificationTree(rows, maxLevel),
+        usesServiceCatalogTree,
+        syncedFromTiflux: usesServiceCatalogTree,
       },
     };
+  }
+
+  async resolveTifluxServiceItemIdFromClassification(
+    classificationId?: string | null,
+  ): Promise<number | null> {
+    if (!isTicketsTifluxWriteEnabled()) return null;
+    if (!classificationId?.trim()) return null;
+    const row = await this.prisma.specialtyClassification.findFirst({
+      where: {
+        id: classificationId.trim(),
+        active: true,
+        catalogNodeKind: 'service',
+        legacySourceId: { not: null },
+      },
+      select: { legacySourceId: true },
+    });
+    if (!row?.legacySourceId) return null;
+    return row.legacySourceId;
   }
 
   async resolveClassificationPathLabel(
@@ -565,9 +554,9 @@ export class TicketsCatalogsService {
       );
     }
 
-    // Só exige folha dentro dos 2 níveis oficiais. Filhos level>2 (legado de
-    // quando havia 3 níveis) não bloqueiam a subcategoria selecionada.
-    const maxLevel = 2;
+    const usesServiceCatalogTree =
+      bundle.classification?.usesServiceCatalogTree ?? false;
+    const maxLevel = usesServiceCatalogTree ? 3 : 2;
     const hasChildren = await this.prisma.specialtyClassification.count({
       where: {
         parentId: node.id,
@@ -758,196 +747,15 @@ export class TicketsCatalogsService {
     };
   }
 
-  private mapCatalogItem(row: Record<string, unknown>) {
-    const id = Number(row.id);
-    const itemName = String(row.name ?? row.display_name ?? '').trim();
-    const catalog = row.catalog as
-      | { id?: number; name?: string }
-      | null
-      | undefined;
-    const area = row.area as { id?: number; name?: string } | null | undefined;
-    const catalogName = String(catalog?.name ?? '').trim() || undefined;
-    const areaName = String(area?.name ?? '').trim() || undefined;
-    const catalogId =
-      catalog?.id != null && Number.isFinite(Number(catalog.id))
-        ? Number(catalog.id)
-        : undefined;
-    const areaId =
-      area?.id != null && Number.isFinite(Number(area.id))
-        ? Number(area.id)
-        : undefined;
-    const parts = [catalogName, areaName, itemName]
-      .map((part) => String(part ?? '').trim())
-      .filter(Boolean);
-    return {
-      id,
-      name: parts.join(' → ') || itemName || `Item ${id}`,
-      catalogId,
-      catalogName,
-      areaId,
-      areaName,
-      itemName: itemName || undefined,
-    };
-  }
-
   async getCreateCatalogs(
     actor: AuthenticatedRequestUser,
     deskId?: number,
     clientId?: number,
   ): Promise<TicketCreateCatalogs> {
-    if (!isTicketsTifluxWriteEnabled()) {
-      return this.getCreateCatalogsFromPortal(actor, deskId, clientId);
-    }
-
-    const [clientsRaw, desksRaw, defaultResponsibles, companiesForMap] =
-      await Promise.all([
-        this.tiflux.getClientsAll({ active: true, maxPages: 30 }),
-        this.tiflux.getDesksAll({ active: true, maxPages: 10 }),
-        this.resolveResponsiblesForCreateCatalogs(actor),
-        this.prisma.company.findMany({
-          where: { deletedAt: null, tifluxClientId: { not: null } },
-          select: { id: true, tifluxClientId: true },
-          take: 2000,
-        }),
-      ]);
-
-    let responsibles = defaultResponsibles;
-
-    const allowedClientIds = isClientPortalRole(actor.role)
-      ? await this.tenantScope.resolveTifluxClientIdsForTicketCreate(actor)
-      : undefined;
-    const allowedSet =
-      allowedClientIds != null ? new Set(allowedClientIds.map(Number)) : null;
-
-    let requestors: TicketRequestorOption[] = [];
-    const scopedClientId =
-      allowedSet != null
-        ? clientId != null && allowedSet.has(Number(clientId))
-          ? Number(clientId)
-          : allowedClientIds?.[0] != null
-            ? Number(allowedClientIds[0])
-            : undefined
-        : clientId;
-    if (scopedClientId != null && Number.isFinite(scopedClientId)) {
-      if (allowedSet && !allowedSet.has(Number(scopedClientId))) {
-        // Cliente do portal não pode carregar solicitantes de outra empresa.
-      } else {
-        const clientName =
-          clientsRaw
-            .map((c) => ({
-              id: Number(c.id),
-              name: String(c.name ?? c.social_name ?? ''),
-            }))
-            .find((c) => c.id === scopedClientId)?.name ?? null;
-        const raw = await this.tiflux.getClientRequestors(scopedClientId, {
-          limitPerPage: 200,
-          maxPages: 30,
-        });
-        requestors = sanitizeTicketRequestors(raw, { clientName });
-        if (!isClientPortalRole(actor.role)) {
-          requestors = await this.appendActorAsRequestorIfMissing(
-            actor,
-            requestors,
-          );
-        }
-      }
-    }
-
-    let desk: Record<string, unknown> | null = null;
-    let priorities: Array<{ id: number; name: string }> = [];
-    let catalogItems: TicketCreateCatalogs['catalogItems'] = [];
-    let portalServiceDesk: { id: string; name: string } | null = null;
-    let classification: TicketCreateCatalogs['classification'] = null;
-
-    if (deskId != null && Number.isFinite(deskId)) {
-      desk = await this.tiflux.getDesk(deskId);
-      const tifluxDeskName = String(desk.display_name ?? desk.name ?? '');
-      const bundle = await this.loadClassificationBundle(
-        deskId,
-        tifluxDeskName,
-      );
-      portalServiceDesk = bundle.portalServiceDesk;
-      classification = bundle.classification;
-
-      const requiresCatalog = Boolean(desk.require_service_catalog_open_ticket);
-
-      if (requiresCatalog) {
-        const items = await this.tiflux.getDeskServicesCatalogItems(deskId);
-        catalogItems = items.map((row) => this.mapCatalogItem(row));
-      } else {
-        const rows = await this.tiflux.getDeskPriorities(deskId);
-        priorities = rows.map((row) => this.mapCatalogItem(row));
-      }
-
-      if (!isClientPortalRole(actor.role)) {
-        responsibles = await this.listResponsiblesForDeskExternalId(deskId);
-      }
-    }
-
-    const deskOptionsRaw = desksRaw
-      .map((d) => ({
-        id: Number(d.id),
-        name: String(d.display_name ?? d.name ?? `Mesa ${String(d.id)}`),
-        appointmentType: String(d.appointment_type ?? ''),
-        requireServiceCatalog: Boolean(d.require_service_catalog_open_ticket),
-      }))
-      .filter((d) => Number.isFinite(d.id));
-
-    const scopedCompanyForDesks =
-      scopedClientId != null
-        ? companiesForMap.find(
-            (c) => Number(c.tifluxClientId) === scopedClientId,
-          )?.id
-        : actor.companyId;
-
-    const deskOptions = await this.filterDesksForClientCompany(
-      actor,
-      scopedCompanyForDesks ?? null,
-      deskOptionsRaw,
-    );
-
-    return {
-      clients: clientsRaw
-        .map((c) => {
-          const id = Number(c.id);
-          const company = companiesForMap.find(
-            (row) => Number(row.tifluxClientId) === id,
-          );
-          return {
-            id,
-            name: String(c.name ?? c.social_name ?? `Cliente ${c.id}`),
-            companyId: company?.id,
-          };
-        })
-        .filter(
-          (c) =>
-            Number.isFinite(c.id) &&
-            (allowedSet == null || allowedSet.has(c.id)),
-        ),
-      desks: deskOptions,
-      responsibles,
-      requestors,
-      portalServiceDesk,
-      classification,
-      desk: desk
-        ? {
-            id: Number(desk.id),
-            name: String(desk.display_name ?? desk.name ?? ''),
-            appointmentType: String(desk.appointment_type ?? ''),
-            requireServiceCatalog: Boolean(
-              desk.require_service_catalog_open_ticket,
-            ),
-            requiredFields:
-              (desk.required_fields as Record<string, boolean> | null) ?? {},
-          }
-        : null,
-      priorities,
-      catalogItems,
-      source: 'tiflux' as const,
-    };
+    return this.getCreateCatalogsFromPortal(actor, deskId, clientId);
   }
 
-  /** Catálogos de criação sem API TiFlux (Company + service_desks + mirror users). */
+  /** Catálogos de criação sem API TiFlux (empresas + especialidades + usuários do portal). */
   private async getCreateCatalogsFromPortal(
     actor: AuthenticatedRequestUser,
     deskId?: number,
@@ -970,7 +778,7 @@ export class TicketsCatalogsService {
         take: 500,
       }),
       this.prisma.specialty.findMany({
-        where: { deletedAt: null, active: true, externalId: { not: null } },
+        where: { deletedAt: null, active: true },
         select: { id: true, externalId: true, name: true },
         orderBy: { name: 'asc' },
       }),
@@ -998,12 +806,16 @@ export class TicketsCatalogsService {
 
     const deskOptionsRaw = desks
       .map((d) => ({
-        id: Number(d.externalId),
+        id: d.externalId != null ? Number(d.externalId) : null,
         name: d.name,
+        specialtyId: d.id,
         appointmentType: '',
         requireServiceCatalog: false,
       }))
-      .filter((d) => Number.isFinite(d.id));
+      .filter(
+        (d): d is typeof d & { id: number } =>
+          d.id != null && Number.isFinite(d.id),
+      );
 
     let portalServiceDesk: { id: string; name: string } | null = null;
     let classification: TicketCreateCatalogs['classification'] = null;
@@ -1036,15 +848,22 @@ export class TicketsCatalogsService {
       const bundle = await this.loadClassificationBundle(deskId, deskName);
       portalServiceDesk = bundle.portalServiceDesk;
       classification = bundle.classification;
+      const usesServiceCatalog =
+        bundle.classification?.usesServiceCatalogTree ?? false;
       deskMeta = {
         id: deskId,
         name: deskName,
         appointmentType: '',
-        requireServiceCatalog: false,
+        requireServiceCatalog: usesServiceCatalog,
         requiredFields: {},
       };
       if (!isClientPortalRole(actor.role)) {
-        responsibles = await this.listResponsiblesForDeskExternalId(deskId);
+        const byDesk = await this.listResponsiblesForDeskExternalId(
+          deskId,
+          deskName,
+        );
+        responsibles =
+          byDesk.length > 0 ? byDesk : await this.listResponsiblesForCatalogs();
       }
     }
 

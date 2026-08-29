@@ -31,7 +31,18 @@ type ClassificationRow = {
   parentId: string | null;
 };
 
-const MAX_CLASSIFICATION_LEVEL = 2;
+const MAX_CLASSIFICATION_LEVEL = 3;
+
+const SERVICE_CATALOG_LEVEL_LABELS = [
+  { level: 1, label: 'Catálogo' },
+  { level: 2, label: 'Área' },
+  { level: 3, label: 'Serviço' },
+];
+
+const LEGACY_LEVEL_LABELS = [
+  { level: 1, label: 'Categoria' },
+  { level: 2, label: 'Subcategoria' },
+];
 
 @Injectable()
 export class DeskClassificationService {
@@ -146,6 +157,9 @@ export class DeskClassificationService {
       orderBy: [{ level: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
     });
 
+    const usesServiceCatalogTree =
+      rows.some((row) => row.level >= 3) ||
+      rows.some((row) => row.catalogNodeKind != null);
     const tree = this.buildTree(rows);
 
     return {
@@ -157,10 +171,10 @@ export class DeskClassificationService {
         ...desk,
         source: 'portal' as const,
       },
-      levelLabels: [
-        { level: 1, label: 'Nível 1 — categoria' },
-        { level: 2, label: 'Nível 2 — subcategoria' },
-      ],
+      usesServiceCatalogTree,
+      levelLabels: usesServiceCatalogTree
+        ? SERVICE_CATALOG_LEVEL_LABELS
+        : LEGACY_LEVEL_LABELS,
       tree,
     };
   }
@@ -196,7 +210,7 @@ export class DeskClassificationService {
       }
       if (parent.level >= MAX_CLASSIFICATION_LEVEL) {
         throw new BadRequestException(
-          'O nível máximo é 2 (subcategoria). Não é possível adicionar filhos.',
+          'O nível máximo é 3 (serviço). Não é possível adicionar filhos.',
         );
       }
       level = parent.level + 1;
@@ -218,6 +232,8 @@ export class DeskClassificationService {
           name,
           level,
           sortOrder,
+          catalogNodeKind:
+            level === 1 ? 'catalog' : level === 2 ? 'area' : 'service',
         },
       });
     } catch (error) {

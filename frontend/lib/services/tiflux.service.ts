@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 
+/** Cliente legado (ID numérico histórico) — lido do cadastro de empresas do portal, sem API TiFlux. */
 export type TifluxClient = {
   id: number;
   name?: string;
@@ -12,8 +13,6 @@ export function getTifluxClients(params?: {
   name?: string;
 }) {
   const search = new URLSearchParams();
-
-  // Sempre buscar tudo (paginado pelo backend)
   search.set("all", "1");
 
   if (params?.active !== undefined) {
@@ -27,4 +26,3 @@ export function getTifluxClients(params?: {
   const suffix = search.toString() ? `?${search.toString()}` : "";
   return apiRequest<TifluxClient[]>(`/tiflux/clients${suffix}`);
 }
-

@@ -211,6 +211,8 @@ export type TicketCreateCatalogs = {
   classification: {
     levelLabels: Array<{ level: number; label: string }>;
     tree: TicketClassificationNode[];
+    usesServiceCatalogTree?: boolean;
+    syncedFromTiflux?: boolean;
   } | null;
   desk: {
     id: number;

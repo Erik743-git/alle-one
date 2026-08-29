@@ -412,17 +412,20 @@ model UserSpecialty {
   @@map("user_specialties")
 }
 
-/// Hierarquia de classificação sob a especialidade: no máximo 2 níveis.
+/// Hierarquia de classificação sob a especialidade (catálogo → área → serviço no portal).
 model SpecialtyClassification {
-  id          String   @id @default(uuid())
-  specialtyId String   @map("specialty_id")
-  parentId    String?  @map("parent_id")
-  name        String
-  level       Int
-  sortOrder   Int      @default(0) @map("sort_order")
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  specialtyId      String   @map("specialty_id")
+  parentId         String?  @map("parent_id")
+  name             String
+  level            Int
+  sortOrder        Int      @default(0) @map("sort_order")
+  active           Boolean  @default(true)
+  /// Metadado opcional de importação (cutover); o portal não depende disso no dia a dia.
+  legacySourceId   Int?     @map("tiflux_external_id")
+  catalogNodeKind  String?  @map("tiflux_kind")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   specialty Specialty                  @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
   parent    SpecialtyClassification?   @relation("SpecialtyClassificationTree", fields: [parentId], references: [id], onDelete: Cascade)
@@ -431,8 +434,10 @@ model SpecialtyClassification {
   portalTickets PortalTicket[]
 
   @@unique([specialtyId, parentId, name])
+  @@unique([specialtyId, catalogNodeKind, legacySourceId])
   @@index([specialtyId])
   @@index([parentId])
+  @@index([specialtyId, catalogNodeKind])
   @@map("specialty_classifications")
 }
 

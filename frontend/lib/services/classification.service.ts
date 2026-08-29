@@ -20,6 +20,7 @@ export type ClassificationNode = {
 export type ClassificationTreeResponse = {
   desk: ServiceDeskOption;
   levelLabels: Array<{ level: number; label: string }>;
+  usesServiceCatalogTree?: boolean;
   tree: ClassificationNode[];
 };
 

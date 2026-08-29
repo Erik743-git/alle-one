@@ -6,8 +6,6 @@ import {
 import { ContractStatus } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
-import { TifluxService } from '../tiflux/tiflux.service';
-import { isTifluxDisconnected } from '../tickets/tickets-portal.config';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import type {
   ListContractsQueryDto,
@@ -33,10 +31,7 @@ type TifluxContract = {
 
 @Injectable()
 export class ContractsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly tiflux: TifluxService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private async resolveCompanyId(
     user: AuthenticatedRequestUser,
@@ -143,38 +138,6 @@ export class ContractsService {
       throw new NotFoundException('Empresa não encontrada');
     }
 
-    if (isTifluxDisconnected()) {
-      return this.listFromPortal(company, query);
-    }
-
-    if (!company.tifluxClientId) {
-      return this.listFromPortal(company, query);
-    }
-
-    const offset = query.offset ?? 1;
-    const limit = query.limit ?? 20;
-    const statusList = this.parseStatusList(query.status);
-
-    const search = new URLSearchParams();
-    search.set('offset', String(offset));
-    search.set('limit', String(limit));
-    search.set('client_ids', String(company.tifluxClientId));
-    if (statusList?.length) {
-      search.set('status', statusList.join(','));
-    }
-
-    const path = `/contracts?${search.toString()}`;
-    const { data: contracts, totalItems } =
-      await this.tiflux.requestResourceWithMeta<TifluxContract[]>(path, 'GET');
-
-    return {
-      company: { id: company.id, name: company.name },
-      meta: {
-        offset,
-        limit,
-        totalItems,
-      },
-      items: contracts,
-    };
+    return this.listFromPortal(company, query);
   }
 }
