@@ -44,7 +44,8 @@ export type TicketAutoOpenPeriodicity =
   | "BIWEEKLY"
   | "MONTHLY"
   | "BIMONTHLY"
-  | "QUARTERLY";
+  | "QUARTERLY"
+  | "SEMIANNUAL";
 
 export const TICKET_AUTO_OPEN_PERIODICITY_OPTIONS: Array<{
   value: TicketAutoOpenPeriodicity;
@@ -58,6 +59,7 @@ export const TICKET_AUTO_OPEN_PERIODICITY_OPTIONS: Array<{
   { value: "MONTHLY", label: "Todo mês" },
   { value: "BIMONTHLY", label: "A cada dois meses" },
   { value: "QUARTERLY", label: "A cada três meses" },
+  { value: "SEMIANNUAL", label: "A cada seis meses" },
 ];
 
 export type TicketAutoOpenRule = {
@@ -329,6 +331,13 @@ export const adminService = {
     return apiRequest<{ ok: boolean }>(
       `/admin/ticket-auto-open-rules/${id}`,
       { method: "DELETE" },
+    );
+  },
+
+  async runDueTicketAutoOpenRules() {
+    return apiRequest<{ processed: number; errors: number }>(
+      "/admin/ticket-auto-open-rules/run-due",
+      { method: "POST" },
     );
   },
 

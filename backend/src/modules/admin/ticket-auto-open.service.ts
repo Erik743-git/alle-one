@@ -17,10 +17,14 @@ import { TicketAutoOpenPeriodicity } from '@prisma/client';
 import {
   advanceScheduledDate,
   formatYmdUtc,
+  normalizeAutoOpenResponsibleStorage,
   parseRuleDueAt,
+  parseYmdToUtcDate,
+  resolveAutoOpenResponsibleId,
   TICKET_AUTO_OPEN_PERIODICITY_LABELS,
   type TicketAutoOpenPeriodicityValue,
 } from './ticket-auto-open.helper';
+import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
 
 export type TicketAutoOpenRuleDto = {
   id: string;
@@ -123,14 +127,13 @@ export class TicketAutoOpenService {
       name: dto.name.trim(),
       active: dto.active ?? true,
       periodicity: dto.periodicity,
-      nextScheduledDate: new Date(`${dto.nextScheduledDate}T12:00:00.000Z`),
+      nextScheduledDate: parseYmdToUtcDate(dto.nextScheduledDate),
       scheduleTime: dto.scheduleTime.trim(),
       deskExternalId: dto.deskId,
       clientExternalId: dto.clientId,
-      responsibleExternalId:
-        dto.responsibleId === null || dto.responsibleId === undefined
-          ? null
-          : dto.responsibleId,
+      responsibleExternalId: normalizeAutoOpenResponsibleStorage(
+        dto.responsibleId,
+      ),
       priorityExternalId: dto.priorityId ?? null,
       servicesCatalogsItemId: dto.servicesCatalogsItemId ?? null,
       classificationId: dto.classificationId?.trim() || null,
@@ -237,7 +240,7 @@ export class TicketAutoOpenService {
       priorityId: rule.priorityExternalId ?? undefined,
       servicesCatalogsItemId: rule.servicesCatalogsItemId ?? undefined,
       classificationId: rule.classificationId ?? undefined,
-      responsibleId: rule.responsibleExternalId,
+      responsibleId: resolveAutoOpenResponsibleId(rule.responsibleExternalId),
       requestorId: rule.requestorExternalId ?? undefined,
       requestorName: rule.requestorName,
       requestorEmail: rule.requestorEmail,
@@ -269,9 +272,18 @@ export class TicketAutoOpenService {
       if (dueAt.getTime() > now.getTime()) continue;
 
       try {
+        const descriptionPlain = appointmentDescriptionToPlainText(
+          rule.description.trim(),
+        );
+        if (!descriptionPlain) {
+          throw new BadRequestException(
+            'Descrição da regra está vazia ou inválida.',
+          );
+        }
+
         const user = await this.prisma.user.findUnique({
           where: { id: rule.createdBy },
-          select: { id: true, tokenVersion: true },
+          select: { id: true },
         });
         if (!user) {
           throw new BadRequestException(
@@ -281,7 +293,8 @@ export class TicketAutoOpenService {
 
         const actor = await this.permissionsService.buildRequestUser(
           user.id,
-          user.tokenVersion ?? 0,
+          undefined,
+          { skipTokenVersionCheck: true },
         );
 
         const result = await this.ticketsService.createTicket(
@@ -335,10 +348,9 @@ export class TicketAutoOpenService {
         );
       } catch (err) {
         errors += 1;
+        const message = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `Falha na regra "${rule.name}": ${
-            err instanceof Error ? err.message : err
-          }`,
+          `Falha na regra "${rule.name}" (${rule.id}) [próx: ${formatYmdUtc(rule.nextScheduledDate)} ${rule.scheduleTime}]: ${message}`,
         );
       }
     }
