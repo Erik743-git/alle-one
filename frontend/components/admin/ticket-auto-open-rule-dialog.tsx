@@ -34,6 +34,9 @@ import {
   type TicketCreateCatalogs,
 } from "@/lib/services/tickets.service";
 
+const AUTO_OPEN_RESPONSIBLE_AUTO = "";
+const AUTO_OPEN_RESPONSIBLE_PRE_TICKET = "__PRE_TICKET__";
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -111,9 +114,11 @@ export function TicketAutoOpenRuleDialog({
       setDeskId(String(editing.deskExternalId));
       setClientId(String(editing.clientExternalId));
       setResponsibleId(
-        editing.responsibleExternalId != null
-          ? String(editing.responsibleExternalId)
-          : "",
+        editing.responsibleExternalId === null
+          ? AUTO_OPEN_RESPONSIBLE_PRE_TICKET
+          : editing.responsibleExternalId === 0
+            ? AUTO_OPEN_RESPONSIBLE_AUTO
+            : String(editing.responsibleExternalId),
       );
       setPriorityId(
         editing.priorityExternalId != null
@@ -191,6 +196,10 @@ export function TicketAutoOpenRuleDialog({
       notifyError("Informe solicitante (nome e e-mail).");
       return;
     }
+    if (requiresCatalog && !catalogItemId) {
+      notifyError("Selecione o item do catálogo.");
+      return;
+    }
 
     const exported = composerRef.current?.exportContent();
     if (!exported?.isValid) {
@@ -219,7 +228,12 @@ export function TicketAutoOpenRuleDialog({
       ccEmails: ccEmails.length ? ccEmails : undefined,
       externalGmudRef: externalGmudRef.trim() || undefined,
       classificationId: classificationId ?? undefined,
-      responsibleId: responsibleId ? Number(responsibleId) : null,
+      responsibleId:
+        responsibleId === AUTO_OPEN_RESPONSIBLE_PRE_TICKET
+          ? null
+          : responsibleId
+            ? Number(responsibleId)
+            : undefined,
       priorityId: priorityId ? Number(priorityId) : undefined,
       servicesCatalogsItemId: catalogItemId ? Number(catalogItemId) : undefined,
       parentTicketNumber: parentTicketNumber
@@ -344,7 +358,14 @@ export function TicketAutoOpenRuleDialog({
                     value={responsibleId}
                     onChange={setResponsibleId}
                     options={[
-                      { value: "", label: "Sem responsável (pré-ticket)" },
+                      {
+                        value: AUTO_OPEN_RESPONSIBLE_AUTO,
+                        label: "Automático (criador da regra)",
+                      },
+                      {
+                        value: AUTO_OPEN_RESPONSIBLE_PRE_TICKET,
+                        label: "Sem responsável (pré-ticket)",
+                      },
                       ...(catalogs?.responsibles ?? []).map((r) => ({
                         value: String(r.id),
                         label: r.name,

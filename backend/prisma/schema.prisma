@@ -708,6 +708,7 @@ enum TicketAutoOpenPeriodicity {
   MONTHLY
   BIMONTHLY
   QUARTERLY
+  SEMIANNUAL
 }
 
 /// Regra de abertura automática de ticket (rotinas / agendamentos).

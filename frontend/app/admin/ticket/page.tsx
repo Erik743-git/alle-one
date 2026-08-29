@@ -84,6 +84,7 @@ export default function AdminTicketPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingRuleId, setTogglingRuleId] = useState<string | null>(null);
+  const [runningDueRules, setRunningDueRules] = useState(false);
   const [togglingAutomationId, setTogglingAutomationId] = useState<string | null>(
     null,
   );
@@ -209,6 +210,33 @@ export default function AdminTicketPage() {
       notifyError(err instanceof Error ? err.message : "Falha ao remover o estágio.");
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function handleRunDueRules() {
+    try {
+      setRunningDueRules(true);
+      const result = await adminService.runDueTicketAutoOpenRules();
+      if (result.processed > 0) {
+        notifySuccess(
+          `${result.processed} ticket(s) aberto(s) pelas rotinas vencidas.`,
+        );
+      } else if (result.errors > 0) {
+        notifyError(
+          `Nenhum ticket aberto. ${result.errors} regra(s) com erro — verifique os logs da API.`,
+        );
+      } else {
+        notifySuccess("Nenhuma rotina vencida no momento.");
+      }
+      await loadRules();
+    } catch (err) {
+      notifyError(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível executar as rotinas vencidas.",
+      );
+    } finally {
+      setRunningDueRules(false);
     }
   }
 
@@ -393,7 +421,19 @@ export default function AdminTicketPage() {
               </>
             ) : tab === "auto-open" ? (
               <>
-                <div className="flex justify-end">
+                <div className="flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={runningDueRules}
+                    onClick={() => void handleRunDueRules()}
+                  >
+                    {runningDueRules ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CalendarClock className="mr-2 h-4 w-4" />
+                    )}
+                    Executar vencidas
+                  </Button>
                   <Button
                     onClick={() => {
                       setEditingRule(null);

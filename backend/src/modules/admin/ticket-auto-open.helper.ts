@@ -1,5 +1,8 @@
 import { TicketAutoOpenPeriodicity } from '@prisma/client';
 
+/** Responsável automático (criador da regra) — não é ID TiFlux válido. */
+export const TICKET_AUTO_OPEN_AUTO_RESPONSIBLE = 0;
+
 export const TICKET_AUTO_OPEN_PERIODICITY_VALUES = [
   'ONCE',
   'DAILY',
@@ -9,16 +12,23 @@ export const TICKET_AUTO_OPEN_PERIODICITY_VALUES = [
   'MONTHLY',
   'BIMONTHLY',
   'QUARTERLY',
+  'SEMIANNUAL',
 ] as const;
 
 export type TicketAutoOpenPeriodicityValue =
   (typeof TICKET_AUTO_OPEN_PERIODICITY_VALUES)[number];
+
+const BRT_OFFSET = '-03:00';
 
 export function formatYmdUtc(date: Date): string {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   const d = String(date.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+export function parseYmdToUtcDate(ymd: string): Date {
+  return new Date(`${ymd}T12:00:00.000Z`);
 }
 
 export function parseRuleDueAt(params: {
@@ -30,20 +40,25 @@ export function parseRuleDueAt(params: {
   const hh = Number.isFinite(h) ? h : 0;
   const mm = Number.isFinite(m) ? m : 0;
   return new Date(
-    `${ymd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00-03:00`,
+    `${ymd}T${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:00${BRT_OFFSET}`,
   );
 }
 
-function isWeekendUtc(date: Date): boolean {
-  const day = date.getUTCDay();
+function getWeekdayInBrt(date: Date): number {
+  const ymd = formatYmdUtc(date);
+  return new Date(`${ymd}T12:00:00${BRT_OFFSET}`).getDay();
+}
+
+function isWeekendInBrt(date: Date): boolean {
+  const day = getWeekdayInBrt(date);
   return day === 0 || day === 6;
 }
 
-function advanceToNextWeekdayUtc(date: Date): Date {
+function advanceToNextWeekdayBrt(date: Date): Date {
   const next = new Date(date);
   do {
     next.setUTCDate(next.getUTCDate() + 1);
-  } while (isWeekendUtc(next));
+  } while (isWeekendInBrt(next));
   return next;
 }
 
@@ -56,7 +71,7 @@ export function advanceScheduledDate(
     case TicketAutoOpenPeriodicity.ONCE:
       return next;
     case TicketAutoOpenPeriodicity.DAILY_WEEKDAYS:
-      return advanceToNextWeekdayUtc(next);
+      return advanceToNextWeekdayBrt(next);
     case TicketAutoOpenPeriodicity.WEEKLY:
       next.setUTCDate(next.getUTCDate() + 7);
       break;
@@ -71,6 +86,9 @@ export function advanceScheduledDate(
       break;
     case TicketAutoOpenPeriodicity.QUARTERLY:
       next.setUTCMonth(next.getUTCMonth() + 3);
+      break;
+    case TicketAutoOpenPeriodicity.SEMIANNUAL:
+      next.setUTCMonth(next.getUTCMonth() + 6);
       break;
     default:
       next.setUTCDate(next.getUTCDate() + 1);
@@ -90,4 +108,22 @@ export const TICKET_AUTO_OPEN_PERIODICITY_LABELS: Record<
   MONTHLY: 'Todo mês',
   BIMONTHLY: 'A cada dois meses',
   QUARTERLY: 'A cada três meses',
+  SEMIANNUAL: 'A cada seis meses',
 };
+
+export function resolveAutoOpenResponsibleId(
+  responsibleExternalId: number | null,
+): number | null | undefined {
+  if (responsibleExternalId === TICKET_AUTO_OPEN_AUTO_RESPONSIBLE) {
+    return undefined;
+  }
+  return responsibleExternalId;
+}
+
+export function normalizeAutoOpenResponsibleStorage(
+  responsibleId: number | null | undefined,
+): number | null {
+  if (responsibleId === null) return null;
+  if (responsibleId === undefined) return TICKET_AUTO_OPEN_AUTO_RESPONSIBLE;
+  return responsibleId;
+}

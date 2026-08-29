@@ -378,6 +378,7 @@ export class PermissionsService {
   async buildRequestUser(
     userId: string,
     tokenVersion?: number,
+    opts?: { skipTokenVersionCheck?: boolean },
   ): Promise<AuthenticatedRequestUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -396,7 +397,10 @@ export class PermissionsService {
     }
 
     const expectedTv = tokenVersion ?? 0;
-    if ((user.tokenVersion ?? 0) !== expectedTv) {
+    if (
+      !opts?.skipTokenVersionCheck &&
+      (user.tokenVersion ?? 0) !== expectedTv
+    ) {
       throw new UnauthorizedException('Sessão expirada. Faça login novamente.');
     }
 
