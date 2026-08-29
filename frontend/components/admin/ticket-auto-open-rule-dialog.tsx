@@ -106,6 +106,13 @@ export function TicketAutoOpenRuleDialog({
     catalogs?.desk?.requireServiceCatalog ?? selectedDesk?.requireServiceCatalog,
   );
 
+  const usesServiceCatalogTree = Boolean(
+    catalogs?.classification?.usesServiceCatalogTree ??
+      catalogs?.classification?.syncedFromTiflux,
+  );
+
+  const showCatalogPicker = requiresCatalog && !usesServiceCatalogTree;
+
   const requiresClassification =
     (catalogs?.classification?.tree?.length ?? 0) > 0;
 
@@ -308,7 +315,7 @@ export function TicketAutoOpenRuleDialog({
       notifyError("Informe solicitante (nome e e-mail).");
       return;
     }
-    if (requiresCatalog && !catalogItemId) {
+    if (showCatalogPicker && !catalogItemId) {
       notifyError("Selecione o item do catálogo.");
       return;
     }
@@ -520,7 +527,7 @@ export function TicketAutoOpenRuleDialog({
                     />
                   </div>
                 ) : null}
-                {requiresCatalog ? (
+                {showCatalogPicker ? (
                   <div className="space-y-4 lg:col-span-2">
                     {catalogHasHierarchy ? (
                       <div className="grid gap-4 lg:grid-cols-2">

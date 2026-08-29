@@ -21,11 +21,12 @@ import {
   type ServiceDeskOption,
 } from "@/lib/services/classification.service";
 
-const MAX_LEVEL = 2;
+const MAX_LEVEL = 3;
 
 const LEVEL_HINTS: Record<number, string> = {
-  1: "Nível 1 — categoria",
-  2: "Nível 2 — subcategoria",
+  1: "Catálogo",
+  2: "Área",
+  3: "Serviço",
 };
 
 type AddTarget = {

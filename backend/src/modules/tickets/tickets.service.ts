@@ -342,7 +342,20 @@ export class TicketsService {
       tifluxDeskName,
     );
 
-    if (requiresCatalog && !dto.servicesCatalogsItemId) {
+    let servicesCatalogsItemId =
+      dto.servicesCatalogsItemId != null &&
+      Number.isFinite(Number(dto.servicesCatalogsItemId))
+        ? Number(dto.servicesCatalogsItemId)
+        : null;
+
+    if (requiresCatalog && !servicesCatalogsItemId && dto.classificationId) {
+      servicesCatalogsItemId =
+        await this.catalogs.resolveTifluxServiceItemIdFromClassification(
+          dto.classificationId,
+        );
+    }
+
+    if (requiresCatalog && !servicesCatalogsItemId) {
       throw new BadRequestException('Selecione o serviço do catálogo.');
     }
 
@@ -369,12 +382,6 @@ export class TicketsService {
     if (!descriptionPlain && files.length === 0) {
       throw new BadRequestException('Informe a descrição do chamado.');
     }
-
-    const servicesCatalogsItemId =
-      dto.servicesCatalogsItemId != null &&
-      Number.isFinite(Number(dto.servicesCatalogsItemId))
-        ? Number(dto.servicesCatalogsItemId)
-        : null;
 
     const allowedResponsibles = isClientPortalRole(actor.role)
       ? actor.companyId

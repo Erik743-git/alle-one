@@ -125,6 +125,23 @@ export class TicketAutoOpenService {
     };
   }
 
+  private async enrichCatalogFromClassification<
+    T extends {
+      classificationId: string | null;
+      servicesCatalogsItemId: number | null;
+    },
+  >(data: T): Promise<T> {
+    if (data.servicesCatalogsItemId || !data.classificationId) {
+      return data;
+    }
+    const itemId =
+      await this.catalogs.resolveTifluxServiceItemIdFromClassification(
+        data.classificationId,
+      );
+    if (!itemId) return data;
+    return { ...data, servicesCatalogsItemId: itemId };
+  }
+
   private normalizeDto(dto: CreateTicketAutoOpenRuleDto) {
     const ccEmails = (dto.ccEmails ?? [])
       .map((email) => email.trim().toLowerCase())
@@ -177,7 +194,8 @@ export class TicketAutoOpenService {
     actor: AuthenticatedRequestUser,
     dto: CreateTicketAutoOpenRuleDto,
   ): Promise<TicketAutoOpenRuleDto> {
-    const data = this.normalizeDto(dto);
+    let data = this.normalizeDto(dto);
+    data = await this.enrichCatalogFromClassification(data);
     if (!data.name) throw new BadRequestException('Informe o nome da regra.');
     await this.assertRuleClassification(data);
 
@@ -200,10 +218,11 @@ export class TicketAutoOpenService {
     if (!existing) throw new NotFoundException('Regra não encontrada.');
 
     const data = this.normalizeDto(dto);
-    await this.assertRuleClassification(data);
+    const enriched = await this.enrichCatalogFromClassification(data);
+    await this.assertRuleClassification(enriched);
     const updated = await this.prisma.ticketAutoOpenRule.update({
       where: { id },
-      data,
+      data: enriched,
     });
     return this.map(updated);
   }
