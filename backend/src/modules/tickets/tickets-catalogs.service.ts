@@ -62,7 +62,15 @@ export type TicketCreateCatalogs = {
     requiredFields: Record<string, boolean>;
   } | null;
   priorities: Array<{ id: number; name: string }>;
-  catalogItems: Array<{ id: number; name: string }>;
+  catalogItems: Array<{
+    id: number;
+    name: string;
+    catalogId?: number;
+    catalogName?: string;
+    areaId?: number;
+    areaName?: string;
+    itemName?: string;
+  }>;
   source?: 'portal' | 'tiflux';
 };
 
@@ -232,8 +240,11 @@ export class TicketsCatalogsService {
         deletedAt: null,
         status: UserStatus.ACTIVE,
         responsible: true,
-        specialtyId: specialty.id,
         role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
+        OR: [
+          { userSpecialties: { some: { specialtyId: specialty.id } } },
+          { specialtyId: specialty.id },
+        ],
       },
       select: { id: true, name: true, email: true },
       orderBy: { name: 'asc' },
@@ -749,13 +760,34 @@ export class TicketsCatalogsService {
 
   private mapCatalogItem(row: Record<string, unknown>) {
     const id = Number(row.id);
-    const name = String(row.name ?? row.display_name ?? '').trim();
-    const catalog = row.catalog as { name?: string } | null | undefined;
-    const area = row.area as { name?: string } | null | undefined;
-    const parts = [catalog?.name, area?.name, name]
+    const itemName = String(row.name ?? row.display_name ?? '').trim();
+    const catalog = row.catalog as
+      | { id?: number; name?: string }
+      | null
+      | undefined;
+    const area = row.area as { id?: number; name?: string } | null | undefined;
+    const catalogName = String(catalog?.name ?? '').trim() || undefined;
+    const areaName = String(area?.name ?? '').trim() || undefined;
+    const catalogId =
+      catalog?.id != null && Number.isFinite(Number(catalog.id))
+        ? Number(catalog.id)
+        : undefined;
+    const areaId =
+      area?.id != null && Number.isFinite(Number(area.id))
+        ? Number(area.id)
+        : undefined;
+    const parts = [catalogName, areaName, itemName]
       .map((part) => String(part ?? '').trim())
       .filter(Boolean);
-    return { id, name: parts.join(' → ') || name || `Item ${id}` };
+    return {
+      id,
+      name: parts.join(' → ') || itemName || `Item ${id}`,
+      catalogId,
+      catalogName,
+      areaId,
+      areaName,
+      itemName: itemName || undefined,
+    };
   }
 
   async getCreateCatalogs(
@@ -823,7 +855,7 @@ export class TicketsCatalogsService {
 
     let desk: Record<string, unknown> | null = null;
     let priorities: Array<{ id: number; name: string }> = [];
-    let catalogItems: Array<{ id: number; name: string }> = [];
+    let catalogItems: TicketCreateCatalogs['catalogItems'] = [];
     let portalServiceDesk: { id: string; name: string } | null = null;
     let classification: TicketCreateCatalogs['classification'] = null;
 

@@ -67,7 +67,8 @@ export type CreateUserPayload = {
   firstAccess?: boolean;
   responsible?: boolean;
   specialtyId?: string | null;
-  /** @deprecated Prefer specialtyId */
+  specialtyIds?: string[];
+  /** @deprecated Prefer specialtyIds */
   serviceDeskIds?: string[];
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;
@@ -84,7 +85,8 @@ export type UpdateUserPayload = {
   firstAccess?: boolean;
   responsible?: boolean;
   specialtyId?: string | null;
-  /** @deprecated Prefer specialtyId */
+  specialtyIds?: string[];
+  /** @deprecated Prefer specialtyIds */
   serviceDeskIds?: string[];
   rendimentoCustomSchedule?: boolean;
   rendimentoDailyWorkMinutes?: number | null;

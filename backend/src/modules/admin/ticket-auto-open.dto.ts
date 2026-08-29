@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import {
   TICKET_AUTO_OPEN_PERIODICITY_VALUES,
+  normalizeScheduleTime,
   parseAutoOpenResponsibleIdInput,
   type TicketAutoOpenPeriodicityValue,
 } from './ticket-auto-open.helper';
@@ -40,6 +41,7 @@ export class CreateTicketAutoOpenRuleDto {
   nextScheduledDate!: string;
 
   @IsString()
+  @Transform(({ value }) => normalizeScheduleTime(String(value ?? '')))
   @Matches(HHMM)
   scheduleTime!: string;
 

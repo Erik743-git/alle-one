@@ -221,7 +221,7 @@ export function UsuarioEditDialog({
 
             <div className="space-y-2 sm:col-span-2">
               <Label className="text-sm font-semibold text-foreground">
-                Especialidade
+                Especialidades
               </Label>
               <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
                 {carregandoEspecialidades ? (
@@ -237,27 +237,29 @@ export function UsuarioEditDialog({
                     <button
                       type="button"
                       onClick={() =>
-                        onFormChange((prev) => ({ ...prev, specialtyId: "" }))
+                        onFormChange((prev) => ({ ...prev, specialtyIds: [] }))
                       }
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                        !form.specialtyId
+                        form.specialtyIds.length === 0
                           ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
                           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                       }`}
                     >
                       <span
-                        className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                          !form.specialtyId ? "border-primary" : "border-border"
+                        className={`flex size-4 shrink-0 items-center justify-center rounded border-2 ${
+                          form.specialtyIds.length === 0
+                            ? "border-primary bg-primary"
+                            : "border-border"
                         }`}
                       >
-                        {!form.specialtyId ? (
-                          <span className="size-2 rounded-full bg-primary" />
+                        {form.specialtyIds.length === 0 ? (
+                          <span className="size-2 rounded-sm bg-primary-foreground" />
                         ) : null}
                       </span>
                       Nenhuma
                     </button>
                     {specialties.map((item) => {
-                      const selected = form.specialtyId === item.id;
+                      const selected = form.specialtyIds.includes(item.id);
                       return (
                         <button
                           key={item.id}
@@ -265,7 +267,9 @@ export function UsuarioEditDialog({
                           onClick={() =>
                             onFormChange((prev) => ({
                               ...prev,
-                              specialtyId: item.id,
+                              specialtyIds: selected
+                                ? prev.specialtyIds.filter((id) => id !== item.id)
+                                : [...prev.specialtyIds, item.id],
                             }))
                           }
                           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
@@ -275,12 +279,12 @@ export function UsuarioEditDialog({
                           }`}
                         >
                           <span
-                            className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                              selected ? "border-primary" : "border-border"
+                            className={`flex size-4 shrink-0 items-center justify-center rounded border-2 ${
+                              selected ? "border-primary bg-primary" : "border-border"
                             }`}
                           >
                             {selected ? (
-                              <span className="size-2 rounded-full bg-primary" />
+                              <span className="size-2 rounded-sm bg-primary-foreground" />
                             ) : null}
                           </span>
                           <span className="truncate font-medium">{item.name}</span>
@@ -291,7 +295,8 @@ export function UsuarioEditDialog({
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Apenas uma especialidade por usuário.
+                Selecione uma ou mais especialidades (mesas TiFlux). Use o sync
+                TiFlux para preencher automaticamente.
               </p>
             </div>
 

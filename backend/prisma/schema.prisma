@@ -129,6 +129,7 @@ model User {
 
   specialtyId         String?              @map("specialty_id")
   specialty           Specialty?           @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
+  userSpecialties     UserSpecialty[]
 
   company             Company?             @relation(fields: [companyId], references: [id], onDelete: SetNull)
   companyMemberships  UserCompany[]
@@ -386,6 +387,7 @@ model Specialty {
   deletedAt    DateTime?         @map("deleted_at")
 
   users               User[]
+  userSpecialties     UserSpecialty[]
   classifications     SpecialtyClassification[]
   contractSpecialties ContractSpecialty[]
   emailInboundRoutes  EmailInboundRoute[]
@@ -394,6 +396,20 @@ model Specialty {
   companyTicketSpecialties CompanyTicketSpecialty[]
 
   @@map("specialties")
+}
+
+/// Vínculo N:N usuário ↔ especialidade (espelha responsáveis por mesa no TiFlux).
+model UserSpecialty {
+  userId      String   @map("user_id")
+  specialtyId String   @map("specialty_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, specialtyId])
+  @@index([specialtyId])
+  @@map("user_specialties")
 }
 
 /// Hierarquia de classificação sob a especialidade: no máximo 2 níveis.

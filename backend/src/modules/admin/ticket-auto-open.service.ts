@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { PermissionsService } from '../permissions/permissions.service';
 import { TicketsService } from '../tickets/tickets.service';
+import { TicketsCatalogsService } from '../tickets/tickets-catalogs.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import type { CreateTicketDto } from '../tickets/tickets-create.dto';
 import {
@@ -64,6 +65,7 @@ export class TicketAutoOpenService {
     private readonly prisma: PrismaService,
     private readonly ticketsService: TicketsService,
     private readonly permissionsService: PermissionsService,
+    private readonly catalogs: TicketsCatalogsService,
   ) {}
 
   private map(row: {
@@ -153,6 +155,16 @@ export class TicketAutoOpenService {
     };
   }
 
+  private async assertRuleClassification(data: {
+    deskExternalId: number;
+    classificationId: string | null;
+  }) {
+    await this.catalogs.assertValidClassificationForDesk(
+      data.deskExternalId,
+      data.classificationId,
+    );
+  }
+
   async list(): Promise<TicketAutoOpenRuleDto[]> {
     const rows = await this.prisma.ticketAutoOpenRule.findMany({
       where: { deletedAt: null },
@@ -167,6 +179,7 @@ export class TicketAutoOpenService {
   ): Promise<TicketAutoOpenRuleDto> {
     const data = this.normalizeDto(dto);
     if (!data.name) throw new BadRequestException('Informe o nome da regra.');
+    await this.assertRuleClassification(data);
 
     const created = await this.prisma.ticketAutoOpenRule.create({
       data: {
@@ -187,6 +200,7 @@ export class TicketAutoOpenService {
     if (!existing) throw new NotFoundException('Regra não encontrada.');
 
     const data = this.normalizeDto(dto);
+    await this.assertRuleClassification(data);
     const updated = await this.prisma.ticketAutoOpenRule.update({
       where: { id },
       data,

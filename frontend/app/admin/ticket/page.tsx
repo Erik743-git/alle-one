@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -45,6 +45,8 @@ import {
 } from "@/lib/services/admin.service";
 
 type AdminTicketTab = "stages" | "auto-open" | "automations";
+
+const RULES_PAGE_SIZE = 10;
 
 function StageBadges({ stage }: { stage: TicketStage }) {
   if (!stage.isSystem && stage.active) return null;
@@ -101,6 +103,7 @@ export default function AdminTicketPage() {
   const [automationDialogOpen, setAutomationDialogOpen] = useState(false);
   const [editingAutomation, setEditingAutomation] =
     useState<TicketAutomationRule | null>(null);
+  const [rulesPage, setRulesPage] = useState(1);
 
   const loadStages = useCallback(async () => {
     try {
@@ -156,6 +159,20 @@ export default function AdminTicketPage() {
     void loadRules();
     void loadAutomations();
   }, [loadStages, loadRules, loadAutomations]);
+
+  const rulesTotalPages = Math.max(1, Math.ceil(rules.length / RULES_PAGE_SIZE));
+  const paginatedRules = useMemo(() => {
+    const start = (rulesPage - 1) * RULES_PAGE_SIZE;
+    return rules.slice(start, start + RULES_PAGE_SIZE);
+  }, [rules, rulesPage]);
+  const rulesCanPrev = rulesPage > 1;
+  const rulesCanNext = rulesPage < rulesTotalPages;
+
+  useEffect(() => {
+    if (rulesPage > rulesTotalPages) {
+      setRulesPage(rulesTotalPages);
+    }
+  }, [rulesPage, rulesTotalPages]);
 
   function openCreateStage() {
     setEditingStage(null);
@@ -459,9 +476,10 @@ export default function AdminTicketPage() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <Card>
-                    <CardContent className="divide-y divide-border p-0">
-                      {rules.map((rule) => (
+                  <div className="space-y-3">
+                    <Card>
+                      <CardContent className="divide-y divide-border p-0">
+                        {paginatedRules.map((rule) => (
                         <div
                           key={rule.id}
                           className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
@@ -530,6 +548,35 @@ export default function AdminTicketPage() {
                       ))}
                     </CardContent>
                   </Card>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+                      <span>
+                        {rules.length} regra(s) · página {rulesPage} de{" "}
+                        {rulesTotalPages}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!rulesCanPrev}
+                          onClick={() => setRulesPage((p) => Math.max(1, p - 1))}
+                        >
+                          Anterior
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={!rulesCanNext}
+                          onClick={() =>
+                            setRulesPage((p) => Math.min(rulesTotalPages, p + 1))
+                          }
+                        >
+                          Próxima
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 )}
               </>
             ) : (

@@ -54,12 +54,19 @@ export class CreateUserDto {
   @IsUUID()
   specialtyId?: string | null;
 
-  /** @deprecated Prefer specialtyId (uma especialidade por usuário). */
   @IsOptional()
   @IsArray()
   @ArrayUnique()
   @IsUUID('4', { each: true })
-  @ArrayMaxSize(1)
+  @ArrayMaxSize(50)
+  specialtyIds?: string[];
+
+  /** @deprecated Prefer specialtyIds */
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  @ArrayMaxSize(50)
   serviceDeskIds?: string[];
 
   @IsOptional()
