@@ -20,6 +20,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import {
   importCatalogItemsToSpecialty,
   importDeskResponsiblesToSpecialty,
+  linkDeskExternalIdToSpecialty,
   normalizeMatchName,
 } from '../../src/modules/admin/portal-tiflux-once.import';
 
@@ -156,12 +157,16 @@ async function main() {
 
     console.log(`\n=== ${desk.name} (TiFlux #${desk.id}) → ${specialty.name} ===`);
 
-    if (linkDesks && !dryRun && specialty.externalId !== desk.id) {
-      await prisma.specialty.update({
-        where: { id: specialty.id },
-        data: { externalId: desk.id },
+    if (linkDesks) {
+      const linkResult = await linkDeskExternalIdToSpecialty(prisma, {
+        specialtyId: specialty.id,
+        specialtyName: specialty.name,
+        deskExternalId: desk.id,
+        dryRun,
       });
-      console.log(`  external_id da especialidade → ${desk.id}`);
+      if (linkResult.message) {
+        console.log(`  ${linkResult.message}`);
+      }
     }
 
     if (runCatalog) {

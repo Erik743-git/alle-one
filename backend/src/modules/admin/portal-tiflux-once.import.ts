@@ -5,6 +5,84 @@ export function normalizeMatchName(value: string): string {
   return value.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
 }
 
+export async function linkDeskExternalIdToSpecialty(
+  prisma: PrismaClient,
+  input: {
+    specialtyId: string;
+    specialtyName: string;
+    deskExternalId: number;
+    dryRun?: boolean;
+  },
+): Promise<{ linked: boolean; message?: string }> {
+  const specialty = await prisma.specialty.findUnique({
+    where: { id: input.specialtyId },
+    select: { id: true, name: true, externalId: true },
+  });
+  if (!specialty) {
+    throw new Error(`Especialidade ${input.specialtyId} não encontrada`);
+  }
+
+  if (specialty.externalId === input.deskExternalId) {
+    return {
+      linked: false,
+      message: `external_id já é ${input.deskExternalId}`,
+    };
+  }
+
+  const conflict = await prisma.specialty.findFirst({
+    where: {
+      externalId: input.deskExternalId,
+      deletedAt: null,
+      id: { not: specialty.id },
+    },
+    select: { id: true, name: true },
+  });
+
+  if (input.dryRun) {
+    if (conflict) {
+      return {
+        linked: true,
+        message:
+          `vincularia external_id → ${input.deskExternalId} ` +
+          `(removeria de "${conflict.name}")`,
+      };
+    }
+    if (specialty.externalId != null) {
+      return {
+        linked: true,
+        message:
+          `vincularia external_id → ${input.deskExternalId} ` +
+          `(substitui ${specialty.externalId})`,
+      };
+    }
+    return {
+      linked: true,
+      message: `vincularia external_id → ${input.deskExternalId}`,
+    };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (conflict) {
+      await tx.specialty.update({
+        where: { id: conflict.id },
+        data: { externalId: null },
+      });
+    }
+    await tx.specialty.update({
+      where: { id: specialty.id },
+      data: { externalId: input.deskExternalId },
+    });
+  });
+
+  const parts = [`external_id da especialidade → ${input.deskExternalId}`];
+  if (conflict) {
+    parts.push(`(removido de "${conflict.name}")`);
+  } else if (specialty.externalId != null) {
+    parts.push(`(antes: ${specialty.externalId})`);
+  }
+  return { linked: true, message: parts.join(' ') };
+}
+
 type ParsedCatalogItem = {
   catalogId: number;
   catalogName: string;
