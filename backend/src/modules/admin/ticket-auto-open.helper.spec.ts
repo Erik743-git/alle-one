@@ -27,6 +27,15 @@ describe('ticket-auto-open.helper', () => {
     expect(formatYmdUtc(next)).toBe('2026-08-28');
   });
 
+  it('advanceScheduledDate avança um ano (YEARLY)', () => {
+    const current = parseYmdToUtcDate('2026-02-28');
+    const next = advanceScheduledDate(
+      current,
+      TicketAutoOpenPeriodicity.YEARLY,
+    );
+    expect(formatYmdUtc(next)).toBe('2027-02-28');
+  });
+
   it('resolveAutoOpenResponsibleId distingue automático, pré-ticket e explícito', () => {
     expect(
       resolveAutoOpenResponsibleId(TICKET_AUTO_OPEN_AUTO_RESPONSIBLE),

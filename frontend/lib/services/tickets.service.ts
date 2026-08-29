@@ -285,7 +285,7 @@ export type CreateAppointmentPayload = {
   removeAttachmentFileIds?: string[];
   /** Envia e-mail ao responsável e aos seguidores. */
   notifyClient?: boolean;
-  /** Advertência: exige leitura dos demais usuários. */
+  /** Atenção: exige leitura dos demais usuários. */
   isWarning?: boolean;
 };
 
@@ -397,11 +397,11 @@ export type TicketAppointmentWarningListItem = {
 export type TicketAppointmentWarningDetail = {
   portalAppointmentId: string;
   ticketNumber: number;
+  ticketTitle: string;
   appointmentDate: string;
   initTime: string;
   endTime: string;
   userName: string;
-  serviceName: string;
   description: string;
   descriptionPlain: string;
   attachments: TicketAppointment["attachments"];
@@ -532,9 +532,10 @@ export const ticketsService = {
   },
 
   pendingAppointmentWarnings(ticketNumber: number) {
-    return apiRequest<{ warnings: TicketAppointmentWarningListItem[] }>(
-      `/tickets/${ticketNumber}/warnings/pending`,
-    );
+    return apiRequest<{
+      ticketTitle: string;
+      warnings: TicketAppointmentWarningListItem[];
+    }>(`/tickets/${ticketNumber}/warnings/pending`);
   },
 
   appointmentWarningDetail(ticketNumber: number, portalAppointmentId: string) {

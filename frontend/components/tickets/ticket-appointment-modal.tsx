@@ -640,7 +640,7 @@ export function TicketAppointmentModal({
                 disabled={saving}
               />
               <span>
-                Advertência
+                Atenção
                 <span className="mt-0.5 block text-xs text-muted-foreground">
                   {TICKET_APPOINTMENT_WARNING_HINT}
                 </span>

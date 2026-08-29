@@ -1474,7 +1474,7 @@ export default function TicketDetailPage() {
                                   {row.isWarning ? (
                                     <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
                                       <AlertTriangle className="size-3" />
-                                      Advertência
+                                      Atenção
                                     </span>
                                   ) : null}
                                 </div>

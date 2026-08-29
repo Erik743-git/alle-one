@@ -1,0 +1,1 @@
+ALTER TYPE "TicketAutoOpenPeriodicity" ADD VALUE IF NOT EXISTS 'YEARLY';

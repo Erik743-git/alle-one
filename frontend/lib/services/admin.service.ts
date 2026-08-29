@@ -45,7 +45,8 @@ export type TicketAutoOpenPeriodicity =
   | "MONTHLY"
   | "BIMONTHLY"
   | "QUARTERLY"
-  | "SEMIANNUAL";
+  | "SEMIANNUAL"
+  | "YEARLY";
 
 export const TICKET_AUTO_OPEN_PERIODICITY_OPTIONS: Array<{
   value: TicketAutoOpenPeriodicity;
@@ -60,6 +61,7 @@ export const TICKET_AUTO_OPEN_PERIODICITY_OPTIONS: Array<{
   { value: "BIMONTHLY", label: "A cada dois meses" },
   { value: "QUARTERLY", label: "A cada três meses" },
   { value: "SEMIANNUAL", label: "A cada seis meses" },
+  { value: "YEARLY", label: "A cada um ano" },
 ];
 
 export type TicketAutoOpenRule = {
