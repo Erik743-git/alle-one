@@ -106,10 +106,10 @@ export const TICKET_APPOINTMENT_NOT_STARTED_WARNING =
   "Este ticket ainda não foi iniciado. Para apontar horas, altere o estágio para Em execução.";
 
 export const TICKET_APPOINTMENT_WARNING_HINT =
-  "Marque quando o apontamento for uma advertência importante. Quem abrir o ticket verá um aviso para ler o conteúdo antes de continuar.";
+  "Marque quando o apontamento for uma atenção importante. Quem abrir o ticket verá um aviso para ler o conteúdo antes de continuar.";
 
 export const TICKET_APPOINTMENT_WARNING_DIALOG_INTRO =
-  "Este ticket possui advertência(s) que precisam ser lidas. Selecione uma linha para ver o conteúdo completo.";
+  "Este ticket possui atenção(ões) que precisam ser lidas. Selecione uma linha para ver o conteúdo completo.";
 
 /** Apontamento listado só pelo espelho externo (sem portalAppointmentId). */
 export const TICKET_APPOINTMENT_TIFLUX_ONLY_HINT =

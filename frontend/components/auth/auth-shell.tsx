@@ -5,10 +5,11 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Cache-bust quando a arte do login mudar. */
-export const AUTH_HERO_SRC = "/login-hero.jpg?v=16";
+export const AUTH_HERO_SRC = "/login-hero.jpg?v=17";
+export const AUTH_HERO_SRC_2X = "/login-hero-2x.jpg?v=17";
 
-/** Ancora no topo e equilibra personagem (esq.) com logo Alle (dir.) ao recortar. */
-const AUTH_HERO_OBJECT_POSITION = "38% top";
+/** Ancora no topo; prioriza personagem à esquerda (arte 16:9). */
+const AUTH_HERO_OBJECT_POSITION = "28% top";
 
 type AuthShellProps = {
   children: ReactNode;
@@ -38,7 +39,7 @@ export function AuthShell({
         "overflow-x-hidden overflow-y-auto overscroll-y-contain",
         "px-4 py-5 sm:px-5 sm:py-6",
         "lg:h-dvh lg:max-h-dvh lg:items-center lg:overflow-hidden lg:py-0 lg:px-0",
-        "lg:grid lg:grid-cols-[1fr_minmax(400px,440px)_minmax(1.5rem,5vw)] lg:justify-items-end",
+        "lg:flex lg:justify-start lg:pl-[clamp(20rem,38vw,44rem)]",
         className,
       )}
     >
@@ -49,9 +50,13 @@ export function AuthShell({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={AUTH_HERO_SRC}
+          srcSet={`${AUTH_HERO_SRC} 1024w, ${AUTH_HERO_SRC_2X} 1920w`}
+          sizes="100vw"
           alt=""
           decoding="sync"
           fetchPriority="high"
+          width={1024}
+          height={576}
           className="absolute inset-0 h-full w-full select-none object-cover"
           style={{ objectPosition: AUTH_HERO_OBJECT_POSITION }}
         />
@@ -62,7 +67,7 @@ export function AuthShell({
       <div
         className={cn(
           "relative z-10 my-auto w-full max-w-[min(100%,22.5rem)] animate-[fadeIn_0.5s_ease-out] sm:max-w-[27rem]",
-          "lg:col-start-2 lg:my-0 lg:max-w-none lg:-translate-x-6 xl:-translate-x-10",
+          "lg:my-0 lg:w-[min(100%,27.5rem)] lg:max-w-none",
           contentClassName,
         )}
       >

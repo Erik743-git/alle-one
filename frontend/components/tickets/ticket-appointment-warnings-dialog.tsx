@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { FieldLabel } from "@/components/ui/field-label";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { TICKET_APPOINTMENT_WARNING_DIALOG_INTRO } from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
@@ -79,7 +80,7 @@ export function TicketAppointmentWarningsDialog({
       notifyError(
         err instanceof Error
           ? err.message
-          : "Não foi possível carregar as advertências.",
+          : "Não foi possível carregar as atenções.",
       );
       setWarnings([]);
     } finally {
@@ -126,7 +127,7 @@ export function TicketAppointmentWarningsDialog({
           notifyError(
             err instanceof Error
               ? err.message
-              : "Não foi possível carregar a advertência.",
+              : "Não foi possível carregar a atenção.",
           );
           setSelectedId(null);
         }
@@ -209,10 +210,10 @@ export function TicketAppointmentWarningsDialog({
             <AlertTriangle className="size-5 shrink-0" />
             <DialogTitle className="text-lg text-foreground">
               {showList
-                ? "Advertências pendentes"
+                ? "Atenções pendentes"
                 : detail
-                  ? "Advertência"
-                  : "Advertências"}
+                  ? "Atenção"
+                  : "Atenções"}
             </DialogTitle>
           </div>
           <DialogDescription className="text-sm leading-relaxed text-muted-foreground">
@@ -229,7 +230,7 @@ export function TicketAppointmentWarningsDialog({
             </div>
           ) : visibleWarnings.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              Nenhuma advertência pendente de leitura.
+              Nenhuma atenção pendente de leitura.
             </p>
           ) : showList ? (
             <ul className="space-y-2">
@@ -262,24 +263,39 @@ export function TicketAppointmentWarningsDialog({
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm">
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-muted-foreground">
-                  <span className="font-medium text-foreground">
-                    {formatWarningDate(detail.appointmentDate)}
-                  </span>
-                  <span>
-                    {detail.initTime}–{detail.endTime}
-                  </span>
-                  <span>· {detail.userName}</span>
-                  <span>· {detail.serviceName}</span>
+              <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+                {formatWarningDate(detail.appointmentDate)} · {detail.initTime}–
+                {detail.endTime}
+              </div>
+
+              <div className="space-y-2">
+                <FieldLabel className="font-sans text-sm font-semibold text-foreground">
+                  Título
+                </FieldLabel>
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-foreground">
+                  {detail.ticketTitle}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-border/60 bg-background/40 p-4">
-                <AppointmentDescriptionView
-                  description={detail.description}
-                  attachments={detail.attachments}
-                />
+              <div className="space-y-2">
+                <FieldLabel className="font-sans text-sm font-semibold text-foreground">
+                  Quem apontou
+                </FieldLabel>
+                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-foreground">
+                  {detail.userName}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <FieldLabel className="font-sans text-sm font-semibold text-foreground">
+                  Descrição
+                </FieldLabel>
+                <div className="rounded-xl border border-border/60 bg-background/40 p-4">
+                  <AppointmentDescriptionView
+                    description={detail.description}
+                    attachments={detail.attachments}
+                  />
+                </div>
               </div>
 
               {detail.attachments.some((a) => !a.mimeType.startsWith("image/")) ? (
@@ -362,7 +378,7 @@ export function TicketAppointmentWarningsDialog({
                     Salvando…
                   </>
                 ) : (
-                  "OK, li a advertência"
+                  "OK, li a atenção"
                 )}
               </Button>
             </DialogFooter>

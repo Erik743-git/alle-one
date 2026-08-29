@@ -13,6 +13,7 @@ export const TICKET_AUTO_OPEN_PERIODICITY_VALUES = [
   'BIMONTHLY',
   'QUARTERLY',
   'SEMIANNUAL',
+  'YEARLY',
 ] as const;
 
 export type TicketAutoOpenPeriodicityValue =
@@ -90,6 +91,9 @@ export function advanceScheduledDate(
     case TicketAutoOpenPeriodicity.SEMIANNUAL:
       next.setUTCMonth(next.getUTCMonth() + 6);
       break;
+    case TicketAutoOpenPeriodicity.YEARLY:
+      next.setUTCFullYear(next.getUTCFullYear() + 1);
+      break;
     default:
       next.setUTCDate(next.getUTCDate() + 1);
   }
@@ -109,6 +113,7 @@ export const TICKET_AUTO_OPEN_PERIODICITY_LABELS: Record<
   BIMONTHLY: 'A cada dois meses',
   QUARTERLY: 'A cada três meses',
   SEMIANNUAL: 'A cada seis meses',
+  YEARLY: 'A cada um ano',
 };
 
 export function resolveAutoOpenResponsibleId(
