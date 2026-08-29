@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import {
   TICKET_AUTO_OPEN_PERIODICITY_VALUES,
+  parseAutoOpenResponsibleIdInput,
   type TicketAutoOpenPeriodicityValue,
 } from './ticket-auto-open.helper';
 
@@ -51,8 +52,8 @@ export class CreateTicketAutoOpenRuleDto {
   clientId!: number;
 
   @IsOptional()
+  @Transform(({ value }) => parseAutoOpenResponsibleIdInput(value))
   @IsInt()
-  @Type(() => Number)
   responsibleId?: number | null;
 
   @IsOptional()

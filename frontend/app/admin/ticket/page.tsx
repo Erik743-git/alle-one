@@ -222,8 +222,11 @@ export default function AdminTicketPage() {
           `${result.processed} ticket(s) aberto(s) pelas rotinas vencidas.`,
         );
       } else if (result.errors > 0) {
+        const firstError = result.results?.find((item) => !item.ok)?.error;
         notifyError(
-          `Nenhum ticket aberto. ${result.errors} regra(s) com erro — verifique os logs da API.`,
+          firstError
+            ? `Falha ao abrir rotina: ${firstError}`
+            : `Nenhum ticket aberto. ${result.errors} regra(s) com erro — verifique os logs da API.`,
         );
       } else {
         notifySuccess("Nenhuma rotina vencida no momento.");
