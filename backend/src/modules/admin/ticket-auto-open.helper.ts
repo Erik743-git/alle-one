@@ -2,6 +2,8 @@ import { TicketAutoOpenPeriodicity } from '@prisma/client';
 
 /** Responsável automático (criador da regra) — não é ID TiFlux válido. */
 export const TICKET_AUTO_OPEN_AUTO_RESPONSIBLE = 0;
+/** Pré-ticket explícito (sem responsável). */
+export const TICKET_AUTO_OPEN_PRE_TICKET = -1;
 
 export const TICKET_AUTO_OPEN_PERIODICITY_VALUES = [
   'ONCE',
@@ -26,6 +28,26 @@ export function formatYmdUtc(date: Date): string {
   const m = String(date.getUTCMonth() + 1).padStart(2, '0');
   const d = String(date.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+export function parseAutoOpenResponsibleIdInput(
+  value: unknown,
+): number | null | undefined {
+  if (value === null) return TICKET_AUTO_OPEN_PRE_TICKET;
+  if (value === undefined || value === '') return undefined;
+  if (value === TICKET_AUTO_OPEN_PRE_TICKET || value === '-1') {
+    return TICKET_AUTO_OPEN_PRE_TICKET;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  return n;
+}
+
+export function normalizeScheduleTime(raw: string): string {
+  const trimmed = raw.trim();
+  const match = /^(\d{2}):(\d{2})/.exec(trimmed);
+  if (!match) return '08:00';
+  return `${match[1]}:${match[2]}`;
 }
 
 export function parseYmdToUtcDate(ymd: string): Date {
@@ -122,13 +144,26 @@ export function resolveAutoOpenResponsibleId(
   if (responsibleExternalId === TICKET_AUTO_OPEN_AUTO_RESPONSIBLE) {
     return undefined;
   }
+  if (
+    responsibleExternalId === TICKET_AUTO_OPEN_PRE_TICKET ||
+    responsibleExternalId === null
+  ) {
+    return null;
+  }
   return responsibleExternalId;
 }
 
 export function normalizeAutoOpenResponsibleStorage(
   responsibleId: number | null | undefined,
-): number | null {
-  if (responsibleId === null) return null;
-  if (responsibleId === undefined) return TICKET_AUTO_OPEN_AUTO_RESPONSIBLE;
+): number {
+  if (responsibleId === TICKET_AUTO_OPEN_PRE_TICKET) {
+    return TICKET_AUTO_OPEN_PRE_TICKET;
+  }
+  if (responsibleId === null) {
+    return TICKET_AUTO_OPEN_PRE_TICKET;
+  }
+  if (responsibleId === undefined) {
+    return TICKET_AUTO_OPEN_AUTO_RESPONSIBLE;
+  }
   return responsibleId;
 }

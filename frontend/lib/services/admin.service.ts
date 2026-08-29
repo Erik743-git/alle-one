@@ -337,10 +337,18 @@ export const adminService = {
   },
 
   async runDueTicketAutoOpenRules() {
-    return apiRequest<{ processed: number; errors: number }>(
-      "/admin/ticket-auto-open-rules/run-due",
-      { method: "POST" },
-    );
+    return apiRequest<{
+      processed: number;
+      errors: number;
+      results: Array<{
+        ruleId: string;
+        ruleName: string;
+        ok: boolean;
+        ticketNumber?: number;
+        isPreTicket?: boolean;
+        error?: string;
+      }>;
+    }>("/admin/ticket-auto-open-rules/run-due", { method: "POST" });
   },
 
   async listTicketAutomationRules() {

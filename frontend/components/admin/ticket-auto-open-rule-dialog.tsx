@@ -114,7 +114,7 @@ export function TicketAutoOpenRuleDialog({
       setDeskId(String(editing.deskExternalId));
       setClientId(String(editing.clientExternalId));
       setResponsibleId(
-        editing.responsibleExternalId === null
+        editing.responsibleExternalId === -1
           ? AUTO_OPEN_RESPONSIBLE_PRE_TICKET
           : editing.responsibleExternalId === 0
             ? AUTO_OPEN_RESPONSIBLE_AUTO
@@ -230,7 +230,7 @@ export function TicketAutoOpenRuleDialog({
       classificationId: classificationId ?? undefined,
       responsibleId:
         responsibleId === AUTO_OPEN_RESPONSIBLE_PRE_TICKET
-          ? null
+          ? -1
           : responsibleId
             ? Number(responsibleId)
             : undefined,

@@ -20,6 +20,7 @@ import {
   normalizeAutoOpenResponsibleStorage,
   parseRuleDueAt,
   parseYmdToUtcDate,
+  normalizeScheduleTime,
   resolveAutoOpenResponsibleId,
   TICKET_AUTO_OPEN_PERIODICITY_LABELS,
   type TicketAutoOpenPeriodicityValue,
@@ -36,7 +37,7 @@ export type TicketAutoOpenRuleDto = {
   scheduleTime: string;
   deskExternalId: number;
   clientExternalId: number;
-  responsibleExternalId: number | null;
+  responsibleExternalId: number;
   priorityExternalId: number | null;
   servicesCatalogsItemId: number | null;
   classificationId: string | null;
@@ -73,7 +74,7 @@ export class TicketAutoOpenService {
     scheduleTime: string;
     deskExternalId: number;
     clientExternalId: number;
-    responsibleExternalId: number | null;
+    responsibleExternalId: number;
     priorityExternalId: number | null;
     servicesCatalogsItemId: number | null;
     classificationId: string | null;
@@ -128,7 +129,7 @@ export class TicketAutoOpenService {
       active: dto.active ?? true,
       periodicity: dto.periodicity,
       nextScheduledDate: parseYmdToUtcDate(dto.nextScheduledDate),
-      scheduleTime: dto.scheduleTime.trim(),
+      scheduleTime: normalizeScheduleTime(dto.scheduleTime),
       deskExternalId: dto.deskId,
       clientExternalId: dto.clientId,
       responsibleExternalId: normalizeAutoOpenResponsibleStorage(
@@ -219,7 +220,7 @@ export class TicketAutoOpenService {
   private buildCreateTicketDto(rule: {
     deskExternalId: number;
     clientExternalId: number;
-    responsibleExternalId: number | null;
+    responsibleExternalId: number;
     priorityExternalId: number | null;
     servicesCatalogsItemId: number | null;
     classificationId: string | null;
@@ -250,9 +251,18 @@ export class TicketAutoOpenService {
     };
   }
 
-  async processDueRules(
-    limit = 20,
-  ): Promise<{ processed: number; errors: number }> {
+  async processDueRules(limit = 20): Promise<{
+    processed: number;
+    errors: number;
+    results: Array<{
+      ruleId: string;
+      ruleName: string;
+      ok: boolean;
+      ticketNumber?: number;
+      isPreTicket?: boolean;
+      error?: string;
+    }>;
+  }> {
     const now = new Date();
     const candidates = await this.prisma.ticketAutoOpenRule.findMany({
       where: { active: true, deletedAt: null },
@@ -262,6 +272,14 @@ export class TicketAutoOpenService {
 
     let processed = 0;
     let errors = 0;
+    const results: Array<{
+      ruleId: string;
+      ruleName: string;
+      ok: boolean;
+      ticketNumber?: number;
+      isPreTicket?: boolean;
+      error?: string;
+    }> = [];
 
     for (const rule of candidates) {
       if (processed >= limit) break;
@@ -343,18 +361,34 @@ export class TicketAutoOpenService {
         }
 
         processed += 1;
+        results.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          ok: true,
+          ticketNumber: result.ticketNumber,
+          isPreTicket: result.isPreTicket,
+        });
         this.logger.log(
-          `Regra "${rule.name}" abriu ticket #${result.ticketNumber}`,
+          `Regra "${rule.name}" abriu ticket #${result.ticketNumber}${
+            result.isPreTicket ? ' (pré-ticket)' : ''
+          }`,
         );
       } catch (err) {
         errors += 1;
         const message = err instanceof Error ? err.message : String(err);
+        results.push({
+          ruleId: rule.id,
+          ruleName: rule.name,
+          ok: false,
+          error: message,
+        });
         this.logger.error(
           `Falha na regra "${rule.name}" (${rule.id}) [próx: ${formatYmdUtc(rule.nextScheduledDate)} ${rule.scheduleTime}]: ${message}`,
+          err instanceof Error ? err.stack : undefined,
         );
       }
     }
 
-    return { processed, errors };
+    return { processed, errors, results };
   }
 }
