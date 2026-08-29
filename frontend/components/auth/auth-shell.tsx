@@ -5,7 +5,10 @@ import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** Cache-bust quando a arte do login mudar. */
-export const AUTH_HERO_SRC = "/login-hero.jpg?v=10";
+export const AUTH_HERO_SRC = "/login-hero.jpg?v=16";
+
+/** Ancora no topo e equilibra personagem (esq.) com logo Alle (dir.) ao recortar. */
+const AUTH_HERO_OBJECT_POSITION = "38% top";
 
 type AuthShellProps = {
   children: ReactNode;
@@ -31,33 +34,35 @@ export function AuthShell({
   return (
     <main
       className={cn(
-        "font-sans relative isolate flex min-h-dvh w-full justify-center",
+        "font-sans relative isolate flex min-h-dvh w-full justify-center bg-[#c8e4f4]",
         "overflow-x-hidden overflow-y-auto overscroll-y-contain",
         "px-4 py-5 sm:px-5 sm:py-6",
         "lg:h-dvh lg:max-h-dvh lg:items-center lg:overflow-hidden lg:py-0 lg:px-0",
-        "lg:grid lg:grid-cols-[minmax(0,1.15fr)_minmax(400px,440px)_minmax(1.5rem,10vw)] lg:justify-items-end",
+        "lg:grid lg:grid-cols-[1fr_minmax(400px,440px)_minmax(1.5rem,5vw)] lg:justify-items-end",
         className,
       )}
     >
-      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-[#c8e4f4]"
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={AUTH_HERO_SRC}
           alt=""
           decoding="sync"
           fetchPriority="high"
-          className="h-full w-full select-none object-cover object-[center_22%] sm:object-[center_28%] lg:object-[left_center]"
+          className="absolute inset-0 h-full w-full select-none object-cover"
+          style={{ objectPosition: AUTH_HERO_OBJECT_POSITION }}
         />
         {/* Mobile: scrim leve para o card escuro sobre a arte */}
-        <div className="absolute inset-0 bg-gradient-to-b from-[#e8f4fc]/55 via-[#f4f9fd]/35 to-[#d8ebf8]/70 lg:hidden" />
-        {/* Desktop: preserva a área clara à direita para o formulário */}
-        <div className="absolute inset-0 hidden bg-gradient-to-r from-transparent via-transparent to-[#f7fbfe]/25 lg:block" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#c8e4fc]/25 via-transparent to-[#c8e4fc]/35 lg:hidden" />
       </div>
 
       <div
         className={cn(
           "relative z-10 my-auto w-full max-w-[min(100%,22.5rem)] animate-[fadeIn_0.5s_ease-out] sm:max-w-[27rem]",
-          "lg:col-start-2 lg:my-0 lg:max-w-none lg:translate-x-2 xl:translate-x-6",
+          "lg:col-start-2 lg:my-0 lg:max-w-none lg:-translate-x-6 xl:-translate-x-10",
           contentClassName,
         )}
       >
