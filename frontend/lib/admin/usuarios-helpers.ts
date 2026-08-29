@@ -74,7 +74,7 @@ export type FormEdicao = {
   companyId: string;
   firstAccess: boolean;
   responsible: boolean;
-  specialtyId: string;
+  specialtyIds: string[];
   rendimentoSchedule: UserRendimentoScheduleValue;
 };
 
@@ -94,9 +94,17 @@ export function createEmptyFormEdicao(): FormEdicao {
     companyId: "",
     firstAccess: false,
     responsible: false,
-    specialtyId: "",
+    specialtyIds: [],
     rendimentoSchedule: normalizeUserRendimentoSchedule({}),
   };
+}
+
+export function resolveUserSpecialtyIds(usuario: ApiUser): string[] {
+  if (usuario.specialties?.length) {
+    return usuario.specialties.map((item) => item.id);
+  }
+  const single = resolveUserSpecialtyId(usuario);
+  return single ? [single] : [];
 }
 
 export function resolveUserSpecialtyId(usuario: ApiUser): string {
@@ -221,7 +229,7 @@ export function formEdicaoFromUser(usuario: ApiUser): FormEdicao {
     companyId: usuario.companyId ?? "",
     firstAccess: usuario.firstAccess,
     responsible: usuario.responsible,
-    specialtyId: resolveUserSpecialtyId(usuario),
+    specialtyIds: resolveUserSpecialtyIds(usuario),
     rendimentoSchedule: normalizeUserRendimentoSchedule(usuario),
   };
 }

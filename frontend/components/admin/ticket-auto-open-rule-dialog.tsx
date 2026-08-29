@@ -37,6 +37,25 @@ import {
 const AUTO_OPEN_RESPONSIBLE_AUTO = "";
 const AUTO_OPEN_RESPONSIBLE_PRE_TICKET = "__PRE_TICKET__";
 
+type CatalogItemRow = TicketCreateCatalogs["catalogItems"][number];
+
+function normalizeScheduleTimeInput(value: string): string {
+  const match = /^(\d{2}):(\d{2})/.exec(value.trim());
+  return match ? `${match[1]}:${match[2]}` : "08:00";
+}
+
+function catalogFilterKeyForItem(item: CatalogItemRow): string {
+  if (item.catalogId != null) return `id:${item.catalogId}`;
+  if (item.catalogName) return `name:${item.catalogName}`;
+  return "";
+}
+
+function areaFilterKeyForItem(item: CatalogItemRow): string {
+  if (item.areaId != null) return `id:${item.areaId}`;
+  if (item.areaName) return `name:${item.areaName}`;
+  return "";
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -66,6 +85,8 @@ export function TicketAutoOpenRuleDialog({
   const [responsibleId, setResponsibleId] = useState("");
   const [priorityId, setPriorityId] = useState("");
   const [catalogItemId, setCatalogItemId] = useState("");
+  const [catalogFilterKey, setCatalogFilterKey] = useState("");
+  const [areaFilterKey, setAreaFilterKey] = useState("");
   const [classificationId, setClassificationId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [requestorName, setRequestorName] = useState("");
@@ -83,6 +104,61 @@ export function TicketAutoOpenRuleDialog({
 
   const requiresCatalog = Boolean(
     catalogs?.desk?.requireServiceCatalog ?? selectedDesk?.requireServiceCatalog,
+  );
+
+  const requiresClassification =
+    (catalogs?.classification?.tree?.length ?? 0) > 0;
+
+  const catalogHasHierarchy = useMemo(
+    () =>
+      (catalogs?.catalogItems ?? []).some(
+        (item) => item.catalogId != null || Boolean(item.catalogName),
+      ),
+    [catalogs],
+  );
+
+  const catalogOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const item of catalogs?.catalogItems ?? []) {
+      const key = catalogFilterKeyForItem(item);
+      if (!key) continue;
+      seen.set(key, item.catalogName ?? `Catálogo ${item.catalogId ?? ""}`);
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [catalogs]);
+
+  const areaOptions = useMemo(() => {
+    if (!catalogFilterKey) return [];
+    const seen = new Map<string, string>();
+    for (const item of catalogs?.catalogItems ?? []) {
+      if (catalogFilterKeyForItem(item) !== catalogFilterKey) continue;
+      const key = areaFilterKeyForItem(item);
+      if (!key) continue;
+      seen.set(key, item.areaName ?? `Área ${item.areaId ?? ""}`);
+    }
+    return [...seen.entries()].map(([value, label]) => ({ value, label }));
+  }, [catalogs, catalogFilterKey]);
+
+  const catalogItemOptions = useMemo(
+    () =>
+      (catalogs?.catalogItems ?? [])
+        .filter((item) => {
+          if (!catalogHasHierarchy) return true;
+          if (catalogFilterKey && catalogFilterKeyForItem(item) !== catalogFilterKey) {
+            return false;
+          }
+          if (areaFilterKey && areaFilterKeyForItem(item) !== areaFilterKey) {
+            return false;
+          }
+          return true;
+        })
+        .map((item) => ({
+          value: String(item.id),
+          label: catalogHasHierarchy
+            ? item.itemName ?? item.name
+            : item.name,
+        })),
+    [catalogs, catalogFilterKey, areaFilterKey, catalogHasHierarchy],
   );
 
   const loadCatalogs = useCallback(async (desk?: number, client?: number) => {
@@ -110,7 +186,7 @@ export function TicketAutoOpenRuleDialog({
       setActive(editing.active);
       setPeriodicity(editing.periodicity);
       setNextScheduledDate(editing.nextScheduledDate);
-      setScheduleTime(editing.scheduleTime);
+      setScheduleTime(normalizeScheduleTimeInput(editing.scheduleTime));
       setDeskId(String(editing.deskExternalId));
       setClientId(String(editing.clientExternalId));
       setResponsibleId(
@@ -130,6 +206,8 @@ export function TicketAutoOpenRuleDialog({
           ? String(editing.servicesCatalogsItemId)
           : "",
       );
+      setCatalogFilterKey("");
+      setAreaFilterKey("");
       setClassificationId(editing.classificationId);
       setTitle(editing.title);
       setRequestorName(editing.requestorName);
@@ -155,6 +233,8 @@ export function TicketAutoOpenRuleDialog({
       setResponsibleId("");
       setPriorityId("");
       setCatalogItemId("");
+      setCatalogFilterKey("");
+      setAreaFilterKey("");
       setClassificationId(null);
       setTitle("");
       setRequestorName("");
@@ -169,9 +249,41 @@ export function TicketAutoOpenRuleDialog({
   }, [open, editing, loadCatalogs]);
 
   useEffect(() => {
-    if (!open || !deskId) return;
-    void loadCatalogs(Number(deskId), clientId ? Number(clientId) : undefined);
-  }, [open, deskId, clientId, loadCatalogs]);
+    if (!catalogItemId || !catalogs?.catalogItems?.length) return;
+    const item = catalogs.catalogItems.find(
+      (row) => String(row.id) === catalogItemId,
+    );
+    if (!item) return;
+    const nextCatalogKey = catalogFilterKeyForItem(item);
+    const nextAreaKey = areaFilterKeyForItem(item);
+    if (nextCatalogKey) setCatalogFilterKey(nextCatalogKey);
+    if (nextAreaKey) setAreaFilterKey(nextAreaKey);
+  }, [catalogItemId, catalogs]);
+
+  function handleDeskChange(nextDeskId: string) {
+    setDeskId(nextDeskId);
+    setClassificationId(null);
+    setCatalogItemId("");
+    setCatalogFilterKey("");
+    setAreaFilterKey("");
+    setPriorityId("");
+    if (nextDeskId) {
+      void loadCatalogs(
+        Number(nextDeskId),
+        clientId ? Number(clientId) : undefined,
+      );
+    }
+  }
+
+  function handleClientChange(nextClientId: string) {
+    setClientId(nextClientId);
+    if (deskId) {
+      void loadCatalogs(
+        Number(deskId),
+        nextClientId ? Number(nextClientId) : undefined,
+      );
+    }
+  }
 
   async function handleSave() {
     const trimmedName = name.trim();
@@ -200,6 +312,10 @@ export function TicketAutoOpenRuleDialog({
       notifyError("Selecione o item do catálogo.");
       return;
     }
+    if (requiresClassification && !classificationId) {
+      notifyError("Selecione a classificação cadastrada para esta especialidade.");
+      return;
+    }
 
     const exported = composerRef.current?.exportContent();
     if (!exported?.isValid) {
@@ -217,7 +333,7 @@ export function TicketAutoOpenRuleDialog({
       active,
       periodicity,
       nextScheduledDate,
-      scheduleTime,
+      scheduleTime: normalizeScheduleTimeInput(scheduleTime),
       deskId: Number(deskId),
       clientId: Number(clientId),
       title: trimmedTitle,
@@ -332,7 +448,7 @@ export function TicketAutoOpenRuleDialog({
                   <FieldLabel required>Catálogo</FieldLabel>
                   <SearchableSelectField
                     value={deskId}
-                    onChange={setDeskId}
+                    onChange={handleDeskChange}
                     options={(catalogs?.desks ?? []).map((d) => ({
                       value: String(d.id),
                       label: d.name,
@@ -344,7 +460,7 @@ export function TicketAutoOpenRuleDialog({
                   <FieldLabel required>Cliente</FieldLabel>
                   <SearchableSelectField
                     value={clientId}
-                    onChange={setClientId}
+                    onChange={handleClientChange}
                     options={(catalogs?.clients ?? []).map((c) => ({
                       value: String(c.id),
                       label: c.name,
@@ -390,6 +506,7 @@ export function TicketAutoOpenRuleDialog({
                 {(catalogs?.classification?.tree?.length ?? 0) > 0 ? (
                   <div className="lg:col-span-2">
                     <ClassificationCascadeFields
+                      key={`cls-${deskId}-${classificationId ?? "none"}`}
                       serviceDeskId={catalogs?.portalServiceDesk?.id ?? null}
                       tree={catalogs?.classification?.tree ?? null}
                       value={classificationId}
@@ -399,21 +516,57 @@ export function TicketAutoOpenRuleDialog({
                           (item) => [item.level, item.label],
                         ),
                       )}
+                      required
                     />
                   </div>
                 ) : null}
                 {requiresCatalog ? (
-                  <div className="space-y-2 lg:col-span-2">
-                    <FieldLabel required>Item do catálogo</FieldLabel>
-                    <SearchableSelectField
-                      value={catalogItemId}
-                      onChange={setCatalogItemId}
-                      options={(catalogs?.catalogItems ?? []).map((item) => ({
-                        value: String(item.id),
-                        label: item.name,
-                      }))}
-                      placeholder="Selecione"
-                    />
+                  <div className="space-y-4 lg:col-span-2">
+                    {catalogHasHierarchy ? (
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="space-y-2">
+                          <FieldLabel required>Catálogo TiFlux</FieldLabel>
+                          <SearchableSelectField
+                            value={catalogFilterKey}
+                            onChange={(value) => {
+                              setCatalogFilterKey(value);
+                              setAreaFilterKey("");
+                              setCatalogItemId("");
+                            }}
+                            options={catalogOptions}
+                            placeholder="Selecione o catálogo"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <FieldLabel required>Área</FieldLabel>
+                          <SearchableSelectField
+                            value={areaFilterKey}
+                            onChange={(value) => {
+                              setAreaFilterKey(value);
+                              setCatalogItemId("");
+                            }}
+                            options={areaOptions}
+                            placeholder="Selecione a área"
+                            disabled={!catalogFilterKey}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      <FieldLabel required>
+                        {catalogHasHierarchy ? "Serviço" : "Item do catálogo"}
+                      </FieldLabel>
+                      <SearchableSelectField
+                        value={catalogItemId}
+                        onChange={setCatalogItemId}
+                        options={catalogItemOptions}
+                        placeholder="Selecione"
+                        disabled={
+                          catalogHasHierarchy &&
+                          (!catalogFilterKey || !areaFilterKey)
+                        }
+                      />
+                    </div>
                   </div>
                 ) : null}
                 <div className="space-y-2 lg:col-span-2">

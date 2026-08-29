@@ -30,6 +30,7 @@ type SpecialtySummary = {
 type UserWithCompany = User & {
   company: { id: string; name: string } | null;
   specialty: SpecialtySummary | null;
+  userSpecialties?: Array<{ specialty: SpecialtySummary }>;
   companyMemberships?: Array<{
     companyId: string;
     clientRole: ClientCompanyRole;
@@ -57,6 +58,12 @@ const specialtyInclude = {
   specialty: {
     select: { id: true, name: true, externalId: true },
   },
+  userSpecialties: {
+    include: {
+      specialty: { select: { id: true, name: true, externalId: true } },
+    },
+    orderBy: { specialty: { name: 'asc' as const } },
+  },
 } as const;
 
 const membershipInclude = {
@@ -77,10 +84,13 @@ export class UsersService {
       passwordHash: _omit,
       lastSeenAt,
       specialty,
+      userSpecialties,
       companyMemberships,
       ...rest
     } = user;
-    const specialties = specialty ? [specialty] : [];
+    const fromJoin = (userSpecialties ?? []).map((row) => row.specialty);
+    const specialties =
+      fromJoin.length > 0 ? fromJoin : specialty ? [specialty] : [];
     return {
       ...rest,
       specialty,
@@ -108,15 +118,67 @@ export class UsersService {
     return id;
   }
 
-  /** Aceita specialtyId ou o legado serviceDeskIds[0]. */
+  /** Aceita specialtyIds, specialtyId ou legado serviceDeskIds. */
+  private async resolveIncomingSpecialtyIds(data: {
+    specialtyId?: string | null;
+    specialtyIds?: string[];
+    serviceDeskIds?: string[];
+  }): Promise<string[] | undefined> {
+    if (data.specialtyIds !== undefined) {
+      const unique = [
+        ...new Set(
+          data.specialtyIds
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0),
+        ),
+      ];
+      for (const id of unique) {
+        await this.validateSpecialtyId(id);
+      }
+      return unique;
+    }
+
+    if (data.serviceDeskIds !== undefined) {
+      const unique = [
+        ...new Set(
+          data.serviceDeskIds
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0),
+        ),
+      ];
+      for (const id of unique) {
+        await this.validateSpecialtyId(id);
+      }
+      return unique;
+    }
+
+    if (data.specialtyId !== undefined) {
+      const single = await this.validateSpecialtyId(data.specialtyId);
+      return single ? [single] : [];
+    }
+
+    return undefined;
+  }
+
+  private async replaceUserSpecialties(userId: string, specialtyIds: string[]) {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userSpecialty.deleteMany({ where: { userId } });
+      if (specialtyIds.length > 0) {
+        await tx.userSpecialty.createMany({
+          data: specialtyIds.map((specialtyId) => ({ userId, specialtyId })),
+          skipDuplicates: true,
+        });
+      }
+    });
+  }
+
+  /** @deprecated Prefer specialtyIds */
   private resolveIncomingSpecialtyId(data: {
     specialtyId?: string | null;
     serviceDeskIds?: string[];
   }) {
     if (data.serviceDeskIds !== undefined && data.serviceDeskIds.length > 1) {
-      throw new BadRequestException(
-        'Usuário pode ter apenas uma especialidade.',
-      );
+      return data.serviceDeskIds;
     }
     if (data.specialtyId !== undefined) {
       return data.specialtyId;
@@ -228,8 +290,8 @@ export class UsersService {
       passwordHash = await bcrypt.hash(plainPassword, 10);
     }
 
-    const incomingSpecialty = this.resolveIncomingSpecialtyId(data);
-    const specialtyId = await this.validateSpecialtyId(incomingSpecialty);
+    const incomingSpecialtyIds = await this.resolveIncomingSpecialtyIds(data);
+    const specialtyId = incomingSpecialtyIds?.[0] ?? null;
 
     const schedule = resolveRendimentoSchedule(data);
 
@@ -292,6 +354,21 @@ export class UsersService {
       },
     });
 
+    if (incomingSpecialtyIds !== undefined) {
+      await this.replaceUserSpecialties(created.id, incomingSpecialtyIds);
+      const refreshed = await this.prisma.user.findUnique({
+        where: { id: created.id },
+        include: {
+          company: true,
+          ...specialtyInclude,
+          ...membershipInclude,
+        },
+      });
+      if (refreshed) {
+        return this.toPublicUser(refreshed);
+      }
+    }
+
     return this.toPublicUser(created);
   }
 
@@ -331,10 +408,10 @@ export class UsersService {
       );
     }
 
-    const incomingSpecialty = this.resolveIncomingSpecialtyId(data);
+    const incomingSpecialtyIds = await this.resolveIncomingSpecialtyIds(data);
     const specialtyId =
-      incomingSpecialty !== undefined
-        ? await this.validateSpecialtyId(incomingSpecialty)
+      incomingSpecialtyIds !== undefined
+        ? (incomingSpecialtyIds[0] ?? null)
         : undefined;
 
     const schedule =
@@ -510,6 +587,21 @@ export class UsersService {
         },
       },
     });
+
+    if (incomingSpecialtyIds !== undefined) {
+      await this.replaceUserSpecialties(id, incomingSpecialtyIds);
+      const refreshed = await this.prisma.user.findUnique({
+        where: { id },
+        include: {
+          company: true,
+          ...specialtyInclude,
+          ...membershipInclude,
+        },
+      });
+      if (refreshed) {
+        return this.toPublicUser(refreshed);
+      }
+    }
 
     return this.toPublicUser(updated);
   }

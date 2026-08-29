@@ -49,7 +49,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   const [companyId, setCompanyId] = useState("");
   const [role, setRole] = useState("CLIENT_GESTOR");
   const [responsible, setResponsible] = useState(false);
-  const [specialtyId, setSpecialtyId] = useState("");
+  const [specialtyIds, setSpecialtyIds] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [rendimentoSchedule, setRendimentoSchedule] =
     useState<UserRendimentoScheduleValue>(defaultUserRendimentoSchedule());
@@ -68,7 +68,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
     setCompanyId("");
     setRole("CLIENT_GESTOR");
     setResponsible(false);
-    setSpecialtyId("");
+    setSpecialtyIds([]);
     setRendimentoSchedule(defaultUserRendimentoSchedule());
     setErro("");
   }
@@ -201,7 +201,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
         status: "ACTIVE",
         firstAccess: true,
         responsible,
-        specialtyId: specialtyId || null,
+        specialtyIds,
+        specialtyId: specialtyIds[0] ?? null,
         rendimentoCustomSchedule: rendimentoSchedule.rendimentoCustomSchedule,
         rendimentoDailyWorkMinutes: rendimentoSchedule.rendimentoCustomSchedule
           ? rendimentoSchedule.rendimentoDailyWorkMinutes
@@ -342,31 +343,39 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                   <>
                     <button
                       type="button"
-                      onClick={() => setSpecialtyId("")}
+                      onClick={() => setSpecialtyIds([])}
                       className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                        !specialtyId
+                        specialtyIds.length === 0
                           ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
                           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                       }`}
                     >
                       <span
-                        className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                          !specialtyId ? "border-primary" : "border-border"
+                        className={`flex size-4 shrink-0 items-center justify-center rounded border-2 ${
+                          specialtyIds.length === 0
+                            ? "border-primary bg-primary"
+                            : "border-border"
                         }`}
                       >
-                        {!specialtyId ? (
-                          <span className="size-2 rounded-full bg-primary" />
+                        {specialtyIds.length === 0 ? (
+                          <span className="size-2 rounded-sm bg-primary-foreground" />
                         ) : null}
                       </span>
                       Nenhuma
                     </button>
                     {specialties.map((item) => {
-                      const selected = specialtyId === item.id;
+                      const selected = specialtyIds.includes(item.id);
                       return (
                         <button
                           key={item.id}
                           type="button"
-                          onClick={() => setSpecialtyId(item.id)}
+                          onClick={() =>
+                            setSpecialtyIds((prev) =>
+                              selected
+                                ? prev.filter((id) => id !== item.id)
+                                : [...prev, item.id],
+                            )
+                          }
                           className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
                             selected
                               ? "bg-primary/10 text-foreground ring-1 ring-primary/40"
@@ -374,12 +383,12 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
                           }`}
                         >
                           <span
-                            className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                              selected ? "border-primary" : "border-border"
+                            className={`flex size-4 shrink-0 items-center justify-center rounded border-2 ${
+                              selected ? "border-primary bg-primary" : "border-border"
                             }`}
                           >
                             {selected ? (
-                              <span className="size-2 rounded-full bg-primary" />
+                              <span className="size-2 rounded-sm bg-primary-foreground" />
                             ) : null}
                           </span>
                           <span className="truncate font-medium">{item.name}</span>

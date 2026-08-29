@@ -298,7 +298,8 @@ export function useAdminUsuarios() {
         companyId: formEdicao.companyId || null,
         firstAccess: formEdicao.firstAccess,
         responsible: formEdicao.responsible,
-        specialtyId: formEdicao.specialtyId || null,
+        specialtyIds: formEdicao.specialtyIds,
+        specialtyId: formEdicao.specialtyIds[0] ?? null,
       };
 
       if (usesRendimentoScheduleRole(formEdicao.role)) {

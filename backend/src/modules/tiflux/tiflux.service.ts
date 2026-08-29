@@ -1199,6 +1199,16 @@ export class TifluxService {
     return Array.isArray(data) ? data : [];
   }
 
+  async getDeskServicesCatalogs(
+    deskId: number,
+  ): Promise<Array<Record<string, unknown>>> {
+    const data = await this.request<Array<Record<string, unknown>>>(
+      `/desks/${deskId}/services-catalogs`,
+      'GET',
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
   async getDeskServicesCatalogItems(
     deskId: number,
   ): Promise<Array<Record<string, unknown>>> {
@@ -1207,6 +1217,66 @@ export class TifluxService {
       'GET',
     );
     return Array.isArray(data) ? data : [];
+  }
+
+  async getTechnicalUsers(filters?: {
+    desk_id?: number;
+    client_id?: number;
+    name?: string;
+    email?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Array<Record<string, unknown>>> {
+    const searchParams = new URLSearchParams();
+    if (filters?.desk_id != null) {
+      searchParams.set('desk_id', String(filters.desk_id));
+    }
+    if (filters?.client_id != null) {
+      searchParams.set('client_id', String(filters.client_id));
+    }
+    if (filters?.name?.trim()) {
+      searchParams.set('name', filters.name.trim());
+    }
+    if (filters?.email?.trim()) {
+      searchParams.set('email', filters.email.trim());
+    }
+    if (filters?.limit != null) {
+      searchParams.set('limit', String(filters.limit));
+    }
+    if (filters?.offset != null) {
+      searchParams.set('offset', String(filters.offset));
+    }
+    const query = searchParams.toString();
+    const path = query ? `/technical-users?${query}` : '/technical-users';
+    const data = await this.request<Array<Record<string, unknown>>>(
+      path,
+      'GET',
+    );
+    return Array.isArray(data) ? data : [];
+  }
+
+  async getTechnicalUsersForDeskAll(
+    deskId: number,
+    opts?: { limitPerPage?: number; maxPages?: number },
+  ): Promise<Array<Record<string, unknown>>> {
+    const limit = Math.max(1, Math.min(opts?.limitPerPage ?? 200, 200));
+    const maxPages = Math.max(1, opts?.maxPages ?? 20);
+    const all: Array<Record<string, unknown>> = [];
+    let page = 1;
+
+    while (page <= maxPages) {
+      const data = await this.getTechnicalUsers({
+        desk_id: deskId,
+        limit,
+        offset: page,
+      });
+      if (!data.length) break;
+      all.push(...data);
+      if (data.length < limit) break;
+      page += 1;
+    }
+
+    return all;
   }
 
   /** Ticket individual — usado quando o sync local ainda não refletiu a criação. */

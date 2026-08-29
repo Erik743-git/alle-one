@@ -220,7 +220,15 @@ export type TicketCreateCatalogs = {
     requiredFields: Record<string, boolean>;
   } | null;
   priorities: Array<{ id: number; name: string }>;
-  catalogItems: Array<{ id: number; name: string }>;
+  catalogItems: Array<{
+    id: number;
+    name: string;
+    catalogId?: number;
+    catalogName?: string;
+    areaId?: number;
+    areaName?: string;
+    itemName?: string;
+  }>;
 };
 
 export type CreateTicketPayload = {
