@@ -7,6 +7,8 @@
  *
  * Uso:
  *   cd backend
+ *   npx prisma migrate deploy
+ *   npx prisma generate
  *   npx ts-node prisma/scripts/import-tiflux-to-portal-once.ts --dry-run
  *   npx ts-node prisma/scripts/import-tiflux-to-portal-once.ts --link-desks
  *   npx ts-node prisma/scripts/import-tiflux-to-portal-once.ts --catalog-only
@@ -14,7 +16,7 @@
  */
 import 'dotenv/config';
 
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import {
   importCatalogItemsToSpecialty,
   importDeskResponsiblesToSpecialty,
@@ -108,7 +110,21 @@ async function fetchTechnicalUsers(
   return all;
 }
 
+function assertPrismaClientUpToDate(): void {
+  const model = Prisma.dmmf.datamodel.models.find(
+    (m) => m.name === 'SpecialtyClassification',
+  );
+  const hasLegacyField = model?.fields.some((f) => f.name === 'legacySourceId');
+  if (!hasLegacyField) {
+    throw new Error(
+      'Prisma Client desatualizado (falta legacySourceId em SpecialtyClassification). ' +
+        'Rode: npx prisma generate',
+    );
+  }
+}
+
 async function main() {
+  assertPrismaClientUpToDate();
   console.log(
     `Importação única TiFlux → portal${dryRun ? ' (dry-run)' : ''}`,
   );
