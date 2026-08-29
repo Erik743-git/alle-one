@@ -167,3 +167,13 @@ export function normalizeAutoOpenResponsibleStorage(
   }
   return responsibleId;
 }
+
+/** Lê valor do banco (nullable) e normaliza para o contrato da API (-1 = pré-ticket). */
+export function normalizeAutoOpenResponsibleFromDb(
+  responsibleExternalId: number | null,
+): number {
+  if (responsibleExternalId === null) {
+    return TICKET_AUTO_OPEN_PRE_TICKET;
+  }
+  return responsibleExternalId;
+}

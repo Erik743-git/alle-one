@@ -3,6 +3,7 @@ import {
   advanceScheduledDate,
   formatYmdUtc,
   normalizeAutoOpenResponsibleStorage,
+  normalizeAutoOpenResponsibleFromDb,
   normalizeScheduleTime,
   parseRuleDueAt,
   parseYmdToUtcDate,
@@ -60,5 +61,13 @@ describe('ticket-auto-open.helper', () => {
       normalizeAutoOpenResponsibleStorage(TICKET_AUTO_OPEN_PRE_TICKET),
     ).toBe(TICKET_AUTO_OPEN_PRE_TICKET);
     expect(normalizeAutoOpenResponsibleStorage(99)).toBe(99);
+  });
+
+  it('normalizeAutoOpenResponsibleFromDb trata null legado como pre-ticket', () => {
+    expect(normalizeAutoOpenResponsibleFromDb(null)).toBe(
+      TICKET_AUTO_OPEN_PRE_TICKET,
+    );
+    expect(normalizeAutoOpenResponsibleFromDb(0)).toBe(0);
+    expect(normalizeAutoOpenResponsibleFromDb(-1)).toBe(-1);
   });
 });

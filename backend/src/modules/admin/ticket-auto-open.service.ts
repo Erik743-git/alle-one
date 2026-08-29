@@ -18,6 +18,7 @@ import {
   advanceScheduledDate,
   formatYmdUtc,
   normalizeAutoOpenResponsibleStorage,
+  normalizeAutoOpenResponsibleFromDb,
   parseRuleDueAt,
   parseYmdToUtcDate,
   normalizeScheduleTime,
@@ -74,7 +75,7 @@ export class TicketAutoOpenService {
     scheduleTime: string;
     deskExternalId: number;
     clientExternalId: number;
-    responsibleExternalId: number;
+    responsibleExternalId: number | null;
     priorityExternalId: number | null;
     servicesCatalogsItemId: number | null;
     classificationId: string | null;
@@ -101,7 +102,9 @@ export class TicketAutoOpenService {
       scheduleTime: row.scheduleTime,
       deskExternalId: row.deskExternalId,
       clientExternalId: row.clientExternalId,
-      responsibleExternalId: row.responsibleExternalId,
+      responsibleExternalId: normalizeAutoOpenResponsibleFromDb(
+        row.responsibleExternalId,
+      ),
       priorityExternalId: row.priorityExternalId,
       servicesCatalogsItemId: row.servicesCatalogsItemId,
       classificationId: row.classificationId,
@@ -220,7 +223,7 @@ export class TicketAutoOpenService {
   private buildCreateTicketDto(rule: {
     deskExternalId: number;
     clientExternalId: number;
-    responsibleExternalId: number;
+    responsibleExternalId: number | null;
     priorityExternalId: number | null;
     servicesCatalogsItemId: number | null;
     classificationId: string | null;
