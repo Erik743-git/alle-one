@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,10 +9,16 @@ import {
   Post,
   Query,
   Req,
+  UploadedFiles,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { PermissionModule } from '@prisma/client';
+import { ticketAppointmentUploadLimits } from '../../common/upload.config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -280,11 +287,19 @@ export class AdminController {
     entity: 'TicketAutoOpenRule',
     action: 'CREATE',
   })
-  createTicketAutoOpenRule(
+  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  async createTicketAutoOpenRule(
     @CurrentUser() actor: AuthenticatedRequestUser,
-    @Body() body: CreateTicketAutoOpenRuleDto,
+    @Body('payload') payloadRaw: string | undefined,
+    @Body() body: Record<string, unknown>,
+    @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.ticketAutoOpenService.create(actor, body);
+    const dto = await this.parseTicketAutoOpenRuleDto(
+      payloadRaw,
+      body,
+      CreateTicketAutoOpenRuleDto,
+    );
+    return this.ticketAutoOpenService.create(actor, dto, files ?? []);
   }
 
   @Patch('ticket-auto-open-rules/:id')
@@ -293,11 +308,20 @@ export class AdminController {
     entity: 'TicketAutoOpenRule',
     action: 'UPDATE',
   })
-  updateTicketAutoOpenRule(
+  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  async updateTicketAutoOpenRule(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('id') id: string,
-    @Body() body: UpdateTicketAutoOpenRuleDto,
+    @Body('payload') payloadRaw: string | undefined,
+    @Body() body: Record<string, unknown>,
+    @UploadedFiles() files?: Express.Multer.File[],
   ) {
-    return this.ticketAutoOpenService.update(id, body);
+    const dto = await this.parseTicketAutoOpenRuleDto(
+      payloadRaw,
+      body,
+      UpdateTicketAutoOpenRuleDto,
+    );
+    return this.ticketAutoOpenService.update(id, dto, actor, files ?? []);
   }
 
   @Patch('ticket-auto-open-rules/:id/active')
@@ -374,5 +398,31 @@ export class AdminController {
   })
   deleteTicketAutomationRule(@Param('id') id: string) {
     return this.ticketAutomationService.remove(id);
+  }
+
+  private async parseTicketAutoOpenRuleDto<T extends object>(
+    payloadRaw: string | undefined,
+    body: Record<string, unknown>,
+    dtoClass: new () => T,
+  ): Promise<T> {
+    let parsed: unknown = body;
+    if (payloadRaw?.trim()) {
+      try {
+        parsed = JSON.parse(payloadRaw);
+      } catch {
+        throw new BadRequestException('Payload JSON inválido.');
+      }
+    }
+
+    const dto = plainToInstance(dtoClass, parsed);
+    const errors = await validate(dto);
+    if (errors.length > 0) {
+      const first = errors[0];
+      const msg =
+        Object.values(first.constraints ?? {})[0] ??
+        'Dados da regra inválidos.';
+      throw new BadRequestException(msg);
+    }
+    return dto;
   }
 }

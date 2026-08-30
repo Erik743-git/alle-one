@@ -78,7 +78,6 @@ export class CreateTicketAutoOpenRuleDto {
   title!: string;
 
   @IsString()
-  @MinLength(2)
   @MaxLength(8000)
   description!: string;
 
@@ -118,4 +117,10 @@ export class CreateTicketAutoOpenRuleDto {
   parentTicketNumber?: number;
 }
 
-export class UpdateTicketAutoOpenRuleDto extends CreateTicketAutoOpenRuleDto {}
+export class UpdateTicketAutoOpenRuleDto extends CreateTicketAutoOpenRuleDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsUUID('4', { each: true })
+  removeAttachmentFileIds?: string[];
+}
