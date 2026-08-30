@@ -49,7 +49,8 @@ const apiRewriteBase =
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   images: {
-    qualities: [75, 100],
+    qualities: [75, 90, 95, 100],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1408, 1920, 2560],
   },
   // Monorepo: há package-lock na raiz (husky) e em frontend/ — força o root do app.
   turbopack: {

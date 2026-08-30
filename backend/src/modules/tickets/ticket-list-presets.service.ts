@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -35,24 +36,36 @@ export class TicketListPresetsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async list(actor: AuthenticatedRequestUser): Promise<TicketListPresetDto[]> {
-    const companyId = actor.companyId ?? null;
-    const rows = await this.prisma.ticketListPreset.findMany({
-      where: {
-        OR: [
-          { userId: actor.userId },
-          {
-            isPublic: true,
-            OR: [{ companyId: null }, ...(companyId ? [{ companyId }] : [])],
-          },
-        ],
-      },
-      include: {
-        user: { select: { name: true } },
-      },
-      orderBy: [{ isPinned: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-    });
+    try {
+      const companyId = actor.companyId ?? null;
+      const rows = await this.prisma.ticketListPreset.findMany({
+        where: {
+          OR: [
+            { userId: actor.userId },
+            {
+              isPublic: true,
+              OR: [{ companyId: null }, ...(companyId ? [{ companyId }] : [])],
+            },
+          ],
+        },
+        include: {
+          user: { select: { name: true } },
+        },
+        orderBy: [{ isPinned: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+      });
 
-    return rows.map((row) => this.toDto(row, actor.userId));
+      return rows.map((row) => this.toDto(row, actor.userId));
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2021' || error.code === 'P2022')
+      ) {
+        throw new InternalServerErrorException(
+          'Filtros salvos ainda não estão disponíveis neste ambiente. Avise o suporte para aplicar as migrations do banco.',
+        );
+      }
+      throw error;
+    }
   }
 
   async create(
@@ -98,6 +111,14 @@ export class TicketListPresetsService {
         error.code === 'P2002'
       ) {
         throw new BadRequestException('Já existe um filtro com este nome.');
+      }
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        (error.code === 'P2021' || error.code === 'P2022')
+      ) {
+        throw new InternalServerErrorException(
+          'Filtros salvos ainda não estão disponíveis neste ambiente. Avise o suporte para aplicar as migrations do banco.',
+        );
       }
       throw error;
     }

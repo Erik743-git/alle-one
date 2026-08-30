@@ -895,17 +895,6 @@ export default function DashboardPage() {
                 <h1 className="text-2xl font-bold sm:text-3xl">Dashboard</h1>
                 <p className="text-muted-foreground">Tudo sobre seu ambiente.</p>
               </div>
-              <Button
-                onClick={() => void loadDashboard("manual")}
-                disabled={refreshButtonDisabled}
-                className="hidden h-10 shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
-              >
-                <RefreshCcw
-                  size={16}
-                  className={manualRefreshing ? "animate-spin" : ""}
-                />
-                {refreshButtonLabel}
-              </Button>
             </div>
 
             {isClientUser ? (
