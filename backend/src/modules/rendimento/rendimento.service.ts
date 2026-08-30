@@ -1740,6 +1740,7 @@ export class RendimentoService {
       status: RendimentoDayEventStatus;
       debit_protected: boolean;
       event_type: string;
+      deleted_at: Date | null;
     };
 
     let current: ExistingDayEventRow | undefined;
@@ -1748,7 +1749,7 @@ export class RendimentoService {
       const byAppointment =
         (await this.prisma.$queryRawUnsafe<ExistingDayEventRow[]>(
           `
-          SELECT id, status, debit_protected, event_type
+          SELECT id, status, debit_protected, event_type, deleted_at
           FROM rendimento_day_events
           WHERE user_id = $1
             AND date_ref = $2::date
@@ -1781,7 +1782,7 @@ export class RendimentoService {
       const existing =
         (await this.prisma.$queryRawUnsafe<ExistingDayEventRow[]>(
           `
-          SELECT id, status, debit_protected, event_type
+          SELECT id, status, debit_protected, event_type, deleted_at
           FROM rendimento_day_events
           WHERE user_id = $1
             AND source_key = $2
@@ -1878,10 +1879,52 @@ export class RendimentoService {
       return current.id;
     }
 
-    const status = input.status ?? current?.status ?? 'ACTIVE';
-    const debitProtected =
-      input.debitProtected ?? current?.debit_protected ?? false;
-    const id = current?.id ?? newDayEventId();
+    if (current && !isOvertimeEvent) {
+      const status = input.status ?? current.status ?? 'ACTIVE';
+      const debitProtected =
+        input.debitProtected ?? current.debit_protected ?? false;
+
+      await this.prisma.$executeRawUnsafe(
+        `
+        UPDATE rendimento_day_events
+        SET
+          date_ref = $2::date,
+          from_time = $3::time,
+          to_time = $4::time,
+          minutes = $5,
+          appointment_external_id = $6,
+          justification_id = $7,
+          label = $8,
+          description = $9,
+          reason = $10,
+          status = $11::"RendimentoDayEventStatus",
+          debit_protected = $12,
+          source_key = $13,
+          deleted_at = NULL,
+          updated_at = NOW()
+        WHERE id = $1
+      `,
+        current.id,
+        dateRef,
+        fromTime,
+        toTime,
+        minutes,
+        input.appointmentExternalId ?? null,
+        input.justificationId ?? null,
+        input.label ?? null,
+        input.description ?? null,
+        input.reason ?? null,
+        status,
+        debitProtected,
+        sourceKey,
+      );
+
+      return current.id;
+    }
+
+    const status = input.status ?? 'ACTIVE';
+    const debitProtected = input.debitProtected ?? false;
+    const id = newDayEventId();
 
     const upserted =
       (await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
@@ -1893,7 +1936,7 @@ export class RendimentoService {
         ) VALUES (
           $1, $2, $3::date, $4, $5::time, $6::time, $7,
           $8, $9, $10, $11, $12,
-          $13, $14, $15
+          $13::"RendimentoDayEventStatus", $14, $15
         )
         ON CONFLICT (user_id, source_key) WHERE deleted_at IS NULL DO UPDATE SET
           from_time = EXCLUDED.from_time,
@@ -1935,7 +1978,13 @@ export class RendimentoService {
       return upserted[0].id;
     }
 
-    return current?.id ?? id;
+    if (current?.id) {
+      return current.id;
+    }
+
+    throw new Error(
+      'Não foi possível persistir o evento de rendimento (conflito de chave).',
+    );
   }
 
   private async reconcileOvertimeDayEventSync(params: {
@@ -3038,6 +3087,23 @@ export class RendimentoService {
           id,
         )
         .catch(() => undefined);
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      const message =
+        err instanceof Error ? err.message.toLowerCase() : String(err);
+      if (
+        message.includes('duplicate key') ||
+        message.includes('unique constraint')
+      ) {
+        throw new BadRequestException(
+          'Já existe um registro para este período. Atualize a página e tente de novo.',
+        );
+      }
+      this.logger.error(
+        `Falha ao criar justificativa (${params.userId} ${date} ${fromTime}-${toTime})`,
+        err instanceof Error ? err.stack : String(err),
+      );
       throw err;
     }
 

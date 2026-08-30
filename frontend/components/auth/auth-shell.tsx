@@ -1,15 +1,49 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import Image from "next/image";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/** Cache-bust quando a arte do login mudar. */
-export const AUTH_HERO_SRC = "/login-hero.jpg?v=17";
-export const AUTH_HERO_SRC_2X = "/login-hero-2x.jpg?v=17";
+/**
+ * Arte do login. Preferir `login-hero-master.png` (3840×2160) e rodar
+ * `npm run build:login-hero` para gerar variantes nítidas.
+ */
+export const AUTH_HERO_SRC = "/login-hero-2x.jpg";
 
 /** Ancora no topo; prioriza personagem à esquerda (arte 16:9). */
 const AUTH_HERO_OBJECT_POSITION = "28% top";
+
+/** Largura do painel hero no desktop — alinhado ao padding do formulário. */
+const AUTH_HERO_DESKTOP_WIDTH = "clamp(20rem, 38vw, 44rem)";
+
+/**
+ * Largura real exibida: painel estreito no desktop, tela cheia no mobile.
+ * Em telas retina o Next/Image escolhe ~2× essa largura (até 1920px).
+ */
+const AUTH_HERO_SIZES = `(min-width: 1024px) ${AUTH_HERO_DESKTOP_WIDTH}, 100vw`;
+
+type AuthHeroImageProps = {
+  className?: string;
+};
+
+function AuthHeroImage({ className }: AuthHeroImageProps) {
+  return (
+    <Image
+      src={AUTH_HERO_SRC}
+      alt=""
+      fill
+      priority
+      quality={95}
+      sizes={AUTH_HERO_SIZES}
+      className={cn(
+        "select-none object-cover object-[28%_top]",
+        className,
+      )}
+      style={{ objectPosition: AUTH_HERO_OBJECT_POSITION }}
+    />
+  );
+}
 
 type AuthShellProps = {
   children: ReactNode;
@@ -47,20 +81,22 @@ export function AuthShell({
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-[#c8e4f4]"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={AUTH_HERO_SRC}
-          srcSet={`${AUTH_HERO_SRC} 1024w, ${AUTH_HERO_SRC_2X} 1920w`}
-          sizes="100vw"
-          alt=""
-          decoding="sync"
-          fetchPriority="high"
-          width={1024}
-          height={576}
-          className="absolute inset-0 h-full w-full select-none object-cover"
-          style={{ objectPosition: AUTH_HERO_OBJECT_POSITION }}
-        />
-        {/* Mobile: scrim leve para o card escuro sobre a arte */}
+        {/*
+          Desktop: hero só no painel esquerdo — evita esticar JPEG em telas 2K/4K.
+          Mobile: hero em tela cheia com scrim leve para o card.
+        */}
+        <div
+          className="absolute inset-0 overflow-hidden lg:inset-y-0 lg:left-0 lg:right-auto lg:w-[var(--auth-hero-width)]"
+          style={
+            {
+              "--auth-hero-width": AUTH_HERO_DESKTOP_WIDTH,
+            } as CSSProperties
+          }
+        >
+          <div className="relative h-full min-h-full w-full">
+            <AuthHeroImage />
+          </div>
+        </div>
         <div className="absolute inset-0 bg-gradient-to-b from-[#c8e4fc]/25 via-transparent to-[#c8e4fc]/35 lg:hidden" />
       </div>
 
