@@ -70,6 +70,7 @@ export function TicketAutoOpenRuleDialog({
   onSaved,
 }: Props) {
   const composerRef = useRef<AppointmentBlockComposerHandle>(null);
+  const saveInFlightRef = useRef(false);
   const [loadingCatalogs, setLoadingCatalogs] = useState(false);
   const [saving, setSaving] = useState(false);
   const [catalogs, setCatalogs] = useState<TicketCreateCatalogs | null>(null);
@@ -292,7 +293,14 @@ export function TicketAutoOpenRuleDialog({
     }
   }
 
+  function handleDialogOpenChange(next: boolean) {
+    if (!next && (saving || saveInFlightRef.current)) return;
+    onOpenChange(next);
+  }
+
   async function handleSave() {
+    if (saveInFlightRef.current) return;
+
     const trimmedName = name.trim();
     const trimmedTitle = title.trim();
     if (!trimmedName) {
@@ -326,9 +334,12 @@ export function TicketAutoOpenRuleDialog({
 
     const exported = composerRef.current?.exportContent();
     if (!exported?.isValid) {
-      notifyError("Informe a descrição do ticket.");
+      notifyError("Informe a descrição do ticket ou anexe arquivos.");
       return;
     }
+
+    const files = exported.files ?? [];
+    const removeAttachmentFileIds = exported.removeAttachmentFileIds ?? [];
 
     const ccEmails = ccEmailsInput
       .split(/[,;]+/)
@@ -362,29 +373,41 @@ export function TicketAutoOpenRuleDialog({
       parentTicketNumber: parentTicketNumber
         ? Number(parentTicketNumber)
         : undefined,
+      removeAttachmentFileIds:
+        removeAttachmentFileIds.length > 0
+          ? removeAttachmentFileIds
+          : undefined,
     };
 
     try {
+      saveInFlightRef.current = true;
       setSaving(true);
       if (editing) {
-        await adminService.updateTicketAutoOpenRule(editing.id, payload);
+        await adminService.updateTicketAutoOpenRule(editing.id, payload, files);
       } else {
-        await adminService.createTicketAutoOpenRule(payload);
+        await adminService.createTicketAutoOpenRule(payload, files);
       }
       onSaved();
       onOpenChange(false);
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao salvar a regra.");
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={handleDialogOpenChange}>
       <SheetContent
         side="right"
         className="flex h-full w-full max-w-none flex-col gap-0 p-0 sm:max-w-none md:w-[min(1100px,92vw)]"
+        onInteractOutside={(event) => {
+          if (saving) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (saving) event.preventDefault();
+        }}
       >
         <SheetHeader className="shrink-0 border-b border-border px-6 py-4">
           <SheetTitle>
@@ -634,10 +657,17 @@ export function TicketAutoOpenRuleDialog({
           </div>
 
           <AppointmentDescriptionComposer
-            key={composerKey}
+            key={`${composerKey}-${editing?.id ?? "new"}`}
             ref={composerRef}
             disabled={saving}
             initialDescription={editing?.description ?? null}
+            initialAttachments={(editing?.attachments ?? []).map((item) => ({
+              fileId: item.fileId,
+              originalName: item.originalName,
+              mimeType: item.mimeType,
+              previewDataUrl: item.previewDataUrl,
+              size: item.size,
+            }))}
           />
         </div>
 

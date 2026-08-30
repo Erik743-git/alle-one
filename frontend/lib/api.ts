@@ -83,6 +83,12 @@ function resolveApiErrorMessage(
     if (status === 404) {
       return "Serviço não encontrado. A configuração do servidor pode estar desatualizada.";
     }
+    if (status === 522 || status === 524) {
+      return "O servidor demorou para responder (timeout). Aguarde alguns segundos e tente de novo; se persistir, avise o suporte.";
+    }
+    if (status === 502 || status === 503) {
+      return "Serviço temporariamente indisponível. Tente novamente em instantes.";
+    }
     return `Erro no servidor (${status}). Tente novamente em instantes.`;
   }
 

@@ -539,7 +539,8 @@ model File {
   inventoryAssets    InventoryAsset[]
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
   projectDocuments   ProjectDocument[]
-  preTicketAttachments PreTicketAttachment[]
+  preTicketAttachments             PreTicketAttachment[]
+  ticketAutoOpenRuleAttachments    TicketAutoOpenRuleAttachment[]
 
   @@index([uploadedBy])
   @@map("files")
@@ -763,10 +764,25 @@ model TicketAutoOpenRule {
   updatedAt              DateTime                  @updatedAt @map("updated_at")
   deletedAt              DateTime?                 @map("deleted_at")
 
-  creator User @relation("TicketAutoOpenRuleCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  creator     User                            @relation("TicketAutoOpenRuleCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  attachments TicketAutoOpenRuleAttachment[]
 
   @@index([active, nextScheduledDate])
   @@map("ticket_auto_open_rules")
+}
+
+model TicketAutoOpenRuleAttachment {
+  id        String   @id @default(uuid())
+  ruleId    String   @map("rule_id")
+  fileId    String   @map("file_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rule TicketAutoOpenRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  file File               @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@unique([ruleId, fileId])
+  @@index([ruleId])
+  @@map("ticket_auto_open_rule_attachments")
 }
 
 enum TicketAutomationTrigger {

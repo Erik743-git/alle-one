@@ -2,6 +2,7 @@ import {
   CallHandler,
   ExecutionContext,
   Injectable,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -18,10 +19,22 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(AuditInterceptor.name);
+
   constructor(
     private readonly audit: AuditService,
     private readonly reflector: Reflector,
   ) {}
+
+  private logAuditSafely(input: Parameters<AuditService['log']>[0]) {
+    void this.audit.log(input).catch((err) => {
+      this.logger.warn(
+        `Falha ao gravar auditoria (${input.action}): ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    });
+  }
 
   intercept(context: ExecutionContext, next: CallHandler) {
     const http = context.switchToHttp();
@@ -78,7 +91,7 @@ export class AuditInterceptor implements NestInterceptor {
     return next.handle().pipe(
       tap({
         next: () => {
-          void this.audit.log({
+          this.logAuditSafely({
             actor: {
               userId: actor.userId,
               email: actor.email,
@@ -101,7 +114,7 @@ export class AuditInterceptor implements NestInterceptor {
               : err
                 ? String(err)
                 : 'unknown_error';
-          void this.audit.log({
+          this.logAuditSafely({
             actor: {
               userId: actor.userId,
               email: actor.email,

@@ -64,6 +64,14 @@ export const TICKET_AUTO_OPEN_PERIODICITY_OPTIONS: Array<{
   { value: "YEARLY", label: "A cada um ano" },
 ];
 
+export type TicketAutoOpenRuleAttachment = {
+  fileId: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  previewDataUrl?: string | null;
+};
+
 export type TicketAutoOpenRule = {
   id: string;
   name: string;
@@ -90,6 +98,7 @@ export type TicketAutoOpenRule = {
   lastRunAt: string | null;
   lastTicketNumber: number | null;
   createdAt: string;
+  attachments: TicketAutoOpenRuleAttachment[];
 };
 
 export type TicketAutoOpenRulePayload = {
@@ -113,6 +122,7 @@ export type TicketAutoOpenRulePayload = {
   externalGmudRef?: string;
   ccEmails?: string[];
   parentTicketNumber?: number;
+  removeAttachmentFileIds?: string[];
 };
 
 export type TicketAutomationTrigger =
@@ -302,19 +312,36 @@ export const adminService = {
     return apiRequest<TicketAutoOpenRule[]>("/admin/ticket-auto-open-rules");
   },
 
-  async createTicketAutoOpenRule(body: TicketAutoOpenRulePayload) {
+  async createTicketAutoOpenRule(
+    body: TicketAutoOpenRulePayload,
+    files: File[] = [],
+  ) {
+    const form = new FormData();
+    form.append("payload", JSON.stringify(body));
+    for (const file of files) {
+      form.append("files", file);
+    }
     return apiRequest<TicketAutoOpenRule>("/admin/ticket-auto-open-rules", {
       method: "POST",
-      body,
+      body: form,
     });
   },
 
-  async updateTicketAutoOpenRule(id: string, body: TicketAutoOpenRulePayload) {
+  async updateTicketAutoOpenRule(
+    id: string,
+    body: TicketAutoOpenRulePayload,
+    files: File[] = [],
+  ) {
+    const form = new FormData();
+    form.append("payload", JSON.stringify(body));
+    for (const file of files) {
+      form.append("files", file);
+    }
     return apiRequest<TicketAutoOpenRule>(
       `/admin/ticket-auto-open-rules/${id}`,
       {
         method: "PATCH",
-        body,
+        body: form,
       },
     );
   },
