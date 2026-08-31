@@ -37,7 +37,7 @@ import {
 } from './rendimento-worked-minutes.helper';
 import {
   resolvePayrollPeriodRange,
-  resolvePayrollPeriodRangeForCalendarMonth,
+  resolvePayrollPeriodRangeForTimesheet,
 } from './rendimento-payroll-period.helper';
 import { AuditService } from '../audit/audit.service';
 import {
@@ -1735,12 +1735,33 @@ export class RendimentoService {
   private async refreshOvertimeBalance(
     userId: string,
     periodOvertimeMinutes: number,
-    referenceDate: Date,
+    periodStart: Date,
+    periodEnd: Date,
   ): Promise<number> {
     return this.overtimeBalance.refreshBalance(
       userId,
       periodOvertimeMinutes,
-      referenceDate,
+      periodStart,
+      periodEnd,
+    );
+  }
+
+  /** Recalcula saldo de HE para o período folha (26→25) que contém a data. */
+  private async refreshOvertimeBalanceForDate(
+    userId: string,
+    referenceDate: Date,
+  ): Promise<number> {
+    const payroll = resolvePayrollPeriodRange(referenceDate);
+    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+      userId,
+      payroll.start,
+      payroll.end,
+    );
+    return this.refreshOvertimeBalance(
+      userId,
+      periodOvertimeMinutes,
+      payroll.start,
+      payroll.end,
     );
   }
 
@@ -1881,7 +1902,7 @@ export class RendimentoService {
           label = COALESCE($6, label),
           description = COALESCE($7, description),
           reason = COALESCE($8, reason),
-          status = $9,
+          status = $9::"RendimentoDayEventStatus",
           debit_protected = $10,
           source_key = $11,
           deleted_at = NULL,
@@ -2419,8 +2440,8 @@ export class RendimentoService {
 
   private async computeOvertimeMinutesForUser(
     userId: string,
-    _start: Date,
-    _end: Date,
+    start: Date,
+    end: Date,
   ): Promise<number> {
     const user = await this.prisma.user.findFirst({
       where: { id: userId, deletedAt: null },
@@ -2432,12 +2453,11 @@ export class RendimentoService {
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
     if (tifluxUser == null && !isTicketsPortalCanonical()) return 0;
 
-    const payroll = resolvePayrollPeriodRange(new Date());
     const rows = await this.fetchAppointments({
       portalUserId: userId,
       tifluxUserId: tifluxUser?.id ?? null,
-      start: payroll.start,
-      end: payroll.end,
+      start,
+      end,
     });
     return computeUnionWorkedMinutes(rows, 'EXTRA');
   }
@@ -2842,8 +2862,10 @@ export class RendimentoService {
         totalRawHoursFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
         periodOvertimeFormatted: this.formatMinutes(0),
-        periodOvertimeRangeLabel:
-          resolvePayrollPeriodRangeForCalendarMonth(reference).label,
+        periodOvertimeRangeLabel: resolvePayrollPeriodRangeForTimesheet(
+          reference,
+          params.view,
+        ).label,
         periodPlantaoMinutes: 0,
         periodPlantaoFormatted: this.formatMinutes(0),
         overtimeBalanceMinutes,
@@ -2854,7 +2876,10 @@ export class RendimentoService {
       };
     }
 
-    const payrollPeriod = resolvePayrollPeriodRangeForCalendarMonth(reference);
+    const payrollPeriod = resolvePayrollPeriodRangeForTimesheet(
+      reference,
+      params.view,
+    );
 
     const rows = await this.fetchAppointments({
       portalUserId: user.id,
@@ -2938,7 +2963,8 @@ export class RendimentoService {
     const overtimeBalanceMinutes = await this.refreshOvertimeBalance(
       user.id,
       periodOvertimeMinutes,
-      reference,
+      payrollPeriod.start,
+      payrollPeriod.end,
     );
 
     const timesheetDays = this.stripTodayGapAlerts(
@@ -3080,8 +3106,8 @@ export class RendimentoService {
         id, user_id, date_ref, from_time, to_time, gap_type, gap_minutes, kind, status,
         reason, debit_overtime, overtime_minutes, created_by
       ) VALUES (
-        $1, $2, $3::date, $4::time, $5::time, $6, $7, $8, 'PENDING',
-        $9, $10, $11, $12
+        $1, $2, $3::date, $4::time, $5::time, $6, $7, $8, $9::"RendimentoGapJustificationStatus",
+        $10, $11, $12, $13
       )
     `,
         id,
@@ -3092,6 +3118,7 @@ export class RendimentoService {
         params.gapType,
         gapMinutes,
         params.kind,
+        'PENDING',
         reason,
         debitOvertime,
         overtimeMinutes,
@@ -3398,16 +3425,9 @@ export class RendimentoService {
       },
     });
 
-    const payroll = resolvePayrollPeriodRange(new Date());
-    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+    await this.refreshOvertimeBalanceForDate(
       current.user_id,
-      payroll.start,
-      payroll.end,
-    );
-    await this.refreshOvertimeBalance(
-      current.user_id,
-      periodOvertimeMinutes,
-      new Date(),
+      this.parseDateOnly(current.date_ref.slice(0, 10)),
     );
 
     return {
@@ -3434,13 +3454,20 @@ export class RendimentoService {
         Array<{
           id: string;
           user_id: string;
+          date_ref: string;
           status: RendimentoJustificationStatus;
           debit_overtime: boolean;
           overtime_minutes: number;
         }>
       >(
         `
-        SELECT id, user_id, status, debit_overtime, overtime_minutes
+        SELECT
+          id,
+          user_id,
+          date_ref::text AS date_ref,
+          status,
+          debit_overtime,
+          overtime_minutes
         FROM rendimento_gap_justifications
         WHERE id = $1
           AND deleted_at IS NULL
@@ -3503,16 +3530,9 @@ export class RendimentoService {
       params.actor.userId,
     );
 
-    const payroll = resolvePayrollPeriodRange(new Date());
-    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+    await this.refreshOvertimeBalanceForDate(
       current.user_id,
-      payroll.start,
-      payroll.end,
-    );
-    await this.refreshOvertimeBalance(
-      current.user_id,
-      periodOvertimeMinutes,
-      new Date(),
+      this.parseDateOnly(current.date_ref.slice(0, 10)),
     );
 
     return { id: params.justificationId, status: params.decision };
@@ -3527,12 +3547,18 @@ export class RendimentoService {
         Array<{
           id: string;
           user_id: string;
+          date_ref: string;
           status: RendimentoJustificationStatus;
           kind: RendimentoJustificationKind;
         }>
       >(
         `
-        SELECT id, user_id, status, kind
+        SELECT
+          id,
+          user_id,
+          date_ref::text AS date_ref,
+          status,
+          kind
         FROM rendimento_gap_justifications
         WHERE id = $1
           AND deleted_at IS NULL
@@ -3586,16 +3612,9 @@ export class RendimentoService {
       payload: { before: current },
     });
 
-    const payroll = resolvePayrollPeriodRange(new Date());
-    const periodOvertimeMinutes = await this.computeOvertimeMinutesForUser(
+    await this.refreshOvertimeBalanceForDate(
       current.user_id,
-      payroll.start,
-      payroll.end,
-    );
-    await this.refreshOvertimeBalance(
-      current.user_id,
-      periodOvertimeMinutes,
-      new Date(),
+      this.parseDateOnly(current.date_ref.slice(0, 10)),
     );
 
     return { id: params.justificationId, deleted: true as const };
