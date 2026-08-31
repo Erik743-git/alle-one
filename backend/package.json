@@ -27,7 +27,9 @@
     "zabbix:suggest-groups": "node scripts/suggest-zabbix-group-matches.mjs",
     "zabbix:apply-groups": "node scripts/suggest-zabbix-group-matches.mjs --apply",
     "rendimento:recompute-balances": "ts-node prisma/scripts/recompute-overtime-balances.ts",
-    "rendimento:recompute-balances:apply": "ts-node prisma/scripts/recompute-overtime-balances.ts --apply"
+    "rendimento:recompute-balances:apply": "ts-node prisma/scripts/recompute-overtime-balances.ts --apply",
+    "appointments:seed-aug25-31": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts",
+    "appointments:seed-aug25-31:dry": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts --dry-run"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
