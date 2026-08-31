@@ -1,49 +1,11 @@
 "use client";
 
-import Image from "next/image";
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/**
- * Arte do login. Preferir `login-hero-master.png` (3840×2160) e rodar
- * `npm run build:login-hero` para gerar variantes nítidas.
- */
-export const AUTH_HERO_SRC = "/login-hero-2x.jpg";
-
-/** Ancora no topo; prioriza personagem à esquerda (arte 16:9). */
-const AUTH_HERO_OBJECT_POSITION = "28% top";
-
-/** Largura do painel hero no desktop — alinhado ao padding do formulário. */
-const AUTH_HERO_DESKTOP_WIDTH = "clamp(20rem, 38vw, 44rem)";
-
-/**
- * Largura real exibida: painel estreito no desktop, tela cheia no mobile.
- * Em telas retina o Next/Image escolhe ~2× essa largura (até 1920px).
- */
-const AUTH_HERO_SIZES = `(min-width: 1024px) ${AUTH_HERO_DESKTOP_WIDTH}, 100vw`;
-
-type AuthHeroImageProps = {
-  className?: string;
-};
-
-function AuthHeroImage({ className }: AuthHeroImageProps) {
-  return (
-    <Image
-      src={AUTH_HERO_SRC}
-      alt=""
-      fill
-      priority
-      quality={95}
-      sizes={AUTH_HERO_SIZES}
-      className={cn(
-        "select-none object-cover object-[28%_top]",
-        className,
-      )}
-      style={{ objectPosition: AUTH_HERO_OBJECT_POSITION }}
-    />
-  );
-}
+export const AUTH_HERO_DESKTOP_SRC_FALLBACK = "/login-hero-desktop-2x.jpg";
+export const AUTH_HERO_MOBILE_SRC_FALLBACK = "/login-hero-mobile.jpg";
 
 type AuthShellProps = {
   children: ReactNode;
@@ -51,10 +13,6 @@ type AuthShellProps = {
   contentClassName?: string;
 };
 
-/**
- * Fundo compartilhado das telas de autenticação (login, 2FA, primeiro acesso,
- * esqueci/redefinir senha). Desktop: hero à esquerda. Mobile: hero suave + card central.
- */
 export function AuthShell({
   children,
   className,
@@ -69,45 +27,71 @@ export function AuthShell({
   return (
     <main
       className={cn(
-        "font-sans relative isolate flex min-h-dvh w-full justify-center bg-[#c8e4f4]",
-        "overflow-x-hidden overflow-y-auto overscroll-y-contain",
+        "font-sans relative isolate flex min-h-dvh w-full flex-col overflow-x-hidden",
+        "bg-[#b4d2f4]",
         "px-4 py-5 sm:px-5 sm:py-6",
-        "lg:h-dvh lg:max-h-dvh lg:items-center lg:overflow-hidden lg:py-0 lg:px-0",
-        "lg:flex lg:justify-start lg:pl-[clamp(20rem,38vw,44rem)]",
+        "lg:h-dvh lg:max-h-dvh lg:overflow-hidden lg:p-0",
         className,
       )}
     >
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden bg-[#c8e4f4]"
+        className="pointer-events-none absolute inset-0 -z-10 overflow-hidden"
       >
-        {/*
-          Desktop: hero só no painel esquerdo — evita esticar JPEG em telas 2K/4K.
-          Mobile: hero em tela cheia com scrim leve para o card.
-        */}
-        <div
-          className="absolute inset-0 overflow-hidden lg:inset-y-0 lg:left-0 lg:right-auto lg:w-[var(--auth-hero-width)]"
-          style={
-            {
-              "--auth-hero-width": AUTH_HERO_DESKTOP_WIDTH,
-            } as CSSProperties
-          }
-        >
-          <div className="relative h-full min-h-full w-full">
-            <AuthHeroImage />
-          </div>
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-b from-[#c8e4fc]/25 via-transparent to-[#c8e4fc]/35 lg:hidden" />
+        <picture className="hidden lg:contents">
+          <source
+            media="(min-width: 1920px)"
+            srcSet="/login-hero-desktop-3x.webp"
+            type="image/webp"
+          />
+          <source
+            media="(min-width: 1024px)"
+            srcSet="/login-hero-desktop-2x.webp"
+            type="image/webp"
+          />
+          <source
+            media="(min-width: 1024px)"
+            srcSet="/login-hero-desktop-2x.jpg"
+            type="image/jpeg"
+          />
+          <img
+            src={AUTH_HERO_DESKTOP_SRC_FALLBACK}
+            alt=""
+            className="hidden h-full w-full select-none object-cover object-[8%_top] lg:block"
+            decoding="async"
+            fetchPriority="high"
+          />
+        </picture>
+
+        <picture className="contents lg:hidden">
+          <source srcSet="/login-hero-mobile.webp" type="image/webp" />
+          <img
+            src={AUTH_HERO_MOBILE_SRC_FALLBACK}
+            alt=""
+            className="h-full w-full select-none object-cover object-[left_top]"
+            decoding="async"
+            fetchPriority="high"
+          />
+        </picture>
       </div>
 
+      {/* Modal: posição fixa à esquerda do centro (área livre da arte) */}
       <div
         className={cn(
-          "relative z-10 my-auto w-full max-w-[min(100%,22.5rem)] animate-[fadeIn_0.5s_ease-out] sm:max-w-[27rem]",
-          "lg:my-0 lg:w-[min(100%,27.5rem)] lg:max-w-none",
-          contentClassName,
+          "relative z-10 flex flex-1 items-center justify-center",
+          "max-lg:mt-auto max-lg:pb-2",
+          "lg:absolute lg:inset-y-0 lg:left-[40%] lg:flex lg:w-[25rem] lg:max-w-[calc(100%-40%-1rem)] lg:items-center lg:justify-start",
         )}
       >
-        {children}
+        <div
+          className={cn(
+            "w-full max-w-[min(100%,22.5rem)] animate-[fadeIn_0.5s_ease-out] sm:max-w-[27rem]",
+            "lg:max-w-[25rem]",
+            contentClassName,
+          )}
+        >
+          {children}
+        </div>
       </div>
     </main>
   );

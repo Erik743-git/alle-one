@@ -120,6 +120,38 @@ const nextConfig: NextConfig = {
       },
     ];
 
+    /** Rotas de UI em app/inventario/* — não reescrever /inventario/:uuid nem /inventario/tipo/*. */
+    const inventarioApiRewrites = [
+      {
+        source: "/inventario/asset-types/:path*",
+        destination: `${apiRewriteBase}/inventario/asset-types/:path*`,
+      },
+      {
+        source: "/inventario/asset-types",
+        destination: `${apiRewriteBase}/inventario/asset-types`,
+      },
+      {
+        source: "/inventario/companies/:path*",
+        destination: `${apiRewriteBase}/inventario/companies/:path*`,
+      },
+      {
+        source: "/inventario/companies",
+        destination: `${apiRewriteBase}/inventario/companies`,
+      },
+      {
+        source: "/inventario/assets/:path*",
+        destination: `${apiRewriteBase}/inventario/assets/:path*`,
+      },
+      {
+        source: "/inventario/attachments/:path*",
+        destination: `${apiRewriteBase}/inventario/attachments/:path*`,
+      },
+      {
+        source: "/inventario/import-template",
+        destination: `${apiRewriteBase}/inventario/import-template`,
+      },
+    ];
+
     const apiPrefixes = [
       "admin",
       "users",
@@ -131,7 +163,6 @@ const nextConfig: NextConfig = {
       "zabbix",
       "tiflux",
       "rendimento",
-      "inventario",
       "dashboard",
       "console",
       "companies",
@@ -159,6 +190,7 @@ const nextConfig: NextConfig = {
     return [
       ...ticketApiRewrites,
       ...projetosApiRewrites,
+      ...inventarioApiRewrites,
       ...apiPrefixes.flatMap((prefix) => [
         {
           source: `/${prefix}/:path*`,

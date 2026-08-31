@@ -38,14 +38,17 @@ import {
   type Company,
 } from "@/lib/services/companies.service";
 import { isMonitoringPeriodWeekly } from "@/lib/monitoring-period";
+import { cn } from "@/lib/utils";
 import {
   getCompleteDashboard,
+  getDashboardHours,
   refreshCompleteDashboard,
   type DashboardAlertasMes,
   type DashboardAlertasSemana,
   type DashboardChamadosMes,
   type DashboardCompleteResponse,
   type DashboardHorasMes,
+  type DashboardHoursResponse,
   type DashboardMonthlyTrendMetric,
   type DashboardTopHostsMes,
   type DashboardTopTrigger,
@@ -58,7 +61,7 @@ import {
   Clock3,
   Minus,
   Pencil,
-  RefreshCcw,
+  RefreshCw,
   Server,
   ShieldAlert,
   Siren,
@@ -348,6 +351,78 @@ function normalizeDashboardResponse(
     ),
     monthlyTrends: raw?.monthlyTrends ?? null,
   };
+}
+
+function mergeDashboardWithHours(
+  charts: DashboardCompleteResponse,
+  hours: DashboardHoursResponse | null,
+): DashboardCompleteResponse {
+  if (!hours) return charts;
+  return {
+    ...charts,
+    horasPorMes: hours.horasPorMes,
+    resumoHorasTrabalhadas: hours.resumoHorasTrabalhadas,
+    summary: {
+      ...charts.summary,
+      totalHoras: hours.summary.totalHoras,
+      totalHorasFormatadas: hours.summary.totalHorasFormatadas,
+    },
+  };
+}
+
+function TopTriggersTable({ rows }: { rows: DashboardTopTrigger[] }) {
+  const colgroup = (
+    <colgroup>
+      <col className="w-[24%]" />
+      <col className="w-[46%]" />
+      <col className="w-[14%]" />
+      <col className="w-[16%]" />
+    </colgroup>
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-border">
+      <div className="min-w-[1100px]">
+        <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
+          {colgroup}
+          <thead className="bg-muted text-foreground">
+            <tr>
+              <th className="px-4 py-3 font-medium">Host</th>
+              <th className="px-4 py-3 font-medium">Trigger</th>
+              <th className="px-4 py-3 font-medium">Severity</th>
+              <th className="px-4 py-3 font-medium">Número de problemas</th>
+            </tr>
+          </thead>
+        </table>
+        <div className="max-h-[calc(2.75rem*10)] overflow-y-auto border-t border-border [scrollbar-gutter:stable]">
+          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
+            {colgroup}
+            <tbody>
+              {rows.map((row, index) => (
+                <tr
+                  key={`${row.host}-${row.trigger}-${index}`}
+                  className="border-t border-border/60 first:border-t-0"
+                >
+                  <td className="px-4 py-3 text-muted-foreground">{row.host}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{row.trigger}</td>
+                  <td
+                    className={`px-4 py-3 font-bold ${
+                      row.severity === "Disaster"
+                        ? "text-destructive"
+                        : "text-amber-800 dark:text-yellow-300"
+                    }`}
+                  >
+                    {row.severity}
+                  </td>
+                  <td className="px-4 py-3 font-bold text-foreground">{row.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function DashboardPage() {
@@ -665,7 +740,7 @@ export default function DashboardPage() {
         if (mode === "manual") {
           applyNormalized(await refreshCompleteDashboard(requestParams));
         } else if (mode === "initial") {
-          // 1º paint: summary sem charts/horas; 2º: payload completo.
+          // 1º paint: cards rápidos; 2º: gráficos + horas em paralelo.
           const summary = await getCompleteDashboard(requestParams, {
             includeHours: false,
             includeCharts: false,
@@ -674,11 +749,23 @@ export default function DashboardPage() {
           if (requestId === completeRequestIdRef.current) {
             setInitialLoading(false);
           }
-          const full = await getCompleteDashboard(requestParams, {
-            includeHours: true,
-            includeCharts: true,
-          });
-          applyNormalized(full);
+
+          const loadHours =
+            !isClientUser || clientViewMode !== "INTERNAL"
+              ? getDashboardHours(requestParams)
+              : Promise.resolve(null);
+
+          const [chartsData, hoursData] = await Promise.all([
+            getCompleteDashboard(requestParams, {
+              includeHours: false,
+              includeCharts: true,
+            }),
+            loadHours,
+          ]);
+
+          if (requestId === completeRequestIdRef.current) {
+            applyNormalized(mergeDashboardWithHours(chartsData, hoursData));
+          }
         } else {
           // Auto-refresh: sem horas (payload pesado); horas ficam do cache visual.
           applyNormalized(
@@ -904,7 +991,7 @@ export default function DashboardPage() {
               />
             ) : null}
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-xl border border-border bg-card px-3 py-2.5">
                 <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Empresa
@@ -924,7 +1011,7 @@ export default function DashboardPage() {
                         ? "Carregando..."
                         : "Selecione uma empresa"
                     }
-                    className="h-9"
+                    className="h-9 rounded-lg text-sm"
                   />
                 ) : (
                   <p className="truncate text-sm font-semibold text-foreground">
@@ -941,6 +1028,7 @@ export default function DashboardPage() {
                   value={startDate}
                   onChange={setStartDate}
                   max={endDate || undefined}
+                  className="h-9 rounded-lg text-sm"
                 />
               </div>
 
@@ -953,20 +1041,31 @@ export default function DashboardPage() {
                   onChange={setEndDate}
                   min={startDate || undefined}
                   align="end"
+                  className="h-9 rounded-lg text-sm"
                 />
               </div>
 
-              <Button
-                onClick={() => void loadDashboard("manual")}
-                disabled={refreshButtonDisabled}
-                className="h-10 w-full shrink-0 gap-2 disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2 lg:col-span-1"
-              >
-                <RefreshCcw
-                  size={16}
-                  className={manualRefreshing ? "animate-spin" : ""}
-                />
-                {refreshButtonLabel}
-              </Button>
+              <div className="rounded-xl border border-border bg-card px-3 py-2.5 sm:col-span-2 lg:col-span-1">
+                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Dados
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void loadDashboard("manual")}
+                  disabled={refreshButtonDisabled}
+                  className="h-9 w-full"
+                >
+                  <RefreshCw
+                    className={cn(
+                      "mr-2 size-4",
+                      manualRefreshing && "animate-spin",
+                    )}
+                  />
+                  {refreshButtonLabel}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -1398,39 +1497,7 @@ export default function DashboardPage() {
               <CardTitle>Top 20 triggers</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto rounded-2xl border border-border">
-                <table className="min-w-[1100px] w-full text-left text-sm">
-                  <thead className="bg-muted/60 text-foreground">
-                    <tr>
-                      <th className="px-4 py-3">Host</th>
-                      <th className="px-4 py-3">Trigger</th>
-                      <th className="px-4 py-3">Severity</th>
-                      <th className="px-4 py-3">Número de problemas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topTriggers.map((row, index) => (
-                      <tr
-                        key={`${row.host}-${row.trigger}-${index}`}
-                        className="border-t border-border/60"
-                      >
-                        <td className="px-4 py-3 text-muted-foreground">{row.host}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{row.trigger}</td>
-                        <td
-                          className={`px-4 py-3 font-bold ${
-                            row.severity === "Disaster"
-                              ? "text-destructive"
-                              : "text-amber-800 dark:text-yellow-300"
-                          }`}
-                        >
-                          {row.severity}
-                        </td>
-                        <td className="px-4 py-3 font-bold text-foreground">{row.count}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <TopTriggersTable rows={topTriggers} />
             </CardContent>
           </Card>
         </div>
