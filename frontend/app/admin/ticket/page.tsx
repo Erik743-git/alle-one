@@ -35,11 +35,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import {
   adminService,
+  TICKET_AUTO_OPEN_PERIODICITY_OPTIONS,
   type TicketAutoOpenRule,
   type TicketAutomationRule,
   type TicketStage,
@@ -75,27 +77,26 @@ function formatRuleDate(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
-function ruleMatchesSearch(
+const RULE_ROW_ACTIONS_CLASS =
+  "flex shrink-0 flex-nowrap items-center gap-2 self-start lg:min-w-[18.5rem] lg:justify-end";
+const RULE_ROW_ACTION_BUTTON_CLASS = "min-w-[6.75rem] shrink-0";
+
+function ruleMatchesFilters(
   rule: TicketAutoOpenRule,
-  query: string,
-  clientNameById: Map<number, string>,
+  nameQuery: string,
+  periodicityFilter: string,
+  clientFilter: string,
 ): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-
-  const clientName = clientNameById.get(rule.clientExternalId) ?? "";
-  const haystack = [
-    rule.name,
-    rule.title,
-    rule.periodicityLabel,
-    clientName,
-    formatRuleDate(rule.nextScheduledDate),
-    rule.scheduleTime,
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(q);
+  const q = nameQuery.trim().toLowerCase();
+  if (q) {
+    const haystack = `${rule.name} ${rule.title}`.toLowerCase();
+    if (!haystack.includes(q)) return false;
+  }
+  if (periodicityFilter && rule.periodicity !== periodicityFilter) return false;
+  if (clientFilter && String(rule.clientExternalId) !== clientFilter) {
+    return false;
+  }
+  return true;
 }
 
 export default function AdminTicketPage() {
@@ -129,7 +130,9 @@ export default function AdminTicketPage() {
   const [editingAutomation, setEditingAutomation] =
     useState<TicketAutomationRule | null>(null);
   const [rulesPage, setRulesPage] = useState(1);
-  const [rulesSearch, setRulesSearch] = useState("");
+  const [rulesNameSearch, setRulesNameSearch] = useState("");
+  const [rulesPeriodicityFilter, setRulesPeriodicityFilter] = useState("");
+  const [rulesClientFilter, setRulesClientFilter] = useState("");
   const [clientNameById, setClientNameById] = useState<Map<number, string>>(
     () => new Map(),
   );
@@ -213,10 +216,35 @@ export default function AdminTicketPage() {
   const filteredRules = useMemo(
     () =>
       rules.filter((rule) =>
-        ruleMatchesSearch(rule, rulesSearch, clientNameById),
+        ruleMatchesFilters(
+          rule,
+          rulesNameSearch,
+          rulesPeriodicityFilter,
+          rulesClientFilter,
+        ),
       ),
-    [rules, rulesSearch, clientNameById],
+    [rules, rulesNameSearch, rulesPeriodicityFilter, rulesClientFilter],
   );
+
+  const clientFilterOptions = useMemo(() => {
+    const usedIds = new Set(rules.map((r) => r.clientExternalId));
+    return [...clientNameById.entries()]
+      .filter(([id]) => usedIds.has(id))
+      .sort((a, b) => a[1].localeCompare(b[1], "pt-BR"))
+      .map(([id, name]) => ({ value: String(id), label: name }));
+  }, [rules, clientNameById]);
+
+  const periodicityFilterOptions = useMemo(() => {
+    const used = new Set(rules.map((r) => r.periodicity));
+    return TICKET_AUTO_OPEN_PERIODICITY_OPTIONS.filter((o) =>
+      used.has(o.value),
+    ).map((o) => ({ value: o.value, label: o.label }));
+  }, [rules]);
+
+  const hasActiveRuleFilters =
+    rulesNameSearch.trim().length > 0 ||
+    rulesPeriodicityFilter !== "" ||
+    rulesClientFilter !== "";
 
   const rulesTotalPages = Math.max(
     1,
@@ -237,7 +265,7 @@ export default function AdminTicketPage() {
 
   useEffect(() => {
     setRulesPage(1);
-  }, [rulesSearch]);
+  }, [rulesNameSearch, rulesPeriodicityFilter, rulesClientFilter]);
 
   function openCreateStage() {
     setEditingStage(null);
@@ -326,10 +354,15 @@ export default function AdminTicketPage() {
   }
 
   async function handleToggleRule(rule: TicketAutoOpenRule) {
+    const nextActive = !rule.active;
     try {
       setTogglingRuleId(rule.id);
-      await adminService.setTicketAutoOpenRuleActive(rule.id, !rule.active);
-      await loadRules();
+      await adminService.setTicketAutoOpenRuleActive(rule.id, nextActive);
+      setRules((prev) =>
+        prev.map((item) =>
+          item.id === rule.id ? { ...item, active: nextActive } : item,
+        ),
+      );
     } catch (err) {
       notifyError(err instanceof Error ? err.message : "Falha ao alterar a regra.");
     } finally {
@@ -358,10 +391,15 @@ export default function AdminTicketPage() {
   }
 
   async function handleToggleAutomation(rule: TicketAutomationRule) {
+    const nextActive = !rule.active;
     try {
       setTogglingAutomationId(rule.id);
-      await adminService.setTicketAutomationRuleActive(rule.id, !rule.active);
-      await loadAutomations();
+      await adminService.setTicketAutomationRuleActive(rule.id, nextActive);
+      setAutomations((prev) =>
+        prev.map((item) =>
+          item.id === rule.id ? { ...item, active: nextActive } : item,
+        ),
+      );
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Falha ao alterar a automação.",
@@ -506,17 +544,38 @@ export default function AdminTicketPage() {
               </>
             ) : tab === "auto-open" ? (
               <>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="relative w-full sm:max-w-md">
-                    <Search
-                      size={18}
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div className="grid w-full gap-3 sm:grid-cols-2 xl:max-w-3xl xl:grid-cols-3">
+                    <div className="relative sm:col-span-2 xl:col-span-1">
+                      <Search
+                        size={18}
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                      />
+                      <Input
+                        value={rulesNameSearch}
+                        onChange={(e) => setRulesNameSearch(e.target.value)}
+                        placeholder="Buscar por nome…"
+                        className="h-10 pl-10"
+                      />
+                    </div>
+                    <SearchableSelectField
+                      value={rulesPeriodicityFilter}
+                      onChange={setRulesPeriodicityFilter}
+                      options={periodicityFilterOptions}
+                      placeholder="Período"
+                      emptyLabel="Todos os períodos"
+                      preserveOrder
+                      className="w-full"
                     />
-                    <Input
-                      value={rulesSearch}
-                      onChange={(e) => setRulesSearch(e.target.value)}
-                      placeholder="Buscar por nome, período ou cliente…"
-                      className="h-10 pl-10"
+                    <SearchableSelectField
+                      value={rulesClientFilter}
+                      onChange={setRulesClientFilter}
+                      options={clientFilterOptions}
+                      placeholder="Cliente"
+                      emptyLabel="Todos os clientes"
+                      preserveOrder
+                      alwaysShowSearch
+                      className="w-full"
                     />
                   </div>
                   <div className="flex flex-wrap justify-end gap-2">
@@ -557,8 +616,9 @@ export default function AdminTicketPage() {
                 ) : filteredRules.length === 0 ? (
                   <Card>
                     <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                      Nenhuma regra encontrada para &quot;{rulesSearch.trim()}
-                      &quot;.
+                      {hasActiveRuleFilters
+                        ? "Nenhuma regra encontrada com os filtros selecionados."
+                        : "Nenhuma regra de abertura automática cadastrada."}
                     </CardContent>
                   </Card>
                 ) : (
@@ -568,9 +628,9 @@ export default function AdminTicketPage() {
                         {paginatedRules.map((rule) => (
                         <div
                           key={rule.id}
-                          className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
+                          className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between"
                         >
-                          <div className="min-w-0 space-y-1">
+                          <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-medium text-foreground">
                                 {rule.name}
@@ -597,8 +657,8 @@ export default function AdminTicketPage() {
                               </p>
                             ) : null}
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex items-center gap-2 text-sm">
+                          <div className={RULE_ROW_ACTIONS_CLASS}>
+                            <label className="flex w-[4.5rem] shrink-0 items-center gap-2 text-sm">
                               <FlipCheckbox
                                 checked={rule.active}
                                 disabled={togglingRuleId === rule.id}
@@ -609,6 +669,7 @@ export default function AdminTicketPage() {
                             <Button
                               variant="outline"
                               size="sm"
+                              className={RULE_ROW_ACTION_BUTTON_CLASS}
                               onClick={() => {
                                 setEditingRule(rule);
                                 setRuleDialogOpen(true);
@@ -620,7 +681,10 @@ export default function AdminTicketPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-destructive hover:text-destructive"
+                              className={cn(
+                                RULE_ROW_ACTION_BUTTON_CLASS,
+                                "text-destructive hover:text-destructive",
+                              )}
                               disabled={deletingId === rule.id}
                               onClick={() => void handleDeleteRule(rule)}
                             >
@@ -699,9 +763,9 @@ export default function AdminTicketPage() {
                       {automations.map((rule) => (
                         <div
                           key={rule.id}
-                          className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between"
+                          className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between"
                         >
-                          <div className="min-w-0 space-y-1">
+                          <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-medium text-foreground">
                                 {rule.name}
@@ -721,8 +785,8 @@ export default function AdminTicketPage() {
                               </p>
                             ) : null}
                           </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <label className="flex items-center gap-2 text-sm">
+                          <div className={RULE_ROW_ACTIONS_CLASS}>
+                            <label className="flex w-[4.5rem] shrink-0 items-center gap-2 text-sm">
                               <FlipCheckbox
                                 checked={rule.active}
                                 disabled={togglingAutomationId === rule.id}
@@ -733,6 +797,7 @@ export default function AdminTicketPage() {
                             <Button
                               variant="outline"
                               size="sm"
+                              className={RULE_ROW_ACTION_BUTTON_CLASS}
                               onClick={() => {
                                 setEditingAutomation(rule);
                                 setAutomationDialogOpen(true);
@@ -744,7 +809,10 @@ export default function AdminTicketPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="text-destructive hover:text-destructive"
+                              className={cn(
+                                RULE_ROW_ACTION_BUTTON_CLASS,
+                                "text-destructive hover:text-destructive",
+                              )}
                               disabled={deletingId === rule.id}
                               onClick={() => void handleDeleteAutomation(rule)}
                             >
