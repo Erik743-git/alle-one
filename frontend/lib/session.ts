@@ -1,4 +1,4 @@
-import { API_URL, getBrowserApiBase } from "@/lib/env";
+import { buildAuthApiUrl } from "@/lib/auth-api-url";
 import type { ModulePermission } from "./permission-modules";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
 
@@ -31,12 +31,7 @@ export const TOKEN_KEY = "alleone.token";
 export const USER_KEY = "alleone.user";
 
 function authLogoutUrl(): string {
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/auth/logout`;
-  }
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/logout`;
-  return `${API_URL.replace(/\/$/, "")}/auth/logout`;
+  return buildAuthApiUrl("/logout");
 }
 
 function readUserRaw(): string | null {

@@ -1,4 +1,4 @@
-import { API_URL, getBrowserApiBase } from "@/lib/env";
+import { buildAuthApiUrl } from "@/lib/auth-api-url";
 
 export type OAuthProvidersStatus = {
   google: boolean;
@@ -37,12 +37,7 @@ function writeCache(status: OAuthProvidersStatus): void {
 }
 
 function providersUrl(): string {
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/auth/oauth/providers`;
-  }
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/oauth/providers`;
-  return `${API_URL.replace(/\/$/, "")}/auth/oauth/providers`;
+  return buildAuthApiUrl("/oauth/providers");
 }
 
 export function getCachedOAuthProviders(): OAuthProvidersStatus | null {

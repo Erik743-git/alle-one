@@ -11,17 +11,12 @@ import {
 } from "./session";
 import { syncDeviceTrustFromResponse, readDeviceTrustToken } from "./device-trust";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
-import { API_URL, getBrowserApiBase } from "@/lib/env";
+import { buildAuthApiUrl } from "./auth-api-url";
 import { authService } from "@/lib/services/auth.service";
 import { notifyError } from "@/lib/notify";
 
 function authMeUrl(): string {
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/auth/me`;
-  }
-  const base = getBrowserApiBase();
-  if (base) return `${base}/auth/me`;
-  return `${API_URL.replace(/\/$/, "")}/auth/me`;
+  return buildAuthApiUrl("/me");
 }
 
 type AuthContextValue = {
