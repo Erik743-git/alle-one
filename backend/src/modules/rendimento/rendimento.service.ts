@@ -3783,7 +3783,7 @@ export class RendimentoService {
           AND j.date_ref >= $1::date
           AND j.date_ref <= $2::date
           AND ($3::text IS NULL OR j.user_id = $3::text)
-          AND j.status = ANY($4::text[])
+          AND j.status = ANY($4::"RendimentoGapJustificationStatus"[])
         ORDER BY
           CASE j.status
             WHEN 'PENDING' THEN 0
@@ -3962,7 +3962,7 @@ export class RendimentoService {
           AND e.date_ref >= $1::date
           AND e.date_ref <= $2::date
           AND ($3::text IS NULL OR e.user_id = $3::text)
-          AND e.status = ANY($4::text[])
+          AND e.status = ANY($4::"RendimentoDayEventStatus"[])
           AND NOT (
             e.status = 'PENDING'
             AND e.appointment_external_id IS NOT NULL

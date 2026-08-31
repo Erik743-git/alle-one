@@ -9,6 +9,7 @@ import {
   Lock,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Workflow,
 } from "lucide-react";
@@ -43,6 +44,7 @@ import {
   type TicketAutomationRule,
   type TicketStage,
 } from "@/lib/services/admin.service";
+import { ticketsService } from "@/lib/services/tickets.service";
 
 type AdminTicketTab = "stages" | "auto-open" | "automations";
 
@@ -71,6 +73,29 @@ function formatRuleDate(ymd: string): string {
   const [y, m, d] = ymd.split("-");
   if (!y || !m || !d) return ymd;
   return `${d}/${m}/${y}`;
+}
+
+function ruleMatchesSearch(
+  rule: TicketAutoOpenRule,
+  query: string,
+  clientNameById: Map<number, string>,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+
+  const clientName = clientNameById.get(rule.clientExternalId) ?? "";
+  const haystack = [
+    rule.name,
+    rule.title,
+    rule.periodicityLabel,
+    clientName,
+    formatRuleDate(rule.nextScheduledDate),
+    rule.scheduleTime,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(q);
 }
 
 export default function AdminTicketPage() {
@@ -104,6 +129,10 @@ export default function AdminTicketPage() {
   const [editingAutomation, setEditingAutomation] =
     useState<TicketAutomationRule | null>(null);
   const [rulesPage, setRulesPage] = useState(1);
+  const [rulesSearch, setRulesSearch] = useState("");
+  const [clientNameById, setClientNameById] = useState<Map<number, string>>(
+    () => new Map(),
+  );
 
   const loadStages = useCallback(async () => {
     try {
@@ -160,11 +189,43 @@ export default function AdminTicketPage() {
     void loadAutomations();
   }, [loadStages, loadRules, loadAutomations]);
 
-  const rulesTotalPages = Math.max(1, Math.ceil(rules.length / RULES_PAGE_SIZE));
+  useEffect(() => {
+    if (tab !== "auto-open") return;
+    let cancelled = false;
+    void ticketsService
+      .catalogs()
+      .then((catalogs) => {
+        if (cancelled) return;
+        const map = new Map<number, string>();
+        for (const client of catalogs.clients ?? []) {
+          map.set(client.externalId, client.name);
+        }
+        setClientNameById(map);
+      })
+      .catch(() => {
+        if (!cancelled) setClientNameById(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
+
+  const filteredRules = useMemo(
+    () =>
+      rules.filter((rule) =>
+        ruleMatchesSearch(rule, rulesSearch, clientNameById),
+      ),
+    [rules, rulesSearch, clientNameById],
+  );
+
+  const rulesTotalPages = Math.max(
+    1,
+    Math.ceil(filteredRules.length / RULES_PAGE_SIZE),
+  );
   const paginatedRules = useMemo(() => {
     const start = (rulesPage - 1) * RULES_PAGE_SIZE;
-    return rules.slice(start, start + RULES_PAGE_SIZE);
-  }, [rules, rulesPage]);
+    return filteredRules.slice(start, start + RULES_PAGE_SIZE);
+  }, [filteredRules, rulesPage]);
   const rulesCanPrev = rulesPage > 1;
   const rulesCanNext = rulesPage < rulesTotalPages;
 
@@ -173,6 +234,10 @@ export default function AdminTicketPage() {
       setRulesPage(rulesTotalPages);
     }
   }, [rulesPage, rulesTotalPages]);
+
+  useEffect(() => {
+    setRulesPage(1);
+  }, [rulesSearch]);
 
   function openCreateStage() {
     setEditingStage(null);
@@ -441,28 +506,42 @@ export default function AdminTicketPage() {
               </>
             ) : tab === "auto-open" ? (
               <>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={runningDueRules}
-                    onClick={() => void handleRunDueRules()}
-                  >
-                    {runningDueRules ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CalendarClock className="mr-2 h-4 w-4" />
-                    )}
-                    Executar vencidas
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setEditingRule(null);
-                      setRuleDialogOpen(true);
-                    }}
-                  >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Criar regra
-                  </Button>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="relative w-full sm:max-w-md">
+                    <Search
+                      size={18}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                      value={rulesSearch}
+                      onChange={(e) => setRulesSearch(e.target.value)}
+                      placeholder="Buscar por nome, período ou cliente…"
+                      className="h-10 pl-10"
+                    />
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      disabled={runningDueRules}
+                      onClick={() => void handleRunDueRules()}
+                    >
+                      {runningDueRules ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CalendarClock className="mr-2 h-4 w-4" />
+                      )}
+                      Executar vencidas
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setEditingRule(null);
+                        setRuleDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Criar regra
+                    </Button>
+                  </div>
                 </div>
                 {loadingRules ? (
                   <div className="flex min-h-[30vh] items-center justify-center gap-2 text-muted-foreground">
@@ -473,6 +552,13 @@ export default function AdminTicketPage() {
                   <Card>
                     <CardContent className="py-10 text-center text-sm text-muted-foreground">
                       Nenhuma regra de abertura automática cadastrada.
+                    </CardContent>
+                  </Card>
+                ) : filteredRules.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-10 text-center text-sm text-muted-foreground">
+                      Nenhuma regra encontrada para &quot;{rulesSearch.trim()}
+                      &quot;.
                     </CardContent>
                   </Card>
                 ) : (
@@ -501,7 +587,9 @@ export default function AdminTicketPage() {
                               {rule.scheduleTime}
                             </p>
                             <p className="truncate text-sm text-muted-foreground">
-                              {rule.title}
+                              {clientNameById.get(rule.clientExternalId) ??
+                                `Cliente #${rule.clientExternalId}`}{" "}
+                              · {rule.title}
                             </p>
                             {rule.lastTicketNumber ? (
                               <p className="text-xs text-muted-foreground">
@@ -550,8 +638,8 @@ export default function AdminTicketPage() {
                   </Card>
                     <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
                       <span>
-                        {rules.length} regra(s) · página {rulesPage} de{" "}
-                        {rulesTotalPages}
+                        {filteredRules.length} de {rules.length} regra(s) · página{" "}
+                        {rulesPage} de {rulesTotalPages}
                       </span>
                       <div className="flex gap-2">
                         <Button
