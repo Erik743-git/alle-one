@@ -55,9 +55,9 @@ export function resolvePayrollPeriodRange(reference: Date): PayrollPeriodRange {
 }
 
 /**
- * Período de HE estável para a agenda (mês/semana/dia).
+ * Período de HE estável para a grade mensal.
  * Usa o dia 15 do mês civil da data de referência para não “pular”
- * o período ao selecionar dias 26–31 ou trocar Mês ↔ Semana ↔ Dia
+ * o período ao navegar dias 26–31 dentro do mesmo mês civil
  * (ex.: em julho, permanece 26/06→25/07 mesmo no dia 29).
  */
 export function resolvePayrollPeriodRangeForCalendarMonth(
@@ -67,4 +67,21 @@ export function resolvePayrollPeriodRangeForCalendarMonth(
   midMonth.setDate(15);
   midMonth.setHours(0, 0, 0, 0);
   return resolvePayrollPeriodRange(midMonth);
+}
+
+export type RendimentoPayrollView = 'month' | 'week' | 'day';
+
+/**
+ * Período folha para totais de HE e saldo na agenda.
+ * - Mês: estável pelo mês civil (via dia 15).
+ * - Semana/Dia: período 26→25 que contém a data de referência.
+ */
+export function resolvePayrollPeriodRangeForTimesheet(
+  reference: Date,
+  view: RendimentoPayrollView,
+): PayrollPeriodRange {
+  if (view === 'month') {
+    return resolvePayrollPeriodRangeForCalendarMonth(reference);
+  }
+  return resolvePayrollPeriodRange(reference);
 }

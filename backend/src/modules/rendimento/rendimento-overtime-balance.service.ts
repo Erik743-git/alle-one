@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { resolvePayrollPeriodRange } from './rendimento-payroll-period.helper';
 
 @Injectable()
 export class RendimentoOvertimeBalanceService {
@@ -44,18 +43,19 @@ export class RendimentoOvertimeBalanceService {
   async refreshBalance(
     userId: string,
     periodOvertimeMinutes: number,
-    referenceDate: Date,
+    periodStart: Date,
+    periodEnd: Date,
   ): Promise<number> {
-    const payroll = resolvePayrollPeriodRange(referenceDate);
+    // periodOvertimeMinutes deve ser do mesmo intervalo [periodStart, periodEnd].
     const protectedMinutes = await this.getProtectedMinutes(
       userId,
-      payroll.start,
-      payroll.end,
+      periodStart,
+      periodEnd,
     );
     const debitedMinutes = await this.getDebitedMinutes(
       userId,
-      payroll.start,
-      payroll.end,
+      periodStart,
+      periodEnd,
     );
     const available = this.getNetBalanceMinutes(
       periodOvertimeMinutes,
