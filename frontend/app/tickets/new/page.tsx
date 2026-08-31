@@ -499,6 +499,58 @@ export default function NewTicketPage() {
     });
   }
 
+  function renderFollowersFields(className?: string) {
+    return (
+      <div className={className}>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <FieldLabel optional>Seguidores</FieldLabel>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={saving}
+            onClick={() => setFollowersOpen(true)}
+          >
+            <Plus className="mr-1 size-3.5" />
+            Novo seguidor
+          </Button>
+        </div>
+        {ccPeople.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {ccPeople.map((person) => (
+              <span
+                key={person.email}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
+              >
+                {person.name
+                  ? `${person.name} (${person.email})`
+                  : person.email}
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() =>
+                    setCcPeople((prev) =>
+                      prev.filter((item) => item.email !== person.email),
+                    )
+                  }
+                  aria-label={`Remover seguidor ${person.email}`}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Nenhum seguidor. Use &quot;Novo seguidor&quot; para adicionar
+            pessoas que receberão atualizações por e-mail.
+          </p>
+        )}
+      </div>
+    );
+  }
+
   async function performCreate() {
     const content = descriptionComposerRef.current?.exportContent();
     const description = content?.description?.trim() ?? "";
@@ -734,6 +786,12 @@ export default function NewTicketPage() {
                         />
                       </div>
                     ) : null}
+
+                    {isClientUser
+                      ? renderFollowersFields(
+                          "space-y-2 border-t border-border pt-4 sm:col-span-2",
+                        )
+                      : null}
                   </CardContent>
                 </Card>
 
@@ -869,11 +927,12 @@ export default function NewTicketPage() {
                 </Card>
                 ) : null}
 
+                {(!isClientUser || (deskId && hasPortalClassification)) ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <UserRound className="size-4 text-primary" />
-                      {isClientUser ? "Classificação e seguidores" : "Responsável e classificação"}
+                      {isClientUser ? "Classificação" : "Responsável e classificação"}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -911,57 +970,14 @@ export default function NewTicketPage() {
                         ) : null}
                       </div>
                     ) : null}
-                    <div className="space-y-2 border-t border-border pt-4">
-                      <div className="flex flex-wrap items-end justify-between gap-2">
-                        <FieldLabel optional>Seguidores</FieldLabel>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-8"
-                          disabled={saving}
-                          onClick={() => setFollowersOpen(true)}
-                        >
-                          <Plus className="mr-1 size-3.5" />
-                          Novo seguidor
-                        </Button>
-                      </div>
-                      {ccPeople.length > 0 ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {ccPeople.map((person) => (
-                            <span
-                              key={person.email}
-                              className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
-                            >
-                              {person.name
-                                ? `${person.name} (${person.email})`
-                                : person.email}
-                              <button
-                                type="button"
-                                className="text-muted-foreground hover:text-foreground"
-                                onClick={() =>
-                                  setCcPeople((prev) =>
-                                    prev.filter(
-                                      (item) => item.email !== person.email,
-                                    ),
-                                  )
-                                }
-                                aria-label={`Remover seguidor ${person.email}`}
-                              >
-                                <X className="size-3.5" />
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Nenhum seguidor. Use &quot;Novo seguidor&quot; para
-                          adicionar pessoas que receberão atualizações por e-mail.
-                        </p>
-                      )}
-                    </div>
+                    {!isClientUser
+                      ? renderFollowersFields(
+                          "space-y-2 border-t border-border pt-4",
+                        )
+                      : null}
                   </CardContent>
                 </Card>
+                ) : null}
 
                 <div className="space-y-3">
                   {!canSubmit && !loading && !saving ? (
