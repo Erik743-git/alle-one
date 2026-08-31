@@ -749,6 +749,10 @@ export default function NewTicketPage() {
                       />
                     </div>
 
+                    {renderFollowersFields(
+                      "space-y-2 border-t border-border pt-4 sm:col-span-2",
+                    )}
+
                     {deskId && showCatalogPicker ? (
                       <div className="space-y-2 sm:col-span-2">
                         <FieldLabel required>Serviço</FieldLabel>
@@ -786,12 +790,6 @@ export default function NewTicketPage() {
                         />
                       </div>
                     ) : null}
-
-                    {isClientUser
-                      ? renderFollowersFields(
-                          "space-y-2 border-t border-border pt-4 sm:col-span-2",
-                        )
-                      : null}
                   </CardContent>
                 </Card>
 
@@ -970,11 +968,6 @@ export default function NewTicketPage() {
                         ) : null}
                       </div>
                     ) : null}
-                    {!isClientUser
-                      ? renderFollowersFields(
-                          "space-y-2 border-t border-border pt-4",
-                        )
-                      : null}
                   </CardContent>
                 </Card>
                 ) : null}
