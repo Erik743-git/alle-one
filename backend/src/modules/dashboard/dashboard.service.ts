@@ -7,7 +7,9 @@ import { TifluxService } from '../tiflux/tiflux.service';
 import { ZabbixService } from '../zabbix/zabbix.service';
 import {
   categorizeTicketByDesk,
+  DESK_CATEGORY_KEYS,
   emptyDeskCategoryCounts,
+  sqlDeskCategoryCase,
   type DeskCategory,
 } from './desk-categories';
 import {
@@ -153,10 +155,27 @@ export class DashboardService {
     return fromRedis;
   }
 
-  private setCachedResponse(cacheKey: string, data: DashboardResponse) {
-    this.responseCache.set(cacheKey, data);
+  private resolveCompleteCacheTtlMs(days: number): number {
+    if (days > 365) {
+      return Math.min(this.dashboardCacheTtlMs * 5, 300_000);
+    }
+    if (days > 90) {
+      return Math.min(this.dashboardCacheTtlMs * 3, 180_000);
+    }
+    if (days > 30) {
+      return Math.min(this.dashboardCacheTtlMs * 2, 120_000);
+    }
+    return this.dashboardCacheTtlMs;
+  }
+
+  private setCachedResponse(
+    cacheKey: string,
+    data: DashboardResponse,
+    ttlMs = this.dashboardCacheTtlMs,
+  ) {
+    this.responseCache.set(cacheKey, data, ttlMs);
     if (this.completeRedisCacheEnabled && this.redis.isEnabled()) {
-      const ttlSec = Math.max(1, Math.ceil(this.dashboardCacheTtlMs / 1000));
+      const ttlSec = Math.max(1, Math.ceil(ttlMs / 1000));
       void this.redis.setJson(this.redisCompleteKey(cacheKey), data, ttlSec);
     }
   }
@@ -295,6 +314,26 @@ export class DashboardService {
     return Array.from(rows.values());
   }
 
+  private mergeTicketAggregationRows(
+    aggRows: Array<{ month_key: string; category: string; cnt: number }>,
+    startDate: Date,
+    endDate: Date,
+  ): MonthlyTicketRow[] {
+    const rows = new Map<string, MonthlyTicketRow>();
+    for (const row of this.buildEmptyTicketRows(startDate, endDate)) {
+      rows.set(row.monthKey, row);
+    }
+    for (const item of aggRows) {
+      const row = rows.get(item.month_key);
+      if (!row) continue;
+      const category = item.category as DeskCategory;
+      if (!DESK_CATEGORY_KEYS.includes(category)) continue;
+      row[category] += item.cnt;
+      row.Total += item.cnt;
+    }
+    return Array.from(rows.values());
+  }
+
   /**
    * Resumo de tickets do dashboard a partir do espelho (tiflux ou portal canônico).
    * Alinhado ao filtro date_type=created_at + intervalo ISO usado no `buildTifluxDateRange`.
@@ -308,8 +347,10 @@ export class DashboardService {
     deskNames?: string[];
   }): Promise<{
     ticketsForCharts: Array<Record<string, unknown>>;
-    /** Lista completa no período para tabela "Chamados por mês" / mesas (o cartão usa totalTickets). */
+    /** Lista completa no período (fallback API); vazio quando há agregação SQL. */
     ticketsForAggregation: Array<Record<string, unknown>>;
+    precomputedTicketRows?: MonthlyTicketRow[];
+    precomputedDeskSummary?: Array<{ deskName: string; totalTickets: number }>;
     totalTickets: number;
     totalOpenTickets: number;
   }> {
@@ -374,50 +415,69 @@ export class DashboardService {
     const totalTickets = countRows[0]?.total_all ?? 0;
     const totalOpenTickets = countRows[0]?.total_open ?? 0;
 
-    const listRows =
+    const categorySql = sqlDeskCategoryCase('t');
+    const { startDate, endDate } = getRange(params.startISO, params.endISO);
+
+    const monthAggRows =
       (await this.prisma.$queryRawUnsafe<
-        Array<{
-          ticket_number: number;
-          title: string | null;
-          created_at_source: Date | null;
-          client_external_id: number | null;
-          client_name: string | null;
-          desk_external_id: number | null;
-          desk_name: string | null;
-        }>
+        Array<{ month_key: string; category: string; cnt: number }>
       >(
         `
-      select
-        t.ticket_number,
-        t.title,
-        t.created_at_source,
-        t.client_external_id,
-        t.client_name,
-        t.desk_external_id,
-        t.desk_name
-      from ${ticketsTable} t
-      where t.client_external_id = $1
-        and t.created_at_source is not null
-        and t.created_at_source >= $2::timestamptz
-        and t.created_at_source <= $3::timestamptz
-        ${viewSql}
-        ${deskSql}
-      order by t.created_at_source desc
-    `,
+        select
+          to_char(t.created_at_source, 'YYYY-MM') as month_key,
+          ${categorySql} as category,
+          count(*)::int as cnt
+        from ${ticketsTable} t
+        where t.client_external_id = $1
+          and t.created_at_source is not null
+          and t.created_at_source >= $2::timestamptz
+          and t.created_at_source <= $3::timestamptz
+          ${viewSql}
+          ${deskSql}
+        group by 1, 2
+      `,
         params.tifluxClientId,
         params.startISO,
         params.endISO,
         ...(deskNames.length > 0 ? [deskNames] : []),
       )) ?? [];
 
-    const ticketsForAggregation = listRows.map((r) =>
-      this.mapDbTicketRowToChartShape(r),
-    );
-    const ticketsForCharts = ticketsForAggregation.slice(0, params.chartLimit);
+    const deskAggRows =
+      (await this.prisma.$queryRawUnsafe<
+        Array<{ desk_name: string; total: number }>
+      >(
+        `
+        select
+          coalesce(nullif(trim(t.desk_name), ''), 'Sem mesa') as desk_name,
+          count(*)::int as total
+        from ${ticketsTable} t
+        where t.client_external_id = $1
+          and t.created_at_source is not null
+          and t.created_at_source >= $2::timestamptz
+          and t.created_at_source <= $3::timestamptz
+          ${viewSql}
+          ${deskSql}
+        group by 1
+        order by total desc, desk_name asc
+      `,
+        params.tifluxClientId,
+        params.startISO,
+        params.endISO,
+        ...(deskNames.length > 0 ? [deskNames] : []),
+      )) ?? [];
 
     return {
-      ticketsForCharts,
-      ticketsForAggregation,
+      ticketsForCharts: [],
+      ticketsForAggregation: [],
+      precomputedTicketRows: this.mergeTicketAggregationRows(
+        monthAggRows,
+        startDate,
+        endDate,
+      ),
+      precomputedDeskSummary: deskAggRows.map((row) => ({
+        deskName: row.desk_name,
+        totalTickets: row.total,
+      })),
       totalTickets,
       totalOpenTickets,
     };
@@ -733,7 +793,13 @@ export class DashboardService {
 
     try {
       const response = await promise;
-      this.setCachedResponse(cacheKey, response);
+      const { startDate, endDate } = getRange(scoped.start, scoped.end);
+      const days = countDaysInRange(startDate, endDate);
+      this.setCachedResponse(
+        cacheKey,
+        response,
+        this.resolveCompleteCacheTtlMs(days),
+      );
       return response;
     } finally {
       this.inFlightRequests.delete(cacheKey);
@@ -1161,6 +1227,11 @@ export class DashboardService {
 
     const packWithAgg = tifluxPack as {
       ticketsForAggregation?: Array<Record<string, unknown>>;
+      precomputedTicketRows?: MonthlyTicketRow[];
+      precomputedDeskSummary?: Array<{
+        deskName: string;
+        totalTickets: number;
+      }>;
     };
     const rowsForChamados =
       packWithAgg.ticketsForAggregation &&
@@ -1168,11 +1239,14 @@ export class DashboardService {
         ? packWithAgg.ticketsForAggregation
         : ticketsForCharts;
 
-    const ticketRows = this.buildTicketRows(
-      rowsForChamados,
-      startDate,
-      endDate,
-    );
+    const ticketRows =
+      packWithAgg.precomputedTicketRows != null
+        ? packWithAgg.precomputedTicketRows
+        : this.buildTicketRows(rowsForChamados, startDate, endDate);
+    const deskSummary =
+      packWithAgg.precomputedDeskSummary != null
+        ? packWithAgg.precomputedDeskSummary
+        : this.buildDeskSummaryFromTickets(rowsForChamados);
     const alertRows = this.buildAlertsRows(
       zabbixData.events,
       startDate,
@@ -1262,9 +1336,7 @@ export class DashboardService {
         hostsInativos: zabbixData.overview.hostsInativos,
       },
       chamadosPorMes: options.includeCharts ? ticketRows : [],
-      chamadosPorMesa: options.includeCharts
-        ? this.buildDeskSummaryFromTickets(rowsForChamados)
-        : [],
+      chamadosPorMesa: options.includeCharts ? deskSummary : [],
       horasPorMes: hoursRows,
       resumoHorasTrabalhadas,
       alertasPorMes: options.includeCharts ? alertRows : [],

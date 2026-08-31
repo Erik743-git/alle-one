@@ -28,14 +28,14 @@ import {
 import {
   Building2,
   FileText,
-  RefreshCcw,
+  RefreshCw,
   Search,
   ShieldCheck,
   TriangleAlert,
 } from "lucide-react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { getStoredUser } from "@/lib/session";
+import { useAuth } from "@/lib/use-auth";
 import {
   FINANCEIRO_ADMIN_AGENDA_SUBTITLE,
   FINANCEIRO_CLIENT_AGENDA_SUBTITLE,
@@ -43,8 +43,8 @@ import {
 } from "@/lib/module-copy";
 import { companiesService, type Company } from "@/lib/services/companies.service";
 import {
-  companyContractsService,
   type CompanyContract,
+  type ContractStatus,
 } from "@/lib/services/company-contracts.service";
 import {
   financialService,
@@ -61,7 +61,7 @@ import {
   pickCompanyIdFromList,
   setPersistedCompanyId,
 } from "@/lib/selected-company";
-import { ensureArray } from "@/lib/utils";
+import { ensureArray, cn } from "@/lib/utils";
 
 function moneyNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
@@ -103,8 +103,33 @@ function contractListedRate(contract: {
   return moneyNumber(contract.extraHourPrice);
 }
 
+function contractStatusLabel(status: ContractStatus): string {
+  switch (status) {
+    case "ACTIVE":
+      return "Ativo";
+    case "INACTIVE":
+      return "Inativo";
+    case "EXPIRED":
+      return "Expirado";
+    default:
+      return status;
+  }
+}
+
+function formatSpecialtyLineSummary(
+  line: NonNullable<CompanyContract["specialties"]>[number],
+): string {
+  const name = line.specialty?.name?.trim() || "Especialidade";
+  if (line.unlimited) {
+    return `${name} · ilimitado`;
+  }
+  const rate = moneyNumber(line.excessHourPrice);
+  const hours = `${line.monthlyHours}h/mês`;
+  return rate == null ? `${name} · ${hours}` : `${name} · ${hours} · excedente ${formatBrl(rate)}`;
+}
+
 export default function FinanceiroPage() {
-  const user = getStoredUser();
+  const { user } = useAuth();
   const isClient = isClientPortalRole(user?.role);
   const isAdmin = user?.role === "ADMIN";
 
@@ -141,7 +166,10 @@ export default function FinanceiroPage() {
   async function loadCompanies() {
     if (isClient) return;
     try {
-      const list = await companiesService.list();
+      const list =
+        user?.role === "ADMIN"
+          ? await companiesService.list()
+          : await companiesService.listAccessible();
       const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
       setCompanies(sorted);
       const picked = pickCompanyIdFromList(sorted, {
@@ -163,11 +191,9 @@ export default function FinanceiroPage() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const res = isAdmin
-        ? await companyContractsService.list(companyId)
-        : await financialService.listContracts({
-            companyId: isClient ? undefined : companyId,
-          });
+      const res = await financialService.listContracts({
+        companyId: isClient ? undefined : companyId,
+      });
       setContracts(Array.isArray(res.contracts) ? res.contracts : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao carregar contratos");
@@ -381,28 +407,30 @@ export default function FinanceiroPage() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Financeiro</h1>
               <p className="text-muted-foreground">
-                Resumo contratual (contratos manuais no portal + horas usadas dos apontamentos).
+                Resumo contratual (contratos no portal + horas dos apontamentos).
               </p>
             </div>
 
-            <div className="flex w-full flex-col gap-2 pr-4 sm:mr-10 sm:w-auto sm:flex-row sm:items-center lg:mr-14 xl:mr-16">
+            <div className="flex flex-nowrap items-center gap-2">
               {!isClient ? (
-                <SearchableSelectField
-                  value={companyId}
-                  onChange={(id) => {
-                    setCompanyId(id);
-                    if (user?.id) setPersistedCompanyId(user.id, id || null);
-                  }}
-                  options={companyOptions}
-                  emptyLabel="Selecione a empresa..."
-                  className="min-w-[220px]"
-                />
+                <div className="w-[min(100vw-9rem,260px)] shrink-0">
+                  <SearchableSelectField
+                    value={companyId}
+                    onChange={(id) => {
+                      setCompanyId(id);
+                      if (user?.id) setPersistedCompanyId(user.id, id || null);
+                    }}
+                    options={companyOptions}
+                    emptyLabel="Selecione a empresa..."
+                    className="h-9 w-full rounded-lg text-sm"
+                  />
+                </div>
               ) : null}
               <Button
                 type="button"
-                disabled={refreshing}
+                disabled={refreshing || loading}
                 variant="outline"
-                className="h-11"
+                className="h-9 shrink-0 px-3 text-sm"
                 onClick={async () => {
                   setRefreshing(true);
                   try {
@@ -416,7 +444,9 @@ export default function FinanceiroPage() {
                   }
                 }}
               >
-                <RefreshCcw className="mr-2 h-4 w-4" />
+                <RefreshCw
+                  className={cn("mr-2 size-4", refreshing && "animate-spin")}
+                />
                 Atualizar
               </Button>
             </div>
@@ -556,12 +586,17 @@ export default function FinanceiroPage() {
                                 {contractListedHours(c)}h/mês • excedente:{" "}
                                 {(() => {
                                   const rate = contractListedRate(c);
-                                  return rate == null ? "—" : formatBrl(rate);
+                                  return rate == null ? "variável" : formatBrl(rate);
                                 })()}
                               </div>
+                              {c.classification?.name ? (
+                                <div className="mt-0.5 truncate text-xs text-muted-foreground/80">
+                                  {c.classification.name}
+                                </div>
+                              ) : null}
                             </div>
                             <span className="inline-flex items-center rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
-                              {c.status}
+                              {contractStatusLabel(c.status)}
                             </span>
                           </div>
                         </AccordionTrigger>
@@ -584,6 +619,24 @@ export default function FinanceiroPage() {
                               </div>
                             </div>
                           </div>
+
+                          {(c.specialties ?? []).length > 0 ? (
+                            <div className="mt-3 space-y-2">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Especialidades
+                              </p>
+                              <ul className="space-y-2">
+                                {(c.specialties ?? []).map((line) => (
+                                  <li
+                                    key={line.id}
+                                    className="rounded-lg border border-border bg-card px-3 py-2 text-sm text-muted-foreground"
+                                  >
+                                    {formatSpecialtyLineSummary(line)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
 
                           {((c.contractFiles ?? []).find((f) => f.type === "CONTRACT")) ? (
                             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -678,6 +731,10 @@ export default function FinanceiroPage() {
                     >
                       <p className="text-sm text-muted-foreground">Contrato</p>
                       <p className="mt-1 font-semibold">{c.title}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {contractStatusLabel(c.status)}
+                        {c.monthlyHours > 0 ? ` · ${c.monthlyHours}h/mês contratadas` : ""}
+                      </p>
                       <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                         <div className="rounded-lg border border-border bg-card p-3">
                           <div className="text-xs text-muted-foreground">Horas/mês</div>
@@ -688,7 +745,9 @@ export default function FinanceiroPage() {
                         <div className="rounded-lg border border-border bg-card p-3">
                           <div className="text-xs text-muted-foreground">Hora excedente</div>
                           <div className="mt-1 font-semibold">
-                            {formatBrl(Number(c.extraHourPrice ?? 0))}
+                            {c.extraHourPrice > 0
+                              ? formatBrl(Number(c.extraHourPrice))
+                              : "Variável"}
                           </div>
                         </div>
                         <div className="rounded-lg border border-border bg-card p-3">
@@ -727,8 +786,9 @@ export default function FinanceiroPage() {
                 <div className="rounded-xl border border-border bg-background p-4 text-sm">
                   <div className="text-sm font-semibold">Observações</div>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    - ADMIN/COLLABORATOR escolhem a empresa. CLIENT vê apenas a própria empresa.
-                    <br />- Alguns valores podem aparecer como “--” conforme permissões.
+                    - Administradores e colaboradores escolhem a empresa; clientes veem apenas a própria.
+                    <br />- Horas usadas vêm dos apontamentos do portal no mês corrente.
+                    <br />- O valor da hora excedente pode ficar em branco quando há taxas diferentes por especialidade.
                   </div>
                 </div>
               </CardContent>

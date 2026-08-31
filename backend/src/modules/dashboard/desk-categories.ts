@@ -29,6 +29,19 @@ export function emptyDeskCategoryCounts(): Record<DeskCategory, number> {
   };
 }
 
+/** Expressão SQL (PostgreSQL) espelhando `categorizeTicketByDesk` para agregações. */
+export function sqlDeskCategoryCase(alias: string): string {
+  const desk = `lower(coalesce(${alias}.desk_name, ''))`;
+  const base = `lower(coalesce(${alias}.desk_name, '') || ' ' || coalesce(${alias}.title, ''))`;
+  return `case
+    when ${desk} like '%consult%' or ${base} like '%mesa consult%' or ${base} ~ '\\mconsult\\M' then 'Consult'
+    when ${base} like '%infra%' or ${base} like '%infraestrutura%' or ${base} like '%network%' or ${base} like '%rede%' then 'Infraestrutura'
+    when ${base} like '%noc%' then 'NOC'
+    when ${base} like '%rotina%' or ${base} like '%routine%' or ${base} like '%runbook%' then 'Rotinas'
+    else 'Sistema'
+  end`;
+}
+
 export function categorizeTicketByDesk(
   ticket: Record<string, unknown>,
 ): DeskCategory {

@@ -1,80 +1,74 @@
 /**
- * Gera variantes do hero do login a partir de uma arte mestre.
- *
- * Coloque `public/login-hero-master.png` (ideal: 3840×2160, PNG sem compressão)
- * e rode: npm run build:login-hero
- *
- * Sem o master, usa `login-hero-2x.jpg` como fonte (melhora WebP/AVIF, não cria detalhe novo).
+ * Exporta a arte original do login em alta qualidade (sem overlays).
+ * Rode: npm run build:login-hero
  */
 import { existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = join(root, "public");
-
 const masterPath = join(publicDir, "login-hero-master.png");
-const fallbackPath = join(publicDir, "login-hero-2x.jpg");
-const sourcePath = existsSync(masterPath) ? masterPath : fallbackPath;
 
-if (!existsSync(sourcePath)) {
-  console.error(
-    "Nenhuma fonte encontrada. Adicione public/login-hero-master.png ou login-hero-2x.jpg",
-  );
+if (!existsSync(masterPath)) {
+  console.error("Adicione public/login-hero-master.png");
   process.exit(1);
 }
 
-const VARIANTS = [
-  { name: "login-hero.jpg", width: 1280, jpeg: 90, webp: 90, avif: 85 },
-  { name: "login-hero-2x.jpg", width: 1920, jpeg: 92, webp: 92, avif: 88 },
-  { name: "login-hero-3x.jpg", width: 2560, jpeg: 92, webp: 92, avif: 88 },
-];
+const masterMeta = await sharp(masterPath).metadata();
+const srcW = masterMeta.width ?? 1536;
+const srcH = masterMeta.height ?? 1024;
+const aspect = srcW / srcH;
 
-const meta = await sharp(sourcePath).metadata();
-const sourceResolved = resolve(sourcePath);
+async function writeVariants(baseName, pipeline) {
+  await pipeline
+    .clone()
+    .jpeg({ quality: 96, mozjpeg: true, chromaSubsampling: "4:4:4" })
+    .toFile(join(publicDir, `${baseName}.jpg`));
 
-console.log(
-  `Fonte: ${sourcePath.replace(publicDir, "public")} (${meta.width}×${meta.height})`,
-);
+  await pipeline
+    .clone()
+    .webp({ quality: 96, effort: 6, smartSubsample: false })
+    .toFile(join(publicDir, `${baseName}.webp`));
 
-for (const variant of VARIANTS) {
-  if ((meta.width ?? 0) < variant.width * 0.85 && variant.width > 1280) {
-    console.log(`  skip ${variant.name} — fonte menor que ${variant.width}px`);
-    continue;
-  }
+  await pipeline
+    .clone()
+    .avif({ quality: 90, effort: 6 })
+    .toFile(join(publicDir, `${baseName}.avif`));
 
-  const pipeline = sharp(sourcePath).resize({
-    width: variant.width,
-    withoutEnlargement: true,
-    fit: "inside",
+  console.log(`  ✓ ${baseName}`);
+}
+
+function upscaleMaster(width) {
+  const height = Math.round(width / aspect);
+  return sharp(masterPath).resize(width, height, {
+    fit: "fill",
+    kernel: sharp.kernel.lanczos3,
   });
+}
 
-  const jpegPath = resolve(join(publicDir, variant.name));
-  const isSameAsSource = jpegPath === sourceResolved;
+console.log(`Fonte: login-hero-master.png (${srcW}×${srcH})`);
 
-  if (!isSameAsSource) {
-    await pipeline
-      .clone()
-      .jpeg({ quality: variant.jpeg, mozjpeg: true, chromaSubsampling: "4:4:4" })
-      .toFile(jpegPath);
-  }
+for (const [suffix, width] of [
+  ["", 1920],
+  ["-2x", 2560],
+  ["-3x", 3200],
+]) {
+  await writeVariants(`login-hero-desktop${suffix}`, upscaleMaster(width));
+}
 
-  const webpPath = join(publicDir, variant.name.replace(/\.jpg$/, ".webp"));
-  await pipeline
-    .clone()
-    .webp({ quality: variant.webp, effort: 6 })
-    .toFile(webpPath);
+{
+  const cropW = Math.round(srcW * 0.72);
+  const pipeline = sharp(masterPath)
+    .extract({ left: 0, top: 0, width: cropW, height: srcH })
+    .resize(1200, 2133, {
+      fit: "cover",
+      position: "left top",
+      kernel: sharp.kernel.lanczos3,
+    });
 
-  const avifPath = join(publicDir, variant.name.replace(/\.jpg$/, ".avif"));
-  await pipeline
-    .clone()
-    .avif({ quality: variant.avif, effort: 6 })
-    .toFile(avifPath);
-
-  console.log(
-    `  ✓ ${variant.name}${isSameAsSource ? " (mantido, só webp/avif)" : ""} (+ webp, avif)`,
-  );
+  await writeVariants("login-hero-mobile", pipeline);
 }
 
 console.log("\nPronto.");

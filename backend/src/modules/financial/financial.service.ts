@@ -10,7 +10,6 @@ import type { FinancialOverviewQueryDto } from './financial.dto';
 import { createReadStream, existsSync } from 'fs';
 import { ContractFileType, ContractStatus } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
-import { TifluxService } from '../tiflux/tiflux.service';
 import { DashboardService } from '../dashboard/dashboard.service';
 import {
   computeFinancialOverviewTotals,
@@ -23,7 +22,6 @@ import {
 export class FinancialService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tiflux: TifluxService,
     private readonly dashboard: DashboardService,
   ) {}
 
@@ -56,7 +54,7 @@ export class FinancialService {
 
     const company = await this.prisma.company.findFirst({
       where: { id: resolvedCompanyId, deletedAt: null },
-      select: { id: true, name: true, tifluxClientId: true },
+      select: { id: true, name: true },
     });
 
     if (!company) {

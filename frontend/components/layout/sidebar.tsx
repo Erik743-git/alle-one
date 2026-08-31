@@ -344,9 +344,9 @@ const SidebarBrand = memo(function SidebarBrand({
 }) {
   if (collapsed) {
     return (
-      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border py-3 xl:gap-2.5 xl:py-3.5">
+      <div className="flex w-full shrink-0 flex-col items-center gap-2 border-b border-sidebar-border py-2 xl:gap-2 xl:py-2.5">
         <div
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#08182f] xl:h-11 xl:w-11 2xl:h-12 2xl:w-12"
+          className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#08182f] xl:h-11 xl:w-11 2xl:h-12 2xl:w-12"
           title="Alle One"
         >
           <Image
@@ -358,20 +358,22 @@ const SidebarBrand = memo(function SidebarBrand({
             priority
           />
         </div>
+        <div className="mt-1 flex flex-col items-center gap-1.5">
         <UserAccountMenu collapsed />
         <ThemeToggle collapsed />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="sidebar-brand shrink-0 border-b border-sidebar-border px-4 py-3 overflow-hidden">
-      <div className="flex w-full flex-col gap-1.5">
-        <div className="flex w-full items-end gap-2">
+    <div className="sidebar-brand shrink-0 border-b border-sidebar-border px-4 py-2 overflow-hidden">
+      <div className="flex w-full flex-col gap-1">
+        <div className="flex w-full items-center gap-2">
           <div className="flex min-w-0 flex-1 justify-center">
             <AlleBrandLogo priority className="w-full max-w-[168px]" />
           </div>
-          <div className="flex shrink-0 translate-y-5 flex-col items-center gap-2">
+          <div className="mt-1.5 flex shrink-0 translate-y-1 flex-col items-center gap-1.5">
             <UserAccountMenu />
             <ThemeToggle />
           </div>
