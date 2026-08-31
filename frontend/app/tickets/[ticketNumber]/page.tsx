@@ -53,7 +53,6 @@ import {
 } from "@/components/tickets/ticket-options-menu";
 import {
   canChangeTicketStage,
-  canCreateTicket,
   canCreateTicketAppointment,
   canManageTicketFollowers,
   canManageTicketGmud,
