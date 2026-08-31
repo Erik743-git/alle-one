@@ -56,6 +56,7 @@ import {
   canCreateTicket,
   canCreateTicketAppointment,
   canManageTicketFollowers,
+  canManageTicketGmud,
   canManageTicketAppointment,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
 } from "@/lib/access-control";
@@ -1644,6 +1645,7 @@ export default function TicketDetailPage() {
                   </Card>
                 </div>
 
+                {canManageTicketGmud() ? (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -1652,7 +1654,6 @@ export default function TicketDetailPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {canCreateTicket() ? (
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
                           Referência GMUD do cliente
@@ -1682,17 +1683,9 @@ export default function TicketDetailPage() {
                           Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
                         </p>
                       </div>
-                    ) : externalGmudRef ? (
-                      <p className="rounded-xl border border-border bg-muted/30 px-4 py-3 text-sm font-medium text-foreground">
-                        {externalGmudRef}
-                      </p>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhuma referência GMUD informada para este ticket.
-                      </p>
-                    )}
                   </CardContent>
                 </Card>
+                ) : null}
 
                 {canCreateTicketAppointment() ? (
                   <>

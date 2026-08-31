@@ -204,6 +204,12 @@ export function canChangeTicketStage() {
   return canCreateTicketAppointment();
 }
 
+/** Referência GMUD no ticket — somente equipe interna. */
+export function canManageTicketGmud() {
+  if (isClient()) return false;
+  return canCreateTicket();
+}
+
 /** Seguidores ao abrir ou acompanhar ticket — quem pode criar ticket. */
 export function canManageTicketFollowers() {
   return canCreateTicket();
