@@ -771,7 +771,6 @@ export default function NewTicketPage() {
                 </Card>
 
                 {!isClientUser ? (
-                <>
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
@@ -868,12 +867,13 @@ export default function NewTicketPage() {
                     </div>
                   </CardContent>
                 </Card>
+                ) : null}
 
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <UserRound className="size-4 text-primary" />
-                      Responsável e classificação
+                      {isClientUser ? "Classificação e seguidores" : "Responsável e classificação"}
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -888,27 +888,29 @@ export default function NewTicketPage() {
                         levelLabels={classificationLevelLabels}
                       />
                     ) : null}
-                    <div className="space-y-2">
-                      <FieldLabel optional>Responsável</FieldLabel>
-                      <SearchableSelectField
-                        value={responsibleId}
-                        onChange={handleResponsibleChange}
-                        options={responsibleOptions}
-                        loading={loading}
-                        preserveOrder
-                        emptyLabel={
-                          responsibleOptions.length === 0
-                            ? "Nenhum atendente encontrado para este catálogo"
-                            : "Selecione o responsável (opcional)"
-                        }
-                        placeholder="Selecione o responsável (opcional)"
-                      />
-                      {!responsibleId ? (
-                        <p className="text-xs text-muted-foreground">
-                          Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
-                        </p>
-                      ) : null}
-                    </div>
+                    {!isClientUser ? (
+                      <div className="space-y-2">
+                        <FieldLabel optional>Responsável</FieldLabel>
+                        <SearchableSelectField
+                          value={responsibleId}
+                          onChange={handleResponsibleChange}
+                          options={responsibleOptions}
+                          loading={loading}
+                          preserveOrder
+                          emptyLabel={
+                            responsibleOptions.length === 0
+                              ? "Nenhum atendente encontrado para este catálogo"
+                              : "Selecione o responsável (opcional)"
+                          }
+                          placeholder="Selecione o responsável (opcional)"
+                        />
+                        {!responsibleId ? (
+                          <p className="text-xs text-muted-foreground">
+                            Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="space-y-2 border-t border-border pt-4">
                       <div className="flex flex-wrap items-end justify-between gap-2">
                         <FieldLabel optional>Seguidores</FieldLabel>
@@ -960,8 +962,6 @@ export default function NewTicketPage() {
                     </div>
                   </CardContent>
                 </Card>
-                </>
-                ) : null}
 
                 <div className="space-y-3">
                   {!canSubmit && !loading && !saving ? (

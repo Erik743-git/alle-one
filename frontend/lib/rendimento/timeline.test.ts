@@ -79,9 +79,10 @@ describe("formatTimelineMark", () => {
     expect(formatTimelineMark(10 * 60)).toBe("10h");
   });
 
-  it("formata horário com minutos e após 24h", () => {
+  it("formata horário com minutos e reinicia após 24h", () => {
     expect(formatTimelineMark(19 * 60 + 35)).toBe("19:35");
-    expect(formatTimelineMark(24 * 60 + 30)).toBe("24:30");
+    expect(formatTimelineMark(24 * 60 + 30)).toBe("+00:30");
+    expect(formatTimelineMark(29 * 60)).toBe("+05h");
   });
 });
 

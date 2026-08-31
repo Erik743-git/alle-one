@@ -190,14 +190,23 @@ export function canCreateTicket() {
   return false;
 }
 
-/** Apontamento: staff only no MVP (cliente cria ticket, não aponta ainda). */
+/** Apontamento e comunicação no ticket (staff ou cliente com TICKETS canCreate). */
 export function canCreateTicketAppointment() {
-  if (isClient()) return false;
+  if (isClient()) {
+    return hasPermission("TICKETS", "canCreate");
+  }
   return canCreateTicket();
 }
 
+/** Estágio, responsável e opções avançadas — somente equipe interna. */
 export function canChangeTicketStage() {
+  if (isClient()) return false;
   return canCreateTicketAppointment();
+}
+
+/** Seguidores ao abrir ou acompanhar ticket — quem pode criar ticket. */
+export function canManageTicketFollowers() {
+  return canCreateTicket();
 }
 
 /** Autor, admin ou gestor (TICKETS canEdit). */

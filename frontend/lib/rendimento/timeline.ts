@@ -73,13 +73,17 @@ export function resolveTimelineRange(blocks: TimelineBlock[]): TimelineRange {
   };
 }
 
+/** Rótulo do eixo: após meia-noite volta para 00h–23h (prefixo + = dia seguinte). */
 export function formatTimelineMark(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (mins === 0 && hours <= 24) {
-    return `${String(hours).padStart(2, "0")}h`;
+  const dayOffset = Math.floor(minutes / MINUTES_PER_DAY);
+  const wrapped = minutes % MINUTES_PER_DAY;
+  const hours = Math.floor(wrapped / 60);
+  const mins = wrapped % 60;
+  const prefix = dayOffset > 0 ? "+" : "";
+  if (mins === 0) {
+    return `${prefix}${String(hours).padStart(2, "0")}h`;
   }
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+  return `${prefix}${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
 }
 
 export function buildTimelineMarks(range: TimelineRange): number[] {

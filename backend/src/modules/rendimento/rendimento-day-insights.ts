@@ -146,12 +146,18 @@ type TimeInterval = { from: number; to: number };
 
 function entryToInterval(entry: RendimentoEntryInput): TimeInterval | null {
   const from = parseTimeToMinutes(entry.initTime);
-  const to =
-    parseTimeToMinutes(entry.endTime) ??
-    (from != null
-      ? from + Math.max(0, Math.trunc(Number(entry.minutes) || 0))
-      : null);
-  if (from == null || to == null || to <= from) return null;
+  if (from == null) return null;
+
+  const duration = Math.max(0, Math.trunc(Number(entry.minutes) || 0));
+  let to = parseTimeToMinutes(entry.endTime);
+  if (to == null) {
+    if (duration <= 0) return null;
+    return { from, to: from + duration };
+  }
+  if (to <= from) {
+    to += duration > 0 ? duration : MINUTES_PER_DAY;
+  }
+  if (to <= from) return null;
   return { from, to };
 }
 
