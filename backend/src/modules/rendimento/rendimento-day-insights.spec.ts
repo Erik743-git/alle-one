@@ -697,4 +697,29 @@ describe('rendimento-day-insights', () => {
     ).toBe(true);
     expect(idles.filter((g) => g.fromTime >= '17:30')).toHaveLength(0);
   });
+
+  it('conta hora extra que cruza a meia-noite', () => {
+    const valorizationById = new Map<number, unknown>([
+      [1, { loose_service: { name: 'HORA EXTRA' } }],
+    ]);
+    const { entries, insights } = analyzeRendimentoDay(
+      [
+        {
+          id: 1,
+          date: '2026-08-30',
+          initTime: '22:30',
+          endTime: '05:00',
+          minutes: 390,
+          hoursFormatted: '06:30',
+          ticketNumber: 62866,
+          clientName: null,
+          description: null,
+        },
+      ],
+      valorizationById,
+    );
+
+    expect(entries[0]?.minutes).toBe(390);
+    expect(insights.overtimeMinutes).toBe(390);
+  });
 });

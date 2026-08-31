@@ -55,6 +55,7 @@ import {
   canChangeTicketStage,
   canCreateTicket,
   canCreateTicketAppointment,
+  canManageTicketFollowers,
   canManageTicketAppointment,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
 } from "@/lib/access-control";
@@ -1251,7 +1252,7 @@ export default function TicketDetailPage() {
                           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                             Seguidores
                           </p>
-                          {canChangeTicketStage() && !ticket.isClosed ? (
+                          {canManageTicketFollowers() && !ticket.isClosed ? (
                             <Button
                               type="button"
                               variant="outline"
@@ -1274,7 +1275,7 @@ export default function TicketDetailPage() {
                                 {person.name
                                   ? `${person.name} (${person.email})`
                                   : person.email}
-                                {canChangeTicketStage() && !ticket.isClosed ? (
+                                {canManageTicketFollowers() && !ticket.isClosed ? (
                                   <button
                                     type="button"
                                     className="text-muted-foreground hover:text-foreground"

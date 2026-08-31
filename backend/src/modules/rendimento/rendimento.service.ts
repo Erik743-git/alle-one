@@ -46,7 +46,10 @@ import {
 } from './rendimento-store.service';
 import { RendimentoOvertimeBalanceService } from './rendimento-overtime-balance.service';
 import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
-import { serviceNameToValorizationRaw } from '../tickets/portal-appointment.helper';
+import {
+  hhmmDurationMinutes,
+  serviceNameToValorizationRaw,
+} from '../tickets/portal-appointment.helper';
 import {
   appointmentDescriptionHasMedia,
   appointmentDescriptionToPlainText,
@@ -218,6 +221,17 @@ export class RendimentoService {
     const h = Math.floor(abs / 60);
     const m = abs % 60;
     return `${sign}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+
+  /** Minutos do apontamento: prioriza SQL e recalcula quando cruza a meia-noite. */
+  private resolveAppointmentMinutes(
+    initTime: string | null,
+    endTime: string | null,
+    sqlMinutes?: number,
+  ): number {
+    const fromSql = Math.max(0, Math.trunc(Number(sqlMinutes) || 0));
+    if (fromSql > 0) return fromSql;
+    return hhmmDurationMinutes(initTime, endTime);
   }
 
   private parseHHMMToMinutes(value: string): number {
@@ -529,7 +543,11 @@ export class RendimentoService {
         client_name: row.client_name,
         description: row.description,
         valorization_raw: serviceNameToValorizationRaw(row.service_name),
-        minutes: Number(row.minutes) || 0,
+        minutes: this.resolveAppointmentMinutes(
+          row.init_time,
+          row.end_time,
+          Number(row.minutes),
+        ),
         portal_appointment_id: row.portal_appointment_id,
         attachment_count: Number(row.attachment_count) || 0,
       }));
@@ -571,7 +589,14 @@ export class RendimentoService {
       order by a.appointment_date asc, a.init_time asc nulls last, a.external_id asc
     `) ?? [];
 
-    return rows;
+    return rows.map((row) => ({
+      ...row,
+      minutes: this.resolveAppointmentMinutes(
+        row.init_time,
+        row.end_time,
+        Number(row.minutes),
+      ),
+    }));
   }
 
   private async getOvertimeBalanceMinutes(userId: string): Promise<number> {
@@ -2584,7 +2609,11 @@ export class RendimentoService {
           client_name: row.client_name,
           description: row.description,
           valorization_raw: serviceNameToValorizationRaw(row.service_name),
-          minutes: Number(row.minutes) || 0,
+          minutes: this.resolveAppointmentMinutes(
+            row.init_time,
+            row.end_time,
+            Number(row.minutes),
+          ),
         };
         const list = grouped.get(row.portal_user_id) ?? [];
         list.push(mapped);
@@ -2649,7 +2678,11 @@ export class RendimentoService {
         client_name: row.client_name,
         description: row.description,
         valorization_raw: row.valorization_raw,
-        minutes: Number(row.minutes) || 0,
+        minutes: this.resolveAppointmentMinutes(
+          row.init_time,
+          row.end_time,
+          Number(row.minutes),
+        ),
       };
       const list = grouped.get(portalUserId) ?? [];
       list.push(mapped);
@@ -3319,7 +3352,7 @@ export class RendimentoService {
     await this.prisma.$executeRawUnsafe(
       `
       UPDATE rendimento_day_events
-      SET status = $2,
+      SET status = $2::"RendimentoDayEventStatus",
           debit_protected = $3,
           approved_by = $4,
           approved_at = NOW(),
@@ -3425,7 +3458,7 @@ export class RendimentoService {
     await this.prisma.$executeRawUnsafe(
       `
       UPDATE rendimento_gap_justifications
-      SET status = $2,
+      SET status = $2::"RendimentoGapJustificationStatus",
           note = $3,
           approved_by = $4,
           approved_at = NOW()
@@ -3456,7 +3489,7 @@ export class RendimentoService {
     await this.prisma.$executeRawUnsafe(
       `
       UPDATE rendimento_day_events
-      SET status = $2,
+      SET status = $2::"RendimentoDayEventStatus",
           debit_protected = false,
           approved_by = $3,
           approved_at = NOW(),
