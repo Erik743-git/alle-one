@@ -1426,14 +1426,25 @@ export default function TicketDetailPage() {
                       ) : null}
                     </div>
                     {ticket && canAddAppointment ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={requestNewAppointment}
-                      >
-                        <Clock className="mr-2 size-4" />
-                        Apontar
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={requestNewAppointment}
+                        >
+                          <Clock className="mr-2 size-4" />
+                          Apontar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-[#0e9cb8] text-white shadow-sm shadow-[#12b5d9]/20 hover:bg-[#14c4eb]"
+                          onClick={requestCommunication}
+                        >
+                          <MessageSquare className="mr-2 size-4" />
+                          Comunicação
+                        </Button>
+                      </div>
                     ) : null}
                   </CardHeader>
                   <CardContent className="overflow-x-auto p-0">
