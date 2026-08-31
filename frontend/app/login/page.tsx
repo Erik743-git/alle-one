@@ -41,12 +41,12 @@ import {
   syncDeviceTrustFromResponse,
 } from "@/lib/device-trust";
 import { setSession, type AuthUser } from "@/lib/session";
-import { API_URL, getBrowserApiBase } from "@/lib/env";
 import { useAuth } from "@/lib/use-auth";
 import {
   fetchOAuthProviders,
   getCachedOAuthProviders,
 } from "@/lib/oauth-providers";
+import { buildAuthApiUrl } from "@/lib/auth-api-url";
 import {
   GoogleIcon,
   MicrosoftIcon,
@@ -96,18 +96,12 @@ const SESSION_REASON_MESSAGES: Record<string, string> = {
 };
 
 function buildOAuthUrl(provider: "google" | "microsoft") {
-  // Mesma origem (rewrite Next → API): cookie de state e callback ficam alinhados.
-  if (typeof window !== "undefined") {
-    const url = new URL(`${window.location.origin}/auth/${provider}`);
-    const trust = readDeviceTrustToken();
-    if (trust) {
-      url.searchParams.set("deviceTrustToken", trust);
-    }
-    return url.toString();
+  const url = new URL(buildAuthApiUrl(`/${provider}`));
+  const trust = readDeviceTrustToken();
+  if (trust) {
+    url.searchParams.set("deviceTrustToken", trust);
   }
-  const base = getBrowserApiBase();
-  const root = base || API_URL.replace(/\/$/, "");
-  return `${root}/auth/${provider}`;
+  return url.toString();
 }
 
 function startOAuth(provider: "google" | "microsoft") {
@@ -115,17 +109,11 @@ function startOAuth(provider: "google" | "microsoft") {
 }
 
 function authApiUrl(path: string): string {
-  const normalized = path.startsWith("/") ? path : `/${path}`;
-  if (typeof window !== "undefined") {
-    // Rewrite Next `/auth/*` → API: cookie e origem alinhados no browser.
-    return `${window.location.origin}${normalized}`;
-  }
-  const base = getBrowserApiBase() || API_URL.replace(/\/$/, "");
-  return `${base}${normalized}`;
+  return buildAuthApiUrl(path);
 }
 
 function authMeUrl(): string {
-  return authApiUrl("/auth/me");
+  return buildAuthApiUrl("/me");
 }
 
 function LoginPageContent() {
