@@ -35,13 +35,16 @@ wait_api_health() {
   local alt_health="${health_url%/api/health}/health"
   local ok=0
 
-  for _i in $(seq 1 25); do
-    if curl -sf --max-time 3 "$health_url" >/dev/null; then
+  # Cluster PM2: workers levam alguns segundos após restart.
+  sleep 8
+
+  for _i in $(seq 1 35); do
+    if curl -sf --max-time 5 "$health_url" >/dev/null; then
       echo "API OK ($health_url)"
       ok=1
       break
     fi
-    if [[ "$alt_health" != "$health_url" ]] && curl -sf --max-time 3 "$alt_health" >/dev/null; then
+    if [[ "$alt_health" != "$health_url" ]] && curl -sf --max-time 5 "$alt_health" >/dev/null; then
       echo "API OK via $alt_health"
       ok=1
       break
@@ -51,6 +54,7 @@ wait_api_health() {
 
   if [[ "$ok" -ne 1 ]]; then
     echo "ERRO: API health falhou após espera (pm2 logs $pm2_name --lines 40)"
+    echo "      Teste manual: curl -s $health_url"
     pm2 logs "$pm2_name" --lines 40 --nostream 2>/dev/null || true
     exit 1
   fi
