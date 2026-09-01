@@ -33,7 +33,7 @@ describe("getBrowserApiBase", () => {
     expect(buildApiUrl("/tickets")).toBe("http://127.0.0.1:3002/tickets");
   });
 
-  it("retorna path vazio quando API está na raiz da mesma origem", async () => {
+  it("assume /api quando API está na raiz da mesma origem (deploy Nginx)", async () => {
     vi.stubEnv("NEXT_PUBLIC_API_URL", "https://alleone.alletecnologia.com");
 
     vi.stubGlobal("window", {
@@ -41,8 +41,8 @@ describe("getBrowserApiBase", () => {
     });
 
     const { getBrowserApiBase, buildApiUrl } = await import("./env");
-    expect(getBrowserApiBase()).toBe("");
-    expect(buildApiUrl("/tickets")).toBe("/tickets");
+    expect(getBrowserApiBase()).toBe("/api");
+    expect(buildApiUrl("/tickets")).toBe("/api/tickets");
   });
 
   it("usa API_INTERNAL_URL no servidor (SSR)", async () => {
