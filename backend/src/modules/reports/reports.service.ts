@@ -56,6 +56,40 @@ const REPORT_TYPE_SLUGS: Record<string, string> = {
   '6': 'fechamento-cobranca',
 };
 
+function stripHtmlForReport(value: string): string {
+  return value
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Remove caracteres inválidos em XML/OOXML (Excel rejeita o arquivo). */
+function sanitizeExcelCell(value: string): string {
+  return [...value]
+    .filter((ch) => {
+      const code = ch.charCodeAt(0);
+      if (code === 9 || code === 10 || code === 13) return true;
+      if (code < 32) return false;
+      return code !== 0xfffe && code !== 0xffff;
+    })
+    .join('');
+}
+
+function toExcelText(value?: string | null): string {
+  const text = sanitizeExcelCell(
+    stripHtmlForReport(String(value || '').trim()),
+  );
+  return text || '-';
+}
+
 function parseDateOrThrow(value: string, label: string) {
   return parseDateInput(value, label);
 }
@@ -1837,8 +1871,7 @@ export class ReportsService {
   }
 
   private formatReportDescription(value?: string | null): string {
-    const text = String(value || '').trim();
-    return text || '-';
+    return toExcelText(value);
   }
 
   private formatMonthShort(dateOnly: string): string {
@@ -2797,26 +2830,29 @@ export class ReportsService {
     let rowIndex = headerRowIndex + 1;
     for (const r of rows) {
       sheet.getRow(rowIndex).values = [
-        r.attendant,
+        toExcelText(r.attendant),
         r.ticketNumber || null,
-        r.title,
-        r.apontamento,
-        r.durationHHMM,
-        r.overtimeHHMM,
-        r.plantaoHHMM,
-        r.description,
-        r.client,
-        r.equipe,
-        r.monthLabel,
+        toExcelText(r.title),
+        toExcelText(r.apontamento),
+        toExcelText(r.durationHHMM),
+        toExcelText(r.overtimeHHMM),
+        toExcelText(r.plantaoHHMM),
+        toExcelText(r.description),
+        toExcelText(r.client),
+        toExcelText(r.equipe),
+        toExcelText(r.monthLabel),
       ];
       sheet.getRow(rowIndex).getCell(2).numFmt = '0';
       rowIndex += 1;
     }
 
-    sheet.autoFilter = {
-      from: { row: headerRowIndex, column: 1 },
-      to: { row: headerRowIndex, column: 11 },
-    };
+    const lastDataRow = rowIndex - 1;
+    if (lastDataRow > headerRowIndex) {
+      sheet.autoFilter = {
+        from: { row: headerRowIndex, column: 1 },
+        to: { row: lastDataRow, column: 11 },
+      };
+    }
 
     const summaries = await this.getRendimentoAttendantSummaries({
       companies: scope.companies,
