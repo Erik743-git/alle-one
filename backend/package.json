@@ -29,7 +29,9 @@
     "rendimento:recompute-balances": "ts-node prisma/scripts/recompute-overtime-balances.ts",
     "rendimento:recompute-balances:apply": "ts-node prisma/scripts/recompute-overtime-balances.ts --apply",
     "appointments:seed-aug25-31": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts",
-    "appointments:seed-aug25-31:dry": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts --dry-run"
+    "appointments:seed-aug25-31:dry": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts --dry-run",
+    "ticket-auto-open:export": "ts-node prisma/scripts/sync-ticket-auto-open-rules.ts export",
+    "ticket-auto-open:import": "ts-node prisma/scripts/sync-ticket-auto-open-rules.ts import"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
