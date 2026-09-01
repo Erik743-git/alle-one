@@ -35,6 +35,7 @@ type ClassificationExport = {
 };
 
 type RuleExport = {
+  sourceId?: string;
   name: string;
   active: boolean;
   periodicity: TicketAutoOpenPeriodicity;
@@ -325,6 +326,7 @@ async function exportRules(outPath: string): Promise<void> {
   const rules: RuleExport[] = [];
   for (const row of rows) {
     rules.push({
+      sourceId: row.id,
       name: row.name,
       active: row.active,
       periodicity: row.periodicity,
@@ -355,14 +357,55 @@ async function exportRules(outPath: string): Promise<void> {
     rules,
   };
 
+  const duplicateNames = rules
+    .map((r) => r.name)
+    .reduce((acc, name) => acc.set(name, (acc.get(name) ?? 0) + 1), new Map<string, number>());
+  const dupCount = [...duplicateNames.values()].filter((c) => c > 1).length;
+  if (dupCount > 0) {
+    console.warn(
+      `AVISO: ${dupCount} nome(s) repetido(s) no teste — import usa sourceId para não perder regras.`,
+    );
+  }
+
   writeFileSync(outPath, JSON.stringify(payload, null, 2), 'utf8');
   console.log(`Exportadas ${rules.length} regra(s) → ${outPath}`);
+}
+
+function ruleNextDate(rule: RuleExport): Date {
+  return new Date(`${rule.nextScheduledDate}T00:00:00.000Z`);
+}
+
+async function findExistingRule(
+  rule: RuleExport,
+): Promise<{ id: string; lastRunAt: Date | null; lastTicketNumber: number | null } | null> {
+  const sourceId = rule.sourceId?.trim();
+  if (sourceId) {
+    const byId = await prisma.ticketAutoOpenRule.findUnique({
+      where: { id: sourceId },
+      select: { id: true, lastRunAt: true, lastTicketNumber: true },
+    });
+    if (byId) return byId;
+  }
+
+  return prisma.ticketAutoOpenRule.findFirst({
+    where: {
+      name: rule.name,
+      clientExternalId: rule.clientExternalId,
+      deskExternalId: rule.deskExternalId,
+      scheduleTime: rule.scheduleTime,
+      periodicity: rule.periodicity,
+      nextScheduledDate: ruleNextDate(rule),
+      deletedAt: null,
+    },
+    select: { id: true, lastRunAt: true, lastTicketNumber: true },
+  });
 }
 
 async function importRules(
   filePath: string,
   createdByEmail: string,
   dryRun: boolean,
+  fresh: boolean,
 ): Promise<void> {
   const raw = readFileSync(filePath, 'utf8');
   const payload = JSON.parse(raw) as ExportPayload;
@@ -383,6 +426,18 @@ async function importRules(
     `Importando ${payload.rules.length} regra(s) de ${payload.exportedAt} (criador: ${creator.email})`,
   );
   if (dryRun) console.log('Modo dry-run — nenhuma alteração será gravada.');
+  if (fresh) {
+    console.log(
+      'Modo --fresh: regras ativas em prod serão desativadas (soft-delete) antes do import.',
+    );
+    if (!dryRun) {
+      const purged = await prisma.ticketAutoOpenRule.updateMany({
+        where: { deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+      console.log(`Soft-delete de ${purged.count} regra(s) existente(s) em prod.`);
+    }
+  }
 
   let created = 0;
   let updated = 0;
@@ -422,16 +477,13 @@ async function importRules(
       }
     }
 
-    const existing = await prisma.ticketAutoOpenRule.findFirst({
-      where: { name: rule.name },
-      orderBy: { createdAt: 'desc' },
-    });
+    const existing = await findExistingRule(rule);
 
     const data = {
       name: rule.name,
       active: rule.active,
       periodicity: rule.periodicity,
-      nextScheduledDate: new Date(`${rule.nextScheduledDate}T00:00:00.000Z`),
+      nextScheduledDate: ruleNextDate(rule),
       scheduleTime: rule.scheduleTime,
       deskExternalId: rule.deskExternalId,
       clientExternalId: rule.clientExternalId,
@@ -453,7 +505,7 @@ async function importRules(
 
     if (existing) {
       if (dryRun) {
-        console.log(`[dry-run] atualizar: ${rule.name}`);
+        console.log(`[dry-run] atualizar: ${rule.name} (${rule.sourceId ?? existing.id})`);
         updated += 1;
         continue;
       }
@@ -468,14 +520,15 @@ async function importRules(
       console.log(`Atualizada: ${rule.name}`);
       updated += 1;
     } else {
+      const newId = rule.sourceId?.trim() || randomUUID();
       if (dryRun) {
-        console.log(`[dry-run] criar: ${rule.name}`);
+        console.log(`[dry-run] criar: ${rule.name} (${newId})`);
         created += 1;
         continue;
       }
       await prisma.ticketAutoOpenRule.create({
         data: {
-          id: randomUUID(),
+          id: newId,
           ...data,
           createdBy: creator.id,
           lastRunAt: null,
@@ -496,6 +549,17 @@ async function importRules(
 
   console.log('');
   console.log(`Resumo: ${created} criada(s), ${updated} atualizada(s).`);
+  const activeInDb = await prisma.ticketAutoOpenRule.count({
+    where: { deletedAt: null },
+  });
+  if (!dryRun) {
+    console.log(`Total ativo em prod após import: ${activeInDb}`);
+    if (activeInDb !== payload.rules.length) {
+      console.warn(
+        `AVISO: esperado ${payload.rules.length} regra(s), encontrado ${activeInDb}. Rode com --fresh se precisar reimportar tudo.`,
+      );
+    }
+  }
   console.log(
     `Classificações: ${classificationOk} mapeada(s), ${classificationMissing} sem correspondência em prod.`,
   );
@@ -524,7 +588,7 @@ async function main(): Promise<void> {
         'Use: import --file=/caminho/arquivo.json [--created-by-email=...] [--dry-run]',
       );
     }
-    await importRules(file, createdByEmail, hasFlag('--dry-run'));
+    await importRules(file, createdByEmail, hasFlag('--dry-run'), hasFlag('--fresh'));
     return;
   }
 
