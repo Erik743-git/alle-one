@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { UserRole, UserStatus } from '@prisma/client';
+import { UserStatus } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -22,15 +22,6 @@ import {
   type TicketRequestorOption,
 } from './ticket-requestors.helper';
 import { resolveAllowedDeskExternalIdsForCompany } from './company-ticket-specialties.helper';
-
-/** Perfis que podem ser responsáveis de ticket (checkbox `users.responsible`). */
-const RESPONSIBLE_ELIGIBLE_ROLES: UserRole[] = [
-  UserRole.ADMIN,
-  UserRole.COLLABORATOR,
-  UserRole.PJ,
-  UserRole.CLIENT_GESTOR,
-  UserRole.CLIENT,
-];
 
 export type TicketClassificationNode = {
   id: string;
@@ -134,9 +125,8 @@ export class TicketsCatalogsService {
   }
 
   /**
-   * Fonte de verdade: usuários portal ACTIVE com checkbox `responsible`.
-   * Inclui gestores de cliente (CLIENT_GESTOR); exclui CLIENT_MEMBER.
-   * Com TiFlux desvinculado, o id é só uma chave interna do portal.
+   * Fonte de verdade: usuários portal ACTIVE com checkbox `responsible`
+   * (qualquer perfil — colaborador, gestor ou membro cliente).
    */
   async listResponsiblesFromPortalUsers(): Promise<
     Array<{ id: number; name: string; email: string | null }>
@@ -146,7 +136,6 @@ export class TicketsCatalogsService {
         deletedAt: null,
         status: UserStatus.ACTIVE,
         responsible: true,
-        role: { in: RESPONSIBLE_ELIGIBLE_ROLES },
       },
       select: { id: true, name: true, email: true },
       orderBy: { name: 'asc' },
@@ -207,7 +196,6 @@ export class TicketsCatalogsService {
         deletedAt: null,
         status: UserStatus.ACTIVE,
         responsible: true,
-        role: { in: RESPONSIBLE_ELIGIBLE_ROLES },
         OR: [
           { userSpecialties: { some: { specialtyId: portalDesk.id } } },
           { specialtyId: portalDesk.id },
