@@ -24,6 +24,7 @@ import {
   PrismaClient,
   TicketAutoOpenPeriodicity,
 } from '@prisma/client';
+import { normalizeDeskName } from '../../src/modules/tickets/tiflux-portal-desk.config';
 
 const prisma = new PrismaClient();
 
@@ -40,6 +41,7 @@ type RuleExport = {
   nextScheduledDate: string;
   scheduleTime: string;
   deskExternalId: number;
+  deskName: string | null;
   clientExternalId: number;
   responsibleExternalId: number | null;
   priorityExternalId: number | null;
@@ -128,22 +130,157 @@ async function buildClassificationExport(
   return { tifluxExternalId, kind, path };
 }
 
-async function resolveClassificationId(
-  deskExternalId: number,
-  meta: ClassificationExport | null,
-): Promise<string | null> {
-  if (!meta) return null;
+function normalizeToken(value: string): string {
+  return value.trim().toLowerCase();
+}
 
+function normalizePath(parts: string[]): string {
+  return parts.map(normalizeToken).join(' > ');
+}
+
+async function resolveDeskName(deskExternalId: number): Promise<string | null> {
   const specialty = await prisma.specialty.findFirst({
     where: { externalId: deskExternalId, deletedAt: null },
-    select: { id: true },
+    select: { name: true },
   });
-  if (!specialty) return null;
+  if (specialty?.name) return specialty.name;
+
+  const rows = await prisma.$queryRaw<Array<{ desk_name: string }>>`
+    SELECT DISTINCT trim(t.desk_name) AS desk_name
+    FROM tiflux.tickets t
+    WHERE t.desk_external_id = ${deskExternalId}
+      AND t.desk_name IS NOT NULL
+      AND trim(t.desk_name) <> ''
+    LIMIT 1
+  `;
+  return rows[0]?.desk_name ?? null;
+}
+
+async function findPortalDesk(
+  deskExternalId: number,
+  deskName?: string | null,
+): Promise<{ id: string; name: string } | null> {
+  const candidates: Array<{ id: string; name: string }> = [];
+
+  const byExternalId = await prisma.specialty.findFirst({
+    where: { externalId: deskExternalId, deletedAt: null, active: true },
+    select: { id: true, name: true },
+  });
+  if (byExternalId) candidates.push(byExternalId);
+
+  const normalizedTarget = normalizeDeskName(deskName);
+  if (normalizedTarget) {
+    const portalDesks = await prisma.specialty.findMany({
+      where: { deletedAt: null, active: true },
+      select: { id: true, name: true },
+    });
+    const byName = portalDesks.find(
+      (desk) => normalizeDeskName(desk.name) === normalizedTarget,
+    );
+    if (byName && !candidates.some((desk) => desk.id === byName.id)) {
+      candidates.push(byName);
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  const withCounts = await Promise.all(
+    candidates.map(async (desk) => ({
+      desk,
+      count: await prisma.specialtyClassification.count({
+        where: { specialtyId: desk.id, active: true },
+      }),
+    })),
+  );
+  const withClassifications = withCounts.filter((row) => row.count > 0);
+  if (withClassifications.length > 0) return withClassifications[0].desk;
+  return candidates[0].desk;
+}
+
+type PathIndex = {
+  byFullPath: Map<string, string>;
+  byLeafName: Map<string, string[]>;
+};
+
+async function buildPathIndex(specialtyId: string): Promise<PathIndex> {
+  const rows = await prisma.specialtyClassification.findMany({
+    where: { specialtyId, active: true },
+    select: { id: true, name: true, parentId: true },
+  });
+  if (rows.length === 0) {
+    return { byFullPath: new Map(), byLeafName: new Map() };
+  }
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const childIds = new Set<string>();
+  for (const row of rows) {
+    if (row.parentId) childIds.add(row.parentId);
+  }
+
+  const byFullPath = new Map<string, string>();
+  const byLeafName = new Map<string, string[]>();
+
+  for (const row of rows) {
+    if (childIds.has(row.id)) continue;
+
+    const parts: string[] = [];
+    let currentId: string | null = row.id;
+    while (currentId) {
+      const node = byId.get(currentId);
+      if (!node) break;
+      parts.unshift(node.name);
+      currentId = node.parentId;
+    }
+
+    byFullPath.set(normalizePath(parts), row.id);
+
+    const leaf = normalizeToken(parts[parts.length - 1] ?? '');
+    if (!leaf) continue;
+    const list = byLeafName.get(leaf) ?? [];
+    list.push(row.id);
+    byLeafName.set(leaf, list);
+  }
+
+  return { byFullPath, byLeafName };
+}
+
+async function resolveClassificationId(
+  deskExternalId: number,
+  deskName: string | null,
+  meta: ClassificationExport | null,
+  servicesCatalogsItemId: number | null,
+  pathIndexCache: Map<string, PathIndex>,
+): Promise<string | null> {
+  if (!meta && servicesCatalogsItemId == null) return null;
+
+  const portalDesk = await findPortalDesk(deskExternalId, deskName);
+  if (!portalDesk) return null;
+
+  let pathIndex = pathIndexCache.get(portalDesk.id);
+  if (!pathIndex) {
+    pathIndex = await buildPathIndex(portalDesk.id);
+    pathIndexCache.set(portalDesk.id, pathIndex);
+  }
+
+  if (servicesCatalogsItemId != null) {
+    const byServiceItem = await prisma.specialtyClassification.findFirst({
+      where: {
+        specialtyId: portalDesk.id,
+        legacySourceId: servicesCatalogsItemId,
+        active: true,
+      },
+      select: { id: true },
+      orderBy: { level: 'desc' },
+    });
+    if (byServiceItem) return byServiceItem.id;
+  }
+
+  if (!meta) return null;
 
   if (meta.tifluxExternalId != null && meta.kind) {
     const byTiflux = await prisma.specialtyClassification.findFirst({
       where: {
-        specialtyId: specialty.id,
+        specialtyId: portalDesk.id,
         legacySourceId: meta.tifluxExternalId,
         catalogNodeKind: meta.kind,
         active: true,
@@ -153,39 +290,19 @@ async function resolveClassificationId(
     if (byTiflux) return byTiflux.id;
   }
 
-  const leaves = await prisma.specialtyClassification.findMany({
-    where: {
-      specialtyId: specialty.id,
-      active: true,
-      NOT: {
-        children: {
-          some: { active: true, level: { lte: 2 } },
-        },
-      },
-    },
-    select: { id: true, name: true, parentId: true },
-  });
+  const fullPath = normalizePath(meta.path);
+  const byFull = pathIndex.byFullPath.get(fullPath);
+  if (byFull) return byFull;
 
-  const leafName = meta.path[meta.path.length - 1]?.trim().toLowerCase();
-  if (!leafName) return null;
-
-  const parentName =
-    meta.path.length > 1
-      ? meta.path[meta.path.length - 2]?.trim().toLowerCase()
-      : null;
-
-  for (const leaf of leaves) {
-    if (leaf.name.trim().toLowerCase() !== leafName) continue;
-    if (!parentName || !leaf.parentId) return leaf.id;
-
-    const parent = await prisma.specialtyClassification.findUnique({
-      where: { id: leaf.parentId },
-      select: { name: true },
-    });
-    if (parent?.name.trim().toLowerCase() === parentName) {
-      return leaf.id;
-    }
+  if (meta.path.length >= 2) {
+    const suffix = normalizePath(meta.path.slice(-2));
+    const bySuffix = pathIndex.byFullPath.get(suffix);
+    if (bySuffix) return bySuffix;
   }
+
+  const leafName = normalizeToken(meta.path[meta.path.length - 1] ?? '');
+  const leafCandidates = pathIndex.byLeafName.get(leafName) ?? [];
+  if (leafCandidates.length === 1) return leafCandidates[0];
 
   return null;
 }
@@ -214,6 +331,7 @@ async function exportRules(outPath: string): Promise<void> {
       nextScheduledDate: ymd(row.nextScheduledDate),
       scheduleTime: row.scheduleTime,
       deskExternalId: row.deskExternalId,
+      deskName: await resolveDeskName(row.deskExternalId),
       clientExternalId: row.clientExternalId,
       responsibleExternalId: row.responsibleExternalId,
       priorityExternalId: row.priorityExternalId,
@@ -269,17 +387,39 @@ async function importRules(
   let created = 0;
   let updated = 0;
   let skipped = 0;
+  let classificationOk = 0;
+  let classificationMissing = 0;
+  const pathIndexCache = new Map<string, PathIndex>();
+  const deskNameCache = new Map<number, string | null>();
 
   for (const rule of payload.rules) {
+    let deskName = rule.deskName ?? null;
+    if (!deskName) {
+      if (!deskNameCache.has(rule.deskExternalId)) {
+        deskNameCache.set(
+          rule.deskExternalId,
+          await resolveDeskName(rule.deskExternalId),
+        );
+      }
+      deskName = deskNameCache.get(rule.deskExternalId) ?? null;
+    }
+
     const classificationId = await resolveClassificationId(
       rule.deskExternalId,
+      deskName,
       rule.classification,
+      rule.servicesCatalogsItemId,
+      pathIndexCache,
     );
 
-    if (rule.classification && !classificationId) {
-      console.warn(
-        `AVISO: classificação não encontrada para "${rule.name}" (${rule.classification.path.join(' > ')})`,
-      );
+    if (rule.classification) {
+      if (classificationId) classificationOk += 1;
+      else {
+        classificationMissing += 1;
+        console.warn(
+          `AVISO: classificação não encontrada para "${rule.name}" (${rule.classification.path.join(' > ')})`,
+        );
+      }
     }
 
     const existing = await prisma.ticketAutoOpenRule.findFirst({
@@ -356,6 +496,9 @@ async function importRules(
 
   console.log('');
   console.log(`Resumo: ${created} criada(s), ${updated} atualizada(s).`);
+  console.log(
+    `Classificações: ${classificationOk} mapeada(s), ${classificationMissing} sem correspondência em prod.`,
+  );
   if (skipped > 0) {
     console.log(`Anexos ignorados: ${skipped} (copie manualmente se precisar).`);
   }
