@@ -60,9 +60,8 @@ export class TicketListPresetsService {
         error instanceof Prisma.PrismaClientKnownRequestError &&
         (error.code === 'P2021' || error.code === 'P2022')
       ) {
-        throw new InternalServerErrorException(
-          'Filtros salvos ainda não estão disponíveis neste ambiente. Avise o suporte para aplicar as migrations do banco.',
-        );
+        // Presets são opcionais na UI; tabela ausente não deve quebrar a lista de tickets.
+        return [];
       }
       throw error;
     }
