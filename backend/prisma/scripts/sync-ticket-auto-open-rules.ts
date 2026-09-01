@@ -195,7 +195,7 @@ async function findPortalDesk(
   );
   const withClassifications = withCounts.filter((row) => row.count > 0);
   if (withClassifications.length > 0) return withClassifications[0].desk;
-  return candidates[0].desk;
+  return candidates[0];
 }
 
 type PathIndex = {
