@@ -16,8 +16,8 @@ function normalizeApiPath(pathname: string): string {
 
 /**
  * Base para fetch no navegador.
- * - Mesma origem com prefixo `/api` → retorna `/api` (não pode virar string vazia).
- * - Mesma origem sem path → relativo na raiz (rewrite Next/Nginx legado).
+ * - Mesma origem com prefixo `/api` → retorna `/api`.
+ * - Mesma origem sem path → `/api` (Nginx em produção; login via `/auth/` é exceção em auth-api-url).
  * - Outra origem/porta → URL absoluta do build.
  */
 export function getBrowserApiBase(): string {
@@ -30,14 +30,17 @@ export function getBrowserApiBase(): string {
   try {
     const configured = new URL(trimmed);
     if (configured.origin === window.location.origin) {
-      return normalizeApiPath(configured.pathname);
+      const path = normalizeApiPath(configured.pathname);
+      // Build sem /api na URL pública: dados devem ir a /api/* (Nginx), não ao proxy Next.
+      return path || "/api";
     }
     return trimmed;
   } catch {
     if (trimmed.startsWith("/")) {
-      return normalizeApiPath(trimmed);
+      const path = normalizeApiPath(trimmed);
+      return path || "/api";
     }
-    return "";
+    return "/api";
   }
 }
 
