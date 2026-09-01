@@ -55,6 +55,18 @@ function getReportPeriodTableLabel(report: ReportRow): string {
   return `${String(report.periodStart).slice(0, 10)} → ${String(report.periodEnd).slice(0, 10)}`;
 }
 
+function getReportGeneratedByLabel(report: ReportRow): string {
+  return (
+    report.generatedByUser?.name?.trim() ||
+    report.generatedByUser?.email?.trim() ||
+    "—"
+  );
+}
+
+function formatReportGeneratedAt(value: string): string {
+  return String(value).slice(0, 19).replace("T", " ");
+}
+
 export default function GeradorRelatoriosPage() {
   const { user } = useAuth();
   const [carregando, setCarregando] = useState(true);
@@ -858,6 +870,10 @@ export default function GeradorRelatoriosPage() {
                     <p className="text-sm text-muted-foreground">
                       Formato: {lastReport.format}
                     </p>
+                    <p className="text-sm text-muted-foreground">
+                      Gerado por {getReportGeneratedByLabel(lastReport)} em{" "}
+                      {formatReportGeneratedAt(lastReport.createdAt)}
+                    </p>
 
                     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
                       <Button
@@ -896,7 +912,7 @@ export default function GeradorRelatoriosPage() {
                           <th className="px-2 py-3">Empresa</th>
                           <th className="px-2 py-3">Período</th>
                           <th className="px-2 py-3">Formato</th>
-                          <th className="px-2 py-3">Gerado em</th>
+                          <th className="px-2 py-3">Gerado</th>
                           <th className="px-2 py-3 text-right">Ações</th>
                         </tr>
                       </thead>
@@ -917,7 +933,10 @@ export default function GeradorRelatoriosPage() {
                             </td>
                             <td className="px-2 py-3">{r.format}</td>
                             <td className="px-2 py-3">
-                              {String(r.createdAt).slice(0, 19).replace("T", " ")}
+                              <div>{getReportGeneratedByLabel(r)}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatReportGeneratedAt(r.createdAt)}
+                              </div>
                             </td>
                             <td className="px-2 py-3 text-right">
                               <Button

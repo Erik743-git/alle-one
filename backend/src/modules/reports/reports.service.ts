@@ -142,6 +142,26 @@ export class ReportsService {
     private readonly inventario: ReportsInventarioService,
   ) {}
 
+  private async attachGeneratedByUsers<T extends { generatedBy: string }>(
+    reports: T[],
+  ) {
+    if (reports.length === 0) return reports;
+
+    const userIds = [
+      ...new Set(reports.map((report) => report.generatedBy).filter(Boolean)),
+    ];
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const byId = new Map(users.map((user) => [user.id, user]));
+
+    return reports.map((report) => ({
+      ...report,
+      generatedByUser: byId.get(report.generatedBy) ?? null,
+    }));
+  }
+
   /**
    * Stub do relatório de cobrança por especialidade.
    * Ver docs/ESPECIALIDADE_COBRANCA.md — fórmulas B/C/D/E/F.
@@ -2938,43 +2958,45 @@ export class ReportsService {
     const end = query.end ? parseDateOrThrow(query.end, 'Data final') : null;
     const normalized = start && end ? normalizeRange(start, end) : null;
 
-    return this.prisma.report.findMany({
-      where: {
-        ...(companyId === ALL_COMPANIES_REPORT_ID
-          ? {
-              filters: {
-                path: ['allCompanies'],
-                equals: true,
-              },
-            }
-          : companyId
-            ? { companyId }
-            : { companyId: { in: scopeCompanyIds } }),
-        ...(query.type?.trim()
-          ? { type: toReportType(query.type.trim()) }
-          : {}),
-        ...(normalized
-          ? {
-              periodStart: { gte: normalized.start },
-              periodEnd: { lte: normalized.end },
-            }
-          : {}),
-      },
-      include: {
-        company: { select: { id: true, name: true } },
-        file: {
-          select: {
-            id: true,
-            originalName: true,
-            mimeType: true,
-            size: true,
-            createdAt: true,
+    return this.attachGeneratedByUsers(
+      await this.prisma.report.findMany({
+        where: {
+          ...(companyId === ALL_COMPANIES_REPORT_ID
+            ? {
+                filters: {
+                  path: ['allCompanies'],
+                  equals: true,
+                },
+              }
+            : companyId
+              ? { companyId }
+              : { companyId: { in: scopeCompanyIds } }),
+          ...(query.type?.trim()
+            ? { type: toReportType(query.type.trim()) }
+            : {}),
+          ...(normalized
+            ? {
+                periodStart: { gte: normalized.start },
+                periodEnd: { lte: normalized.end },
+              }
+            : {}),
+        },
+        include: {
+          company: { select: { id: true, name: true } },
+          file: {
+            select: {
+              id: true,
+              originalName: true,
+              mimeType: true,
+              size: true,
+              createdAt: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+    );
   }
 
   async getLastReport(
@@ -2987,7 +3009,7 @@ export class ReportsService {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
-    return this.prisma.report.findFirst({
+    const report = await this.prisma.report.findFirst({
       where: {
         ...(companyId === ALL_COMPANIES_REPORT_ID
           ? {
@@ -3017,6 +3039,9 @@ export class ReportsService {
       },
       orderBy: { createdAt: 'desc' },
     });
+    if (!report) return null;
+    const [enriched] = await this.attachGeneratedByUsers([report]);
+    return enriched ?? null;
   }
 
   async generateReport(

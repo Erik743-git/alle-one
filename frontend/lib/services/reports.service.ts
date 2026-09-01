@@ -19,6 +19,7 @@ export type ReportRow = {
   periodStart: string;
   periodEnd: string;
   generatedBy: string;
+  generatedByUser?: { id: string; name: string; email: string } | null;
   createdAt: string;
   filters?: {
     allCompanies?: boolean;
