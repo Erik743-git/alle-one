@@ -316,6 +316,12 @@ export function UsuarioEditDialog({
                 />
                 Marcar usuário como responsável
               </label>
+              {(form.role === "CLIENT_GESTOR" || form.role === "CLIENT") && (
+                <p className="text-xs text-muted-foreground">
+                  Gestores de cliente marcados como responsável aparecem em
+                  tickets e automações.
+                </p>
+              )}
             </div>
 
             <UserRendimentoScheduleFields
