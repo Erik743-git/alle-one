@@ -63,11 +63,25 @@ type ExportPayload = {
 };
 
 function argValue(flag: string): string | undefined {
-  const idx = process.argv.indexOf(flag);
-  if (idx === -1) return undefined;
-  const next = process.argv[idx + 1];
-  if (!next || next.startsWith('--')) return undefined;
-  return next;
+  const prefix = `${flag}=`;
+  for (let i = 0; i < process.argv.length; i += 1) {
+    const arg = process.argv[i];
+    if (arg.startsWith(prefix)) {
+      const value = arg.slice(prefix.length);
+      if (value) return value;
+    }
+    if (arg === flag) {
+      const next = process.argv[i + 1];
+      if (next && !next.startsWith('--')) return next;
+    }
+  }
+  return undefined;
+}
+
+function getMode(): 'export' | 'import' | null {
+  if (process.argv.includes('export')) return 'export';
+  if (process.argv.includes('import')) return 'import';
+  return null;
 }
 
 function hasFlag(flag: string): boolean {
@@ -348,7 +362,7 @@ async function importRules(
 }
 
 async function main(): Promise<void> {
-  const mode = process.argv[2];
+  const mode = getMode();
   if (mode === 'export') {
     const out = argValue('--out');
     if (!out) {

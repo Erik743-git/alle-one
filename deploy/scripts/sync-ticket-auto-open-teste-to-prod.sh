@@ -33,15 +33,15 @@ strip_prisma_query() {
 
 PROD_ENV="$PROD_ROOT/backend/.env"
 TESTE_ENV="$TESTE_ROOT/backend/.env"
-SCRIPT="$PROD_ROOT/backend/prisma/scripts/sync-ticket-auto-open-rules.ts"
+SCRIPT_REL="prisma/scripts/sync-ticket-auto-open-rules.ts"
 
 if [[ ! -f "$PROD_ENV" || ! -f "$TESTE_ENV" ]]; then
   echo "ERRO: .env de prod ou teste não encontrado." >&2
   exit 1
 fi
 
-if [[ ! -f "$SCRIPT" ]]; then
-  echo "ERRO: script não encontrado em produção: $SCRIPT" >&2
+if [[ ! -f "$PROD_ROOT/backend/$SCRIPT_REL" ]]; then
+  echo "ERRO: script não encontrado em produção: $PROD_ROOT/backend/$SCRIPT_REL" >&2
   echo "Execute: cd $PROD_ROOT && git pull" >&2
   exit 1
 fi
@@ -50,7 +50,7 @@ echo "==> Exportando regras de teste (script em produção, banco de teste)"
 (
   cd "$PROD_ROOT/backend"
   export DATABASE_URL="$(strip_prisma_query "$(read_db_url "$TESTE_ENV")")"
-  npx ts-node "$SCRIPT" export --out="$EXPORT_FILE"
+  npx ts-node "$SCRIPT_REL" export --out="$EXPORT_FILE"
 )
 
 echo ""
@@ -58,7 +58,7 @@ echo "==> Importando em produção ${DRY_RUN:-}"
 (
   cd "$PROD_ROOT/backend"
   export DATABASE_URL="$(strip_prisma_query "$(read_db_url "$PROD_ENV")")"
-  npx ts-node "$SCRIPT" import \
+  npx ts-node "$SCRIPT_REL" import \
     --file="$EXPORT_FILE" \
     --created-by-email="$CREATED_BY_EMAIL" \
     $DRY_RUN
