@@ -178,8 +178,17 @@ const nextConfig: NextConfig = {
         destination: `${apiRewriteBase}/tickets/catalogs/:path*`,
       },
       {
+        // Exato: :path* não casa com /tickets/list-presets (sem segmento extra).
+        source: "/tickets/list-presets",
+        destination: `${apiRewriteBase}/tickets/list-presets`,
+      },
+      {
         source: "/tickets/list-presets/:path*",
         destination: `${apiRewriteBase}/tickets/list-presets/:path*`,
+      },
+      {
+        source: "/tickets/users/search",
+        destination: `${apiRewriteBase}/tickets/users/search`,
       },
       {
         source: "/tickets/attachments/:path*",
