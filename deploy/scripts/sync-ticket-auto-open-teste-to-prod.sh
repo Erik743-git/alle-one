@@ -4,6 +4,7 @@
 # Uso na VM:
 #   bash /home/alleone/producao/deploy/scripts/sync-ticket-auto-open-teste-to-prod.sh
 #   bash .../sync-ticket-auto-open-teste-to-prod.sh --dry-run
+#   bash .../sync-ticket-auto-open-teste-to-prod.sh --fresh
 #
 set -euo pipefail
 
@@ -11,11 +12,13 @@ PROD_ROOT="${PROD_ROOT:-/home/alleone/producao}"
 TESTE_ROOT="${TESTE_ROOT:-/home/alleone/teste}"
 EXPORT_FILE="${EXPORT_FILE:-/tmp/ticket-auto-open-rules.json}"
 CREATED_BY_EMAIL="${CREATED_BY_EMAIL:-erik.manarin@alletecnologia.com}"
-DRY_RUN="${DRY_RUN:-}"
+EXTRA_ARGS=()
 
-if [[ "${1:-}" == "--dry-run" ]]; then
-  DRY_RUN="--dry-run"
-fi
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run|--fresh) EXTRA_ARGS+=("$arg") ;;
+  esac
+done
 
 read_db_url() {
   local file="$1"
@@ -54,14 +57,14 @@ echo "==> Exportando regras de teste (script em produção, banco de teste)"
 )
 
 echo ""
-echo "==> Importando em produção ${DRY_RUN:-}"
+echo "==> Importando em produção ${EXTRA_ARGS[*]:-}"
 (
   cd "$PROD_ROOT/backend"
   export DATABASE_URL="$(strip_prisma_query "$(read_db_url "$PROD_ENV")")"
   npx ts-node "$SCRIPT_REL" import \
     --file="$EXPORT_FILE" \
     --created-by-email="$CREATED_BY_EMAIL" \
-    $DRY_RUN
+    "${EXTRA_ARGS[@]}"
 )
 
 echo ""
