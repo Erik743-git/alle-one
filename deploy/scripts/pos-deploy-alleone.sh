@@ -38,6 +38,15 @@ cd "$FRONTEND"
 echo "==> frontend: npm ci"
 npm ci
 
+ENV_PROD="$FRONTEND/.env.production"
+if [[ -f "$ENV_PROD" ]]; then
+  api_pub="$(grep -E '^NEXT_PUBLIC_API_URL=' "$ENV_PROD" | head -1 | cut -d= -f2- | sed -e "s/^['\"]//" -e "s/['\"]$//" -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  if [[ -n "$api_pub" && "$api_pub" != */api ]]; then
+    echo "AVISO: NEXT_PUBLIC_API_URL sem sufixo /api ($api_pub)"
+    echo "       Corrija em $ENV_PROD (ex.: ${api_pub%/}/api) e rode o build de novo."
+  fi
+fi
+
 echo "==> frontend: npm run build (API_INTERNAL_URL=$API_INTERNAL_URL)"
 export API_INTERNAL_URL
 npm run build
