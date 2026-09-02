@@ -36,9 +36,10 @@ fi
 
 ensure_app() {
   local name="$1"
+  unset DATABASE_URL
   if run_pm2 describe "$name" >/dev/null 2>&1; then
     echo "==> pm2 restart $name"
-    run_pm2 restart "$name" --update-env
+    run_pm2 restart "$name"
   else
     echo "==> $name não existe no PM2 — tentando start via ecosystem"
     if [[ -f "$ECOSYSTEM" ]]; then
