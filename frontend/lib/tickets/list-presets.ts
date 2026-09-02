@@ -6,8 +6,6 @@ export type TicketColumnKey =
   | "title"
   | "client"
   | "gmud"
-  | "origin"
-  | "priority"
   | "stage"
   | "responsible"
   | "updated";
@@ -18,8 +16,6 @@ export const TICKET_LIST_COLUMNS: Array<{ key: TicketColumnKey; label: string }>
     { key: "title", label: "Título" },
     { key: "client", label: "Cliente" },
     { key: "gmud", label: "GMUD" },
-    { key: "origin", label: "Origem" },
-    { key: "priority", label: "Prioridade" },
     { key: "stage", label: "Estágio" },
     { key: "responsible", label: "Responsável" },
     { key: "updated", label: "Atualizado" },
