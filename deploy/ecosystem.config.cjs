@@ -23,6 +23,7 @@ module.exports = {
       kill_timeout: 20000,
       env: {
         NODE_ENV: "production",
+        PORT: "3002",
       },
     },
     {
@@ -64,7 +65,6 @@ module.exports = {
       max_memory_restart: "512M",
       env: {
         NODE_ENV: "production",
+        PORT: "3003",
       },
     },
-  ],
-};
