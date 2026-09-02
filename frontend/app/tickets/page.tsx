@@ -97,10 +97,6 @@ function cellText(ticket: TicketListItem, key: TicketColumnKey): string {
       return ticket.clientName?.trim() || "—";
     case "gmud":
       return ticket.externalGmudRef?.trim() || "—";
-    case "origin":
-      return ticket.origin?.trim() || "—";
-    case "priority":
-      return ticket.priorityName?.trim() || "—";
     case "stage":
       return ticket.stageName?.trim() || "—";
     case "responsible":
@@ -141,8 +137,6 @@ function emptyColumnFilters(): Record<TicketColumnKey, ExcelColumnFilterState> {
     title: emptyExcelFilter(),
     client: emptyExcelFilter(),
     gmud: emptyExcelFilter(),
-    origin: emptyExcelFilter(),
-    priority: emptyExcelFilter(),
     stage: emptyExcelFilter(),
     responsible: emptyExcelFilter(),
     updated: emptyExcelFilter(),
@@ -556,18 +550,6 @@ export default function TicketsPage() {
         return (
           <td className="border-r border-border/30 px-3 py-2.5 text-muted-foreground">
             {ticket.externalGmudRef ?? "—"}
-          </td>
-        );
-      case "origin":
-        return (
-          <td className="border-r border-border/30 px-3 py-2.5">
-            {ticket.origin ?? "—"}
-          </td>
-        );
-      case "priority":
-        return (
-          <td className="border-r border-border/30 px-3 py-2.5">
-            {ticket.priorityName ?? "—"}
           </td>
         );
       case "stage":

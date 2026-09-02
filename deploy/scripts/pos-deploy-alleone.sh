@@ -17,13 +17,18 @@ if [[ "$(whoami)" != "alleone" ]]; then
   echo "AVISO: rode como usuário alleone (atual: $(whoami))"
 fi
 
+BRANCH="${ALLEONE_BRANCH:-feat/cutover-tiflux-hardening-20260727}"
+
 cd "$ROOT"
-echo "==> git pull"
-git pull
+echo "==> git pull ($ROOT) branch=$BRANCH"
+git fetch origin "$BRANCH"
+git checkout "$BRANCH"
+git pull origin "$BRANCH"
+git log -1 --oneline
 
 cd "$BACKEND"
-echo "==> backend: npm ci"
-npm ci
+echo "==> backend: npm ci (inclui devDependencies para nest build)"
+npm ci --include=dev
 
 echo "==> prisma generate + migrate deploy"
 ./node_modules/.bin/prisma generate
@@ -35,8 +40,8 @@ npm run build
 verify_backend_ready "$BACKEND"
 
 cd "$FRONTEND"
-echo "==> frontend: npm ci"
-npm ci
+echo "==> frontend: npm ci (inclui devDependencies para o build)"
+npm ci --include=dev
 
 ENV_PROD="$FRONTEND/.env.production"
 if [[ -f "$ENV_PROD" ]]; then

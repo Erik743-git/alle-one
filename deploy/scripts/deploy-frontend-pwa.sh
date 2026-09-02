@@ -12,7 +12,7 @@ git log -1 --oneline
 
 echo "==> Frontend build"
 cd frontend
-npm ci
+npm ci --include=dev
 npm run build
 
 echo "==> PM2 restart"

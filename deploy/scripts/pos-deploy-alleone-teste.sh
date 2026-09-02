@@ -37,8 +37,8 @@ git fetch origin
 git pull origin feat/cutover-tiflux-hardening-20260727
 
 cd "$BACKEND"
-echo "==> backend: npm ci"
-npm ci
+echo "==> backend: npm ci (inclui devDependencies para nest build)"
+npm ci --include=dev
 
 echo "==> prisma generate"
 ./node_modules/.bin/prisma generate
@@ -69,8 +69,8 @@ npm run build
 verify_backend_ready "$BACKEND"
 
 cd "$FRONTEND"
-echo "==> frontend: npm ci"
-npm ci
+echo "==> frontend: npm ci (inclui devDependencies para o build)"
+npm ci --include=dev
 
 echo "==> frontend: npm run build (API_INTERNAL_URL=$API_INTERNAL_URL)"
 export API_INTERNAL_URL
