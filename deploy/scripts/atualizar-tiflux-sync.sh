@@ -90,7 +90,7 @@ if [[ "${TIFLUX_CONTENT_BACKFILL:-}" == "1" ]]; then
 fi
 
 echo "==> npm ci + build"
-npm ci
+npm ci --include=dev
 npx prisma generate
 npm run build
 
