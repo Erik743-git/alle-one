@@ -14,6 +14,83 @@ import { writeUploadedBuffer } from '../../src/common/upload/local-file.helper';
 const prisma = new PrismaClient();
 const uploadsRoot = join(process.cwd(), 'uploads');
 
+const minRequestIntervalMs = (() => {
+  const n = Number(process.env.TIFLUX_MIN_REQUEST_INTERVAL_MS);
+  if (Number.isFinite(n)) {
+    return Math.min(Math.max(Math.trunc(n), 300), 10_000);
+  }
+  return 1100;
+})();
+
+const maxRetries = (() => {
+  const n = Number(process.env.TIFLUX_MAX_RETRIES);
+  if (Number.isFinite(n)) {
+    return Math.min(Math.max(Math.trunc(n), 2), 12);
+  }
+  return 8;
+})();
+
+let lastRequestAt = 0;
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForThrottle(): Promise<void> {
+  const elapsed = Date.now() - lastRequestAt;
+  if (elapsed < minRequestIntervalMs) {
+    await sleep(minRequestIntervalMs - elapsed);
+  }
+}
+
+function parseRetryAfterMs(headers: Headers): number | null {
+  const raw = headers.get('Retry-After') ?? headers.get('retry-after');
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim();
+  const sec = Number(trimmed);
+  if (Number.isFinite(sec) && sec >= 0) {
+    return Math.min(Math.trunc(sec * 1000), 120_000);
+  }
+  const when = Date.parse(trimmed);
+  if (!Number.isNaN(when)) {
+    const wait = when - Date.now();
+    return wait > 0 ? Math.min(wait, 120_000) : null;
+  }
+  return null;
+}
+
+function getRetryDelayMs(
+  attempt: number,
+  statusCode?: number,
+  headers?: Headers,
+): number {
+  if (statusCode === 429) {
+    const fromHeader = headers ? parseRetryAfterMs(headers) : null;
+    const fallback = 5_000 + attempt * 4_000;
+    return Math.min(Math.max(fromHeader ?? fallback, 1_000), 120_000);
+  }
+  return 1200 * (attempt + 1);
+}
+
+async function loadFromApiCache<T>(path: string): Promise<T | null> {
+  const cacheKey = `tiflux:get:${path}`;
+  try {
+    const rows = await prisma.$queryRaw<
+      Array<{ payload: unknown; expires_at: Date }>
+    >`
+      SELECT payload, expires_at
+      FROM external_api_cache
+      WHERE cache_key = ${cacheKey}
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row || row.expires_at.getTime() <= Date.now()) return null;
+    return row.payload as T;
+  } catch {
+    return null;
+  }
+}
+
 type TifluxTicketFile = {
   id: number;
   content_type?: string | null;
@@ -56,17 +133,49 @@ function tifluxToken(): string {
 }
 
 async function tifluxGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${tifluxBaseUrl()}${path}`, {
-    headers: {
-      Authorization: `Bearer ${tifluxToken()}`,
-      Accept: 'application/json',
-    },
-  });
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`TiFlux GET ${path} → ${res.status}: ${text.slice(0, 400)}`);
+  const cached = await loadFromApiCache<T>(path);
+  if (cached != null) {
+    console.log(`  cache hit TiFlux ${path}`);
+    return cached;
   }
-  return JSON.parse(text) as T;
+
+  let lastError = 'erro desconhecido';
+  for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+    await waitForThrottle();
+    const res = await fetch(`${tifluxBaseUrl()}${path}`, {
+      headers: {
+        Authorization: `Bearer ${tifluxToken()}`,
+        Accept: 'application/json',
+      },
+    });
+    lastRequestAt = Date.now();
+    const text = await res.text();
+
+    if (res.ok) {
+      return JSON.parse(text) as T;
+    }
+
+    lastError = `TiFlux GET ${path} → ${res.status}: ${text.slice(0, 400)}`;
+    if (res.status !== 429 && res.status < 500) {
+      throw new Error(lastError);
+    }
+
+    const delayMs = getRetryDelayMs(attempt, res.status, res.headers);
+    console.warn(
+      `  rate limit/erro ${res.status} em ${path}; aguardando ${Math.round(delayMs / 1000)}s (tentativa ${attempt + 1}/${maxRetries})`,
+    );
+    await sleep(delayMs);
+  }
+
+  const cachedAfterRetries = await loadFromApiCache<T>(path);
+  if (cachedAfterRetries != null) {
+    console.log(`  usando cache TiFlux após 429: ${path}`);
+    return cachedAfterRetries;
+  }
+
+  throw new Error(
+    `${lastError}\nDica: aguarde 1–2 min (sync TiFlux + portal) ou rode de novo com TIFLUX_MIN_REQUEST_INTERVAL_MS=2000.`,
+  );
 }
 
 function sanitizeFileName(name: string): string {
