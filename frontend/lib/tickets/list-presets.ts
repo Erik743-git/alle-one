@@ -129,9 +129,10 @@ export function buildPresetConfigFromPageState(
 ): TicketListPresetConfig {
   const rules: TicketListPresetFilterRule[] = [];
 
-  if (!state.includeAllResponsibles) {
-    rules.push({ field: "mineOnly", value: "true" });
-  }
+  rules.push({
+    field: "mineOnly",
+    value: state.includeAllResponsibles ? "false" : "true",
+  });
   if (state.includeDone) {
     rules.push({ field: "includeDone", value: "true" });
   }
@@ -186,7 +187,6 @@ export function applyPresetConfigToPageState(
   config: TicketListPresetConfig,
 ): Partial<TicketListPageState> {
   const next: Partial<TicketListPageState> = {
-    includeAllResponsibles: true,
     includeDone: false,
     search: "",
     from: "",
@@ -213,7 +213,7 @@ export function applyPresetConfigToPageState(
   for (const rule of config.rules ?? []) {
     switch (rule.field) {
       case "mineOnly":
-        if (rule.value === "true") next.includeAllResponsibles = false;
+        next.includeAllResponsibles = rule.value !== "true";
         break;
       case "includeDone":
         if (rule.value === "true") next.includeDone = true;
@@ -265,7 +265,7 @@ export function presetConfigToQueryParams(
   for (const rule of config.rules ?? []) {
     switch (rule.field) {
       case "mineOnly":
-        if (rule.value === "true") params.mineOnly = true;
+        params.mineOnly = rule.value === "true";
         break;
       case "includeDone":
         if (rule.value === "true") params.includeDone = true;
@@ -309,9 +309,6 @@ export function presetConfigToQueryParams(
       default:
         break;
     }
-  }
-  if (!params.mineOnly && config.rules?.some((r) => r.field === "mineOnly")) {
-    params.mineOnly = false;
   }
   return params;
 }

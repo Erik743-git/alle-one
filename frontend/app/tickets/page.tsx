@@ -672,6 +672,7 @@ export default function TicketsPage() {
                         variant={mineOnly ? "default" : "outline"}
                         className="h-8"
                         onClick={() => {
+                          setActivePresetId(null);
                           setIncludeAllResponsibles(false);
                           setResponsibleExternalId("");
                         }}
@@ -683,7 +684,10 @@ export default function TicketsPage() {
                         size="sm"
                         variant={!mineOnly ? "default" : "outline"}
                         className="h-8"
-                        onClick={() => setIncludeAllResponsibles(true)}
+                        onClick={() => {
+                          setActivePresetId(null);
+                          setIncludeAllResponsibles(true);
+                        }}
                       >
                         Todos os tickets
                       </Button>
