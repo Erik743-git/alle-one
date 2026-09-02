@@ -235,7 +235,9 @@ Não no dia do ETL. Ordem:
 ## Comandos locais úteis
 
 ```bash
-# Worker sync (projeto C:\SyncTiflux\alleone-tiflux-sync)
+# Worker sync (git — não copiar na mão)
+# Repo: https://github.com/Erik743-git/alleone-tiflux-sync
+# VM: bash /home/alleone/producao/deploy/scripts/atualizar-tiflux-sync.sh
 # SYNC_AUTOSTART=false → só sobe API; disparar:
 # POST http://127.0.0.1:3030/sync/run?resource=tickets
 # POST http://127.0.0.1:3030/sync/run?resource=ticket_appointments
