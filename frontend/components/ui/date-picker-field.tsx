@@ -3,7 +3,7 @@
 import * as React from "react";
 import { format, parse, isValid, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -58,47 +58,63 @@ export function DatePickerField({
     : placeholder;
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal={modal}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          className={cn(
-            "h-10 w-full justify-start gap-2 rounded-xl border-input bg-background px-3 text-left text-sm font-normal font-sans shadow-sm",
-            !selected && "text-muted-foreground",
-            className,
-          )}
+    <div className={cn("relative", className)}>
+      <Popover open={open} onOpenChange={setOpen} modal={modal}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            className={cn(
+              "h-10 w-full justify-start gap-2 rounded-xl border-input bg-background px-3 text-left text-sm font-normal font-sans shadow-sm",
+              !selected && "text-muted-foreground",
+              allowClear && selected && "pr-9",
+            )}
+          >
+            <CalendarIcon className="h-4 w-4 shrink-0 opacity-60" />
+            <span className="min-w-0 flex-1 truncate tabular-nums">{label}</span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="z-[100] w-auto overflow-visible border-border bg-card p-2 font-sans shadow-lg"
+          side="bottom"
+          align={align}
+          sideOffset={10}
+          collisionPadding={16}
         >
-          <CalendarIcon className="h-4 w-4 shrink-0 opacity-60" />
-          <span className="min-w-0 flex-1 truncate tabular-nums">{label}</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="z-[100] w-auto overflow-visible border-border bg-card p-2 font-sans shadow-lg"
-        side="bottom"
-        align={align}
-        sideOffset={10}
-        collisionPadding={16}
-      >
-        <AlleCalendarPanel
-          selected={selected}
-          min={minDate}
-          max={maxDate}
-          onSelect={(day) => {
-            onChange(toIsoDate(day));
-            setOpen(false);
+          <AlleCalendarPanel
+            selected={selected}
+            min={minDate}
+            max={maxDate}
+            onSelect={(day) => {
+              onChange(toIsoDate(day));
+              setOpen(false);
+            }}
+            onClear={
+              allowClear
+                ? () => {
+                    onChange("");
+                    setOpen(false);
+                  }
+                : undefined
+            }
+          />
+        </PopoverContent>
+      </Popover>
+      {allowClear && selected && !disabled ? (
+        <button
+          type="button"
+          className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          aria-label="Limpar data"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onChange("");
           }}
-          onClear={
-            allowClear
-              ? () => {
-                  onChange("");
-                  setOpen(false);
-                }
-              : undefined
-          }
-        />
-      </PopoverContent>
-    </Popover>
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
+    </div>
   );
 }

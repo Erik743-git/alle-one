@@ -752,11 +752,6 @@ export default function TicketsPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {data?.message ? (
-                  <p className="alle-alert-banner rounded-lg px-3 py-2 text-sm">
-                    {data.message}
-                  </p>
-                ) : null}
                 <div className="relative max-w-md">
                   <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -799,6 +794,8 @@ export default function TicketsPage() {
                           value={from}
                           onChange={setFrom}
                           max={to || undefined}
+                          allowClear
+                          placeholder="Qualquer data"
                         />
                       </div>
                       <div className="space-y-2">
@@ -809,6 +806,8 @@ export default function TicketsPage() {
                           value={to}
                           onChange={setTo}
                           min={from || undefined}
+                          allowClear
+                          placeholder="Qualquer data"
                         />
                       </div>
                       <div className="space-y-2">
@@ -946,7 +945,7 @@ export default function TicketsPage() {
                   ) : null}
                 </div>
 
-                <Card className="overflow-hidden">
+                <Card className="gap-0 overflow-hidden py-0">
                   <CardContent className="p-0">
                     <div className="relative isolate max-h-[min(72vh,780px)] overflow-auto">
                       <table className="w-full min-w-[920px] border-collapse text-left text-sm">

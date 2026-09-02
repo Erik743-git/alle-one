@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -501,21 +502,34 @@ export function TicketOptionsMenu({
       </Dialog>
 
       <Dialog open={groupOpen} onOpenChange={setGroupOpen}>
-        <DialogContent className="sm:max-w-lg" showCloseButton>
-          <DialogHeader>
+        <DialogContent
+          className="flex max-h-[min(88vh,560px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg"
+          showCloseButton
+        >
+          <DialogHeader className="shrink-0 space-y-2 px-4 pt-4 pr-12">
             <DialogTitle>Agrupar Ticket</DialogTitle>
+            <DialogDescription className="sr-only">
+              Escolha o ticket pai que permanece aberto. O chamado atual será
+              encerrado.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Este ticket vira filho, é cancelado e fica ligado ao pai. No fim
-              permanece só o ticket pai aberto.
-            </p>
-            <div className="flex gap-2">
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+            <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-sm">
+              <p className="font-medium text-amber-50">
+                Atenção: o chamado atual (#{ticketNumber}) será encerrado.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-amber-100/85">
+                Busque e selecione o ticket pai que permanece aberto. No Alle
+                One você escolhe qual chamado manter — diferente do TiFlux, onde
+                se escolhe qual encerrar.
+              </p>
+            </div>
+            <div className="flex min-w-0 gap-2">
               <Input
                 value={groupQuery}
                 onChange={(event) => setGroupQuery(event.target.value)}
                 placeholder="Número ou título do ticket pai"
-                className="h-11"
+                className="h-11 min-w-0"
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -537,7 +551,7 @@ export function TicketOptionsMenu({
               </Button>
             </div>
             {groupResults.length > 0 ? (
-              <ul className="max-h-56 space-y-1 overflow-y-auto rounded-md border border-border p-1">
+              <ul className="max-h-52 space-y-1 overflow-y-auto overflow-x-hidden rounded-md border border-border bg-card/40 p-1">
                 {groupResults.map((row) => {
                   const selected = selectedParent?.ticketNumber === row.ticketNumber;
                   return (
@@ -546,8 +560,8 @@ export function TicketOptionsMenu({
                         type="button"
                         className={
                           selected
-                            ? "w-full rounded-md bg-primary/10 px-3 py-2 text-left text-sm"
-                            : "w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+                            ? "w-full rounded-md bg-primary/10 px-3 py-2 text-left text-sm ring-1 ring-primary/30"
+                            : "w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted/60"
                         }
                         onClick={() => setSelectedParent(row)}
                       >
@@ -566,7 +580,7 @@ export function TicketOptionsMenu({
               </ul>
             ) : null}
           </div>
-          <DialogFooter>
+          <DialogFooter className="mx-0 shrink-0 rounded-none border-t bg-muted/50 px-4">
             <Button
               type="button"
               variant="outline"
