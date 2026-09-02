@@ -14,6 +14,8 @@ set -euo pipefail
 
 ROOT="${ALLEONE_ROOT:-/home/alleone/producao}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/deploy-common.sh
+source "$SCRIPT_DIR/lib/deploy-common.sh"
 
 if [[ "${SKIP_SYNC:-}" != "1" ]]; then
   echo "========== 1/3 Sync TiFlux (espelho) =========="
@@ -32,18 +34,16 @@ fi
 if [[ "${SKIP_ETL:-}" != "1" ]]; then
   echo "========== 3/3 ETL espelho → portal =========="
   cd "$ROOT/backend"
-  set -a
-  # shellcheck disable=SC1091
-  source "$ROOT/backend/.env"
-  set +a
 
   ETL_ARGS=()
   if [[ -n "${ETL_TICKET:-}" ]]; then
     ETL_ARGS+=(--ticket="$ETL_TICKET")
   fi
 
+  # dotenv/config no script TypeScript lê o .env (sem source bash).
   npx ts-node prisma/scripts/etl-tiflux-ticket-content-to-portal.ts "${ETL_ARGS[@]}"
 
+  load_database_url "$ROOT/backend/.env"
   echo ""
   psql "$DATABASE_URL" -c "SELECT count(*) AS portal_descriptions FROM portal_ticket_descriptions;"
   psql "$DATABASE_URL" -c \
