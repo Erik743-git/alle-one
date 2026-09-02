@@ -33,6 +33,9 @@ fi
 
 if [[ "${SKIP_ETL:-}" != "1" ]]; then
   echo "========== 3/3 ETL espelho → portal =========="
+  MIRROR_SQL="$SCRIPT_DIR/sql/2026-09-02_tiflux_ticket_content.sql"
+  apply_tiflux_mirror_content_sql "$ROOT/backend/.env" "$MIRROR_SQL"
+
   cd "$ROOT/backend"
 
   ETL_ARGS=()

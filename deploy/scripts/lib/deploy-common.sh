@@ -32,6 +32,18 @@ load_database_url() {
   export DATABASE_URL
 }
 
+apply_tiflux_mirror_content_sql() {
+  local env_file="${1:?arquivo .env}"
+  local sql_file="${2:?arquivo .sql}"
+  if [[ ! -f "$sql_file" ]]; then
+    echo "ERRO: SQL espelho não encontrado: $sql_file"
+    exit 1
+  fi
+  echo "==> SQL espelho tiflux (description + ticket_files)"
+  load_database_url "$env_file"
+  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$sql_file"
+}
+
 verify_backend_ready() {
   local backend_dir="${1:?caminho do backend}"
   cd "$backend_dir"
