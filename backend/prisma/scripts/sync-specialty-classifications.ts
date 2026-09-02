@@ -203,7 +203,15 @@ async function captureClassificationReferences(classificationIds: string[]) {
     }),
   ]);
 
-  return { tickets, contracts, rules };
+  return {
+    tickets: tickets.flatMap((row) =>
+      row.classificationId
+        ? [{ ticketNumber: row.ticketNumber, classificationId: row.classificationId }]
+        : [],
+    ),
+    contracts,
+    rules,
+  };
 }
 
 async function restoreClassificationReferences(params: {
