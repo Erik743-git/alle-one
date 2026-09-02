@@ -2,6 +2,36 @@
 # Funções compartilhadas pelos scripts pos-deploy (produção e teste).
 set -euo pipefail
 
+# Lê uma variável do .env sem fazer source (evita quebrar com aspas/backticks no arquivo).
+read_env_var() {
+  local file="${1:?arquivo .env}"
+  local key="${2:?nome da variável}"
+  grep -E "^${key}=" "$file" | head -1 | cut -d= -f2- | sed 's/\r$//' | sed -e "s/^['\"]//" -e "s/['\"]$//"
+}
+
+strip_prisma_query() {
+  local url="$1"
+  if [[ "$url" != *"?"* ]]; then
+    printf '%s\n' "$url"
+    return
+  fi
+  printf '%s\n' "${url%%\?*}"
+}
+
+load_database_url() {
+  local env_file="${1:?arquivo .env}"
+  if [[ ! -f "$env_file" ]]; then
+    echo "ERRO: .env não encontrado: $env_file"
+    exit 1
+  fi
+  DATABASE_URL="$(strip_prisma_query "$(read_env_var "$env_file" DATABASE_URL)")"
+  if [[ -z "$DATABASE_URL" ]]; then
+    echo "ERRO: DATABASE_URL ausente em $env_file"
+    exit 1
+  fi
+  export DATABASE_URL
+}
+
 verify_backend_ready() {
   local backend_dir="${1:?caminho do backend}"
   cd "$backend_dir"

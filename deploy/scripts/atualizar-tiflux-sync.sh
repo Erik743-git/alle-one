@@ -13,6 +13,10 @@
 #   TIFLUX_CONTENT_BACKFILL=1   (reseta content_synced_at para reimportar descrições)
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/deploy-common.sh
+source "$SCRIPT_DIR/lib/deploy-common.sh"
+
 SYNC_ROOT="${TIFLUX_SYNC_ROOT:-/home/alleone/producao/alleone-tiflux-sync}"
 SYNC_REPO="${TIFLUX_SYNC_REPO:-https://github.com/Erik743-git/alleone-tiflux-sync.git}"
 SYNC_BRANCH="${TIFLUX_SYNC_BRANCH:-main}"
@@ -69,14 +73,7 @@ if [[ -f "$SQL_FILE" ]]; then
     echo "ERRO: PORTAL_ENV não encontrado: $PORTAL_ENV"
     exit 1
   fi
-  set -a
-  # shellcheck disable=SC1090
-  source "$PORTAL_ENV"
-  set +a
-  if [[ -z "${DATABASE_URL:-}" ]]; then
-    echo "ERRO: DATABASE_URL ausente em $PORTAL_ENV"
-    exit 1
-  fi
+  load_database_url "$PORTAL_ENV"
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$SQL_FILE"
 else
   echo "AVISO: SQL não encontrado: $SQL_FILE"
@@ -84,10 +81,7 @@ fi
 
 if [[ "${TIFLUX_CONTENT_BACKFILL:-}" == "1" ]]; then
   echo "==> Backfill: content_synced_at = NULL (reimportar descrições/anexos)"
-  set -a
-  # shellcheck disable=SC1090
-  source "$PORTAL_ENV"
-  set +a
+  load_database_url "$PORTAL_ENV"
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
     "UPDATE tiflux.tickets SET content_synced_at = NULL WHERE content_synced_at IS NOT NULL;"
 fi
