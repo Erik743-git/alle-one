@@ -93,7 +93,7 @@ flowchart TD
 | Sem `valorization_raw` completo | HE/EXTRA/garantia por texto de `service_name` | Aceito Onda 2; amostrar métricas |
 | ETL força `attendance=Remote` | Histórico migrado sem presencial | Aceito; novos apontamentos no portal usam valor real |
 | Sem IDs stage/priority/status | Edição por nome / lista local | Stages portal-only |
-| Descrição ticket TiFlux | Não está no espelho | Só `portal_ticket_descriptions` |
+| Descrição ticket TiFlux | Espelho `tiflux.tickets.description` + `tiflux.ticket_files` | ETL `etl-tiflux-ticket-content-to-portal.ts` |
 | `created_by` por e-mail | Sem match → ADMIN | `--reassign-only` + checklist % |
 
 ---

@@ -10,6 +10,7 @@
  *   npx ts-node prisma/scripts/cutover-final-sync.ts
  *   npx ts-node prisma/scripts/cutover-final-sync.ts --tickets-only
  *   npx ts-node prisma/scripts/cutover-final-sync.ts --appointments-only
+ *   npx ts-node prisma/scripts/cutover-final-sync.ts --content-only
  *   npx ts-node prisma/scripts/cutover-final-sync.ts --limit=5000 --dry-run
  *
  * Fluxo recomendado (prod):
@@ -84,6 +85,7 @@ async function printCounts(label: string) {
 async function main() {
   const ticketsOnly = process.argv.includes('--tickets-only');
   const appointmentsOnly = process.argv.includes('--appointments-only');
+  const contentOnly = process.argv.includes('--content-only');
   const dryRun = process.argv.includes('--dry-run');
   const limitArg = process.argv.find((a) => a.startsWith('--limit='));
   const extra: string[] = [];
@@ -97,11 +99,18 @@ async function main() {
 
   await printCounts('antes');
 
-  if (!appointmentsOnly) {
-    runTs('etl-tiflux-tickets-to-portal.ts', extra);
-  }
-  if (!ticketsOnly) {
-    runTs('etl-tiflux-appointments-to-portal.ts', extra);
+  if (contentOnly) {
+    runTs('etl-tiflux-ticket-content-to-portal.ts', extra);
+  } else {
+    if (!appointmentsOnly) {
+      runTs('etl-tiflux-tickets-to-portal.ts', extra);
+    }
+    if (!ticketsOnly) {
+      runTs('etl-tiflux-appointments-to-portal.ts', extra);
+    }
+    if (!appointmentsOnly && !ticketsOnly) {
+      runTs('etl-tiflux-ticket-content-to-portal.ts', extra);
+    }
   }
 
   await printCounts('depois');
