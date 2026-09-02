@@ -633,7 +633,7 @@ export const ticketsService = {
       inline: params.inline === false ? "false" : "true",
     });
     const response = await authFetch(
-      `${API_URL}/tickets/attachments/${params.fileId}?${qs}`,
+      `${API_URL}/tickets/attachments/${encodeURIComponent(params.fileId)}?${qs}`,
     );
     if (!response.ok) {
       const raw = await response.text().catch(() => "");

@@ -1096,6 +1096,74 @@ export default function TicketDetailPage() {
                     </div>
                   </div>
                 </div>
+
+                <section className="rounded-xl border border-border bg-card/50">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-2.5">
+                    <h2 className="text-sm font-semibold text-foreground">
+                      Descrição
+                    </h2>
+                  </div>
+                  <div className="space-y-4 px-4 py-3">
+                    <AppointmentDescriptionView
+                      description={data?.portalDescription?.description ?? null}
+                      attachments={data?.portalDescription?.attachments ?? []}
+                    />
+                    {(data?.portalDescription?.attachments ?? []).some(
+                      (a) => !(a.mimeType || "").startsWith("image/"),
+                    ) ? (
+                      <div className="space-y-2 border-t border-border pt-4">
+                        <p className="flex items-center gap-1.5 text-sm font-medium">
+                          <Paperclip className="size-3.5" />
+                          Arquivos
+                        </p>
+                        <ul className="space-y-1.5">
+                          {(data?.portalDescription?.attachments ?? [])
+                            .filter(
+                              (a) => !(a.mimeType || "").startsWith("image/"),
+                            )
+                            .map((attachment) => (
+                              <li
+                                key={attachment.fileId}
+                                className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm"
+                              >
+                                <span className="min-w-0 flex-1 truncate">
+                                  {attachment.originalName}
+                                  <span className="text-muted-foreground">
+                                    {` · ${attachment.mimeType || "arquivo"}`}
+                                    {attachment.size != null
+                                      ? ` · ${formatFileSize(attachment.size)}`
+                                      : ""}
+                                  </span>
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8"
+                                  onClick={() =>
+                                    void openPortalAttachment(
+                                      attachment,
+                                      false,
+                                    ).catch((err) =>
+                                      notifyError(
+                                        err instanceof Error
+                                          ? err.message
+                                          : "Não foi possível baixar o anexo.",
+                                      ),
+                                    )
+                                  }
+                                >
+                                  <Download className="mr-1.5 size-3.5" />
+                                  Baixar
+                                </Button>
+                              </li>
+                            ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+
                 {data?.grouping?.parent ? (
                   <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
                     Agrupado no ticket pai{" "}
@@ -1130,77 +1198,6 @@ export default function TicketDetailPage() {
                 ) : null}
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                  {data?.portalDescription ? (
-                    <Card className="lg:col-span-2">
-                      <CardHeader>
-                        <CardTitle className="text-base">Descrição do ticket</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <AppointmentDescriptionView
-                          description={data.portalDescription.description}
-                          attachments={data.portalDescription.attachments ?? []}
-                        />
-                        {(data.portalDescription.attachments ?? []).some(
-                          (a) => !(a.mimeType || "").startsWith("image/"),
-                        ) ? (
-                          <div className="space-y-2 border-t border-border pt-4">
-                            <p className="text-sm font-medium">Anexos</p>
-                            <ul className="space-y-1.5">
-                              {(data.portalDescription.attachments ?? [])
-                                .filter(
-                                  (a) =>
-                                    !(a.mimeType || "").startsWith("image/"),
-                                )
-                                .map((attachment) => (
-                                  <li
-                                    key={attachment.fileId}
-                                    className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm"
-                                  >
-                                    <span className="min-w-0 flex-1 truncate">
-                                      {attachment.originalName}
-                                      <span className="text-muted-foreground">
-                                        {` · ${attachment.mimeType || "arquivo"}`}
-                                        {attachment.size != null
-                                          ? ` · ${
-                                              attachment.size < 1024
-                                                ? `${attachment.size} B`
-                                                : attachment.size < 1024 * 1024
-                                                  ? `${Math.round(attachment.size / 1024)} KB`
-                                                  : `${(attachment.size / (1024 * 1024)).toFixed(1)} MB`
-                                            }`
-                                          : ""}
-                                      </span>
-                                    </span>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-8"
-                                      onClick={() =>
-                                        void openPortalAttachment(
-                                          attachment,
-                                          false,
-                                        ).catch((err) =>
-                                          notifyError(
-                                            err instanceof Error
-                                              ? err.message
-                                              : "Não foi possível baixar o anexo.",
-                                          ),
-                                        )
-                                      }
-                                    >
-                                      <Download className="mr-1.5 size-3.5" />
-                                      Baixar
-                                    </Button>
-                                  </li>
-                                ))}
-                            </ul>
-                          </div>
-                        ) : null}
-                      </CardContent>
-                    </Card>
-                  ) : null}
-
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">Solicitante</CardTitle>

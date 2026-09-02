@@ -2074,9 +2074,8 @@ export class TicketsQueryService {
       const row = await this.prisma.portalTicketDescription.findUnique({
         where: { ticketNumber },
       });
-      if (!row) return null;
 
-      let description = row.description;
+      let description = row?.description?.trim() ?? '';
 
       const pre = await this.prisma.preTicket.findFirst({
         where: { ticketNumber },
@@ -2085,41 +2084,48 @@ export class TicketsQueryService {
         },
       });
 
-      // Recupera HTML com imagem do pré-ticket quando a descrição foi salva só como texto.
-      const hasImage =
-        /<img[\s\S]*src\s*=/i.test(description) ||
-        description.includes('data:image/');
-      if (!hasImage) {
-        const html = pre?.descriptionHtml?.trim() ?? '';
-        if (/<img[\s\S]*src\s*=/i.test(html) || html.includes('data:image/')) {
-          description = html;
+      if (!description) {
+        const preHtml = pre?.descriptionHtml?.trim() ?? '';
+        if (preHtml) {
+          description = preHtml;
+        }
+      } else {
+        const hasImage =
+          /<img[\s\S]*src\s*=/i.test(description) ||
+          description.includes('data:image/');
+        if (!hasImage) {
+          const html = pre?.descriptionHtml?.trim() ?? '';
+          if (/<img[\s\S]*src\s*=/i.test(html) || html.includes('data:image/')) {
+            description = html;
+          }
         }
       }
 
-      // Tickets abertos de e-mail antes do vínculo: garante anexos (ZIP etc.) no portal.
-      const preFiles = (pre?.attachments ?? []).filter(
-        (a) => a.file && !a.file.deletedAt,
-      );
-      if (preFiles.length > 0) {
-        const already =
-          await this.prisma.portalTicketAppointmentAttachment.findMany({
-            where: {
-              ticketNumber,
-              fileId: { in: preFiles.map((a) => a.fileId) },
-            },
-            select: { fileId: true },
-          });
-        const linked = new Set(already.map((a) => a.fileId));
-        for (const att of preFiles) {
-          if (linked.has(att.fileId)) continue;
-          await this.prisma.portalTicketAppointmentAttachment.create({
-            data: {
-              ticketNumber,
-              portalAppointmentId: null,
-              fileId: att.fileId,
-              createdBy: row.createdBy,
-            },
-          });
+      if (row) {
+        const preFiles = (pre?.attachments ?? []).filter(
+          (a) => a.file && !a.file.deletedAt,
+        );
+        if (preFiles.length > 0) {
+          const already =
+            await this.prisma.portalTicketAppointmentAttachment.findMany({
+              where: {
+                ticketNumber,
+                fileId: { in: preFiles.map((a) => a.fileId) },
+              },
+              select: { fileId: true },
+            });
+          const linked = new Set(already.map((a) => a.fileId));
+          for (const att of preFiles) {
+            if (linked.has(att.fileId)) continue;
+            await this.prisma.portalTicketAppointmentAttachment.create({
+              data: {
+                ticketNumber,
+                portalAppointmentId: null,
+                fileId: att.fileId,
+                createdBy: row.createdBy,
+              },
+            });
+          }
         }
       }
 
@@ -2142,10 +2148,14 @@ export class TicketsQueryService {
         previewMap,
       );
 
-      return {
-        description,
-        attachments: portalAttachments,
-      };
+      if (description || portalAttachments.length > 0) {
+        return {
+          description,
+          attachments: portalAttachments,
+        };
+      }
+
+      return null;
     } catch {
       return null;
     }
