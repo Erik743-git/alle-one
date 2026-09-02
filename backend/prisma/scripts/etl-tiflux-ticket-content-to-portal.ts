@@ -274,7 +274,9 @@ async function main() {
 
   if (!(await mirrorSchemaReady())) {
     throw new Error(
-      'Espelho sem tabelas/colunas de conteúdo. Rode o SQL 2026-09-02_ticket_content.sql no alleone-tiflux-sync e aguarde o sync popular description/ticket_files.',
+      'Espelho sem tabelas/colunas de conteúdo (tiflux.tickets.description / tiflux.ticket_files). ' +
+        'Rode: bash deploy/scripts/deploy-ticket-content-prod.sh (aplica o SQL) ou atualizar-tiflux-sync.sh. ' +
+        'Depois aguarde o alleone-tiflux-sync popular description e ticket_files.',
     );
   }
 

@@ -23,6 +23,7 @@ SYNC_BRANCH="${TIFLUX_SYNC_BRANCH:-main}"
 PORTAL_ENV="${PORTAL_ENV:-/home/alleone/producao/backend/.env}"
 PM2_NAME="${TIFLUX_SYNC_PM2:-alleone-tiflux-sync}"
 SQL_FILE="${SYNC_ROOT}/prisma/sql/2026-09-02_ticket_content.sql"
+FALLBACK_SQL="$SCRIPT_DIR/sql/2026-09-02_tiflux_ticket_content.sql"
 
 if [[ "$(whoami)" != "alleone" ]]; then
   echo "AVISO: rode como usuário alleone (atual: $(whoami))"
@@ -73,10 +74,12 @@ if [[ -f "$SQL_FILE" ]]; then
     echo "ERRO: PORTAL_ENV não encontrado: $PORTAL_ENV"
     exit 1
   fi
-  load_database_url "$PORTAL_ENV"
-  psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$SQL_FILE"
+  apply_tiflux_mirror_content_sql "$PORTAL_ENV" "$SQL_FILE"
+elif [[ -f "$FALLBACK_SQL" ]]; then
+  echo "==> SQL espelho (cópia alle-one)"
+  apply_tiflux_mirror_content_sql "$PORTAL_ENV" "$FALLBACK_SQL"
 else
-  echo "AVISO: SQL não encontrado: $SQL_FILE"
+  echo "AVISO: SQL não encontrado em $SQL_FILE nem $FALLBACK_SQL"
 fi
 
 if [[ "${TIFLUX_CONTENT_BACKFILL:-}" == "1" ]]; then
