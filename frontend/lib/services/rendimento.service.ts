@@ -1,5 +1,8 @@
 import { apiRequest } from "@/lib/api";
 import { isValidCompanyUuid, isValidUuid } from "@/lib/selected-company";
+import { authFetch } from "@/lib/auth-fetch";
+import { API_URL } from "@/lib/env";
+import { parseContentDispositionFilename } from "@/lib/download-blob";
 
 export type RendimentoCalendarView = "month" | "week" | "day";
 
@@ -337,6 +340,32 @@ export const rendimentoService = {
     return apiRequest<RendimentoTimesheet>(
       `/rendimento/users/${params.userId}/timesheet?${search.toString()}`,
     );
+  },
+
+  /** Baixa o XLSX do mês exibido na tela (mesmos totais do timesheet). */
+  async exportTimesheetXlsx(params: { userId: string; date?: string }) {
+    if (!isValidUuid(params.userId)) {
+      return Promise.reject(new Error("Colaborador inválido."));
+    }
+    const search = new URLSearchParams();
+    search.set("view", "month");
+    if (params.date) {
+      search.set("date", params.date);
+    }
+    const res = await authFetch(
+      `${API_URL}/rendimento/users/${params.userId}/timesheet/export?${search.toString()}`,
+      { method: "GET" },
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `Não foi possível gerar o Excel (${res.status}).`);
+    }
+    const blob = await res.blob();
+    const filename = parseContentDispositionFilename(
+      res.headers.get("content-disposition") ?? "",
+      "apontamentos.xlsx",
+    );
+    return { blob, filename };
   },
 
   createJustification(params: {

@@ -27,6 +27,7 @@ import {
   canCreateVoluntaryRendimentoJustification,
 } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { triggerBrowserDownload } from "@/lib/download-blob";
 import { useConfirm } from "@/lib/confirm";
 import {
   isInvalidSameTimePeriod,
@@ -95,6 +96,7 @@ export default function RendimentoAgendaPage() {
   const loadSeqRef = useRef(0);
   const hasTimesheetRef = useRef(false);
   const [saving, setSaving] = useState(false);
+  const [exportingMonth, setExportingMonth] = useState(false);
   const [justModalOpen, setJustModalOpen] = useState(false);
   const [justMode, setJustMode] = useState<"ALERT" | "VOLUNTARY">("ALERT");
   const [justDate, setJustDate] = useState("");
@@ -325,6 +327,24 @@ export default function RendimentoAgendaPage() {
     }
   }
 
+  async function exportMonthToExcel() {
+    if (!userId || exportingMonth) return;
+    try {
+      setExportingMonth(true);
+      const { blob, filename } = await rendimentoService.exportTimesheetXlsx({
+        userId,
+        date: toDateInputValue(referenceDate),
+      });
+      triggerBrowserDownload(blob, filename);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível gerar o Excel.",
+      );
+    } finally {
+      setExportingMonth(false);
+    }
+  }
+
   async function decideDayEvent(id: string, decision: "APPROVED" | "REJECTED") {
     try {
       await rendimentoService.decideDayEvent({ id, decision });
@@ -418,6 +438,8 @@ export default function RendimentoAgendaPage() {
               onRejectDayEvent={(id) => void decideDayEvent(id, "REJECTED")}
               onViewChange={setView}
               onReferenceDateChange={setReferenceDate}
+              onExportMonth={exportMonthToExcel}
+              exportingMonth={exportingMonth}
             />
             <Dialog open={justModalOpen} onOpenChange={setJustModalOpen}>
               <DialogContent className="font-sans max-w-xl border-border bg-card text-card-foreground">

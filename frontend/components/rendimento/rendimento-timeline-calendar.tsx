@@ -19,7 +19,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileDown, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -97,6 +97,9 @@ export type RendimentoTimelineCalendarProps = {
   onRejectDayEvent?: (id: string) => void;
   onViewChange: (view: RendimentoCalendarView) => void;
   onReferenceDateChange: (date: Date) => void;
+  /** Exporta o mês exibido para Excel. Omitido esconde o botão. */
+  onExportMonth?: () => void;
+  exportingMonth?: boolean;
 };
 
 function dayMap(timesheet: RendimentoTimesheet | null) {
@@ -436,6 +439,8 @@ export function RendimentoTimelineCalendar({
   onRejectDayEvent,
   onViewChange,
   onReferenceDateChange,
+  onExportMonth,
+  exportingMonth = false,
 }: RendimentoTimelineCalendarProps) {
   const daysByDate = React.useMemo(() => dayMap(timesheet), [timesheet]);
 
@@ -490,7 +495,7 @@ export function RendimentoTimelineCalendar({
   return (
     <div className="font-sans space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(["month", "week", "day"] as const).map((option) => (
             <Button
               key={option}
@@ -502,6 +507,23 @@ export function RendimentoTimelineCalendar({
               {option === "month" ? "Mês" : option === "week" ? "Semana" : "Dia"}
             </Button>
           ))}
+          {onExportMonth && view === "month" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={exportingMonth}
+              onClick={onExportMonth}
+              className="gap-1.5"
+            >
+              {exportingMonth ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <FileDown className="size-4" />
+              )}
+              Exportar Excel
+            </Button>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2">

@@ -33,6 +33,10 @@ import {
 } from './rendimento-day-events.helper';
 import { computeCategorizedMinutes } from './rendimento-worked-minutes.helper';
 import {
+  buildRendimentoTimesheetXlsx,
+  rendimentoTimesheetXlsxFilename,
+} from './rendimento-timesheet-xlsx.helper';
+import {
   resolvePayrollPeriodRange,
   resolvePayrollPeriodRangeForTimesheet,
 } from './rendimento-payroll-period.helper';
@@ -2988,6 +2992,25 @@ export class RendimentoService {
       ),
       days: timesheetDays,
     };
+  }
+
+  /**
+   * XLSX do período (tipicamente um mês) do colaborador — reusa exatamente
+   * o mesmo cálculo de {@link getTimesheet} para a planilha bater com a tela.
+   */
+  async exportTimesheetXlsx(params: {
+    actor: AuthenticatedRequestUser;
+    userId: string;
+    date?: string;
+  }): Promise<{ buffer: Buffer; filename: string }> {
+    const timesheet = await this.getTimesheet({
+      actor: params.actor,
+      userId: params.userId,
+      view: 'month',
+      date: params.date,
+    });
+    const buffer = await buildRendimentoTimesheetXlsx(timesheet);
+    return { buffer, filename: rendimentoTimesheetXlsxFilename(timesheet) };
   }
 
   /** Terceiro (PJ): só apontamentos + HE/plantão — sem lacunas, almoço ou justificativas. */

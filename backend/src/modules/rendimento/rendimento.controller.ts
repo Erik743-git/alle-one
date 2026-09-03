@@ -8,10 +8,11 @@ import {
   ParseUUIDPipe,
   Query,
   Req,
+  Res,
   Post,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { PermissionModule } from '@prisma/client';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -188,6 +189,32 @@ export class RendimentoController {
       view: query.view,
       date: query.date,
     });
+  }
+
+  @Get('users/:userId/timesheet/export')
+  @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  async exportTimesheet(
+    @Req() req: AuthenticatedRequest,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Query() query: RendimentoTimesheetQueryDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, filename } =
+      await this.rendimentoService.exportTimesheetXlsx({
+        actor: req.user,
+        userId,
+        date: query.date,
+      });
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${encodeURIComponent(filename)}"`,
+    );
+    return buffer;
   }
 
   @Post('users/:userId/justifications')
