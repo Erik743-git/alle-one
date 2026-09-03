@@ -17,6 +17,8 @@ import type { TicketsListQueryDto } from './tickets.dto';
 import {
   PORTAL_DONE_STAGES,
   isDonePortalStage,
+  mapLegacyStageToPortal,
+  normalizeStageCompareKey,
   PORTAL_STAGES_ORDER,
 } from './portal-ticket-stages';
 import {
@@ -308,6 +310,45 @@ export class TicketsQueryService {
   }
 
   /** Leitura canônica a partir de `portal_tickets` (flag TICKETS_PORTAL_CANONICAL). */
+  /**
+   * Converte o estágio pedido (canônico, ex.: "Novo") no filtro Prisma que casa
+   * TODOS os `stage_name` crus que exibem como esse canônico — para o filtro da
+   * busca avançada bater com a coluna. Se o valor não for um canônico conhecido,
+   * cai no `contains` antigo.
+   */
+  private async resolveStageFilterWhere(
+    stageName: string | null | undefined,
+  ): Promise<Prisma.PortalTicketWhereInput | null> {
+    const wanted = stageName?.trim();
+    if (!wanted) return null;
+
+    const isCanonical = (PORTAL_STAGES_ORDER as readonly string[]).some(
+      (s) => normalizeStageCompareKey(s) === normalizeStageCompareKey(wanted),
+    );
+    if (!isCanonical) {
+      return { stageName: { contains: wanted, mode: 'insensitive' } };
+    }
+
+    const distinct = await this.prisma.portalTicket.findMany({
+      distinct: ['stageName'],
+      select: { stageName: true },
+      where: { stageName: { not: null } },
+    });
+    const matches = distinct
+      .map((r) => r.stageName)
+      .filter(
+        (raw): raw is string =>
+          !!raw &&
+          normalizeStageCompareKey(mapLegacyStageToPortal(raw) ?? raw) ===
+            normalizeStageCompareKey(wanted),
+      );
+
+    if (matches.length === 0) {
+      return { stageName: { contains: wanted, mode: 'insensitive' } };
+    }
+    return { stageName: { in: matches } };
+  }
+
   private async listGroupedFromPortal(
     actor: AuthenticatedRequestUser,
     query: TicketsListQueryDto,
@@ -446,15 +487,18 @@ export class TicketsQueryService {
       });
     }
 
+    // Filtro de estágio: casa também os nomes crus que mapeiam para o canônico
+    // pedido (ex.: "Novo" também pega tickets gravados como "Pendente"/"Aberto"),
+    // igual ao que a coluna exibe.
+    const stageWhere = await this.resolveStageFilterWhere(query.stageName);
+
     const rows = await this.prisma.portalTicket.findMany({
       where: {
         ...(!mineOnly && responsibleFilter != null
           ? { responsibleExternalId: responsibleFilter }
           : {}),
         ...(clientWhere ?? {}),
-        ...(query.stageName
-          ? { stageName: { contains: query.stageName, mode: 'insensitive' } }
-          : {}),
+        ...(stageWhere ?? {}),
         ...(query.statusName
           ? { statusName: { contains: query.statusName, mode: 'insensitive' } }
           : {}),
