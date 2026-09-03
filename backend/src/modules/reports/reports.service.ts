@@ -2881,56 +2881,57 @@ export class ReportsService {
       userId: params.userId,
     });
 
-    rowIndex += 2;
-    sheet.getRow(rowIndex).values = [
-      'Resumo por atendente',
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      null,
-    ];
-    sheet.getRow(rowIndex).font = { bold: true };
-    rowIndex += 1;
+    // Aba separada para o resumo (evita reaproveitar o grid de colunas da
+    // tabela detalhada — o cabeçalho da aba "Relatório" fica congelado
+    // (ySplit: 8) e, se o resumo ficasse na mesma aba, o Excel continuaria
+    // mostrando o cabeçalho da tabela detalhada ao rolar até o resumo,
+    // fazendo os números aparecerem sob as colunas erradas).
+    const summarySheet = workbook.addWorksheet('Resumo por Atendente');
+    summarySheet.getColumn(1).width = 28;
+    summarySheet.getColumn(2).width = 24;
+    summarySheet.getColumn(3).width = 30;
+    summarySheet.getColumn(4).width = 14;
+    summarySheet.getColumn(5).width = 12;
+    summarySheet.getColumn(6).width = 10;
 
-    const summaryHeader = sheet.getRow(rowIndex);
-    summaryHeader.values = [
+    const summaryHeaderRow = summarySheet.getRow(1);
+    summaryHeaderRow.values = [
       'Atendente',
-      null,
-      null,
-      null,
       'Horas não sobrepostas',
       'Horas apontadas (sobrepostas)',
       'Hora extra',
       'Plantão',
       'Alertas',
-      null,
-      null,
     ];
-    summaryHeader.font = { bold: true };
-    rowIndex += 1;
+    summaryHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    summaryHeaderRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0A2540' },
+    };
+    summaryHeaderRow.alignment = { vertical: 'middle' };
+    summaryHeaderRow.height = 20;
 
+    let summaryRowIndex = 2;
     for (const s of summaries) {
-      const row = sheet.getRow(rowIndex);
+      const row = summarySheet.getRow(summaryRowIndex);
       row.values = [
         s.attendant,
-        null,
-        null,
-        null,
         this.formatMinutesHHMM(s.nonOverlapMinutes),
         this.formatMinutesHHMM(s.rawMinutes),
         this.formatMinutesHHMM(s.extraMinutes),
         this.formatMinutesHHMM(s.plantaoMinutes),
         s.alerts,
-        null,
-        null,
       ];
-      rowIndex += 1;
+      summaryRowIndex += 1;
+    }
+
+    const summaryLastRow = summaryRowIndex - 1;
+    if (summaryLastRow >= 1) {
+      summarySheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: summaryLastRow, column: 6 },
+      };
     }
 
     return workbook.xlsx.writeBuffer();

@@ -2,7 +2,8 @@
  * ETL idempotente: tiflux.ticket_appointments → portal_ticket_appointments (bulk SQL).
  *
  * `created_by` prioriza o User do portal cujo e-mail bate com tiflux.users
- * (via user_external_id do apontamento). Fallback: CUTOVER_ETL_CREATED_BY / ADMIN.
+ * (via user_external_id do apontamento). Fallback: CUTOVER_ETL_CREATED_BY /
+ * usuário dedicado "Não mapeado" (ver UNMAPPED_FALLBACK_EMAIL abaixo).
  *
  * Uso:
  *   cd backend
@@ -17,22 +18,45 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+/**
+ * E-mail fixo (não é uma conta real, não faz login — status INACTIVE,
+ * sem passwordHash) usado só como "gaveta" de apontamentos cujo técnico do
+ * TiFlux não bateu com nenhum usuário do portal por e-mail.
+ *
+ * IMPORTANTE: antes disso, o fallback usava o primeiro ADMIN ativo (ficou
+ * sendo o Jose Serpa) — isso misturava horas de terceiros na conta de uma
+ * pessoa de verdade (chegou a acumular ~296h de apontamentos de outros
+ * técnicos em um mês só). Ver prisma/scripts/backfill-unmapped-appointments-off-admin.ts
+ * para migrar o que já está mal atribuído.
+ */
+const UNMAPPED_FALLBACK_EMAIL =
+  'apontamentos.nao-mapeados@alletecnologia.internal';
+
 async function resolveFallbackUserId(): Promise<string> {
   const fromEnv = process.env.CUTOVER_ETL_CREATED_BY?.trim();
   if (fromEnv) return fromEnv;
 
-  const admin = await prisma.user.findFirst({
-    where: { role: 'ADMIN', deletedAt: null, status: 'ACTIVE' },
-    select: { id: true, email: true },
-    orderBy: { createdAt: 'asc' },
+  const existing = await prisma.user.findUnique({
+    where: { email: UNMAPPED_FALLBACK_EMAIL },
+    select: { id: true },
   });
-  if (!admin) {
-    throw new Error(
-      'Nenhum ADMIN ativo para createdBy do ETL. Defina CUTOVER_ETL_CREATED_BY=<userId>.',
-    );
-  }
-  console.log(`Fallback createdBy ADMIN ${admin.email} (${admin.id})`);
-  return admin.id;
+  if (existing) return existing.id;
+
+  const created = await prisma.user.create({
+    data: {
+      name: 'Apontamentos não mapeados (TiFlux)',
+      email: UNMAPPED_FALLBACK_EMAIL,
+      passwordHash: null,
+      role: 'COLLABORATOR',
+      status: 'INACTIVE',
+      firstAccess: false,
+    },
+    select: { id: true, email: true },
+  });
+  console.log(
+    `Fallback createdBy: usuário dedicado criado ${created.email} (${created.id})`,
+  );
+  return created.id;
 }
 
 /** SQL fragment: User.id via e-mail do técnico TiFlux, senão fallback. */
