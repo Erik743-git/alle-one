@@ -1,8 +1,10 @@
 import {
+  appointmentDurationMinutes,
   appointmentToInterval,
   computeRawAppointmentMinutes,
   computeUnionWorkedMinutes,
   mergeIntervals,
+  parseClockToMinutes,
 } from './rendimento-worked-minutes.helper';
 
 describe('rendimento-worked-minutes', () => {
@@ -96,6 +98,55 @@ describe('rendimento-worked-minutes', () => {
     expect(appointmentToInterval('10:00', null, 90)).toEqual({
       start: 600,
       end: 690,
+    });
+  });
+
+  describe('cálculo canônico de minutos (contrato §4)', () => {
+    it('ignora segundos', () => {
+      expect(appointmentDurationMinutes('08:00:45', '09:00:59')).toBe(60);
+      expect(parseClockToMinutes('08:30:59')).toBe(510);
+    });
+
+    it('registro quebrado (hora fora de 00:00-23:59) vira 0', () => {
+      expect(parseClockToMinutes('24:00')).toBeNull();
+      expect(parseClockToMinutes('25:30')).toBeNull();
+      expect(appointmentDurationMinutes('24:00', '02:00')).toBe(0);
+      expect(appointmentDurationMinutes('08:00', '99:00')).toBe(0);
+    });
+
+    it('cruza a meia-noite', () => {
+      expect(appointmentDurationMinutes('23:00', '01:00')).toBe(120);
+    });
+
+    it('fim igual ao início conta 0', () => {
+      expect(appointmentDurationMinutes('10:00', '10:00')).toBe(0);
+    });
+
+    it('duração vem dos horários, não do campo minutes quando os horários são válidos', () => {
+      // minutes mentiroso (999) é ignorado: 10:00-11:00 = 60
+      expect(
+        computeRawAppointmentMinutes([
+          {
+            appointment_date: '2026-05-10',
+            init_time: '10:00',
+            end_time: '11:00',
+            minutes: 999,
+          },
+        ]),
+      ).toBe(60);
+    });
+
+    it('apontamento de duração 0 (21:26-21:26) não vira 1 min no total bruto', () => {
+      expect(
+        computeRawAppointmentMinutes([
+          {
+            appointment_date: '2026-05-10',
+            init_time: '21:26',
+            end_time: '21:26',
+            minutes: 0,
+          },
+        ]),
+      ).toBe(0);
     });
   });
 });
