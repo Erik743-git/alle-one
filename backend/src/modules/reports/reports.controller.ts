@@ -74,6 +74,7 @@ export class ReportsController {
       companyIds?: string[];
       specialtyIds?: string[];
       onlyExcess?: boolean;
+      periodMode?: 'civil' | 'folha';
     },
   ) {
     return this.reports.generateReport(user, body);
