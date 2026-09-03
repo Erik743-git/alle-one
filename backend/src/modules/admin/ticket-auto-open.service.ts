@@ -497,6 +497,38 @@ export class TicketAutoOpenService {
     return { ok: true };
   }
 
+  /**
+   * Usuário de sistema para atribuir `created_by` dos tickets de rotina.
+   * Não faz login (INACTIVE, sem senha) — serve só como dono do registro para
+   * que tickets automáticos não apareçam no "Meus tickets" do dono da regra.
+   */
+  private automationUserId: string | null = null;
+  private async ensureAutomationUserId(): Promise<string> {
+    if (this.automationUserId) return this.automationUserId;
+    const email = 'automacao@alletecnologia.internal';
+    const existing = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+    if (existing) {
+      this.automationUserId = existing.id;
+      return existing.id;
+    }
+    const created = await this.prisma.user.create({
+      data: {
+        name: 'Automação (abertura de rotinas)',
+        email,
+        passwordHash: null,
+        role: 'COLLABORATOR',
+        status: 'INACTIVE',
+        firstAccess: false,
+      },
+      select: { id: true },
+    });
+    this.automationUserId = created.id;
+    return created.id;
+  }
+
   private buildCreateTicketDto(rule: {
     deskExternalId: number;
     clientExternalId: number;
@@ -603,6 +635,7 @@ export class TicketAutoOpenService {
           actor,
           this.buildCreateTicketDto(rule),
           attachmentFiles,
+          { createdByOverride: await this.ensureAutomationUserId() },
         );
 
         const updateData: {

@@ -41,10 +41,9 @@ function resolveValue(
   responsibleId?: number | null,
   responsibleName?: string | null,
 ): string {
-  if (
-    responsibleId != null &&
-    options.some((row) => row.id === responsibleId)
-  ) {
+  // Sempre reflete o responsável atual do ticket, mesmo que ele não esteja
+  // na lista `options` carregada na página (a lista pode ser um subconjunto).
+  if (responsibleId != null) {
     return String(responsibleId);
   }
   const name = responsibleName?.trim().toLowerCase();
@@ -72,7 +71,20 @@ export function TicketResponsibleSelect({
   } | null>(null);
 
   const selectOptions = useMemo(() => {
-    const sorted = [...options].sort((a, b) =>
+    const base = [...options];
+    // Garante que o responsável atual do ticket apareça como opção mesmo quando
+    // não veio na lista carregada (senão o select mostra o placeholder).
+    if (
+      responsibleId != null &&
+      !base.some((row) => row.id === responsibleId)
+    ) {
+      base.push({
+        id: responsibleId,
+        name: responsibleName?.trim() || `#${responsibleId}`,
+        email: null,
+      });
+    }
+    const sorted = base.sort((a, b) =>
       a.name.localeCompare(b.name, "pt-BR"),
     );
     return pinCurrentUserFirst(sorted, user?.email).map((row) => {
@@ -82,7 +94,7 @@ export function TicketResponsibleSelect({
         label: emailsMatch(row.email, user?.email) ? `${label} — você` : label,
       };
     });
-  }, [options, user?.email]);
+  }, [options, responsibleId, responsibleName, user?.email]);
 
   const value = resolveValue(options, responsibleId, responsibleName);
 

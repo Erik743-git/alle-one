@@ -359,7 +359,6 @@ export class TicketsQueryService {
     const andParts: Prisma.PortalTicketWhereInput[] = [];
     if (mineOnly) {
       const mineOr = buildPortalMineOnlyOr({
-        actorUserId: actor.userId,
         actorEmail,
         responsibleExternalId: responsibleFilter,
         responsibleDisplayName: responsibleName,
@@ -2095,7 +2094,10 @@ export class TicketsQueryService {
           description.includes('data:image/');
         if (!hasImage) {
           const html = pre?.descriptionHtml?.trim() ?? '';
-          if (/<img[\s\S]*src\s*=/i.test(html) || html.includes('data:image/')) {
+          if (
+            /<img[\s\S]*src\s*=/i.test(html) ||
+            html.includes('data:image/')
+          ) {
             description = html;
           }
         }
