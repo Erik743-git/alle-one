@@ -123,6 +123,99 @@ export function computeUnionWorkedMinutes(
   return total;
 }
 
+/** Minutos de `a` (mesclado) que NÃO estão cobertos por nenhum intervalo de `bMerged` (mesclado). */
+export function subtractMinutes(
+  a: WorkInterval[],
+  bMerged: WorkInterval[],
+): number {
+  let total = 0;
+  for (const seg of a) {
+    let cursor = seg.start;
+    for (const b of bMerged) {
+      if (b.end <= cursor) continue;
+      if (b.start >= seg.end) break;
+      if (b.start > cursor) total += b.start - cursor;
+      cursor = Math.max(cursor, b.end);
+      if (cursor >= seg.end) break;
+    }
+    if (cursor < seg.end) total += seg.end - cursor;
+  }
+  return total;
+}
+
+export type CategorizedMinutes = {
+  /** Hora normal, já descontada a interseção com EXTRA e PLANTAO. */
+  normal: number;
+  /** Hora extra, já descontada a interseção com PLANTAO. */
+  extra: number;
+  /** Plantão (categoria de maior prioridade). */
+  plantao: number;
+  /** normal + extra + plantao (parcelas disjuntas) — igual à união de tudo. */
+  total: number;
+  /** Soma bruta dos apontamentos, sem deduplicar (métrica "Horas apontadas"). */
+  bruto: number;
+};
+
+/**
+ * Reparte os minutos trabalhados por categoria com prioridade
+ * **PLANTAO > EXTRA > NORMAL**: quando o mesmo trecho de relógio, no mesmo dia,
+ * é coberto por categorias diferentes, ele conta na de maior prioridade e sai
+ * das outras. As três parcelas são disjuntas e somam a união total.
+ */
+export function computeCategorizedMinutes(
+  rows: AppointmentMinutesInput[],
+): CategorizedMinutes {
+  const byDate = new Map<
+    string,
+    { normal: WorkInterval[]; extra: WorkInterval[]; plantao: WorkInterval[] }
+  >();
+  let normal = 0;
+  let extra = 0;
+  let plantao = 0;
+  let bruto = 0;
+
+  for (const row of rows) {
+    const kind = overtimeKindFromValorization(row.valorization_raw);
+    const bucket: 'normal' | 'extra' | 'plantao' =
+      kind === 'PLANTAO' ? 'plantao' : kind === 'EXTRA' ? 'extra' : 'normal';
+
+    const fromTimes = appointmentDurationMinutes(row.init_time, row.end_time);
+    const rawMin =
+      fromTimes > 0
+        ? fromTimes
+        : Math.max(0, Math.trunc(Number(row.minutes) || 0));
+    bruto += rawMin;
+
+    const interval = appointmentToInterval(
+      row.init_time,
+      row.end_time,
+      row.minutes,
+    );
+    if (!interval) {
+      if (bucket === 'plantao') plantao += rawMin;
+      else if (bucket === 'extra') extra += rawMin;
+      else normal += rawMin;
+      continue;
+    }
+    const dateKey = row.appointment_date.slice(0, 10);
+    if (!byDate.has(dateKey)) {
+      byDate.set(dateKey, { normal: [], extra: [], plantao: [] });
+    }
+    byDate.get(dateKey)![bucket].push(interval);
+  }
+
+  for (const day of byDate.values()) {
+    const p = mergeIntervals(day.plantao);
+    const e = mergeIntervals(day.extra);
+    const n = mergeIntervals(day.normal);
+    plantao += p.reduce((s, i) => s + (i.end - i.start), 0);
+    extra += subtractMinutes(e, p);
+    normal += subtractMinutes(n, mergeIntervals([...p, ...e]));
+  }
+
+  return { normal, extra, plantao, total: normal + extra + plantao, bruto };
+}
+
 /** Soma bruta dos minutos de cada apontamento (ticket a ticket), sem deduplicar sobreposição. */
 export function computeRawAppointmentMinutes(
   rows: AppointmentMinutesInput[],

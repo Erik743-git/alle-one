@@ -1,6 +1,7 @@
 import {
   appointmentDurationMinutes,
   appointmentToInterval,
+  computeCategorizedMinutes,
   computeRawAppointmentMinutes,
   computeUnionWorkedMinutes,
   mergeIntervals,
@@ -147,6 +148,83 @@ describe('rendimento-worked-minutes', () => {
           },
         ]),
       ).toBe(0);
+    });
+  });
+
+  describe('computeCategorizedMinutes — prioridade PLANTAO > EXTRA > NORMAL', () => {
+    const row = (
+      init: string,
+      end: string,
+      name?: string,
+      date = '2026-05-10',
+    ) => ({
+      appointment_date: date,
+      init_time: init,
+      end_time: end,
+      minutes: 0,
+      valorization_raw: name ? { name } : null,
+    });
+
+    it('sem sobreposição: cada categoria com o seu', () => {
+      const r = computeCategorizedMinutes([
+        row('08:00', '12:00'),
+        row('18:00', '20:00', 'HORA EXTRA'),
+        row('22:00', '23:00', 'Plantão'),
+      ]);
+      expect(r).toEqual({
+        normal: 240,
+        extra: 120,
+        plantao: 60,
+        total: 420,
+        bruto: 420,
+      });
+    });
+
+    it('EXTRA em cima de NORMAL: o trecho cruzado é EXTRA, normal encolhe', () => {
+      // 08:00-09:00 normal + 08:30-09:30 extra -> normal 30, extra 60, total 90
+      const r = computeCategorizedMinutes([
+        row('08:00', '09:00'),
+        row('08:30', '09:30', 'HORA EXTRA'),
+      ]);
+      expect(r.normal).toBe(30);
+      expect(r.extra).toBe(60);
+      expect(r.plantao).toBe(0);
+      expect(r.total).toBe(90);
+      expect(r.bruto).toBe(120);
+    });
+
+    it('PLANTAO ganha de EXTRA no trecho cruzado', () => {
+      // 20:00-22:00 extra + 21:00-23:00 plantão -> extra 60, plantão 120
+      const r = computeCategorizedMinutes([
+        row('20:00', '22:00', 'HORA EXTRA'),
+        row('21:00', '23:00', 'Plantão'),
+      ]);
+      expect(r.plantao).toBe(120);
+      expect(r.extra).toBe(60);
+      expect(r.total).toBe(180);
+    });
+
+    it('total é sempre igual à união de tudo (computeUnionWorkedMinutes ALL)', () => {
+      const rows = [
+        row('08:00', '12:00'),
+        row('11:00', '13:00'),
+        row('11:30', '19:30', 'HORA EXTRA'),
+        row('12:00', '23:59', 'Plantão'),
+      ];
+      expect(computeCategorizedMinutes(rows).total).toBe(
+        computeUnionWorkedMinutes(rows, 'ALL'),
+      );
+    });
+
+    it('plantão sobreposto no mesmo dia deduplica (não soma bruto)', () => {
+      // caso Marcos: 00:30-08:30 + 00:30-06:30 + 05:00-06:00 plantão = 8h, não 15h
+      const r = computeCategorizedMinutes([
+        row('00:30', '08:30', 'Plantão'),
+        row('00:30', '06:30', 'Plantão'),
+        row('05:00', '06:00', 'Plantão'),
+      ]);
+      expect(r.plantao).toBe(480);
+      expect(r.bruto).toBe(900);
     });
   });
 });
