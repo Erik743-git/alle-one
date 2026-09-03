@@ -29,6 +29,7 @@ import {
   computeCategorizedMinutes,
 } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
+import { resolvePayrollPeriodRangeForCalendarMonth } from '../rendimento/rendimento-payroll-period.helper';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
 import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 import {
@@ -3025,6 +3026,8 @@ export class ReportsService {
       companyIds?: string[];
       specialtyIds?: string[];
       onlyExcess?: boolean;
+      /** Só para Rendimento (type 1): 'folha' ajusta o período ao ciclo 26→25. */
+      periodMode?: 'civil' | 'folha';
     },
   ) {
     const companyId = payload.companyId?.trim();
@@ -3102,12 +3105,23 @@ export class ReportsService {
     }
 
     const generatedAt = new Date();
-    const range = isInventario
+    let range = isInventario
       ? { start: this.inventario.startOfDay(generatedAt), end: generatedAt }
       : normalizeRange(
           parseDateOrThrow(payload.start ?? '', 'Data inicial'),
           parseDateOrThrow(payload.end ?? '', 'Data final'),
         );
+
+    // Rendimento: por padrão o período é o ciclo de folha (26→25) do mês
+    // escolhido — bate com a tela de Rendimento. 'civil' usa as datas exatas.
+    const rendimentoPeriodMode: 'civil' | 'folha' =
+      payload.periodMode === 'civil' ? 'civil' : 'folha';
+    let rendimentoCycleLabel: string | null = null;
+    if (type === '1' && !isInventario && rendimentoPeriodMode === 'folha') {
+      const cycle = resolvePayrollPeriodRangeForCalendarMonth(range.start);
+      rendimentoCycleLabel = cycle.label;
+      range = normalizeRange(cycle.start, cycle.end);
+    }
 
     const reportId = randomUUID();
     const uploadsDir = join(process.cwd(), 'uploads', 'reports', reportId);
@@ -3275,6 +3289,14 @@ export class ReportsService {
         filters: {
           companyId,
           companyLabel,
+          ...(type === '1'
+            ? {
+                periodMode: rendimentoPeriodMode,
+                ...(rendimentoCycleLabel
+                  ? { periodLabel: rendimentoCycleLabel }
+                  : {}),
+              }
+            : {}),
           ...(rendimentoScope?.allCompanies ? { allCompanies: true } : {}),
           ...(multiCompanyScope?.allCompanies ? { allCompanies: true } : {}),
           ...(multiCompanyScope &&

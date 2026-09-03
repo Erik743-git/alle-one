@@ -96,6 +96,9 @@ export default function GeradorRelatoriosPage() {
     return d.toISOString().slice(0, 10);
   });
   const [end, setEnd] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // Rendimento: "folha" ajusta o período ao ciclo 26→25 do mês escolhido (bate
+  // com a tela de Rendimento); "civil" usa as datas exatas selecionadas.
+  const [periodMode, setPeriodMode] = useState<"folha" | "civil">("folha");
 
   const [lastReport, setLastReport] = useState<ReportRow | null>(null);
   const [reports, setReports] = useState<ReportRow[]>([]);
@@ -435,6 +438,7 @@ export default function GeradorRelatoriosPage() {
         type,
         format,
         ...(requiresPeriod ? { start, end } : {}),
+        ...(isRendimento && requiresPeriod ? { periodMode } : {}),
         ...(supportsCollaborator && collaboratorId ? { userId: collaboratorId } : {}),
         ...(isMultiCompany &&
         selectedCompanyIds.length > 1 &&
@@ -511,6 +515,24 @@ export default function GeradorRelatoriosPage() {
 
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-6">
+                {isRendimento ? (
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Período
+                    </label>
+                    <SearchableSelectField
+                      value={periodMode}
+                      onChange={(v) =>
+                        setPeriodMode(v === "civil" ? "civil" : "folha")
+                      }
+                      options={[
+                        { value: "folha", label: "Ciclo de folha (26→25)" },
+                        { value: "civil", label: "Mês civil (datas exatas)" },
+                      ]}
+                    />
+                  </div>
+                ) : null}
+
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">
                     Data inicial

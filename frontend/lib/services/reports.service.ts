@@ -93,6 +93,8 @@ export const reportsService = {
     companyIds?: string[];
     specialtyIds?: string[];
     onlyExcess?: boolean;
+    /** Rendimento (type 1): "folha" ajusta ao ciclo 26→25 do mês; "civil" usa as datas exatas. */
+    periodMode?: "civil" | "folha";
   }) {
     return apiRequest<ReportRow>("/reports/generate", {
       method: "POST",
