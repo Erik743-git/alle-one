@@ -141,8 +141,12 @@ export async function resolveClientListFilter(
 }
 
 /** Tickets em que o usuário é responsável, solicitante, criador ou seguidor (CC). */
+/**
+ * "Meus tickets" = sou solicitante, responsável ou seguidor.
+ * NÃO inclui "eu abri" (`createdBy`): tickets de rotina são criados pelo dono da
+ * regra de auto-abertura e não devem cair no "Meus tickets" dele.
+ */
 export function buildPortalMineOnlyOr(params: {
-  actorUserId: string;
   actorEmail: string;
   responsibleExternalId: number | null;
   /** Fallback quando o espelho portal/TiFlux diverge no ID do responsável. */
@@ -151,7 +155,6 @@ export function buildPortalMineOnlyOr(params: {
 }): Prisma.PortalTicketWhereInput[] {
   const email = normalizeEmail(params.actorEmail);
   const mineOr: Prisma.PortalTicketWhereInput[] = [
-    { createdBy: params.actorUserId },
     ...(email
       ? [
           {

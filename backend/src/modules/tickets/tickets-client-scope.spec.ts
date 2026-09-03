@@ -127,9 +127,8 @@ describe('tickets-client-scope', () => {
   });
 
   describe('buildPortalMineOnlyOr', () => {
-    it('inclui responsável, criador e solicitante', () => {
+    it('inclui responsável, solicitante e seguidor — mas NÃO criador', () => {
       const clauses = buildPortalMineOnlyOr({
-        actorUserId: 'user-1',
         actorEmail: 'Cliente@empresa.com',
         responsibleExternalId: 999,
         watcherTicketNumbers: [10, 20],
@@ -138,7 +137,6 @@ describe('tickets-client-scope', () => {
       expect(clauses).toEqual(
         expect.arrayContaining([
           { responsibleExternalId: 999 },
-          { createdBy: 'user-1' },
           {
             requestorEmail: {
               equals: 'cliente@empresa.com',
@@ -148,18 +146,17 @@ describe('tickets-client-scope', () => {
           { ticketNumber: { in: [10, 20] } },
         ]),
       );
+      expect(clauses).not.toContainEqual({ createdBy: expect.anything() });
     });
 
-    it('inclui criador e solicitante mesmo sem id de responsável', () => {
+    it('sem id de responsável: só solicitante (e seguidor/nome quando houver)', () => {
       const clauses = buildPortalMineOnlyOr({
-        actorUserId: 'user-1',
         actorEmail: 'a@b.com',
         responsibleExternalId: null,
         watcherTicketNumbers: [],
       });
 
       expect(clauses).toEqual([
-        { createdBy: 'user-1' },
         {
           requestorEmail: {
             equals: 'a@b.com',

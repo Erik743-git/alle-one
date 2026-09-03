@@ -310,8 +310,13 @@ export class TicketsService {
     actor: AuthenticatedRequestUser,
     dto: CreateTicketDto,
     files: Express.Multer.File[] = [],
+    options: { createdByOverride?: string } = {},
   ) {
     await assertTicketCreateClientScope(this.tenantScope, actor, dto.clientId);
+    // Quem "abriu" o ticket no registro (portal_tickets.created_by). Por padrão é
+    // o próprio ator; a auto-abertura passa um usuário de sistema para que
+    // tickets de rotina não caiam no "Meus tickets" do dono da regra.
+    const ticketCreatedBy = options.createdByOverride ?? actor.userId;
 
     if (isClientPortalRole(actor.role)) {
       const company = await this.prisma.company.findFirst({
@@ -530,7 +535,7 @@ export class TicketsService {
         classificationId: dto.classificationId?.trim() || null,
         createdAtSource: new Date(),
         updatedAtSource: new Date(),
-        createdBy: actor.userId,
+        createdBy: ticketCreatedBy,
       });
 
       const externalGmudRef = this.normalizeExternalGmudRef(
