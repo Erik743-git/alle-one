@@ -180,10 +180,11 @@ Nota: a coluna "Hora extra" da **aba detalhe** continua sendo a duração da pr�
 
 ## 11. Plano de implementação
 
-### Fase 1 — sem impacto em número (aprovada, em andamento)
-1. **#7** — dedup de alertas por `a.id` (texto) em vez de `abs(hashtext(a.id))::int`.
-2. **#5** — alinhar o predicado de usuário nas 3 queries do relatório: `COALESCE(NULLIF(TRIM(u.name),''),'Não mapeado')`, nenhuma dropa linha.
-3. **#2** — uma função canônica de minutos (`rendimento-worked-minutes.helper.ts`): HH:MM, sem segundos, valida hora 0–23 / min 0–59 (registro fora disso → 0), trata vira-meia-noite. Queries trazem `init_time`/`end_time` crus; cálculo no app. Remove `getAppointmentMinutes` e o `extract(epoch)::int` das queries.
+### Fase 1 — sem impacto em número
+1. ✅ **#5** (`1aa5504`) — 3 queries do relatório usam `COALESCE(NULLIF(TRIM(u.name),''),'Não mapeado')`; nenhuma dropa linha. FK obrigatória → 0 órfãos → 0 mudança de número.
+2. ✅ **#2** (`d9a84c4`) — função única `appointmentDurationMinutes` (= `hhmmDurationMinutes`): HH:MM sem segundos, valida 0–23/0–59 (fora → 0), cruza meia-noite. `parseClockToMinutes` valida faixa; `appointmentToInterval` e `computeRawAppointmentMinutes` derivam duração dos horários; `reports.getAppointmentMinutes` delega. **Verificado contra produção (4 ciclos): 0 mudança** de número. Falta trocar o `extract(epoch)::int` que sobra nas queries SQL — item #2b, adiado (os helpers JS já saneiam).
+3. ⏸️ **#7** — adiado. `appointment_id` numérico casa apontamento↔evento de aprovação e alimenta `analyzeRendimentoDay` (compartilhado tela+relatório). Trocar para texto exige mudar a assinatura dessa função. Impacto real quase nulo.
+4. ~~#4 relatório de `service_name` ambíguo~~ — descartado (TiFlux sai em 15/09).
 
 ### Fase 2 — muda tela/relatório (baixo impacto, precisa revisar casos)
 4. **#3** — `computeCategorizedMinutes(rows)` no helper, retornando `{ normal, extra, plantao, total, bruto }` com a prioridade PLANTAO>EXTRA>NORMAL. Tela e relatório passam a chamar. Plantão deixa de ser bruto na tela — **só daqui pra frente** (ciclos já pagos não são recalculados).
