@@ -2026,7 +2026,7 @@ export class ReportsService {
           }>
         >`
         select
-          u.name as user_name,
+          coalesce(nullif(trim(u.name), ''), 'Não mapeado') as user_name,
           a.ticket_number,
           coalesce(t.title, a.description, '') as title,
           coalesce(a.description, '') as description,
@@ -2041,13 +2041,11 @@ export class ReportsService {
         left join users u on u.id = a.created_by
         where t.client_external_id = any(${tifluxClientIds}::int[])
           and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
-          and u.name is not null
-          and trim(u.name) <> ''
           and (
             ${collaboratorFilter.portalUserId}::text is null
             or a.created_by = ${collaboratorFilter.portalUserId}::text
           )
-        order by a.appointment_date asc, u.name asc, a.ticket_number asc, a.id asc
+        order by a.appointment_date asc, user_name asc, a.ticket_number asc, a.id asc
       `) ?? [])
       : ((await this.prisma.$queryRaw<
           Array<{
@@ -2175,7 +2173,7 @@ export class ReportsService {
         >`
         select
           a.appointment_date::date::text as day,
-          u.name as user_name,
+          coalesce(nullif(trim(u.name), ''), 'Não mapeado') as user_name,
           t.client_external_id,
           sum(
             case
@@ -2193,8 +2191,8 @@ export class ReportsService {
             ${collaboratorFilter.portalUserId}::text is null
             or a.created_by = ${collaboratorFilter.portalUserId}::text
           )
-        group by a.appointment_date::date, u.name, t.client_external_id
-        order by a.appointment_date::date asc, u.name asc
+        group by a.appointment_date::date, coalesce(nullif(trim(u.name), ''), 'Não mapeado'), t.client_external_id
+        order by a.appointment_date::date asc, user_name asc
       `) ?? [])
       : ((await this.prisma.$queryRaw<
           Array<{
@@ -2239,7 +2237,7 @@ export class ReportsService {
     if (dbRows.length) {
       return dbRows.map((r) => ({
         day: r.day,
-        user: r.user_name ?? 'SEM_USUARIO',
+        user: r.user_name ?? 'Não mapeado',
         minutes: Number(r.minutes) || 0,
         company:
           companyNameByTifluxId.get(Number(r.client_external_id)) ?? 'Empresa',
@@ -2459,7 +2457,7 @@ export class ReportsService {
         >`
         select
           coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
-          u.name as user_name,
+          coalesce(nullif(trim(u.name), ''), 'Não mapeado') as user_name,
           a.appointment_date::date::text as appointment_date,
           a.init_time as init_time,
           a.end_time as end_time,
@@ -2478,8 +2476,6 @@ export class ReportsService {
         left join users u on u.id = a.created_by
         where t.client_external_id = any(${tifluxClientIds}::int[])
           and a.appointment_date between ${startDateOnly}::date and ${endDateOnly}::date
-          and u.name is not null
-          and trim(u.name) <> ''
           and (
             ${collaboratorFilter.portalUserId}::text is null
             or a.created_by = ${collaboratorFilter.portalUserId}::text
