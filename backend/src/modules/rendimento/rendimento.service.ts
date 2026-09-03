@@ -31,10 +31,7 @@ import {
   type RendimentoDayEventStatus,
   type UpsertDayEventInput,
 } from './rendimento-day-events.helper';
-import {
-  computeRawAppointmentMinutes,
-  computeUnionWorkedMinutes,
-} from './rendimento-worked-minutes.helper';
+import { computeCategorizedMinutes } from './rendimento-worked-minutes.helper';
 import {
   resolvePayrollPeriodRange,
   resolvePayrollPeriodRangeForTimesheet,
@@ -2459,7 +2456,7 @@ export class RendimentoService {
       start,
       end,
     });
-    return computeUnionWorkedMinutes(rows, 'EXTRA');
+    return computeCategorizedMinutes(rows).extra;
   }
 
   private currentMonthRange(): { start: Date; end: Date } {
@@ -2539,11 +2536,9 @@ export class RendimentoService {
     return users.map((user) => {
       const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
       const monthRows = rowsByUserId.get(user.id) ?? [];
-      const monthTotalMinutes = computeUnionWorkedMinutes(monthRows, 'ALL');
-      const monthOvertimeMinutes = computeUnionWorkedMinutes(
-        monthRows,
-        'EXTRA',
-      );
+      const monthCat = computeCategorizedMinutes(monthRows);
+      const monthTotalMinutes = monthCat.total;
+      const monthOvertimeMinutes = monthCat.extra;
 
       return {
         id: user.id,
@@ -2948,18 +2943,16 @@ export class RendimentoService {
         return day >= calStart && day <= calEnd;
       });
     }
-    const totalMinutes = computeUnionWorkedMinutes(scopedRows, 'ALL');
-    const totalRawMinutes = computeRawAppointmentMinutes(scopedRows, 'ALL');
-    const totalRegularMinutes = computeUnionWorkedMinutes(scopedRows, 'NORMAL');
+    // Totais do mês civil (Regra 3: prioridade PLANTAO > EXTRA > NORMAL).
+    const monthCat = computeCategorizedMinutes(scopedRows);
+    const totalMinutes = monthCat.total;
+    const totalRawMinutes = monthCat.bruto;
+    const totalRegularMinutes = monthCat.normal;
 
-    const periodOvertimeMinutes = computeUnionWorkedMinutes(
-      payrollRows,
-      'EXTRA',
-    );
-    const periodPlantaoMinutes = computeRawAppointmentMinutes(
-      payrollRows,
-      'PLANTAO',
-    );
+    // HE e plantão do ciclo de folha (26→25), mesma repartição por categoria.
+    const payrollCat = computeCategorizedMinutes(payrollRows);
+    const periodOvertimeMinutes = payrollCat.extra;
+    const periodPlantaoMinutes = payrollCat.plantao;
     const overtimeBalanceMinutes = await this.refreshOvertimeBalance(
       user.id,
       periodOvertimeMinutes,

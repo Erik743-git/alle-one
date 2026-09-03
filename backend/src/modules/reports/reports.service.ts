@@ -26,8 +26,7 @@ import {
 } from '../rendimento/rendimento-day-insights';
 import {
   appointmentDurationMinutes,
-  computeRawAppointmentMinutes,
-  computeUnionWorkedMinutes,
+  computeCategorizedMinutes,
 } from '../rendimento/rendimento-worked-minutes.helper';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { buildTipo4ReportCsv } from './reports-tipo4-csv';
@@ -2530,12 +2529,13 @@ export class ReportsService {
           minutes: Number(r.minutes) || 0,
           valorization_raw: r.valorization_raw,
         }));
+        const cat = computeCategorizedMinutes(mapped);
         return {
           attendant: name,
-          nonOverlapMinutes: computeUnionWorkedMinutes(mapped, 'ALL'),
-          rawMinutes: computeRawAppointmentMinutes(mapped, 'ALL'),
-          extraMinutes: computeUnionWorkedMinutes(mapped, 'EXTRA'),
-          plantaoMinutes: computeUnionWorkedMinutes(mapped, 'PLANTAO'),
+          nonOverlapMinutes: cat.total,
+          rawMinutes: cat.bruto,
+          extraMinutes: cat.extra,
+          plantaoMinutes: cat.plantao,
           alerts: this.countRendimentoAlertsInPeriod(group),
         };
       });
