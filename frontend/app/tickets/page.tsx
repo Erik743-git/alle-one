@@ -821,6 +821,17 @@ export default function TicketsPage() {
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
+                          Solicitante
+                        </Label>
+                        <Input
+                          value={requestorName}
+                          onChange={(e) => setRequestorName(e.target.value)}
+                          placeholder="Nome ou e-mail do solicitante"
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-muted-foreground">
                           Estágio
                         </Label>
                         <SearchableSelectField
