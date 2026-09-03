@@ -1,4 +1,5 @@
 import { overtimeKindFromValorization } from './rendimento-day-insights';
+import { hhmmDurationMinutes } from '../tickets/portal-appointment.helper';
 
 export type WorkInterval = { start: number; end: number };
 
@@ -12,6 +13,11 @@ export type AppointmentMinutesInput = {
 
 export type WorkedMinutesFilter = 'ALL' | 'EXTRA' | 'PLANTAO' | 'NORMAL';
 
+/**
+ * Converte HH:MM (ou HH:MM:SS) em minutos desde 00:00.
+ * Segundos são ignorados (contrato: cálculo só em hora e minuto).
+ * Valores fora de 00:00–23:59 → null (registro quebrado não vira minuto).
+ */
 export function parseClockToMinutes(
   value: string | null | undefined,
 ): number | null {
@@ -19,9 +25,17 @@ export function parseClockToMinutes(
   const parts = value.trim().split(':');
   const h = Number(parts[0]);
   const m = Number(parts[1] ?? 0);
-  if (Number.isNaN(h) || Number.isNaN(m)) return null;
-  return Math.max(0, Math.trunc(h) * 60 + Math.trunc(m));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
 }
+
+/**
+ * Duração canônica de um apontamento, em minutos.
+ * Única fonte de verdade (delega para `hhmmDurationMinutes`): HH:MM sem segundos,
+ * aceita cruzar a meia-noite, qualquer entrada inválida → 0.
+ */
+export const appointmentDurationMinutes = hhmmDurationMinutes;
 
 export function appointmentToInterval(
   initTime: string | null,
@@ -31,13 +45,14 @@ export function appointmentToInterval(
   const start = parseClockToMinutes(initTime);
   if (start == null) return null;
 
-  let end = parseClockToMinutes(endTime);
-  const duration = Math.max(0, Math.trunc(Number(minutes) || 0));
-  if (end == null || end <= start) {
-    end = start + (duration > 0 ? duration : 1);
+  const duration = appointmentDurationMinutes(initTime, endTime);
+  if (duration > 0) {
+    return { start, end: start + duration };
   }
 
-  return { start, end };
+  // Sem fim utilizável: usa o campo `minutes` como último recurso, saneado.
+  const fallback = Math.max(0, Math.trunc(Number(minutes) || 0));
+  return { start, end: start + (fallback > 0 ? fallback : 1) };
 }
 
 export function mergeIntervals(intervals: WorkInterval[]): WorkInterval[] {
@@ -117,7 +132,11 @@ export function computeRawAppointmentMinutes(
   for (const row of rows) {
     const kind = overtimeKindFromValorization(row.valorization_raw);
     if (!matchesFilter(kind, filter)) continue;
-    total += Math.max(0, Math.trunc(Number(row.minutes) || 0));
+    const fromTimes = appointmentDurationMinutes(row.init_time, row.end_time);
+    total +=
+      fromTimes > 0
+        ? fromTimes
+        : Math.max(0, Math.trunc(Number(row.minutes) || 0));
   }
   return total;
 }

@@ -25,6 +25,7 @@ import {
   overtimeKindFromValorization,
 } from '../rendimento/rendimento-day-insights';
 import {
+  appointmentDurationMinutes,
   computeRawAppointmentMinutes,
   computeUnionWorkedMinutes,
 } from '../rendimento/rendimento-worked-minutes.helper';
@@ -1837,43 +1838,14 @@ export class ReportsService {
   }
 
   private getAppointmentMinutes(appointment: {
-    init_time?: string;
-    end_time?: string;
+    init_time?: string | null;
+    end_time?: string | null;
   }) {
-    if (!appointment.init_time || !appointment.end_time) {
-      return 0;
-    }
-
-    const parseTime = (value: string) => {
-      const parts = value.split(':').map((item) => Number(item));
-      const [h, m, s] = [parts[0], parts[1], parts[2] ?? 0];
-      return { h, m, s };
-    };
-
-    const start = parseTime(appointment.init_time);
-    const end = parseTime(appointment.end_time);
-
-    if (
-      [start.h, start.m, start.s, end.h, end.m, end.s].some((v) =>
-        Number.isNaN(v),
-      )
-    ) {
-      return 0;
-    }
-
-    const startTotalSeconds = start.h * 3600 + start.m * 60 + start.s;
-    const endTotalSeconds = end.h * 3600 + end.m * 60 + end.s;
-    let diffSeconds = endTotalSeconds - startTotalSeconds;
-
-    if (diffSeconds < 0) {
-      diffSeconds += 24 * 3600;
-    }
-
-    if (diffSeconds <= 0) {
-      return 0;
-    }
-
-    return Math.floor(diffSeconds / 60);
+    // Fonte única de cálculo de duração (HH:MM, sem segundos, cruza meia-noite).
+    return appointmentDurationMinutes(
+      appointment.init_time,
+      appointment.end_time,
+    );
   }
 
   private formatMinutesHHMM(totalMinutes: number): string {
