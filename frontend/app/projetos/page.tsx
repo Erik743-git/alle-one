@@ -1,5 +1,7 @@
 "use client";
 
+import { ProjectsPortalBoundary } from "@/components/projetos/projects-portal-boundary";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -25,7 +27,7 @@ import {
   type ProjectCompany,
 } from "@/lib/services/projetos.service";
 
-export default function ProjetosPage() {
+function ProjetosPage() {
   const router = useRouter();
   const clientUser = isClient();
   const [loading, setLoading] = useState(true);
@@ -153,4 +155,8 @@ export default function ProjetosPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export default function Page() {
+  return <ProjectsPortalBoundary><ProjetosPage /></ProjectsPortalBoundary>;
 }

@@ -196,6 +196,7 @@ type AttachmentItem = {
 };
 
 export type AppointmentBlockComposerHandle = {
+  isReady: () => boolean;
   exportContent: () => {
     description: string;
     files: File[];
@@ -205,6 +206,7 @@ export type AppointmentBlockComposerHandle = {
 };
 
 type Props = {
+  hideAttachments?: boolean;
   disabled?: boolean;
   labelClassName?: string;
   placeholder?: string;
@@ -353,6 +355,7 @@ export const AppointmentDescriptionComposer = forwardRef<
   Props
 >(function AppointmentDescriptionComposer(
   {
+    hideAttachments = false,
     disabled = false,
     labelClassName,
     placeholder = "Descreva o que foi feito neste trecho…",
@@ -1058,6 +1061,7 @@ export const AppointmentDescriptionComposer = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
+      isReady: () => !!editorRef.current && !hydratingRef.current,
       exportContent: () => {
         const editor = editorRef.current;
         const storedBlocks: StoredBlock[] = [];
@@ -1611,7 +1615,7 @@ export const AppointmentDescriptionComposer = forwardRef<
       </div>
 
       <div
-        className="space-y-2 rounded-xl border bg-muted/10 p-3"
+        className={cn("space-y-2 rounded-xl border bg-muted/10 p-3", hideAttachments && "hidden")}
         onDragOver={(event) => {
           event.preventDefault();
         }}

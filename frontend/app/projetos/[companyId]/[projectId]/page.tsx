@@ -1,5 +1,7 @@
 "use client";
 
+import { ProjectsPortalBoundary } from "@/components/projetos/projects-portal-boundary";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -70,7 +72,7 @@ function formatRangeDate(value: string | null): string {
   return Number.isNaN(d.getTime()) ? "—" : format(d, "dd/MM/yyyy", { locale: ptBR });
 }
 
-export default function ProjectDetailPage() {
+function ProjectDetailPage() {
   const params = useParams<{ companyId: string; projectId: string }>();
   const companyId = params.companyId;
   const projectId = params.projectId;
@@ -502,4 +504,8 @@ export default function ProjectDetailPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export default function Page() {
+  return <ProjectsPortalBoundary><ProjectDetailPage /></ProjectsPortalBoundary>;
 }
