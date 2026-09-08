@@ -1,5 +1,7 @@
 "use client";
 
+import { ProjectsPortalBoundary } from "@/components/projetos/projects-portal-boundary";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -40,7 +42,7 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-export default function ProjetosCompanyPage() {
+function ProjetosCompanyPage() {
   const params = useParams<{ companyId: string }>();
   const router = useRouter();
   const companyId = params.companyId;
@@ -190,4 +192,8 @@ export default function ProjetosCompanyPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export default function Page() {
+  return <ProjectsPortalBoundary><ProjetosCompanyPage /></ProjectsPortalBoundary>;
 }

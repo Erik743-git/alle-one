@@ -236,7 +236,6 @@ export function canDeleteInventario() {
 
 export function canAccessProjetos() {
   if (isPj()) return canViewModule("PROJECTS");
-  if (isClientMember()) return false;
   if (isClient()) {
     return canViewModule("PROJECTS");
   }
