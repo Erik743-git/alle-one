@@ -56,6 +56,7 @@ import {
 import { ticketListPresetsService } from "@/lib/services/ticket-list-presets.service";
 import {
   TICKET_LIST_COLUMNS,
+  TICKET_LIST_GROUP_BY_LABELS,
   applyPresetConfigToPageState,
   type TicketColumnKey,
   type TicketListGroupBy,
@@ -159,7 +160,9 @@ export default function TicketsPage() {
   const [columnFilters, setColumnFilters] = useState(emptyColumnFilters);
   const [sortKey, setSortKey] = useState<TicketColumnKey | null>(null);
   const [sortDir, setSortDir] = useState<ExcelSortDir | null>(null);
-  const [groupBy, setGroupBy] = useState<TicketListGroupBy>("none");
+  // Agrupado por estágio por padrão: é o que deixa o acordeon (recolher por
+  // grupo) visível sem precisar aplicar um preset primeiro.
+  const [groupBy, setGroupBy] = useState<TicketListGroupBy>("stage");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(),
   );
@@ -314,7 +317,7 @@ export default function TicketsPage() {
     setRequestorName("");
     setTicketNumber("");
     setExternalGmudRef("");
-    setGroupBy("none");
+    setGroupBy("stage");
     setColumnFilters(emptyColumnFilters());
     setSortKey(null);
     setSortDir(null);
@@ -727,6 +730,21 @@ export default function TicketsPage() {
                       setPresetDialogOpen(true);
                     }}
                   />
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Agrupar por
+                    </Label>
+                    <SearchableSelectField
+                      value={groupBy}
+                      onChange={(v) => setGroupBy(v as TicketListGroupBy)}
+                      options={Object.entries(TICKET_LIST_GROUP_BY_LABELS).map(
+                        ([value, label]) => ({ value, label }),
+                      )}
+                      preserveOrder
+                      emptyLabel="Nenhum"
+                      className="h-8 w-[150px]"
+                    />
+                  </div>
                   {activeTableFiltersCount > 0 || sortKey ? (
                     <Button
                       type="button"
@@ -1029,23 +1047,31 @@ export default function TicketsPage() {
                               return (
                               <Fragment key={section.key}>
                                 {section.label ? (
-                                  <tr className="bg-muted/20">
+                                  <tr className="bg-muted/30">
                                     <td
                                       colSpan={activeColumns.length}
-                                      className="sticky top-10 z-20 cursor-pointer select-none border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/30"
+                                      className="sticky top-10 z-20 cursor-pointer select-none border-b-2 border-l-4 border-b-border/60 border-l-primary/60 bg-muted/30 px-3 py-2.5 text-sm font-semibold text-foreground hover:bg-muted/50"
                                       onClick={() =>
                                         toggleGroupCollapsed(section.key)
                                       }
+                                      title="Clique para recolher ou expandir este grupo"
                                     >
-                                      <span className="inline-flex items-center gap-1.5">
-                                        {isCollapsed ? (
-                                          <ChevronRight className="size-3.5" />
-                                        ) : (
-                                          <ChevronDown className="size-3.5" />
-                                        )}
-                                        {section.label}{" "}
-                                        <span className="font-normal">
+                                      <span className="inline-flex items-center gap-2">
+                                        <span className="inline-flex size-5 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground">
+                                          {isCollapsed ? (
+                                            <ChevronRight className="size-3.5" />
+                                          ) : (
+                                            <ChevronDown className="size-3.5" />
+                                          )}
+                                        </span>
+                                        <span className="uppercase tracking-wide">
+                                          {section.label}
+                                        </span>
+                                        <span className="font-normal text-muted-foreground">
                                           ({section.tickets.length})
+                                        </span>
+                                        <span className="hidden font-normal normal-case text-muted-foreground/70 sm:inline">
+                                          · clique para {isCollapsed ? "expandir" : "recolher"}
                                         </span>
                                       </span>
                                     </td>
