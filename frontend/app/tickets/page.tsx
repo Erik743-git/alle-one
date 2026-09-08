@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Filter, RefreshCw, Search, Ticket } from "lucide-react";
+import { ChevronDown, ChevronRight, Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -160,6 +160,9 @@ export default function TicketsPage() {
   const [sortKey, setSortKey] = useState<TicketColumnKey | null>(null);
   const [sortDir, setSortDir] = useState<ExcelSortDir | null>(null);
   const [groupBy, setGroupBy] = useState<TicketListGroupBy>("none");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [visibleColumns, setVisibleColumns] = useState<TicketColumnKey[]>(
     TICKET_COLUMNS.map((col) => col.key),
   );
@@ -595,6 +598,21 @@ export default function TicketsPage() {
     }
   }
 
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function setAllGroupsCollapsed(collapsed: boolean) {
+    setCollapsedGroups(
+      collapsed ? new Set(displaySections.map((s) => s.key)) : new Set(),
+    );
+  }
+
   function handleSort(columnKey: string) {
     const key = columnKey as TicketColumnKey;
     if (sortKey !== key) {
@@ -940,6 +958,25 @@ export default function TicketsPage() {
                       ))}
                     </span>
                   ) : null}
+                  {groupBy !== "none" && displaySections.length > 1 ? (
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline"
+                        onClick={() => setAllGroupsCollapsed(true)}
+                      >
+                        Recolher tudo
+                      </button>
+                      <span className="text-border">·</span>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline"
+                        onClick={() => setAllGroupsCollapsed(false)}
+                      >
+                        Expandir tudo
+                      </button>
+                    </span>
+                  ) : null}
                 </div>
 
                 <Card className="gap-0 overflow-hidden py-0">
@@ -985,22 +1022,38 @@ export default function TicketsPage() {
                               </td>
                             </tr>
                           ) : (
-                            displaySections.map((section) => (
+                            displaySections.map((section) => {
+                              const isCollapsed = collapsedGroups.has(
+                                section.key,
+                              );
+                              return (
                               <Fragment key={section.key}>
                                 {section.label ? (
                                   <tr className="bg-muted/20">
                                     <td
                                       colSpan={activeColumns.length}
-                                      className="sticky top-10 z-20 border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                                      className="sticky top-10 z-20 cursor-pointer select-none border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/30"
+                                      onClick={() =>
+                                        toggleGroupCollapsed(section.key)
+                                      }
                                     >
-                                      {section.label}{" "}
-                                      <span className="font-normal">
-                                        ({section.tickets.length})
+                                      <span className="inline-flex items-center gap-1.5">
+                                        {isCollapsed ? (
+                                          <ChevronRight className="size-3.5" />
+                                        ) : (
+                                          <ChevronDown className="size-3.5" />
+                                        )}
+                                        {section.label}{" "}
+                                        <span className="font-normal">
+                                          ({section.tickets.length})
+                                        </span>
                                       </span>
                                     </td>
                                   </tr>
                                 ) : null}
-                                {section.tickets.map((ticket, index) => (
+                                {isCollapsed
+                                  ? null
+                                  : section.tickets.map((ticket, index) => (
                                   <tr
                                     key={ticket.ticketNumber}
                                     className={cn(
@@ -1021,7 +1074,8 @@ export default function TicketsPage() {
                                   </tr>
                                 ))}
                               </Fragment>
-                            ))
+                              );
+                            })
                           )}
                         </tbody>
                       </table>
