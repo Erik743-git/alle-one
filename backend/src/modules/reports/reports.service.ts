@@ -2406,6 +2406,12 @@ export class ReportsService {
       extraMinutes: number;
       plantaoMinutes: number;
       alerts: number;
+      /** Da esteira de aprovação (rendimento_day_events), não do apontamento. */
+      extraApprovedMinutes: number;
+      extraNotApprovedMinutes: number;
+      plantaoApprovedMinutes: number;
+      plantaoNotApprovedMinutes: number;
+      justifications: number;
     }>
   > {
     const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
@@ -2420,6 +2426,7 @@ export class ReportsService {
           Array<{
             appointment_id: number;
             user_name: string | null;
+            user_id: string | null;
             appointment_date: string;
             init_time: string | null;
             end_time: string | null;
@@ -2430,6 +2437,7 @@ export class ReportsService {
         select
           coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
           coalesce(nullif(trim(u.name), ''), 'Não mapeado') as user_name,
+          a.created_by as user_id,
           a.appointment_date::date::text as appointment_date,
           a.init_time as init_time,
           a.end_time as end_time,
@@ -2457,6 +2465,7 @@ export class ReportsService {
           Array<{
             appointment_id: number;
             user_name: string | null;
+            user_id: string | null;
             appointment_date: string;
             init_time: string | null;
             end_time: string | null;
@@ -2467,6 +2476,7 @@ export class ReportsService {
         select
           a.external_id as appointment_id,
           a.user_name,
+          null::text as user_id,
           a.appointment_date::date::text as appointment_date,
           a.init_time::text as init_time,
           a.end_time::text as end_time,
@@ -2512,12 +2522,22 @@ export class ReportsService {
         valorization_raw: unknown | null;
       }>
     >();
+    const userIdByAttendant = new Map<string, string>();
     for (const row of rawRows) {
       const name = String(row.user_name || '').trim();
       if (!name) continue;
       if (!byAttendant.has(name)) byAttendant.set(name, []);
       byAttendant.get(name)!.push(row);
+      if (row.user_id && !userIdByAttendant.has(name)) {
+        userIdByAttendant.set(name, row.user_id);
+      }
     }
+
+    const approvals = await this.getRendimentoApprovalTotals({
+      userIds: [...userIdByAttendant.values()],
+      startDateOnly,
+      endDateOnly,
+    });
 
     return [...byAttendant.keys()]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'))
@@ -2531,6 +2551,14 @@ export class ReportsService {
           valorization_raw: r.valorization_raw,
         }));
         const cat = computeCategorizedMinutes(mapped);
+        const userId = userIdByAttendant.get(name);
+        const appr = (userId ? approvals.get(userId) : null) ?? {
+          extraApproved: 0,
+          extraNotApproved: 0,
+          plantaoApproved: 0,
+          plantaoNotApproved: 0,
+          justifications: 0,
+        };
         return {
           attendant: name,
           nonOverlapMinutes: cat.total,
@@ -2538,8 +2566,117 @@ export class ReportsService {
           extraMinutes: cat.extra,
           plantaoMinutes: cat.plantao,
           alerts: this.countRendimentoAlertsInPeriod(group),
+          extraApprovedMinutes: appr.extraApproved,
+          extraNotApprovedMinutes: appr.extraNotApproved,
+          plantaoApprovedMinutes: appr.plantaoApproved,
+          plantaoNotApprovedMinutes: appr.plantaoNotApproved,
+          justifications: appr.justifications,
         };
       });
+  }
+
+  /**
+   * Totais da esteira de aprovação no período, por usuário do portal.
+   *
+   * Fonte: `rendimento_day_events` (HE/plantão nascem como PENDING e o admin
+   * aprova/nega) e `rendimento_gap_justifications`. "Não aprovado" agrupa
+   * PENDING + REJECTED + ACTIVE — ou seja, tudo que ainda não foi aprovado.
+   *
+   * Observação: estes minutos vêm do apontamento individual (sem deduplicar
+   * sobreposição), então não somam exatamente as colunas "Hora extra"/"Plantão",
+   * que são a união deduplicada por prioridade PLANTÃO > EXTRA > NORMAL.
+   */
+  private async getRendimentoApprovalTotals(params: {
+    userIds: string[];
+    startDateOnly: string;
+    endDateOnly: string;
+  }): Promise<
+    Map<
+      string,
+      {
+        extraApproved: number;
+        extraNotApproved: number;
+        plantaoApproved: number;
+        plantaoNotApproved: number;
+        justifications: number;
+      }
+    >
+  > {
+    const result = new Map<
+      string,
+      {
+        extraApproved: number;
+        extraNotApproved: number;
+        plantaoApproved: number;
+        plantaoNotApproved: number;
+        justifications: number;
+      }
+    >();
+    const userIds = [...new Set(params.userIds.filter(Boolean))];
+    if (userIds.length === 0) return result;
+
+    const ensure = (userId: string) => {
+      if (!result.has(userId)) {
+        result.set(userId, {
+          extraApproved: 0,
+          extraNotApproved: 0,
+          plantaoApproved: 0,
+          plantaoNotApproved: 0,
+          justifications: 0,
+        });
+      }
+      return result.get(userId)!;
+    };
+
+    const eventRows = await this.prisma.$queryRaw<
+      Array<{
+        user_id: string;
+        event_type: string;
+        approved: boolean;
+        total: number | bigint | null;
+      }>
+    >`
+      select
+        e.user_id,
+        e.event_type,
+        (e.status = 'APPROVED') as approved,
+        coalesce(sum(e.minutes), 0)::int as total
+      from rendimento_day_events e
+      where e.user_id = any(${userIds}::text[])
+        and e.deleted_at is null
+        and e.event_type in ('OVERTIME', 'PLANTAO')
+        and e.date_ref between ${params.startDateOnly}::date and ${params.endDateOnly}::date
+      group by e.user_id, e.event_type, (e.status = 'APPROVED')
+    `;
+
+    for (const row of eventRows) {
+      const bucket = ensure(row.user_id);
+      const minutes = Number(row.total) || 0;
+      if (row.event_type === 'PLANTAO') {
+        if (row.approved) bucket.plantaoApproved += minutes;
+        else bucket.plantaoNotApproved += minutes;
+      } else {
+        if (row.approved) bucket.extraApproved += minutes;
+        else bucket.extraNotApproved += minutes;
+      }
+    }
+
+    const justificationRows = await this.prisma.$queryRaw<
+      Array<{ user_id: string; total: number | bigint | null }>
+    >`
+      select j.user_id, count(*)::int as total
+      from rendimento_gap_justifications j
+      where j.user_id = any(${userIds}::text[])
+        and j.deleted_at is null
+        and j.date_ref between ${params.startDateOnly}::date and ${params.endDateOnly}::date
+      group by j.user_id
+    `;
+
+    for (const row of justificationRows) {
+      ensure(row.user_id).justifications = Number(row.total) || 0;
+    }
+
+    return result;
   }
 
   private countRendimentoAlertsInPeriod(
@@ -2650,6 +2787,11 @@ export class ReportsService {
       'hora_extra',
       'plantao',
       'alertas',
+      'he_aprovada',
+      'he_nao_aprovada',
+      'plantao_aprovado',
+      'plantao_nao_aprovado',
+      'justificativas',
     ].join(',');
     const summaryLines = summaries.map((s) =>
       [
@@ -2659,6 +2801,11 @@ export class ReportsService {
         this.formatMinutesHHMM(s.extraMinutes),
         this.formatMinutesHHMM(s.plantaoMinutes),
         String(s.alerts),
+        this.formatMinutesHHMM(s.extraApprovedMinutes),
+        this.formatMinutesHHMM(s.extraNotApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoNotApprovedMinutes),
+        String(s.justifications),
       ].join(','),
     );
 
@@ -2862,6 +3009,11 @@ export class ReportsService {
     summarySheet.getColumn(4).width = 14;
     summarySheet.getColumn(5).width = 12;
     summarySheet.getColumn(6).width = 10;
+    summarySheet.getColumn(7).width = 20;
+    summarySheet.getColumn(8).width = 22;
+    summarySheet.getColumn(9).width = 20;
+    summarySheet.getColumn(10).width = 22;
+    summarySheet.getColumn(11).width = 16;
 
     const summaryHeaderRow = summarySheet.getRow(1);
     summaryHeaderRow.values = [
@@ -2871,6 +3023,11 @@ export class ReportsService {
       'Hora extra',
       'Plantão',
       'Alertas',
+      'HE aprovada',
+      'HE não aprovada',
+      'Plantão aprovado',
+      'Plantão não aprovado',
+      'Justificativas',
     ];
     summaryHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     summaryHeaderRow.fill = {
@@ -2891,6 +3048,11 @@ export class ReportsService {
         this.formatMinutesHHMM(s.extraMinutes),
         this.formatMinutesHHMM(s.plantaoMinutes),
         s.alerts,
+        this.formatMinutesHHMM(s.extraApprovedMinutes),
+        this.formatMinutesHHMM(s.extraNotApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoNotApprovedMinutes),
+        s.justifications,
       ];
       summaryRowIndex += 1;
     }
@@ -2899,9 +3061,17 @@ export class ReportsService {
     if (summaryLastRow >= 1) {
       summarySheet.autoFilter = {
         from: { row: 1, column: 1 },
-        to: { row: summaryLastRow, column: 6 },
+        to: { row: summaryLastRow, column: 11 },
       };
     }
+
+    // As colunas de aprovacao vem da esteira (day events), por apontamento e sem
+    // deduplicar sobreposicao — por isso nao somam exatamente "Hora extra"/"Plantao".
+    const noteRow = summarySheet.getRow(summaryRowIndex + 1);
+    noteRow.getCell(1).value =
+      'Aprovada/Não aprovada: origem na esteira de aprovação (por apontamento, sem descontar sobreposição). "Não aprovada" inclui pendentes e negadas.';
+    noteRow.getCell(1).font = { italic: true, size: 9 };
+    summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 11);
 
     return workbook.xlsx.writeBuffer();
   }
