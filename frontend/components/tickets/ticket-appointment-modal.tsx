@@ -722,7 +722,7 @@ export function TicketAppointmentModal({
             ) : null}
           </div>
 
-          <SheetFooter className="shrink-0 flex-col gap-3 border-t border-border px-6 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <SheetFooter className="shrink-0 flex-col gap-3 border-t border-border px-6 sm:flex-row sm:items-center sm:justify-between">
             {user && !isCommunication ? (
               <div className="flex min-w-0 w-full items-center gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2.5 sm:max-w-sm sm:w-auto">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

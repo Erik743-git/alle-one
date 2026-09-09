@@ -216,7 +216,7 @@ export function ApontamentosCollaboratorListSettingsSheet({
           )}
         </div>
 
-        <div className="border-t border-border px-6 pt-4 pb-6">
+        <div className="border-t border-border px-6 py-4">
           <Button
             type="button"
             variant="outline"

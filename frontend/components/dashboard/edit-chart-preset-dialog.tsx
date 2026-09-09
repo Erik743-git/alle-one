@@ -274,7 +274,10 @@ export function EditChartPresetDialog({
           </div>
         </div>
 
-        <DialogFooter className="!mx-0 !mb-0 shrink-0 gap-2 border-t border-border bg-card px-5 pt-4 pb-6 sm:flex-row sm:justify-end sm:px-6 sm:pb-6">
+        <DialogFooter
+          bleed={false}
+          className="shrink-0 gap-2 border-t border-border bg-card px-5 sm:flex-row sm:justify-end sm:px-6"
+        >
           <Button
             type="button"
             variant="ghost"

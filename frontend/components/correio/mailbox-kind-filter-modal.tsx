@@ -128,7 +128,10 @@ export function MailboxKindFilterModal({
           })}
         </ul>
 
-        <DialogFooter className="-mx-6 gap-3 sm:gap-4">
+        <DialogFooter
+          bleed={false}
+          className="-mx-6 -mb-6 gap-3 px-6 sm:gap-4"
+        >
           <Button
             type="button"
             variant="outline"

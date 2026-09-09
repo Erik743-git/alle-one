@@ -312,7 +312,10 @@ export default function ModalNovaEmpresa({ open, onOpenChange }: Props) {
           )}
         </div>
 
-        <DialogFooter className="!mx-0 !mb-0 shrink-0 gap-0 border-t border-border bg-card px-5 pt-4 pb-6 sm:px-6 sm:pb-6">
+        <DialogFooter
+          bleed={false}
+          className="shrink-0 gap-0 border-t border-border bg-card px-5 sm:px-6"
+        >
           <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button
               type="button"

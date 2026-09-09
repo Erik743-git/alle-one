@@ -444,7 +444,10 @@ export function TicketListPresetDialog({
           </div>
         </div>
 
-        <DialogFooter className="mx-0 shrink-0 gap-2 rounded-none border-t px-6 py-4">
+        <DialogFooter
+          bleed={false}
+          className="shrink-0 gap-2 rounded-none border-t px-6"
+        >
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
