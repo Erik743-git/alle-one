@@ -65,7 +65,7 @@ git remote add origin <URL_DO_SEU_REPOSITORIO>
 git push -u origin main
 ```
 
-4. O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) roda **build** do backend (com `prisma generate`) e do frontend em push/PR para `main` ou `master`. O lint no CI fica comentado até o projeto passar `npm run lint` localmente nos dois apps.
+4. O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) roda em push/PR para `main` ou `master`: no backend, `prisma generate` + `prisma migrate deploy`, **lint** (`npm run lint:ci`), testes e **build**; no frontend, **lint**, testes e **build**; além de um **smoke E2E** (Playwright: login + rotas protegidas).
 
 Se qualquer credencial já tiver circulado fora do seu ambiente controlado, **rote** tokens e segredos antes de considerar o repositório seguro.
 
