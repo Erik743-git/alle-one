@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
@@ -1130,8 +1130,8 @@ export default function TicketsPage() {
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="relative z-0">
-                          {filteredTotal === 0 ? (
+                        {filteredTotal === 0 ? (
+                          <tbody className="relative z-0">
                             <tr>
                               <td
                                 colSpan={activeColumns.length}
@@ -1143,13 +1143,17 @@ export default function TicketsPage() {
                                   : ""}
                               </td>
                             </tr>
+                          </tbody>
                           ) : (
                             displaySections.map((section) => {
                               const isCollapsed = collapsedGroups.has(
                                 section.key,
                               );
                               return (
-                              <Fragment key={section.key}>
+                              // Um tbody por grupo: assim o cabeçalho sticky fica
+                              // preso ao próprio grupo. Num tbody único, todos
+                              // grudavam na mesma altura e se sobrepunham.
+                              <tbody key={section.key} className="relative z-0">
                                 {section.label ? (
                                   <tr className="bg-muted/30">
                                     <td
@@ -1203,11 +1207,10 @@ export default function TicketsPage() {
                                     ))}
                                   </tr>
                                 ))}
-                              </Fragment>
+                              </tbody>
                               );
                             })
                           )}
-                        </tbody>
                       </table>
                     </div>
                     {hasMore ? (
