@@ -39,6 +39,12 @@ import {
 import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
 
 const AUTO_OPEN_MAX_ATTACHMENTS = 10;
+/**
+ * Falhas seguidas antes de desativar a regra. Folgado de propósito: erro
+ * passageiro (TiFlux fora do ar) não deve desligar rotina, mas erro
+ * estrutural não pode ficar tentando para sempre.
+ */
+const MAX_FALHAS_SEGUIDAS = 5;
 const AUTO_OPEN_PREVIEW_MAX_BYTES = 1024 * 1024;
 
 export type TicketAutoOpenRuleAttachmentDto = {
@@ -643,9 +649,16 @@ export class TicketAutoOpenService {
           lastTicketNumber: number;
           nextScheduledDate?: Date;
           active?: boolean;
+          consecutiveFailures: number;
+          lastError: string | null;
+          lastErrorAt: Date | null;
         } = {
           lastRunAt: now,
           lastTicketNumber: result.ticketNumber,
+          // Sucesso limpa o histórico de falha da regra.
+          consecutiveFailures: 0,
+          lastError: null,
+          lastErrorAt: null,
         };
 
         if (rule.periodicity === TicketAutoOpenPeriodicity.ONCE) {
@@ -704,9 +717,71 @@ export class TicketAutoOpenService {
           `Falha na regra "${rule.name}" (${rule.id}) [próx: ${formatYmdUtc(rule.nextScheduledDate)} ${rule.scheduleTime}]: ${message}`,
           err instanceof Error ? err.stack : undefined,
         );
+
+        // Sem avançar a data, a regra continua vencida e refalha em TODO tick
+        // do cron, para sempre — foi o que encheu o log de staging com a
+        // mesma regra de dias atrás. Avança para a próxima ocorrência e
+        // registra a falha; assim o erro fica visível na tela em vez de só
+        // no log, e a regra tem chance de voltar sozinha quando o motivo
+        // for corrigido.
+        await this.registerRuleFailure(rule, message, now);
       }
     }
 
     return { processed, errors, results };
+  }
+
+  /**
+   * Reagenda a regra que falhou e guarda o motivo.
+   *
+   * Depois de MAX_FALHAS_SEGUIDAS tentativas seguidas sem sucesso a regra é
+   * desativada: se a causa é estrutural — classificação que deixou de ser o
+   * nível mais específico, usuário criador removido — insistir a cada tick só
+   * gera ruído. O motivo fica gravado para o admin ver e reativar.
+   */
+  private async registerRuleFailure(
+    rule: {
+      id: string;
+      name: string;
+      nextScheduledDate: Date;
+      periodicity: TicketAutoOpenPeriodicity;
+      consecutiveFailures: number;
+    },
+    message: string,
+    now: Date,
+  ) {
+    const falhas = (rule.consecutiveFailures ?? 0) + 1;
+    const desativar = falhas >= MAX_FALHAS_SEGUIDAS;
+
+    try {
+      await this.prisma.ticketAutoOpenRule.update({
+        where: { id: rule.id },
+        data: {
+          lastError: message.slice(0, 2000),
+          lastErrorAt: now,
+          consecutiveFailures: falhas,
+          ...(desativar
+            ? { active: false }
+            : {
+                nextScheduledDate: advanceScheduledDate(
+                  rule.nextScheduledDate,
+                  rule.periodicity,
+                ),
+              }),
+        },
+      });
+      if (desativar) {
+        this.logger.error(
+          `Regra "${rule.name}" desativada após ${falhas} falhas seguidas. Último motivo: ${message}`,
+        );
+      }
+    } catch (err) {
+      // Não pode derrubar o processamento das demais regras.
+      this.logger.error(
+        `Falha ao registrar erro da regra "${rule.name}": ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
   }
 }

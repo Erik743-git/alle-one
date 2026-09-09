@@ -764,6 +764,11 @@ model TicketAutoOpenRule {
   parentTicketNumber     Int?                      @map("parent_ticket_number")
   lastRunAt              DateTime?                 @map("last_run_at")
   lastTicketNumber       Int?                      @map("last_ticket_number")
+  /// Motivo da última falha, para aparecer na tela em vez de só no log.
+  lastError              String?                   @map("last_error") @db.Text
+  lastErrorAt            DateTime?                 @map("last_error_at")
+  /// Falhas seguidas; zera no primeiro sucesso. Desativa a regra ao estourar.
+  consecutiveFailures    Int                       @default(0) @map("consecutive_failures")
   createdBy              String                    @map("created_by")
   createdAt              DateTime                  @default(now()) @map("created_at")
   updatedAt              DateTime                  @updatedAt @map("updated_at")
