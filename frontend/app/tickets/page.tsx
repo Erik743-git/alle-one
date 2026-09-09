@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
@@ -34,6 +34,7 @@ import {
   mapFilterResponsibles,
 } from "@/components/tickets/ticket-responsible-select";
 import {
+  canAccessPreTickets,
   canChangeTicketStage,
   canCreateTicket,
   isClient,
@@ -66,6 +67,9 @@ import {
 import { useRouter } from "next/navigation";
 
 const TICKET_COLUMNS = TICKET_LIST_COLUMNS;
+
+/** Espelha o `query.limit ?? 500` do backend (tickets-query.service). */
+const TICKETS_PAGE_LIMIT = 500;
 
 function isDoneStage(stageName: string | null) {
   return (
@@ -176,8 +180,13 @@ export default function TicketsPage() {
     null,
   );
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
+  // A busca vai ao servidor; sem debounce cada tecla dispara uma requisição de
+  // até 500 tickets.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [responsibleExternalId, setResponsibleExternalId] = useState("");
@@ -206,7 +215,7 @@ export default function TicketsPage() {
         parsedTicket != null && Number.isFinite(parsedTicket)
           ? parsedTicket
           : undefined,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       externalGmudRef: externalGmudRef.trim() || undefined,
       includeDone: includeDone || undefined,
     };
@@ -221,30 +230,53 @@ export default function TicketsPage() {
     to,
     ticketNumber,
     externalGmudRef,
-    search,
+    debouncedSearch,
     includeDone,
   ]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  // Catálogos são carregados uma vez; manter `catalogs` fora das dependências
+  // de `load` evita que o próprio setCatalogs redispare o efeito e busque a
+  // lista duas vezes a cada montagem.
+  const catalogsLoadedRef = useRef(false);
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(async (isRefresh = false) => {
+    const seq = ++loadSeqRef.current;
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       const [list, cats] = await Promise.all([
         ticketsService.list(queryParams),
-        catalogs ? Promise.resolve(catalogs) : ticketsService.catalogs(),
+        catalogsLoadedRef.current
+          ? Promise.resolve(null)
+          : ticketsService.catalogs(),
       ]);
+      // Resposta obsoleta (o usuário já digitou de novo): descarta.
+      if (seq !== loadSeqRef.current) return;
       setData(list);
-      if (!catalogs) setCatalogs(cats);
+      setLoadError(null);
+      if (cats) {
+        catalogsLoadedRef.current = true;
+        setCatalogs(cats);
+      }
       refreshPreTicketsBadge();
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar os tickets.",
-      );
+      if (seq !== loadSeqRef.current) return;
+      const message =
+        err instanceof Error ? err.message : "Não foi possível carregar os tickets.";
+      setLoadError(message);
+      notifyError(message);
     } finally {
+      if (seq !== loadSeqRef.current) return;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [queryParams, catalogs]);
+  }, [queryParams]);
 
   useEffect(() => {
     void load();
@@ -502,6 +534,10 @@ export default function TicketsPage() {
     [displayTickets],
   );
 
+  // O backend devolve `total` = tamanho da página, não a contagem real. Se veio
+  // cheio, existem outros tickets fora do recorte — dizer só "500" mente.
+  const hitPageLimit = (data?.total ?? 0) >= TICKETS_PAGE_LIMIT;
+
   const displaySections = useMemo(() => {
     if (groupBy === "none") {
       return [{ key: "all", label: "", tickets: displayTickets }];
@@ -650,7 +686,7 @@ export default function TicketsPage() {
               }
               actions={
                 <>
-                  {!isClient() ? (
+                  {canAccessPreTickets() ? (
                     <Button asChild variant="outline" className="relative">
                       <Link href="/tickets/pre-tickets" className="inline-flex items-center">
                         Pré-tickets
@@ -938,6 +974,26 @@ export default function TicketsPage() {
                   </CardContent>
                 </Card>
               </div>
+            ) : loadError ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    Não foi possível carregar os tickets.
+                  </p>
+                  <p className="max-w-md text-sm text-muted-foreground">
+                    {loadError}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void load(true)}
+                  >
+                    <RefreshCw className="mr-2 size-4" />
+                    Tentar de novo
+                  </Button>
+                </CardContent>
+              </Card>
             ) : !(data?.groups?.length) ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
@@ -951,11 +1007,19 @@ export default function TicketsPage() {
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
                   <span>
                     {filteredTotal} ticket(s)
-                    {filteredTotal !== data.total ? ` de ${data.total}` : ""}
+                    {filteredTotal !== data.total
+                      ? ` de ${data.total}${hitPageLimit ? "+" : ""}`
+                      : ""}
                     {includeDone
                       ? " · incluindo resolvidos/encerrados"
                       : " · só pendentes"}
                   </span>
+                  {hitPageLimit ? (
+                    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+                      Mostrando só os {TICKETS_PAGE_LIMIT} mais recentes · refine
+                      os filtros para ver o restante
+                    </span>
+                  ) : null}
                   {sortKey && sortDir ? (
                     <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                       Ordenado por{" "}
