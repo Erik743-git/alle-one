@@ -184,6 +184,10 @@ export type RendimentoCompanyAppointment = {
   descriptionFull?: string | null;
   descriptionTruncated?: boolean;
   serviceName: string | null;
+  /** Arquivos anexados ao apontamento (só apontamento do portal tem). */
+  attachmentCount?: number;
+  /** Descrição traz imagem embutida. */
+  hasImages?: boolean;
   question: RendimentoAppointmentQuestion | null;
 };
 

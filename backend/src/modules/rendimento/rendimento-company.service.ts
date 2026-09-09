@@ -9,6 +9,7 @@ import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { summarizeCompanyAppointmentDescription } from './company-description.util';
+import { appointmentDescriptionHasMedia } from '../tickets/appointment-doc.util';
 import { RendimentoMailService } from './rendimento-mail.service';
 import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 
@@ -56,6 +57,10 @@ export type CompanyAppointmentEntryDto = {
   userName: string | null;
   description: string | null;
   descriptionFull: string | null;
+  /** Arquivos anexados ao apontamento (só existe no portal). */
+  attachmentCount?: number;
+  /** Descrição traz imagem embutida (bloco do doc ou data URL). */
+  hasImages?: boolean;
   descriptionTruncated: boolean;
   serviceName: string | null;
   question: {
@@ -459,6 +464,7 @@ export class RendimentoCompanyService {
             user_name: string | null;
             description: string | null;
             service_name: string | null;
+            attachment_count: number;
           }>
         >`
           SELECT
@@ -469,7 +475,12 @@ export class RendimentoCompanyService {
             a.end_time,
             u.name as user_name,
             a.description,
-            a.service_name
+            a.service_name,
+            (
+              SELECT count(*)::int
+              FROM portal_ticket_appointment_attachments att
+              WHERE att.portal_appointment_id = a.id
+            ) as attachment_count
           FROM portal_ticket_appointments a
           INNER JOIN portal_tickets t ON t.ticket_number = a.ticket_number
           LEFT JOIN users u ON u.id = a.created_by
@@ -514,6 +525,9 @@ export class RendimentoCompanyService {
           userName: row.user_name,
           ...desc,
           serviceName: row.service_name,
+          attachmentCount: Number(row.attachment_count) || 0,
+          // Imagem colada na descrição não vira anexo — é bloco do doc.
+          hasImages: appointmentDescriptionHasMedia(row.description),
           question: q
             ? {
                 id: q.id,
