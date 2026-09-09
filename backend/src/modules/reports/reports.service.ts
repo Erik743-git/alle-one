@@ -2622,9 +2622,16 @@ export class ReportsService {
    * aprova/nega) e `rendimento_gap_justifications`. "Não aprovado" agrupa
    * PENDING + REJECTED + ACTIVE — ou seja, tudo que ainda não foi aprovado.
    *
-   * Observação: estes minutos vêm do apontamento individual (sem deduplicar
-   * sobreposição), então não somam exatamente as colunas "Hora extra"/"Plantão",
-   * que são a união deduplicada por prioridade PLANTÃO > EXTRA > NORMAL.
+   * Duas ressalvas, ambas anunciadas no rótulo das colunas do relatório:
+   *
+   * 1. NÃO são escopados por empresa. `rendimento_day_events` é por usuário e
+   *    dia, sem coluna de empresa (só um `appointment_external_id` opcional),
+   *    então num relatório de uma empresa estes totais continuam sendo do
+   *    atendente em todos os clientes. Escopar exigiria navegar do evento até
+   *    o apontamento e o chamado, e perderia os eventos sem esse vínculo.
+   * 2. Vêm do apontamento individual, sem deduplicar sobreposição, então não
+   *    somam exatamente as colunas "Hora extra"/"Plantão", que são a união
+   *    deduplicada por prioridade PLANTÃO > EXTRA > NORMAL.
    */
   private async getRendimentoApprovalTotals(params: {
     userIds: string[];
@@ -2827,10 +2834,12 @@ export class ReportsService {
       'hora_extra',
       'plantao',
       'alertas',
-      'he_aprovada',
-      'he_nao_aprovada',
-      'plantao_aprovado',
-      'plantao_nao_aprovado',
+      // Ver nota no XLSX: a esteira de aprovação não tem empresa, então estes
+      // quatro são do atendente em todos os clientes, não só no do relatório.
+      'he_aprovada_todas_empresas',
+      'he_nao_aprovada_todas_empresas',
+      'plantao_aprovado_todas_empresas',
+      'plantao_nao_aprovado_todas_empresas',
       'justificativas',
     ].join(',');
     const summaryLines = summaries.map((s) =>
@@ -3070,10 +3079,11 @@ export class ReportsService {
     summarySheet.getColumn(4).width = 14;
     summarySheet.getColumn(5).width = 12;
     summarySheet.getColumn(6).width = 10;
-    summarySheet.getColumn(7).width = 20;
-    summarySheet.getColumn(8).width = 22;
-    summarySheet.getColumn(9).width = 20;
-    summarySheet.getColumn(10).width = 22;
+    // 7 a 10 mais largas: os rótulos ganharam "(todas as empresas)".
+    summarySheet.getColumn(7).width = 30;
+    summarySheet.getColumn(8).width = 32;
+    summarySheet.getColumn(9).width = 30;
+    summarySheet.getColumn(10).width = 32;
     summarySheet.getColumn(11).width = 16;
 
     const summaryHeaderRow = summarySheet.getRow(1);
@@ -3084,10 +3094,15 @@ export class ReportsService {
       'Hora extra',
       'Plantão',
       'Alertas',
-      'HE aprovada',
-      'HE não aprovada',
-      'Plantão aprovado',
-      'Plantão não aprovado',
+      // "(todas as empresas)" no rótulo porque a esteira de aprovação é por
+      // usuário e dia, sem vínculo com empresa: num relatório de uma empresa
+      // só, estes quatro números continuam sendo o total do atendente em todos
+      // os clientes. Sem o aviso no cabeçalho, o número é lido como se fosse
+      // da empresa do relatório.
+      'HE aprovada (todas as empresas)',
+      'HE não aprovada (todas as empresas)',
+      'Plantão aprovado (todas as empresas)',
+      'Plantão não aprovado (todas as empresas)',
       'Justificativas',
     ];
     summaryHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -3148,12 +3163,16 @@ export class ReportsService {
       summaryRowIndex += 1;
     }
 
-    // As colunas de aprovacao vem da esteira (day events), por apontamento e sem
-    // deduplicar sobreposicao — por isso nao somam exatamente "Hora extra"/"Plantao".
+    // As colunas de aprovacao vem da esteira (day events), que e por colaborador
+    // e dia: nao tem empresa, e nao deduplica sobreposicao. Por isso nao fecham
+    // com "Hora extra"/"Plantao" e nem se limitam a empresa do relatorio.
     const noteRow = summarySheet.getRow(summaryRowIndex + 1);
     noteRow.getCell(1).value =
-      'Aprovada/Não aprovada: origem na esteira de aprovação (por apontamento, sem descontar sobreposição). "Não aprovada" inclui pendentes e negadas.';
+      'Aprovada/Não aprovada: origem na esteira de aprovação, que é por colaborador e dia — não tem vínculo com empresa. Por isso somam a hora extra e o plantão do atendente em TODAS as empresas no período, e não apenas nesta. São também por apontamento, sem descontar sobreposição, então não fecham com as colunas "Hora extra" e "Plantão" ao lado. "Não aprovada" inclui pendentes e negadas.';
     noteRow.getCell(1).font = { italic: true, size: 9 };
+    // Sem wrapText a nota fica cortada na borda da célula mesclada.
+    noteRow.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+    noteRow.height = 46;
     summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 11);
 
     return workbook.xlsx.writeBuffer();
