@@ -10,6 +10,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -160,14 +161,14 @@ export function CompanyPendingQuestionsDialog({
           )}
 
           {company ? (
-            <div className="flex justify-end border-t border-border pt-4 pb-1">
+            <DialogFooter>
               <Button asChild variant="outline" size="sm">
                 <Link href="/financeiro">
                   <CalendarDays className="mr-2 size-4" />
                   Ver no financeiro
                 </Link>
               </Button>
-            </div>
+            </DialogFooter>
           ) : null}
         </DialogContent>
       </Dialog>

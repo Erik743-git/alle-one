@@ -921,7 +921,10 @@ export default function AdminTicketPage() {
                   maxLength={120}
                 />
               </div>
-              <DialogFooter className="!mx-0 !mb-0 !pb-4 shrink-0 flex-row justify-end gap-2 rounded-none border-t bg-muted/40 px-6 py-4">
+              <DialogFooter
+                bleed={false}
+                className="shrink-0 flex-row justify-end gap-2 rounded-none border-t bg-muted/40 px-6 py-4"
+              >
                 <Button
                   type="button"
                   variant="outline"

@@ -69,7 +69,7 @@ export function UsuarioDeactivateDialog({
           ) : null}
         </div>
 
-        <div className="shrink-0 border-t border-border bg-card px-6 pt-4 pb-6">
+        <div className="shrink-0 border-t border-border bg-card px-6 py-4">
           <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button
               type="button"
