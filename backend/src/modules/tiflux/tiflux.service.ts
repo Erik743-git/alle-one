@@ -251,7 +251,14 @@ export class TifluxService {
       if (!row) return null;
       if (row.expires_at.getTime() <= Date.now()) return null;
       return row.payload as T;
-    } catch {
+    } catch (err) {
+      // Cache indisponível não pode derrubar a chamada — mas silenciar por
+      // completo esconde erro de banco, que fica igual a "sem cache".
+      this.logger.warn(
+        `Falha ao ler external_api_cache: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
       return null;
     }
   }

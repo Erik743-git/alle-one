@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -836,6 +837,8 @@ export class ProjetosExcelService {
 
 @Injectable()
 export class ProjetosService {
+  private readonly logger = new Logger(ProjetosService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly excel: ProjetosExcelService,
@@ -1171,7 +1174,14 @@ export class ProjetosService {
             LIMIT 1
           `) ?? [];
         ticket = rows[0] ?? null;
-      } catch {
+      } catch (err) {
+        // Sem log, falha de banco fica indistinguível de "ticket não existe"
+        // e o usuário só vê "Ticket #N não encontrado".
+        this.logger.warn(
+          `Falha ao consultar tiflux.tickets para #${ticketNumber}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
         ticket = null;
       }
     }
