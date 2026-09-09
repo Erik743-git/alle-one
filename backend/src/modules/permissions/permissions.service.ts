@@ -315,21 +315,21 @@ function mapRow(row: Permission): Omit<EffectiveModulePermission, 'module'> {
  * seja, em toda requisição autenticada — são 3 a 4 idas ao banco por chamada
  * de API só para descobrir quem é o usuário.
  *
- * DESLIGADO POR PADRÃO. Defina PERMISSIONS_CACHE_TTL_MS (ex.: 30000) para
- * ativar, de preferência validando antes em staging: troque o papel de um
- * usuário pela tela de admin e confirme que o acesso muda na hora.
+ * A chave é `userId:tokenVersion`. Toda mudança que altera o acesso invalida:
+ * `users.service.update` incrementa o tokenVersion em troca de senha, papel,
+ * empresa e status, e as permissões que passam por este serviço
+ * (`replaceUserPermissions`, `replaceCompanyModules`) limpam o cache
+ * explicitamente por não mexerem no tokenVersion.
  *
- * O motivo da cautela: a chave é `userId:tokenVersion`, e o tokenVersion só é
- * incrementado em troca de senha e troca de empresa. `users.service.update`
- * NÃO o incrementa ao mudar papel, então uma troca de papel ficaria invisível
- * até o TTL expirar. As mudanças de permissão que passam por este serviço
- * (`replaceUserPermissions`, `replaceCompanyModules`) invalidam explicitamente.
+ * Sem Redis o cache é por processo e o PM2 roda em cluster — daí o TTL curto,
+ * que também limita a janela de divergência entre workers.
  *
- * Sem Redis o cache é por processo e o PM2 roda em cluster — TTL curto também
- * evita workers divergindo entre si.
+ * PERMISSIONS_CACHE_TTL_MS=0 desliga (válvula de escape se algo escapar).
  */
 const REQUEST_USER_CACHE_TTL_MS = (() => {
-  const n = Number(process.env.PERMISSIONS_CACHE_TTL_MS);
+  const raw = process.env.PERMISSIONS_CACHE_TTL_MS?.trim();
+  if (raw === undefined || raw === '') return 30_000;
+  const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return 0;
   return Math.min(Math.trunc(n), 120_000);
 })();
