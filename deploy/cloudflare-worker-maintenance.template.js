@@ -54,7 +54,9 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 background:#0b1220;background-image:radial-gradient(ellipse 100% 60% at 50% -15%,rgba(18,181,217,.11),transparent 50%);
 color:#e5ecea;font-family:'Nunito',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
 .card{width:100%;max-width:460px;text-align:center}
-.logo{width:150px;height:auto;margin-bottom:32px}
+/* max-width segura a logo em celular estreito: o cartao tem 460px, mas a
+   tela pode ter menos que os 300px da logo. */
+.logo{width:300px;max-width:100%;height:auto;margin-bottom:32px}
 h1{margin:0 0 10px;font-size:21px;font-weight:600;letter-spacing:-.01em}
 p{margin:0 0 8px;font-size:14.5px;color:#97a6a3}
 .bar{margin:28px auto 0;width:180px;height:3px;border-radius:999px;background:rgba(229,236,234,.12);overflow:hidden}

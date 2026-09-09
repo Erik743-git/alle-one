@@ -21,7 +21,7 @@ export default function ProtectedPage({ children }: ProtectedPageProps) {
           aria-hidden
         />
         <div className="relative flex flex-col items-center gap-6">
-          <AlleBrandLogo width={170} height={60} priority />
+          <AlleBrandLogo width={340} height={120} priority className="max-w-full" />
           {/* Barra indeterminada: menos ansiosa que spinner girando. */}
           <div
             className="h-0.5 w-40 overflow-hidden rounded-full bg-border"

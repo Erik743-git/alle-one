@@ -51,7 +51,10 @@
         text-align: center;
       }
       .logo {
-        width: 150px;
+        width: 300px;
+        /* max-width segura a logo em celular estreito: o cartão tem 440px,
+           mas a tela pode ter menos que os 300px da logo. */
+        max-width: 100%;
         height: auto;
         margin-bottom: 32px;
       }
