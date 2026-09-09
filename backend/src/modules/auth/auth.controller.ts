@@ -253,6 +253,7 @@ export class AuthController {
     return this.authService.beginTotpSetup(req.user.userId);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @Post('2fa/confirm')
   async confirm2fa(
@@ -269,6 +270,7 @@ export class AuthController {
     return result;
   }
 
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @UseGuards(JwtAuthGuard)
   @Post('2fa/disable')
   async disable2fa(

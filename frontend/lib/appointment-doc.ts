@@ -228,8 +228,15 @@ export function sanitizeComposerHtml(html: string): string {
   if (typeof document === "undefined") {
     return stripHtmlToPlain(html);
   }
+  // DOMParser cria um documento inerte: as tags são construídas mas nenhum
+  // recurso é buscado e nenhum handler dispara. Com `div.innerHTML = html` o
+  // navegador chega a carregar <img> mesmo fora do documento, disparando
+  // onerror antes do walker abaixo remover o atributo.
+  const parsed = new DOMParser().parseFromString(html, "text/html");
   const root = document.createElement("div");
-  root.innerHTML = html;
+  while (parsed.body.firstChild) {
+    root.appendChild(parsed.body.firstChild);
+  }
 
   const walk = (node: Node) => {
     if (node.nodeType === Node.TEXT_NODE) return;
