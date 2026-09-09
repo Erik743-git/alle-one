@@ -552,6 +552,39 @@ export class GmudService {
     return updated;
   }
 
+  /**
+   * Fecha o status da GMUD a partir das decisões dos aprovadores.
+   *
+   * As transições são condicionais e a rejeição tem prioridade: se dois
+   * aprovadores decidirem ao mesmo tempo e a contagem de um deles for lida
+   * antes da escrita do outro, uma rejeição jamais fica escondida atrás de
+   * uma aprovação que chegou depois. Antes, o último a gravar vencia, e uma
+   * GMUD rejeitada podia terminar como aprovada.
+   */
+  private async applyApprovalOutcome(
+    gmudId: string,
+    anyRejected: boolean,
+    allApproved: boolean,
+  ) {
+    if (anyRejected) {
+      await this.prisma.gmud.updateMany({
+        where: {
+          id: gmudId,
+          status: { in: [GmudStatus.PENDING_APPROVAL, GmudStatus.APPROVED] },
+        },
+        data: { status: GmudStatus.REJECTED, approvedAt: null },
+      });
+      return;
+    }
+
+    if (allApproved) {
+      await this.prisma.gmud.updateMany({
+        where: { id: gmudId, status: GmudStatus.PENDING_APPROVAL },
+        data: { status: GmudStatus.APPROVED, approvedAt: new Date() },
+      });
+    }
+  }
+
   async approve(
     user: AuthenticatedRequestUser,
     id: string,
@@ -580,14 +613,21 @@ export class GmudService {
         ? GmudApproverStatus.APPROVED
         : GmudApproverStatus.REJECTED;
 
-    await this.prisma.gmudApprover.update({
-      where: { id: approver.id },
+    // Guarda na própria escrita: sem ela, dois cliques simultâneos passavam
+    // os dois pela checagem acima. Pior, cada um relê os aprovadores logo
+    // depois para decidir o status da GMUD — com leitura desatualizada, uma
+    // rejeição podia ser sobrescrita e a GMUD terminar como APROVADA.
+    const registrada = await this.prisma.gmudApprover.updateMany({
+      where: { id: approver.id, status: GmudApproverStatus.PENDING },
       data: {
         status: nextApproverStatus,
         decidedAt: new Date(),
         decisionNote: dto.note ?? null,
       },
     });
+    if (registrada.count !== 1) {
+      throw new BadRequestException('Sua decisão já foi registrada');
+    }
 
     const allApprovers = await this.prisma.gmudApprover.findMany({
       where: { gmudId: gmud.id },
@@ -601,20 +641,7 @@ export class GmudService {
       allApprovers.length > 0 &&
       allApprovers.every((a) => a.status === GmudApproverStatus.APPROVED);
 
-    if (anyRejected) {
-      return this.prisma.gmud.update({
-        where: { id: gmud.id },
-        data: { status: GmudStatus.REJECTED },
-      });
-    }
-
-    if (allApproved) {
-      return this.prisma.gmud.update({
-        where: { id: gmud.id },
-        data: { status: GmudStatus.APPROVED, approvedAt: new Date() },
-      });
-    }
-
+    await this.applyApprovalOutcome(gmud.id, anyRejected, allApproved);
     return this.getById(user, gmud.id);
   }
 
@@ -750,20 +777,7 @@ export class GmudService {
       allApprovers.length > 0 &&
       allApprovers.every((a) => a.status === GmudApproverStatus.APPROVED);
 
-    if (anyRejected) {
-      return this.prisma.gmud.update({
-        where: { id: gmud.id },
-        data: { status: GmudStatus.REJECTED },
-      });
-    }
-
-    if (allApproved) {
-      return this.prisma.gmud.update({
-        where: { id: gmud.id },
-        data: { status: GmudStatus.APPROVED, approvedAt: new Date() },
-      });
-    }
-
+    await this.applyApprovalOutcome(gmud.id, anyRejected, allApproved);
     return this.getById(user, gmud.id);
   }
 
