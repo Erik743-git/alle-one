@@ -34,7 +34,13 @@ export type TicketListGroup = {
 };
 
 export type TicketListResponse = {
+  /** Itens nesta página. */
   total: number;
+  /** Contagem real no filtro (ausente em respostas antigas/legado). */
+  totalCount?: number;
+  offset?: number;
+  limit?: number;
+  hasMore?: boolean;
   mineOnly: boolean;
   responsibleExternalId: number | null;
   responsibleName: string | null;
@@ -151,6 +157,7 @@ export type TicketsListParams = {
   ticketNumber?: number;
   search?: string;
   limit?: number;
+  offset?: number;
   externalGmudRef?: string;
   /** Inclui resolvidos, encerrados, cancelados e fechados. */
   includeDone?: boolean;
@@ -174,6 +181,7 @@ function toQuery(params: TicketsListParams): string {
   if (params.ticketNumber != null) q.set("ticketNumber", String(params.ticketNumber));
   if (params.search?.trim()) q.set("search", params.search.trim());
   if (params.limit != null) q.set("limit", String(params.limit));
+  if (params.offset) q.set("offset", String(params.offset));
   if (params.externalGmudRef?.trim()) {
     q.set("externalGmudRef", params.externalGmudRef.trim());
   }
