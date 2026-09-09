@@ -52,6 +52,13 @@ export class OpenPreTicketDto {
   companyId?: string;
 }
 
+/**
+ * Janela da reserva de pré-ticket. Curta de propósito: se a pessoa fechar a
+ * aba ou desistir, o e-mail volta sozinho para a fila — não existe estado
+ * travado esperando alguém destravar na mão.
+ */
+const PRE_TICKET_CLAIM_MINUTES = 10;
+
 @Injectable()
 export class PreTicketsService {
   private readonly logger = new Logger(PreTicketsService.name);
@@ -109,6 +116,9 @@ export class PreTicketsService {
       portalPreTicket: true as const,
       company: row.clientName ? { id: '', name: row.clientName } : null,
       specialty: null,
+      // Reserva vale só para a fila de e-mail; pré-ticket do portal já é um
+      // ticket e tem responsável próprio.
+      claimedBy: null as { id: string; name: string; since: string } | null,
     };
   }
 
@@ -133,6 +143,7 @@ export class PreTicketsService {
         include: {
           company: { select: { id: true, name: true } },
           specialty: { select: { id: true, name: true, externalId: true } },
+          claimedByUser: { select: { id: true, name: true } },
         },
         orderBy: { receivedAt: 'desc' },
         take: 200,
@@ -169,8 +180,25 @@ export class PreTicketsService {
       }),
     ]);
 
+    // Reserva vencida é o mesmo que não ter reserva — some da listagem.
+    const cutoff = this.claimCutoff();
+    const emailRowsWithClaim = emailRows.map((row) => {
+      const active =
+        row.claimedByUserId && row.claimedAt && row.claimedAt > cutoff;
+      return {
+        ...row,
+        claimedBy: active
+          ? {
+              id: row.claimedByUser!.id,
+              name: row.claimedByUser!.name,
+              since: row.claimedAt!.toISOString(),
+            }
+          : null,
+      };
+    });
+
     const merged = [
-      ...emailRows,
+      ...emailRowsWithClaim,
       ...portalRows.map((row) => this.mapPortalPreTicket(row)),
     ].sort(
       (a, b) =>
@@ -178,6 +206,62 @@ export class PreTicketsService {
     );
 
     return merged.slice(0, 200);
+  }
+
+  private claimCutoff(): Date {
+    return new Date(Date.now() - PRE_TICKET_CLAIM_MINUTES * 60_000);
+  }
+
+  /** Reserva o pré-ticket para o operador, se ninguém tiver reserva válida. */
+  async claim(actor: AuthenticatedRequestUser, id: string) {
+    this.assertOperator(actor);
+    const row = await this.getOne(actor, id);
+    if (row.status !== PreTicketStatus.PENDING) {
+      throw new BadRequestException('Pré-ticket já processado.');
+    }
+
+    // Condicional na própria escrita: livre, reserva expirada, ou já é minha.
+    const claimed = await this.prisma.preTicket.updateMany({
+      where: {
+        id,
+        status: PreTicketStatus.PENDING,
+        deletedAt: null,
+        OR: [
+          { claimedByUserId: null },
+          { claimedByUserId: actor.userId },
+          { claimedAt: { lt: this.claimCutoff() } },
+        ],
+      },
+      data: { claimedByUserId: actor.userId, claimedAt: new Date() },
+    });
+
+    if (claimed.count !== 1) {
+      const current = await this.prisma.preTicket.findFirst({
+        where: { id },
+        select: { claimedByUser: { select: { name: true } } },
+      });
+      throw new BadRequestException(
+        `${current?.claimedByUser?.name ?? 'Outro usuário'} está atendendo este pré-ticket.`,
+      );
+    }
+
+    return { ok: true, claimedUntilMinutes: PRE_TICKET_CLAIM_MINUTES };
+  }
+
+  /** Devolve para a fila. Só quem reservou (ou um ADMIN) pode liberar. */
+  async release(actor: AuthenticatedRequestUser, id: string) {
+    this.assertOperator(actor);
+    await this.prisma.preTicket.updateMany({
+      where: {
+        id,
+        deletedAt: null,
+        ...(actor.role === UserRole.ADMIN
+          ? {}
+          : { claimedByUserId: actor.userId }),
+      },
+      data: { claimedByUserId: null, claimedAt: null },
+    });
+    return { ok: true };
   }
 
   async getOne(actor: AuthenticatedRequestUser, id: string) {

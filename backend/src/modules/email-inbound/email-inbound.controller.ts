@@ -183,4 +183,23 @@ export class EmailInboundController {
   ) {
     return this.preTickets.openAsTicket(actor, id, dto);
   }
+
+  /** Reserva o pré-ticket para quem vai atender (evita trabalho duplicado). */
+  @Post('pre-tickets/:id/claim')
+  @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
+  claim(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id') id: string,
+  ) {
+    return this.preTickets.claim(actor, id);
+  }
+
+  @Delete('pre-tickets/:id/claim')
+  @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
+  release(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Param('id') id: string,
+  ) {
+    return this.preTickets.release(actor, id);
+  }
 }

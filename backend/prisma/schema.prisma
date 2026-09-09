@@ -141,6 +141,7 @@ model User {
   ticketListPresets     TicketListPreset[]
   preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
   preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
+  preTicketsClaimed     PreTicket[]       @relation("PreTicketClaimedBy")
   emailInboundRoutesCreated EmailInboundRoute[] @relation("EmailInboundRouteCreator")
   permissions         Permission[]
   passwordResetTokens PasswordResetToken[]
@@ -1511,6 +1512,9 @@ model PreTicket {
   ticketNumber      Int?            @map("ticket_number")
   openedByUserId    String?         @map("opened_by_user_id")
   openedAt          DateTime?       @map("opened_at")
+  /// Quem esta atendendo agora. Expira sozinho — ver PRE_TICKET_CLAIM_MINUTES.
+  claimedByUserId   String?         @map("claimed_by_user_id")
+  claimedAt         DateTime?       @map("claimed_at")
   deletedAt         DateTime?       @map("deleted_at")
   receivedAt        DateTime        @map("received_at")
   createdAt         DateTime        @default(now()) @map("created_at")
@@ -1519,6 +1523,7 @@ model PreTicket {
   company       Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   requestorUser User?        @relation("PreTicketRequestor", fields: [requestorUserId], references: [id], onDelete: SetNull)
   openedByUser  User?        @relation("PreTicketOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  claimedByUser User?        @relation("PreTicketClaimedBy", fields: [claimedByUserId], references: [id], onDelete: SetNull)
   specialty     Specialty?   @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   attachments   PreTicketAttachment[]
 

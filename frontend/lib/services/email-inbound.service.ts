@@ -45,6 +45,8 @@ export type PreTicketListItem = {
   company?: { id: string; name: string } | null;
   desk?: { id: string; name: string } | null;
   specialty?: { id: string; name: string } | null;
+  /** Quem está atendendo agora. Null quando livre ou reserva expirada. */
+  claimedBy?: { id: string; name: string; since: string } | null;
 };
 
 export type PreTicketDetail = PreTicketListItem & {
@@ -140,6 +142,18 @@ export const emailInboundService = {
   },
   deletePreTicket(id: string) {
     return apiRequest(`/pre-tickets/${id}`, { method: "DELETE" });
+  },
+  /** Reserva o pré-ticket para você (evita dois atendendo o mesmo e-mail). */
+  claimPreTicket(id: string) {
+    return apiRequest<{ ok: boolean; claimedUntilMinutes: number }>(
+      `/pre-tickets/${id}/claim`,
+      { method: "POST" },
+    );
+  },
+  releasePreTicket(id: string) {
+    return apiRequest<{ ok: boolean }>(`/pre-tickets/${id}/claim`, {
+      method: "DELETE",
+    });
   },
   openPreTicket(
     id: string,
