@@ -538,9 +538,17 @@ export default function DashboardPage() {
   }, [presetCompanyId, presetViewMode]);
 
   useEffect(() => {
+    // Só roda enquanto há cooldown ativo: antes o intervalo de 250 ms ficava
+    // ligado para sempre, inclusive com a aba oculta.
+    if (refreshCooldownUntil <= Date.now()) {
+      setCooldownRemainingMs(0);
+      return;
+    }
+
     const timer = window.setInterval(() => {
       const remaining = Math.max(refreshCooldownUntil - Date.now(), 0);
       setCooldownRemainingMs(remaining);
+      if (remaining === 0) window.clearInterval(timer);
     }, 250);
 
     return () => window.clearInterval(timer);
