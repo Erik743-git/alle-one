@@ -68,8 +68,6 @@ import { useRouter } from "next/navigation";
 
 const TICKET_COLUMNS = TICKET_LIST_COLUMNS;
 
-/** Espelha o `query.limit ?? 500` do backend (tickets-query.service). */
-const TICKETS_PAGE_LIMIT = 500;
 
 function isDoneStage(stageName: string | null) {
   return (
@@ -181,6 +179,7 @@ export default function TicketsPage() {
   );
 
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
@@ -534,9 +533,10 @@ export default function TicketsPage() {
     [displayTickets],
   );
 
-  // O backend devolve `total` = tamanho da página, não a contagem real. Se veio
-  // cheio, existem outros tickets fora do recorte — dizer só "500" mente.
-  const hitPageLimit = (data?.total ?? 0) >= TICKETS_PAGE_LIMIT;
+  // `totalCount` é a contagem real no filtro; `total` é só o tamanho da página.
+  const serverTotal = data?.totalCount ?? data?.total ?? 0;
+  const loadedCount = allTickets.length;
+  const hasMore = data?.hasMore ?? false;
 
   const displaySections = useMemo(() => {
     if (groupBy === "none") {
@@ -634,6 +634,48 @@ export default function TicketsPage() {
         );
       default:
         return null;
+    }
+  }
+
+  async function loadMore() {
+    if (!data || loadingMore || !data.hasMore) return;
+    const seq = loadSeqRef.current;
+    try {
+      setLoadingMore(true);
+      const next = await ticketsService.list({
+        ...queryParams,
+        offset: allTickets.length,
+      });
+      // Filtro mudou no meio do caminho: descarta para não misturar páginas.
+      if (seq !== loadSeqRef.current) return;
+      setData((prev) => {
+        if (!prev) return next;
+        const seen = new Set(
+          prev.groups.flatMap((g) => g.tickets.map((t) => t.ticketNumber)),
+        );
+        const merged = [...prev.groups];
+        for (const group of next.groups) {
+          const novos = group.tickets.filter((t) => !seen.has(t.ticketNumber));
+          if (novos.length === 0) continue;
+          const existente = merged.find((g) => g.key === group.key);
+          if (existente) {
+            existente.tickets = [...existente.tickets, ...novos];
+          } else {
+            merged.push({ ...group, tickets: novos });
+          }
+        }
+        return {
+          ...next,
+          groups: merged,
+          total: prev.total + next.total,
+        };
+      });
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível carregar mais.",
+      );
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -1007,17 +1049,15 @@ export default function TicketsPage() {
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
                   <span>
                     {filteredTotal} ticket(s)
-                    {filteredTotal !== data.total
-                      ? ` de ${data.total}${hitPageLimit ? "+" : ""}`
-                      : ""}
+                    {filteredTotal !== serverTotal ? ` de ${serverTotal}` : ""}
                     {includeDone
                       ? " · incluindo resolvidos/encerrados"
                       : " · só pendentes"}
                   </span>
-                  {hitPageLimit ? (
+                  {hasMore ? (
                     <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
-                      Mostrando só os {TICKETS_PAGE_LIMIT} mais recentes · refine
-                      os filtros para ver o restante
+                      {loadedCount} carregados · filtros de coluna valem só sobre
+                      estes
                     </span>
                   ) : null}
                   {sortKey && sortDir ? (
@@ -1170,6 +1210,29 @@ export default function TicketsPage() {
                         </tbody>
                       </table>
                     </div>
+                    {hasMore ? (
+                      <div className="flex items-center justify-center gap-3 border-t border-border/60 px-4 py-3">
+                        <span className="text-xs text-muted-foreground">
+                          {loadedCount} de {serverTotal}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={loadingMore}
+                          onClick={() => void loadMore()}
+                        >
+                          {loadingMore ? (
+                            <>
+                              <RefreshCw className="mr-2 size-4 animate-spin" />
+                              Carregando...
+                            </>
+                          ) : (
+                            "Carregar mais"
+                          )}
+                        </Button>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               </div>

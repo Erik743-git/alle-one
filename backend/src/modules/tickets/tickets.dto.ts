@@ -104,6 +104,13 @@ export class TicketsListQueryDto {
   @Type(() => Number)
   limit?: number;
 
+  /** Deslocamento para "carregar mais" (a lista continua ordenada igual). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  offset?: number;
+
   /** Filtra tickets pela referência GMUD externa do cliente. */
   @IsOptional()
   @IsString()
