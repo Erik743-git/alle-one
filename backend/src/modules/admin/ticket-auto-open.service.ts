@@ -82,6 +82,11 @@ export type TicketAutoOpenRuleDto = {
   lastTicketNumber: number | null;
   createdAt: string;
   attachments: TicketAutoOpenRuleAttachmentDto[];
+  // Sem estes três a falha só existia no log da API: a tela mandava o admin
+  // "verificar os logs" para saber por que o chamado não abriu.
+  lastError: string | null;
+  lastErrorAt: string | null;
+  consecutiveFailures: number;
 };
 
 @Injectable()
@@ -122,6 +127,9 @@ export class TicketAutoOpenService {
       lastRunAt: Date | null;
       lastTicketNumber: number | null;
       createdAt: Date;
+      lastError: string | null;
+      lastErrorAt: Date | null;
+      consecutiveFailures: number;
     },
     attachments: TicketAutoOpenRuleAttachmentDto[] = [],
   ): TicketAutoOpenRuleDto {
@@ -154,6 +162,9 @@ export class TicketAutoOpenService {
       lastTicketNumber: row.lastTicketNumber,
       createdAt: row.createdAt.toISOString(),
       attachments,
+      lastError: row.lastError,
+      lastErrorAt: row.lastErrorAt?.toISOString() ?? null,
+      consecutiveFailures: row.consecutiveFailures,
     };
   }
 
