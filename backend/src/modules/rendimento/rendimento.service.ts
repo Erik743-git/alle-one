@@ -3392,7 +3392,11 @@ export class RendimentoService {
     }
 
     const debitProtected = params.decision === 'APPROVED';
-    await this.prisma.$executeRawUnsafe(
+    // `AND status = 'PENDING'` na própria escrita: sem isso, dois admins
+    // decidindo ao mesmo tempo passam os dois pela checagem acima e o último
+    // sobrescreve o primeiro em silêncio — inclusive aprovando algo que o
+    // outro acabou de negar, e gravando o approved_by errado.
+    const updated = await this.prisma.$executeRawUnsafe(
       `
       UPDATE rendimento_day_events
       SET status = $2::"RendimentoDayEventStatus",
@@ -3401,12 +3405,19 @@ export class RendimentoService {
           approved_at = NOW(),
           updated_at = NOW()
       WHERE id = $1
+        AND status = 'PENDING'
+        AND deleted_at IS NULL
     `,
       params.eventId,
       params.decision,
       debitProtected,
       params.actor.userId,
     );
+    if (Number(updated) !== 1) {
+      throw new BadRequestException(
+        'Este registro já foi decidido por outro usuário.',
+      );
+    }
 
     if (current.appointment_external_id != null) {
       await this.reconcileOvertimeDayEventSync({
@@ -3498,7 +3509,8 @@ export class RendimentoService {
       throw new BadRequestException('Justificativa já foi decidida.');
     }
 
-    await this.prisma.$executeRawUnsafe(
+    // Mesma guarda de decideDayEvent: só decide quem chegar primeiro.
+    const updatedJustification = await this.prisma.$executeRawUnsafe(
       `
       UPDATE rendimento_gap_justifications
       SET status = $2::"RendimentoGapJustificationStatus",
@@ -3506,12 +3518,19 @@ export class RendimentoService {
           approved_by = $4,
           approved_at = NOW()
       WHERE id = $1
+        AND status = 'PENDING'
+        AND deleted_at IS NULL
     `,
       params.justificationId,
       params.decision,
       String(params.note || '').trim() || null,
       params.actor.userId,
     );
+    if (Number(updatedJustification) !== 1) {
+      throw new BadRequestException(
+        'Esta justificativa já foi decidida por outro usuário.',
+      );
+    }
 
     await this.audit.log({
       actor: params.actor,

@@ -6,6 +6,9 @@ export { API_URL };
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
+/** Relatórios pesados chegam perto de 30 s; acima disso é travamento. */
+const REQUEST_TIMEOUT_MS = 60_000;
+
 type RequestOptions = {
   method?: HttpMethod;
   body?: unknown;
@@ -131,16 +134,29 @@ export async function apiRequest<T>(
     headerRecord["X-Alleone-Api"] = "1";
   }
 
-  const response = await fetch(buildApiUrlForRequest(endpoint), {
-    method,
-    credentials: "include",
-    headers,
-    body: !body
-      ? undefined
-      : isFormData
-        ? (body as FormData)
-        : JSON.stringify(body),
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildApiUrlForRequest(endpoint), {
+      method,
+      credentials: "include",
+      headers,
+      // Sem timeout, uma requisição pendurada deixa a tela em skeleton para
+      // sempre — o finally que limpa o loading nunca roda.
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      body: !body
+        ? undefined
+        : isFormData
+          ? (body as FormData)
+          : JSON.stringify(body),
+    });
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(
+        "O servidor demorou demais para responder. Verifique sua conexão e tente novamente.",
+      );
+    }
+    throw err;
+  }
 
   if (response.status === 401) {
     const onPublic =

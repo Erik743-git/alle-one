@@ -16,6 +16,7 @@ import {
   type PreTicketListItem,
 } from "@/lib/services/email-inbound.service";
 import { Check, Trash2 } from "lucide-react";
+import { getStoredUser } from "@/lib/session";
 import { useRouter } from "next/navigation";
 
 function formatWhen(iso: string) {
@@ -37,6 +38,7 @@ export default function PreTicketsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const currentUserId = getStoredUser()?.id ?? null;
 
   const load = useCallback(async () => {
     try {
@@ -62,6 +64,32 @@ export default function PreTicketsPage() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao remover");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function claim(id: string) {
+    setBusy(true);
+    try {
+      await emailInboundService.claimPreTicket(id);
+      setError(null);
+      await load();
+    } catch (e) {
+      // Quem já reservou aparece na mensagem do backend.
+      setError(e instanceof Error ? e.message : "Falha ao assumir");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releaseClaim(id: string) {
+    setBusy(true);
+    try {
+      await emailInboundService.releasePreTicket(id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao liberar");
     } finally {
       setBusy(false);
     }
@@ -191,6 +219,11 @@ export default function PreTicketsPage() {
                             Possível duplicata de assunto
                           </span>
                         ) : null}
+                        {row.claimedBy ? (
+                          <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 dark:text-violet-200">
+                            🔒 {row.claimedBy.name} está atendendo
+                          </span>
+                        ) : null}
                       </div>
                       <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                         {row.channel}
@@ -227,6 +260,35 @@ export default function PreTicketsPage() {
                       onClick={(event) => event.stopPropagation()}
                     >
                       <div className="flex justify-end gap-1.5">
+                        {!row.portalPreTicket ? (
+                          row.claimedBy?.id === currentUserId ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              disabled={busy}
+                              title="Devolver para a fila"
+                              onClick={() => void releaseClaim(row.id)}
+                            >
+                              Liberar
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              disabled={busy}
+                              title={
+                                row.claimedBy
+                                  ? `${row.claimedBy.name} está atendendo`
+                                  : "Reservar para você enquanto atende"
+                              }
+                              onClick={() => void claim(row.id)}
+                            >
+                              {row.claimedBy ? "Assumir mesmo assim" : "Assumir"}
+                            </Button>
+                          )
+                        ) : null}
                         {row.portalPreTicket && row.ticketNumber ? (
                           <Button
                             size="icon"

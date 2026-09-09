@@ -492,53 +492,63 @@ export class TicketsQueryService {
     // igual ao que a coluna exibe.
     const stageWhere = await this.resolveStageFilterWhere(query.stageName);
 
-    const rows = await this.prisma.portalTicket.findMany({
-      where: {
-        ...(!mineOnly && responsibleFilter != null
-          ? { responsibleExternalId: responsibleFilter }
-          : {}),
-        ...(clientWhere ?? {}),
-        ...(stageWhere ?? {}),
-        ...(query.statusName
-          ? { statusName: { contains: query.statusName, mode: 'insensitive' } }
-          : {}),
-        ...(query.deskName
-          ? { deskName: { contains: query.deskName, mode: 'insensitive' } }
-          : {}),
-        ...(query.requestorName
-          ? {
-              OR: [
-                {
-                  requestorName: {
-                    contains: query.requestorName,
-                    mode: 'insensitive',
-                  },
+    const listWhere: Prisma.PortalTicketWhereInput = {
+      ...(!mineOnly && responsibleFilter != null
+        ? { responsibleExternalId: responsibleFilter }
+        : {}),
+      ...(clientWhere ?? {}),
+      ...(stageWhere ?? {}),
+      ...(query.statusName
+        ? { statusName: { contains: query.statusName, mode: 'insensitive' } }
+        : {}),
+      ...(query.deskName
+        ? { deskName: { contains: query.deskName, mode: 'insensitive' } }
+        : {}),
+      ...(query.requestorName
+        ? {
+            OR: [
+              {
+                requestorName: {
+                  contains: query.requestorName,
+                  mode: 'insensitive',
                 },
-                {
-                  requestorEmail: {
-                    contains: query.requestorName,
-                    mode: 'insensitive',
-                  },
-                },
-              ],
-            }
-          : {}),
-        ...(query.ticketNumber != null
-          ? { ticketNumber: query.ticketNumber }
-          : {}),
-        ...(fromDate || toDate
-          ? {
-              createdAtSource: {
-                ...(fromDate ? { gte: fromDate } : {}),
-                ...(toDate ? { lte: toDate } : {}),
               },
-            }
-          : {}),
-        ...(andParts.length > 0 ? { AND: andParts } : {}),
-      },
-      orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
-      take: limit,
-    });
+              {
+                requestorEmail: {
+                  contains: query.requestorName,
+                  mode: 'insensitive',
+                },
+              },
+            ],
+          }
+        : {}),
+      ...(query.ticketNumber != null
+        ? { ticketNumber: query.ticketNumber }
+        : {}),
+      ...(fromDate || toDate
+        ? {
+            createdAtSource: {
+              ...(fromDate ? { gte: fromDate } : {}),
+              ...(toDate ? { lte: toDate } : {}),
+            },
+          }
+        : {}),
+      ...(andParts.length > 0 ? { AND: andParts } : {}),
+    };
+
+    // `total` era o tamanho da própria página, então a tela dizia "500" mesmo
+    // havendo mais — e o filtro de coluna, que é client-side, só enxergava
+    // esse recorte. Agora vem a contagem real e o offset permite paginar.
+    const offset = Math.max(0, query.offset ?? 0);
+    const [rows, totalCount] = await Promise.all([
+      this.prisma.portalTicket.findMany({
+        where: listWhere,
+        orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
+        skip: offset,
+        take: limit,
+      }),
+      this.prisma.portalTicket.count({ where: listWhere }),
+    ]);
 
     const gmudRefs = await this.prisma.portalTicketGmudLink.findMany({
       where: { ticketNumber: { in: rows.map((r) => r.ticketNumber) } },
@@ -583,7 +593,13 @@ export class TicketsQueryService {
     })).filter((g) => g.tickets.length > 0);
 
     return {
+      /** Itens nesta página (compat: era o único número devolvido). */
       total: ticketRows.length,
+      /** Contagem real no filtro, independente da página. */
+      totalCount,
+      offset,
+      limit,
+      hasMore: offset + ticketRows.length < totalCount,
       mineOnly,
       responsibleExternalId: responsibleFilter,
       responsibleName,
@@ -739,6 +755,81 @@ export class TicketsQueryService {
     requestedClientId: number | null | undefined,
   ) {
     return resolveClientListFilter(this.tenantScope, actor, requestedClientId);
+  }
+
+  /**
+   * Busca rápida da paleta (Ctrl+K). Devolve poucos resultados de cada tipo,
+   * o suficiente para navegar — não substitui a listagem com filtros.
+   *
+   * Respeita o mesmo escopo da lista: usuário de cliente só encontra tickets
+   * da própria empresa, e empresas/colaboradores só aparecem para a equipe
+   * interna (não faz sentido cliente enumerar isso).
+   */
+  async quickSearch(actor: AuthenticatedRequestUser, rawTerm: string) {
+    const term = rawTerm.trim();
+    if (term.length < 2) {
+      return { tickets: [], companies: [], collaborators: [] };
+    }
+
+    const clientScope = await this.resolveClientListFilter(actor, undefined);
+    const isClient = isClientPortalRole(actor.role);
+    const asNumber = /^\d+$/.test(term) ? Number(term) : null;
+
+    const tickets = await this.prisma.portalTicket.findMany({
+      where: {
+        ...(clientScope.clientExternalId != null
+          ? { clientExternalId: clientScope.clientExternalId }
+          : {}),
+        OR: [
+          ...(asNumber != null && Number.isSafeInteger(asNumber)
+            ? [{ ticketNumber: asNumber }]
+            : []),
+          { title: { contains: term, mode: 'insensitive' as const } },
+        ],
+      },
+      select: {
+        ticketNumber: true,
+        title: true,
+        clientName: true,
+        stageName: true,
+        isClosed: true,
+      },
+      // Número exato primeiro; depois os mais recentes.
+      orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
+      take: 8,
+    });
+
+    if (isClient) {
+      return { tickets, companies: [], collaborators: [] };
+    }
+
+    const [companies, collaborators] = await Promise.all([
+      this.prisma.company.findMany({
+        where: {
+          deletedAt: null,
+          name: { contains: term, mode: 'insensitive' },
+        },
+        select: { id: true, name: true, tifluxClientId: true },
+        orderBy: { name: 'asc' },
+        take: 5,
+      }),
+      this.prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          status: 'ACTIVE',
+          role: { in: ['ADMIN', 'COLLABORATOR', 'PJ'] },
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true, name: true, email: true },
+        orderBy: { name: 'asc' },
+        take: 5,
+      }),
+    ]);
+
+    return { tickets, companies, collaborators };
   }
 
   async listGrouped(

@@ -5,6 +5,7 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Sidebar from "./sidebar";
 import { SidebarProvider, useSidebar } from "./sidebar-context";
+import { GlobalSearch } from "./global-search";
 
 function AppShellMain({ children }: { children: React.ReactNode }) {
   const { setMobileOpen } = useSidebar();
@@ -60,6 +61,8 @@ export default function AppShell({
           <Sidebar />
           <AppShellMain>{children}</AppShellMain>
         </div>
+        {/* Ctrl+K de qualquer tela do portal. */}
+        <GlobalSearch />
       </div>
     </SidebarProvider>
   );

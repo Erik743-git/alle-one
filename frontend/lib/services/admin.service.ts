@@ -99,6 +99,10 @@ export type TicketAutoOpenRule = {
   lastTicketNumber: number | null;
   createdAt: string;
   attachments: TicketAutoOpenRuleAttachment[];
+  lastError: string | null;
+  lastErrorAt: string | null;
+  consecutiveFailures: number;
+  classificationStale: boolean;
 };
 
 export type TicketAutoOpenRulePayload = {

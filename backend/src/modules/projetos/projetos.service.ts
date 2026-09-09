@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -16,6 +17,7 @@ import {
 import { randomUUID } from 'crypto';
 import ExcelJS from 'exceljs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { hhmmDurationMinutes } from '../tickets/portal-appointment.helper';
 import { ProjetosDocumentsService } from './projetos-documents.service';
@@ -836,6 +838,8 @@ export class ProjetosExcelService {
 
 @Injectable()
 export class ProjetosService {
+  private readonly logger = new Logger(ProjetosService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly excel: ProjetosExcelService,
@@ -844,7 +848,7 @@ export class ProjetosService {
   ) {}
 
   private assertCanMutate(user: AuthenticatedRequestUser) {
-    if (user.role === UserRole.CLIENT) {
+    if (isClientPortalRole(user.role)) {
       throw new ForbiddenException(
         'Cliente pode apenas visualizar e exportar projetos.',
       );
@@ -1081,7 +1085,7 @@ export class ProjetosService {
   }
 
   private assertCanImport(user: AuthenticatedRequestUser) {
-    if (user.role === UserRole.CLIENT) {
+    if (isClientPortalRole(user.role)) {
       throw new ForbiddenException(
         'Cliente não pode importar planilhas de projetos.',
       );
@@ -1097,7 +1101,7 @@ export class ProjetosService {
   }
 
   private isClientView(user: AuthenticatedRequestUser) {
-    return user.role === UserRole.CLIENT;
+    return isClientPortalRole(user.role);
   }
 
   private appointmentMinutesFromStrings(
@@ -1171,7 +1175,14 @@ export class ProjetosService {
             LIMIT 1
           `) ?? [];
         ticket = rows[0] ?? null;
-      } catch {
+      } catch (err) {
+        // Sem log, falha de banco fica indistinguível de "ticket não existe"
+        // e o usuário só vê "Ticket #N não encontrado".
+        this.logger.warn(
+          `Falha ao consultar tiflux.tickets para #${ticketNumber}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
         ticket = null;
       }
     }
@@ -1736,7 +1747,10 @@ export class ProjetosService {
   async getAccessibleCompanyIds(
     user: AuthenticatedRequestUser,
   ): Promise<string[]> {
-    if (user.role === UserRole.CLIENT) {
+    // isClientPortalRole, não `=== CLIENT`: o RolesGuard deixa CLIENT_GESTOR e
+    // CLIENT_MEMBER passarem em rotas que listam CLIENT, e a comparação exata
+    // os mandava para o ramo de baixo — recebiam TODAS as empresas.
+    if (isClientPortalRole(user.role)) {
       if (!user.companyId) {
         throw new ForbiddenException('Usuário sem empresa vinculada.');
       }
@@ -2887,10 +2901,9 @@ export class ProjetosService {
   ) {
     const q = query.q?.trim();
     const scope = await this.getAccessibleCompanyIds(user);
-    const companyId =
-      user.role === UserRole.CLIENT
-        ? user.companyId
-        : (query.companyId ?? null);
+    const companyId = isClientPortalRole(user.role)
+      ? user.companyId
+      : (query.companyId ?? null);
     if (companyId) {
       this.ensureCompanyInScope(companyId, scope);
     }
@@ -2899,7 +2912,7 @@ export class ProjetosService {
       where: {
         deletedAt: null,
         status: 'ACTIVE',
-        ...(user.role === UserRole.CLIENT
+        ...(isClientPortalRole(user.role)
           ? { companyId: user.companyId }
           : companyId
             ? {

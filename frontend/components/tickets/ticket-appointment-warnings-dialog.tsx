@@ -350,7 +350,10 @@ export function TicketAppointmentWarningsDialog({
               />
               <span>Não exibir novamente</span>
             </label>
-            <DialogFooter className="gap-2 border-t border-border/60 px-6 py-4">
+            <DialogFooter
+              bleed={false}
+              className="gap-2 border-t border-border/60 px-6"
+            >
               {visibleWarnings.length > 1 ? (
                 <Button
                   type="button"

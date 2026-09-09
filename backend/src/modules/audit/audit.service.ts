@@ -3,10 +3,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import type { AuditLogInput } from './audit.types';
 
 const SENSITIVE_KEYS = new Set([
-  'password',
-  'passwordHash',
-  'token',
-  'refreshToken',
   'authorization',
   'cookie',
   'cookies',
@@ -15,6 +11,19 @@ const SENSITIVE_KEYS = new Set([
   'files',
   'buffer',
 ]);
+
+/**
+ * Trechos que, em qualquer posição do nome do campo, marcam o valor como
+ * sensível. Cobre variações que a lista exata deixava passar
+ * (`newPassword`, `currentPassword`, `clientSecret`, `apiKey`, `totpSecret`).
+ */
+const SENSITIVE_KEY_PARTS = ['pass', 'senha', 'secret', 'token', 'apikey'];
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  if (SENSITIVE_KEYS.has(normalized)) return true;
+  return SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part));
+}
 
 function sanitizeValue(value: unknown, depth = 0): unknown {
   if (depth > 6) return '[max_depth]';
@@ -36,7 +45,7 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
     const obj = value as Record<string, unknown>;
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj)) {
-      if (SENSITIVE_KEYS.has(k)) {
+      if (isSensitiveKey(k)) {
         out[k] = '[redacted]';
         continue;
       }

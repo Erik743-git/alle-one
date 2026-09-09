@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { isClient } from "@/lib/access-control";
+import { canAccessPreTickets } from "@/lib/access-control";
 import { emailInboundService } from "@/lib/services/email-inbound.service";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ export function PreTicketsBadge({ variant = "inline" }: Props) {
   }, []);
 
   useEffect(() => {
-    if (isClient()) return;
+    if (!canAccessPreTickets()) return;
     let cancelled = false;
 
     void emailInboundService
@@ -48,7 +48,7 @@ export function PreTicketsBadge({ variant = "inline" }: Props) {
 
   // Poll leve enquanto a tela de chamados estiver aberta (e-mail entra sozinho).
   useEffect(() => {
-    if (isClient()) return;
+    if (!canAccessPreTickets()) return;
     const id = window.setInterval(() => {
       setTick((value) => value + 1);
     }, 60_000);

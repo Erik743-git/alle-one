@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Portal Alle One — indisponível no momento</title>
+    <!--
+      Servida pelo Nginx quando o portal não responde (502/503/504).
+
+      Precisa ser autocontida: quando esta página aparece, a aplicação Next
+      está fora do ar, então nada de CSS, fonte ou script externo. A única
+      dependência é o logo, servido pelo próprio Nginx como arquivo estático.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #0b1220;
+        background-image: radial-gradient(
+          ellipse 100% 60% at 50% -15%,
+          rgba(18, 181, 217, 0.11),
+          transparent 50%
+        );
+        color: #e5ecea;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+          Arial, sans-serif;
+        line-height: 1.6;
+      }
+      .card {
+        width: 100%;
+        max-width: 460px;
+        text-align: center;
+      }
+      .logo {
+        width: 150px;
+        height: auto;
+        margin-bottom: 32px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 21px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0 0 8px;
+        font-size: 14.5px;
+        color: #97a6a3;
+      }
+      .bar {
+        margin: 28px auto 0;
+        width: 180px;
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(229, 236, 234, 0.12);
+        overflow: hidden;
+      }
+      .bar span {
+        display: block;
+        width: 33%;
+        height: 100%;
+        border-radius: 999px;
+        background: #12b5d9;
+        animation: sweep 1.2s ease-in-out infinite;
+      }
+      @keyframes sweep {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(300%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .bar span {
+          animation: none;
+          width: 100%;
+          opacity: 0.5;
+        }
+      }
+      .hint {
+        margin-top: 28px;
+        font-size: 12.5px;
+        color: rgba(151, 166, 163, 0.75);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="logo" src="/logo-alle-branca.png" alt="Alle Tecnologia" />
+      <h1>O portal está fora do ar no momento</h1>
+      <p>
+        Estamos trabalhando para restabelecer o acesso. Esta página se atualiza
+        sozinha a cada 30 segundos.
+      </p>
+      <div class="bar" role="status" aria-label="Aguardando o portal voltar">
+        <span></span>
+      </div>
+      <p class="hint">
+        Se for urgente, acione a equipe de TI pelos canais de sempre.
+      </p>
+    </main>
+    <script>
+      // Recarrega sozinho: quando o portal voltar, o Nginx serve a aplicação
+      // e o usuário não precisa perceber que precisa apertar F5.
+      setTimeout(function () {
+        window.location.reload();
+      }, 30000);
+    </script>
+  </body>
+</html>

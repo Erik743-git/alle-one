@@ -91,6 +91,39 @@ function toExcelText(value?: string | null): string {
   return text || '-';
 }
 
+/** Carimbo de geração no fuso de quem usa o portal, não no do servidor. */
+export function formatGeneratedAtBR(date: Date): string {
+  const partes = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (tipo: string) =>
+    partes.find((p) => p.type === tipo)?.value ?? '00';
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
+/** Formato de duração acumulável do Excel: 27:28 em vez de voltar a 03:28. */
+const EXCEL_DURATION_FMT = '[h]:mm';
+
+/**
+ * Duração como número, não como texto.
+ *
+ * O Excel guarda duração em fração de dia; gravando "01:30" como texto ele não
+ * soma nem ao selecionar as células. Devolve null para duração ausente, porque
+ * célula vazia fica de fora da soma enquanto um zero entraria como lançamento.
+ */
+export function toExcelDuration(totalMinutes: number | null | undefined) {
+  const minutes = Number(totalMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return minutes / 1440;
+}
+
 function parseDateOrThrow(value: string, label: string) {
   return parseDateInput(value, label);
 }
@@ -1969,6 +2002,10 @@ export class ReportsService {
       durationHHMM: string;
       overtimeHHMM: string;
       plantaoHHMM: string;
+      /** Minutos crus: a planilha grava duração como número para o Excel somar. */
+      durationMinutes: number;
+      overtimeMinutes: number;
+      plantaoMinutes: number;
       description: string;
       client: string;
       equipe: string;
@@ -2106,6 +2143,9 @@ export class ReportsService {
         durationHHMM,
         overtimeHHMM: overtimeKind === 'EXTRA' ? durationHHMM : '',
         plantaoHHMM: overtimeKind === 'PLANTAO' ? durationHHMM : '',
+        durationMinutes,
+        overtimeMinutes: overtimeKind === 'EXTRA' ? durationMinutes : 0,
+        plantaoMinutes: overtimeKind === 'PLANTAO' ? durationMinutes : 0,
         description: this.formatReportDescription(r.description),
         client: String(r.client_name || '').trim() || '-',
         equipe,
@@ -2406,6 +2446,12 @@ export class ReportsService {
       extraMinutes: number;
       plantaoMinutes: number;
       alerts: number;
+      /** Da esteira de aprovação (rendimento_day_events), não do apontamento. */
+      extraApprovedMinutes: number;
+      extraNotApprovedMinutes: number;
+      plantaoApprovedMinutes: number;
+      plantaoNotApprovedMinutes: number;
+      justifications: number;
     }>
   > {
     const collaboratorFilter = await this.resolveCollaboratorAppointmentFilter(
@@ -2420,6 +2466,7 @@ export class ReportsService {
           Array<{
             appointment_id: number;
             user_name: string | null;
+            user_id: string | null;
             appointment_date: string;
             init_time: string | null;
             end_time: string | null;
@@ -2430,6 +2477,7 @@ export class ReportsService {
         select
           coalesce(a.tiflux_appointment_external_id, abs(hashtext(a.id)))::int as appointment_id,
           coalesce(nullif(trim(u.name), ''), 'Não mapeado') as user_name,
+          a.created_by as user_id,
           a.appointment_date::date::text as appointment_date,
           a.init_time as init_time,
           a.end_time as end_time,
@@ -2457,6 +2505,7 @@ export class ReportsService {
           Array<{
             appointment_id: number;
             user_name: string | null;
+            user_id: string | null;
             appointment_date: string;
             init_time: string | null;
             end_time: string | null;
@@ -2467,6 +2516,7 @@ export class ReportsService {
         select
           a.external_id as appointment_id,
           a.user_name,
+          null::text as user_id,
           a.appointment_date::date::text as appointment_date,
           a.init_time::text as init_time,
           a.end_time::text as end_time,
@@ -2512,12 +2562,22 @@ export class ReportsService {
         valorization_raw: unknown | null;
       }>
     >();
+    const userIdByAttendant = new Map<string, string>();
     for (const row of rawRows) {
       const name = String(row.user_name || '').trim();
       if (!name) continue;
       if (!byAttendant.has(name)) byAttendant.set(name, []);
       byAttendant.get(name)!.push(row);
+      if (row.user_id && !userIdByAttendant.has(name)) {
+        userIdByAttendant.set(name, row.user_id);
+      }
     }
+
+    const approvals = await this.getRendimentoApprovalTotals({
+      userIds: [...userIdByAttendant.values()],
+      startDateOnly,
+      endDateOnly,
+    });
 
     return [...byAttendant.keys()]
       .sort((a, b) => a.localeCompare(b, 'pt-BR'))
@@ -2531,6 +2591,14 @@ export class ReportsService {
           valorization_raw: r.valorization_raw,
         }));
         const cat = computeCategorizedMinutes(mapped);
+        const userId = userIdByAttendant.get(name);
+        const appr = (userId ? approvals.get(userId) : null) ?? {
+          extraApproved: 0,
+          extraNotApproved: 0,
+          plantaoApproved: 0,
+          plantaoNotApproved: 0,
+          justifications: 0,
+        };
         return {
           attendant: name,
           nonOverlapMinutes: cat.total,
@@ -2538,8 +2606,124 @@ export class ReportsService {
           extraMinutes: cat.extra,
           plantaoMinutes: cat.plantao,
           alerts: this.countRendimentoAlertsInPeriod(group),
+          extraApprovedMinutes: appr.extraApproved,
+          extraNotApprovedMinutes: appr.extraNotApproved,
+          plantaoApprovedMinutes: appr.plantaoApproved,
+          plantaoNotApprovedMinutes: appr.plantaoNotApproved,
+          justifications: appr.justifications,
         };
       });
+  }
+
+  /**
+   * Totais da esteira de aprovação no período, por usuário do portal.
+   *
+   * Fonte: `rendimento_day_events` (HE/plantão nascem como PENDING e o admin
+   * aprova/nega) e `rendimento_gap_justifications`. "Não aprovado" agrupa
+   * PENDING + REJECTED + ACTIVE — ou seja, tudo que ainda não foi aprovado.
+   *
+   * Duas ressalvas, ambas anunciadas no rótulo das colunas do relatório:
+   *
+   * 1. NÃO são escopados por empresa. `rendimento_day_events` é por usuário e
+   *    dia, sem coluna de empresa (só um `appointment_external_id` opcional),
+   *    então num relatório de uma empresa estes totais continuam sendo do
+   *    atendente em todos os clientes. Escopar exigiria navegar do evento até
+   *    o apontamento e o chamado, e perderia os eventos sem esse vínculo.
+   * 2. Vêm do apontamento individual, sem deduplicar sobreposição, então não
+   *    somam exatamente as colunas "Hora extra"/"Plantão", que são a união
+   *    deduplicada por prioridade PLANTÃO > EXTRA > NORMAL.
+   */
+  private async getRendimentoApprovalTotals(params: {
+    userIds: string[];
+    startDateOnly: string;
+    endDateOnly: string;
+  }): Promise<
+    Map<
+      string,
+      {
+        extraApproved: number;
+        extraNotApproved: number;
+        plantaoApproved: number;
+        plantaoNotApproved: number;
+        justifications: number;
+      }
+    >
+  > {
+    const result = new Map<
+      string,
+      {
+        extraApproved: number;
+        extraNotApproved: number;
+        plantaoApproved: number;
+        plantaoNotApproved: number;
+        justifications: number;
+      }
+    >();
+    const userIds = [...new Set(params.userIds.filter(Boolean))];
+    if (userIds.length === 0) return result;
+
+    const ensure = (userId: string) => {
+      if (!result.has(userId)) {
+        result.set(userId, {
+          extraApproved: 0,
+          extraNotApproved: 0,
+          plantaoApproved: 0,
+          plantaoNotApproved: 0,
+          justifications: 0,
+        });
+      }
+      return result.get(userId)!;
+    };
+
+    const eventRows = await this.prisma.$queryRaw<
+      Array<{
+        user_id: string;
+        event_type: string;
+        approved: boolean;
+        total: number | bigint | null;
+      }>
+    >`
+      select
+        e.user_id,
+        e.event_type,
+        (e.status = 'APPROVED') as approved,
+        coalesce(sum(e.minutes), 0)::int as total
+      from rendimento_day_events e
+      where e.user_id = any(${userIds}::text[])
+        and e.deleted_at is null
+        and e.event_type in ('OVERTIME', 'PLANTAO')
+        and e.date_ref between ${params.startDateOnly}::date and ${params.endDateOnly}::date
+      group by e.user_id, e.event_type, (e.status = 'APPROVED')
+    `;
+
+    for (const row of eventRows) {
+      const bucket = ensure(row.user_id);
+      const minutes = Number(row.total) || 0;
+      if (row.event_type === 'PLANTAO') {
+        if (row.approved) bucket.plantaoApproved += minutes;
+        else bucket.plantaoNotApproved += minutes;
+      } else {
+        if (row.approved) bucket.extraApproved += minutes;
+        else bucket.extraNotApproved += minutes;
+      }
+    }
+
+    const justificationRows = await this.prisma.$queryRaw<
+      Array<{ user_id: string; total: number | bigint | null }>
+    >`
+      select j.user_id, count(*)::int as total
+      from rendimento_gap_justifications j
+      where j.user_id = any(${userIds}::text[])
+        and j.deleted_at is null
+        and j.date_ref between ${params.startDateOnly}::date and ${params.endDateOnly}::date
+      group by j.user_id
+    `;
+
+    for (const row of justificationRows) {
+      ensure(row.user_id).justifications = Number(row.total) || 0;
+    }
+
+    return result;
   }
 
   private countRendimentoAlertsInPeriod(
@@ -2650,6 +2834,13 @@ export class ReportsService {
       'hora_extra',
       'plantao',
       'alertas',
+      // Ver nota no XLSX: a esteira de aprovação não tem empresa, então estes
+      // quatro são do atendente em todos os clientes, não só no do relatório.
+      'he_aprovada_todas_empresas',
+      'he_nao_aprovada_todas_empresas',
+      'plantao_aprovado_todas_empresas',
+      'plantao_nao_aprovado_todas_empresas',
+      'justificativas',
     ].join(',');
     const summaryLines = summaries.map((s) =>
       [
@@ -2659,6 +2850,11 @@ export class ReportsService {
         this.formatMinutesHHMM(s.extraMinutes),
         this.formatMinutesHHMM(s.plantaoMinutes),
         String(s.alerts),
+        this.formatMinutesHHMM(s.extraApprovedMinutes),
+        this.formatMinutesHHMM(s.extraNotApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoNotApprovedMinutes),
+        String(s.justifications),
       ].join(','),
     );
 
@@ -2757,10 +2953,9 @@ export class ReportsService {
     sheet.getCell('A4').value = 'Período:';
     sheet.getCell('B4').value = `${startDateOnly} até ${endDateOnly}`;
     sheet.getCell('A5').value = 'Gerado em:';
-    sheet.getCell('B5').value = new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace('T', ' ');
+    // toISOString grava UTC: o carimbo saía 3h à frente do horário de quem
+    // gerou. O servidor roda em UTC, então o fuso precisa ser explícito.
+    sheet.getCell('B5').value = formatGeneratedAtBR(new Date());
 
     ['A2', 'A3', 'A4', 'A5'].forEach((addr) => {
       sheet.getCell(addr).font = { bold: true };
@@ -2823,15 +3018,18 @@ export class ReportsService {
         r.ticketNumber || null,
         toExcelText(r.title),
         toExcelText(r.apontamento),
-        toExcelText(r.durationHHMM),
-        toExcelText(r.overtimeHHMM),
-        toExcelText(r.plantaoHHMM),
+        toExcelDuration(r.durationMinutes),
+        toExcelDuration(r.overtimeMinutes),
+        toExcelDuration(r.plantaoMinutes),
         toExcelText(r.description),
         toExcelText(r.client),
         toExcelText(r.equipe),
         toExcelText(r.monthLabel),
       ];
       sheet.getRow(rowIndex).getCell(2).numFmt = '0';
+      [5, 6, 7].forEach((col) => {
+        sheet.getRow(rowIndex).getCell(col).numFmt = EXCEL_DURATION_FMT;
+      });
       rowIndex += 1;
     }
 
@@ -2841,6 +3039,25 @@ export class ReportsService {
         from: { row: headerRowIndex, column: 1 },
         to: { row: lastDataRow, column: 11 },
       };
+
+      // Total ao final. SUBTOTAL(109) em vez de SUM para acompanhar o filtro:
+      // filtrando por atendente, o total passa a ser o daquele atendente.
+      const totalRow = sheet.getRow(lastDataRow + 1);
+      totalRow.getCell(1).value = 'Total';
+      totalRow.getCell(4).value = `${rows.length} apontamento(s)`;
+      const firstDataRow = headerRowIndex + 1;
+      [5, 6, 7].forEach((col) => {
+        const letra = String.fromCharCode(64 + col);
+        totalRow.getCell(col).value = {
+          formula: `SUBTOTAL(109,${letra}${firstDataRow}:${letra}${lastDataRow})`,
+        };
+        totalRow.getCell(col).numFmt = EXCEL_DURATION_FMT;
+      });
+      totalRow.font = { bold: true };
+      totalRow.getCell(1).border = { top: { style: 'thin' } };
+      [4, 5, 6, 7].forEach((col) => {
+        totalRow.getCell(col).border = { top: { style: 'thin' } };
+      });
     }
 
     const summaries = await this.getRendimentoAttendantSummaries({
@@ -2862,6 +3079,12 @@ export class ReportsService {
     summarySheet.getColumn(4).width = 14;
     summarySheet.getColumn(5).width = 12;
     summarySheet.getColumn(6).width = 10;
+    // 7 a 10 mais largas: os rótulos ganharam "(todas as empresas)".
+    summarySheet.getColumn(7).width = 30;
+    summarySheet.getColumn(8).width = 32;
+    summarySheet.getColumn(9).width = 30;
+    summarySheet.getColumn(10).width = 32;
+    summarySheet.getColumn(11).width = 16;
 
     const summaryHeaderRow = summarySheet.getRow(1);
     summaryHeaderRow.values = [
@@ -2871,6 +3094,16 @@ export class ReportsService {
       'Hora extra',
       'Plantão',
       'Alertas',
+      // "(todas as empresas)" no rótulo porque a esteira de aprovação é por
+      // usuário e dia, sem vínculo com empresa: num relatório de uma empresa
+      // só, estes quatro números continuam sendo o total do atendente em todos
+      // os clientes. Sem o aviso no cabeçalho, o número é lido como se fosse
+      // da empresa do relatório.
+      'HE aprovada (todas as empresas)',
+      'HE não aprovada (todas as empresas)',
+      'Plantão aprovado (todas as empresas)',
+      'Plantão não aprovado (todas as empresas)',
+      'Justificativas',
     ];
     summaryHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     summaryHeaderRow.fill = {
@@ -2886,12 +3119,20 @@ export class ReportsService {
       const row = summarySheet.getRow(summaryRowIndex);
       row.values = [
         s.attendant,
-        this.formatMinutesHHMM(s.nonOverlapMinutes),
-        this.formatMinutesHHMM(s.rawMinutes),
-        this.formatMinutesHHMM(s.extraMinutes),
-        this.formatMinutesHHMM(s.plantaoMinutes),
+        toExcelDuration(s.nonOverlapMinutes),
+        toExcelDuration(s.rawMinutes),
+        toExcelDuration(s.extraMinutes),
+        toExcelDuration(s.plantaoMinutes),
         s.alerts,
+        toExcelDuration(s.extraApprovedMinutes),
+        toExcelDuration(s.extraNotApprovedMinutes),
+        toExcelDuration(s.plantaoApprovedMinutes),
+        toExcelDuration(s.plantaoNotApprovedMinutes),
+        s.justifications,
       ];
+      [2, 3, 4, 5, 7, 8, 9, 10].forEach((col) => {
+        row.getCell(col).numFmt = EXCEL_DURATION_FMT;
+      });
       summaryRowIndex += 1;
     }
 
@@ -2899,9 +3140,40 @@ export class ReportsService {
     if (summaryLastRow >= 1) {
       summarySheet.autoFilter = {
         from: { row: 1, column: 1 },
-        to: { row: summaryLastRow, column: 6 },
+        to: { row: summaryLastRow, column: 11 },
       };
     }
+
+    if (summaryLastRow >= 2) {
+      const totalRow = summarySheet.getRow(summaryLastRow + 1);
+      totalRow.getCell(1).value = 'Total';
+      [2, 3, 4, 5, 6, 7, 8, 9, 10, 11].forEach((col) => {
+        const letra = String.fromCharCode(64 + col);
+        totalRow.getCell(col).value = {
+          formula: `SUBTOTAL(109,${letra}2:${letra}${summaryLastRow})`,
+        };
+        if (col !== 6 && col !== 11) {
+          totalRow.getCell(col).numFmt = EXCEL_DURATION_FMT;
+        }
+      });
+      totalRow.font = { bold: true };
+      for (let col = 1; col <= 11; col += 1) {
+        totalRow.getCell(col).border = { top: { style: 'thin' } };
+      }
+      summaryRowIndex += 1;
+    }
+
+    // As colunas de aprovacao vem da esteira (day events), que e por colaborador
+    // e dia: nao tem empresa, e nao deduplica sobreposicao. Por isso nao fecham
+    // com "Hora extra"/"Plantao" e nem se limitam a empresa do relatorio.
+    const noteRow = summarySheet.getRow(summaryRowIndex + 1);
+    noteRow.getCell(1).value =
+      'Aprovada/Não aprovada: origem na esteira de aprovação, que é por colaborador e dia — não tem vínculo com empresa. Por isso somam a hora extra e o plantão do atendente em TODAS as empresas no período, e não apenas nesta. São também por apontamento, sem descontar sobreposição, então não fecham com as colunas "Hora extra" e "Plantão" ao lado. "Não aprovada" inclui pendentes e negadas.';
+    noteRow.getCell(1).font = { italic: true, size: 9 };
+    // Sem wrapText a nota fica cortada na borda da célula mesclada.
+    noteRow.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+    noteRow.height = 46;
+    summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 11);
 
     return workbook.xlsx.writeBuffer();
   }

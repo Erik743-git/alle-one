@@ -41,6 +41,7 @@ import {
   TicketsListQueryDto,
   UpdateTicketStageDto,
   GroupTicketDto,
+  AppointmentOverlapQueryDto,
 } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
@@ -151,6 +152,23 @@ export class TicketsController {
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   searchUsers(@Query() query: SearchTicketUsersQueryDto) {
     return this.ticketsService.searchUsersForCc(query.q);
+  }
+
+  /**
+   * Busca rápida da paleta (Ctrl+K): tickets, empresas e colaboradores.
+   *
+   * Precisa vir ANTES de `@Get(':ticketNumber')`: o Nest casa rotas na ordem
+   * de declaração, então lá embaixo esta URL batia no parâmetro, o
+   * ParseIntPipe recusava "quick-search" e a busca respondia 400.
+   */
+  @Get('quick-search')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  quickSearch(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query('q') q?: string,
+  ) {
+    return this.ticketsQueryService.quickSearch(actor, q ?? '');
   }
 
   @Get('attachments/:fileId')
@@ -414,6 +432,26 @@ export class TicketsController {
       ticketNumber,
       body.parentTicketNumber,
     );
+  }
+
+  /**
+   * Apontamentos do próprio usuário que cruzam o horário informado. Consultado
+   * pela tela antes de salvar, para avisar sobre dupla contagem de hora.
+   */
+  @Get('appointments/overlaps')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  appointmentOverlaps(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query() query: AppointmentOverlapQueryDto,
+  ) {
+    return this.appointmentsService.findOwnOverlaps({
+      actor,
+      date: query.date,
+      initTime: query.initTime,
+      endTime: query.endTime,
+      ignorePortalAppointmentId: query.ignorePortalAppointmentId,
+    });
   }
 
   @Post(':ticketNumber/appointments')

@@ -9,7 +9,14 @@ describe('PermissionsService.buildRequestUser', () => {
     },
   };
 
-  const service = new PermissionsService(prisma as never);
+  // Instância nova por teste: buildRequestUser cacheia por userId:tokenVersion
+  // e vários testes aqui usam a mesma chave com dados diferentes.
+  let service: PermissionsService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    service = new PermissionsService(prisma as never);
+  });
 
   it('rejeita JWT com tokenVersion desatualizado', async () => {
     prisma.user.findUnique.mockResolvedValue({

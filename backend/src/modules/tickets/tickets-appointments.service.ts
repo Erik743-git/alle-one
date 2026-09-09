@@ -70,6 +70,7 @@ import {
 } from './ticket-appointment-access';
 import { isDonePortalStage } from './portal-ticket-stages';
 import { resolveTicketStageGroup } from './tickets-stage-groups';
+import { parseClockToMinutes } from '../rendimento/rendimento-worked-minutes.helper';
 
 type AppointmentRow = {
   external_id: number;
@@ -208,6 +209,84 @@ export class TicketsAppointmentsService {
     endTime: string | null,
   ): number {
     return hhmmDurationMinutes(initTime, endTime);
+  }
+
+  /**
+   * Apontamentos do próprio usuário que cruzam o horário informado, no mesmo
+   * dia. Serve para avisar ANTES de salvar — quem resolve três chamados na
+   * mesma hora costuma lançar uma hora em cada sem perceber que está contando
+   * a mesma hora três vezes, e isso só aparecia no fechamento do mês.
+   *
+   * Não bloqueia: sobreposição às vezes é legítima. Só deixa visível.
+   */
+  async findOwnOverlaps(params: {
+    actor: AuthenticatedRequestUser;
+    date: string;
+    initTime: string;
+    endTime: string;
+    /** Ao editar, ignora o próprio apontamento. */
+    ignorePortalAppointmentId?: string;
+  }): Promise<
+    Array<{
+      portalAppointmentId: string;
+      ticketNumber: number;
+      initTime: string;
+      endTime: string;
+      serviceName: string | null;
+      clientName: string | null;
+    }>
+  > {
+    const start = parseClockToMinutes(params.initTime);
+    const end = parseClockToMinutes(params.endTime);
+    if (start == null || end == null || end <= start) return [];
+
+    const sameDay = await this.prisma.portalTicketAppointment.findMany({
+      where: {
+        createdBy: params.actor.userId,
+        appointmentDate: new Date(`${params.date}T00:00:00.000Z`),
+        ...(params.ignorePortalAppointmentId
+          ? { id: { not: params.ignorePortalAppointmentId } }
+          : {}),
+      },
+      select: {
+        id: true,
+        ticketNumber: true,
+        initTime: true,
+        endTime: true,
+        serviceName: true,
+      },
+      // Usa o índice [createdBy, appointmentDate].
+      take: 100,
+    });
+
+    const overlapping = sameDay.filter((row) => {
+      const rowStart = parseClockToMinutes(row.initTime);
+      const rowEnd = parseClockToMinutes(row.endTime);
+      if (rowStart == null || rowEnd == null || rowEnd <= rowStart)
+        return false;
+      // Intervalos [a,b) se cruzam quando a1 < b2 e a2 < b1.
+      return start < rowEnd && rowStart < end;
+    });
+    if (overlapping.length === 0) return [];
+
+    const tickets = await this.prisma.portalTicket.findMany({
+      where: { ticketNumber: { in: overlapping.map((r) => r.ticketNumber) } },
+      select: { ticketNumber: true, clientName: true },
+    });
+    const clientByTicket = new Map(
+      tickets.map((t) => [t.ticketNumber, t.clientName]),
+    );
+
+    return overlapping
+      .sort((a, b) => a.initTime.localeCompare(b.initTime))
+      .map((row) => ({
+        portalAppointmentId: row.id,
+        ticketNumber: row.ticketNumber,
+        initTime: row.initTime,
+        endTime: row.endTime,
+        serviceName: row.serviceName,
+        clientName: clientByTicket.get(row.ticketNumber) ?? null,
+      }));
   }
 
   private attendanceLabel(value: string | null | undefined): string | null {

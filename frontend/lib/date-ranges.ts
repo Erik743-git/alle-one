@@ -14,6 +14,21 @@ export function monthRangeFor(date: Date) {
   };
 }
 
+/**
+ * Ciclo de folha do MÊS CIVIL da data — espelha
+ * `resolvePayrollPeriodRangeForCalendarMonth` do backend, que é o que o
+ * gerador de relatórios aplica.
+ *
+ * Repare que não é o mesmo que `payrollPeriodRangeFor`: o backend ancora no
+ * dia 15 do mês, então uma data inicial no dia 28/08 resulta em 26/07→25/08,
+ * enquanto o ciclo que *contém* 28/08 seria 26/08→25/09. Usar a função errada
+ * aqui faria a tela anunciar um período diferente do que sai no arquivo.
+ */
+export function payrollPeriodRangeForCalendarMonthOf(date: Date) {
+  const midMonth = new Date(date.getFullYear(), date.getMonth(), 15);
+  return payrollPeriodRangeFor(midMonth);
+}
+
 /** Período folha 26→25 que contém a data (alinhado ao rendimento). */
 export function payrollPeriodRangeFor(date: Date) {
   const ref = new Date(date);

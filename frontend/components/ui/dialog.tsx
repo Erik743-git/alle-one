@@ -98,18 +98,30 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 function DialogFooter({
   className,
   showCloseButton = false,
+  bleed = true,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   showCloseButton?: boolean
+  /**
+   * Sangra o rodapé até as bordas do modal cancelando o padding do
+   * DialogContent (`p-4`). Passe `false` quando o DialogContent usa `p-0`:
+   * lá não há padding para cancelar e a barra sairia para fora, sendo
+   * cortada pelo `overflow-hidden`.
+   */
+  bleed?: boolean
 }) {
   return (
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 px-5 pt-4 sm:flex-row sm:justify-end",
+        "flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 px-5 py-4 sm:flex-row sm:justify-end",
+        // -mb-4 junto com -mx-4: sem ele sobrava o padding inferior do
+        // DialogContent como uma faixa vazia embaixo da barra de botões.
+        bleed && "-mx-4 -mb-4",
+        // className por último para a tela conseguir ajustar o padding —
+        // antes o "pb-6" vinha depois e vencia qualquer override.
         className,
-        "pb-6",
       )}
       {...props}
     >
