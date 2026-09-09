@@ -34,12 +34,14 @@ function maintenanceHtml() {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Portal Alle One — indisponível no momento</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600&display=swap" rel="stylesheet">
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
 background:#0b1220;background-image:radial-gradient(ellipse 100% 60% at 50% -15%,rgba(18,181,217,.11),transparent 50%);
-color:#e5ecea;font-family:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
+color:#e5ecea;font-family:'Nunito',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.6}
 .card{width:100%;max-width:460px;text-align:center}
 .logo{width:150px;height:auto;margin-bottom:32px}
 h1{margin:0 0 10px;font-size:21px;font-weight:600;letter-spacing:-.01em}
