@@ -43,6 +43,14 @@ const EMPTY: QuickSearchResult = {
  * O escopo é decidido no backend: usuário de cliente só encontra tickets da
  * própria empresa e não vê empresas nem colaboradores.
  */
+/** Evento que abre a paleta de busca de qualquer lugar do portal. */
+export const OPEN_GLOBAL_SEARCH_EVENT = "alle:abrir-busca-global";
+
+/** Abre a busca global (mesmo resultado do Ctrl+K). */
+export function openGlobalSearch() {
+  window.dispatchEvent(new Event(OPEN_GLOBAL_SEARCH_EVENT));
+}
+
 export function GlobalSearch() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -70,8 +78,18 @@ export function GlobalSearch() {
         });
       }
     }
+    // Botão da lupa na sidebar. Um evento em vez de estado compartilhado para
+    // a paleta seguir sendo dona do próprio estado — quem chama só pede para
+    // abrir, e não precisa saber resetar termo, resultado e destaque.
+    function onOpenRequest() {
+      setOpen(true);
+    }
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener(OPEN_GLOBAL_SEARCH_EVENT, onOpenRequest);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener(OPEN_GLOBAL_SEARCH_EVENT, onOpenRequest);
+    };
   }, []);
 
   // Reset no fechamento (e não num efeito sobre `open`, que dispararia
@@ -118,18 +136,19 @@ export function GlobalSearch() {
     return () => window.clearTimeout(timer);
   }, [term]);
 
+  // Pessoas e empresas antes dos tickets: ticket é o que mais aparece, e se
+  // vier primeiro empurra a pessoa ou a empresa para fora da lista visível
+  // justamente quando é isso que se está procurando.
   const rows = useMemo((): Row[] => {
     if (term.trim().length < 2) return [];
     const list: Row[] = [];
-    for (const ticket of result.tickets) {
+    for (const person of result.collaborators) {
       list.push({
-        kind: "ticket",
-        key: `t-${ticket.ticketNumber}`,
-        label: `#${ticket.ticketNumber} · ${ticket.title?.trim() || "sem título"}`,
-        hint: [ticket.clientName, ticket.stageName]
-          .filter(Boolean)
-          .join(" · "),
-        href: `/tickets/${ticket.ticketNumber}`,
+        kind: "collaborator",
+        key: `u-${person.id}`,
+        label: person.name,
+        hint: person.email,
+        href: `/apontamentos/${person.id}`,
       });
     }
     for (const company of result.companies) {
@@ -141,13 +160,15 @@ export function GlobalSearch() {
         href: `/admin/empresas?companyId=${company.id}`,
       });
     }
-    for (const person of result.collaborators) {
+    for (const ticket of result.tickets) {
       list.push({
-        kind: "collaborator",
-        key: `u-${person.id}`,
-        label: person.name,
-        hint: person.email,
-        href: `/apontamentos/${person.id}`,
+        kind: "ticket",
+        key: `t-${ticket.ticketNumber}`,
+        label: `#${ticket.ticketNumber} · ${ticket.title?.trim() || "sem título"}`,
+        hint: [ticket.clientName, ticket.stageName]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/tickets/${ticket.ticketNumber}`,
       });
     }
     return list;
