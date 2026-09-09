@@ -27,6 +27,10 @@ type SpecialtySummary = {
   externalId: number | null;
 };
 
+/** Igual ao BCRYPT_COST de auth.service — o custo fica gravado no hash, então
+ *  senhas antigas (custo 10) seguem validando normalmente. */
+const BCRYPT_COST = 12;
+
 type UserWithCompany = User & {
   company: { id: string; name: string } | null;
   specialty: SpecialtySummary | null;
@@ -287,7 +291,7 @@ export class UsersService {
     let passwordHash: string | null = null;
 
     if (plainPassword) {
-      passwordHash = await bcrypt.hash(plainPassword, 10);
+      passwordHash = await bcrypt.hash(plainPassword, BCRYPT_COST);
     }
 
     const incomingSpecialtyIds = await this.resolveIncomingSpecialtyIds(data);
@@ -399,7 +403,7 @@ export class UsersService {
     let passwordHash = existingUser.passwordHash;
 
     if (passwordChanging) {
-      passwordHash = await bcrypt.hash(data.password!.trim(), 10);
+      passwordHash = await bcrypt.hash(data.password!.trim(), BCRYPT_COST);
     }
 
     if (data.firstAccess === true && !passwordHash) {
