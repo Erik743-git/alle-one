@@ -483,6 +483,19 @@ export class UsersService {
       }
     }
 
+    // Mudança de papel, empresa ou status precisa invalidar as sessões
+    // existentes: o papel e a empresa vão dentro do JWT, então sem isso o
+    // usuário continua com o acesso antigo até o token expirar. É também o que
+    // permite cachear buildRequestUser por userId:tokenVersion com segurança.
+    const roleChanging =
+      data.role !== undefined && data.role !== existingUser.role;
+    const companyChanging =
+      data.companyId !== undefined && data.companyId !== existingUser.companyId;
+    const statusChanging =
+      data.status !== undefined && data.status !== existingUser.status;
+    const invalidatesSession =
+      passwordChanging || roleChanging || companyChanging || statusChanging;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -491,7 +504,7 @@ export class UsersService {
           email: data.email.trim().toLowerCase(),
         }),
         passwordHash,
-        ...(passwordChanging && { tokenVersion: { increment: 1 } }),
+        ...(invalidatesSession && { tokenVersion: { increment: 1 } }),
         role: data.role,
         status: data.status,
         companyId: data.companyId,
