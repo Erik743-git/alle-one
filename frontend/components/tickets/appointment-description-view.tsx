@@ -55,7 +55,7 @@ function resolveImageAttachment(
 function collectImagePreviews(
   description: string,
   attachments: Attachment[],
-  /** Quando o corpo jÃ¡ renderiza imagens inline, nÃ£o repetir nos chips. */
+  /** Quando o corpo já renderiza imagens inline, não repetir nos chips. */
   skipInlineDocImages: boolean,
 ): ImagePreview[] {
   if (isAppointmentDoc(description)) {
@@ -192,15 +192,15 @@ function FullDescriptionBody({
   }
 
   if (looksLikeHtml(description)) {
-    // HTML aqui vem de e-mail externo (o prÃ©-ticket grava o corpo cru e a
-    // descriÃ§Ã£o do ticket herda), ou seja: conteÃºdo de remetente nÃ£o
-    // autenticado. Renderizar com dangerouslySetInnerHTML deixava a proteÃ§Ã£o
-    // toda por conta da CSP â€” e `script-src-attr 'none'`, que bloqueia
-    // onerror/onload, nÃ£o existe no Safari.
+    // HTML aqui vem de e-mail externo (o pré-ticket grava o corpo cru e a
+    // descrição do ticket herda), ou seja: conteúdo de remetente não
+    // autenticado. Renderizar com dangerouslySetInnerHTML deixava a proteção
+    // toda por conta da CSP — e `script-src-attr 'none'`, que bloqueia
+    // onerror/onload, não existe no Safari.
     //
-    // O iframe sandbox (sem allow-scripts) Ã© o mesmo componente que a tela de
-    // prÃ©-tickets jÃ¡ usa. Preserva a aparÃªncia do e-mail â€” imagens, tabelas,
-    // assinatura â€” em vez de remover tags, e nada ali executa.
+    // O iframe sandbox (sem allow-scripts) é o mesmo componente que a tela de
+    // pré-tickets já usa. Preserva a aparência do e-mail — imagens, tabelas,
+    // assinatura — em vez de remover tags, e nada ali executa.
     return <EmailHtmlFrame html={description} />;
   }
 
@@ -249,7 +249,7 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
   const showCollapsed = hasLongText && !expanded && !hasHtmlImages && !isDoc;
 
   if (!text) {
-    return <span className="text-muted-foreground">â€”</span>;
+    return <span className="text-muted-foreground">—</span>;
   }
 
   const showDescriptionBody = Boolean(plainText) || isHtml || isDoc;
@@ -274,7 +274,7 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
                 "hover:text-foreground hover:underline",
               )}
             >
-              {expanded ? "Recolher descriÃ§Ã£o" : "DescriÃ§Ã£o completa"}
+              {expanded ? "Recolher descrição" : "Descrição completa"}
             </button>
           ) : null}
         </div>
