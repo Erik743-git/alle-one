@@ -11,6 +11,7 @@ import {
   UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TtlLruCache } from '../../common/cache/ttl-lru-cache';
 import type {
   AuthenticatedRequestUser,
   EffectiveModulePermission,
@@ -309,9 +310,52 @@ function mapRow(row: Permission): Omit<EffectiveModulePermission, 'module'> {
   };
 }
 
+/**
+ * Cache do usuário autenticado. `buildRequestUser` roda no JwtStrategy, ou
+ * seja, em toda requisição autenticada — são 3 a 4 idas ao banco por chamada
+ * de API só para descobrir quem é o usuário.
+ *
+ * DESLIGADO POR PADRÃO. Defina PERMISSIONS_CACHE_TTL_MS (ex.: 30000) para
+ * ativar, de preferência validando antes em staging: troque o papel de um
+ * usuário pela tela de admin e confirme que o acesso muda na hora.
+ *
+ * O motivo da cautela: a chave é `userId:tokenVersion`, e o tokenVersion só é
+ * incrementado em troca de senha e troca de empresa. `users.service.update`
+ * NÃO o incrementa ao mudar papel, então uma troca de papel ficaria invisível
+ * até o TTL expirar. As mudanças de permissão que passam por este serviço
+ * (`replaceUserPermissions`, `replaceCompanyModules`) invalidam explicitamente.
+ *
+ * Sem Redis o cache é por processo e o PM2 roda em cluster — TTL curto também
+ * evita workers divergindo entre si.
+ */
+const REQUEST_USER_CACHE_TTL_MS = (() => {
+  const n = Number(process.env.PERMISSIONS_CACHE_TTL_MS);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(Math.trunc(n), 120_000);
+})();
+const REQUEST_USER_CACHE_MAX = 500;
+
 @Injectable()
 export class PermissionsService {
+  private readonly requestUserCache =
+    REQUEST_USER_CACHE_TTL_MS > 0
+      ? new TtlLruCache<AuthenticatedRequestUser>(
+          REQUEST_USER_CACHE_MAX,
+          REQUEST_USER_CACHE_TTL_MS,
+        )
+      : null;
+
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Descarta o cache após mudança que não mexe no tokenVersion.
+   * Limpa tudo em vez de varrer por chave: a chave carrega o tokenVersion
+   * (desconhecido aqui) e isso só acontece em ação de admin, não no caminho
+   * quente.
+   */
+  private invalidateRequestUserCache() {
+    this.requestUserCache?.clear();
+  }
 
   computeEffective(
     user: User & { permissions: Permission[] },
@@ -380,6 +424,17 @@ export class PermissionsService {
     tokenVersion?: number,
     opts?: { skipTokenVersionCheck?: boolean },
   ): Promise<AuthenticatedRequestUser> {
+    // Só cacheia o caminho normal: com skipTokenVersionCheck a chave não
+    // representa a mesma condição e serviria resposta errada.
+    const cacheKey =
+      this.requestUserCache && !opts?.skipTokenVersionCheck
+        ? `${userId}:${tokenVersion ?? 0}`
+        : null;
+    if (cacheKey) {
+      const cached = this.requestUserCache!.get(cacheKey);
+      if (cached) return cached;
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -442,7 +497,7 @@ export class PermissionsService {
       pack,
     );
 
-    return {
+    const requestUser: AuthenticatedRequestUser = {
       userId: user.id,
       email: user.email,
       role: effectiveRole,
@@ -450,6 +505,12 @@ export class PermissionsService {
       permissions,
       companies: companies.length > 0 ? companies : undefined,
     };
+
+    if (cacheKey) {
+      this.requestUserCache!.set(cacheKey, requestUser);
+    }
+
+    return requestUser;
   }
 
   async getRawForUser(userId: string) {
@@ -517,6 +578,9 @@ export class PermissionsService {
       }
     });
 
+    // Não mexe no tokenVersion, então a chave do cache não muda sozinha.
+    this.invalidateRequestUserCache();
+
     const updated = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       include: { permissions: true },
@@ -554,6 +618,9 @@ export class PermissionsService {
         });
       }
     });
+
+    // Muda o pack de todos os usuários da empresa sem tocar no tokenVersion.
+    this.invalidateRequestUserCache();
 
     return {
       companyId,
