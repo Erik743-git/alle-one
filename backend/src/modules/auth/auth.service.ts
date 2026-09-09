@@ -49,6 +49,14 @@ const BCRYPT_COST = 12;
 const DUMMY_PASSWORD_HASH =
   '$2b$12$12R4wAIEgkkYUjvQMhr.Aen.GC/8YMPRwkVZmWlx8gyoIliQsFO/.';
 
+/**
+ * Bloqueio temporário por conta. Deliberadamente folgado: o objetivo é tornar
+ * força bruta inviável sem transformar erro de digitação em chamado para o
+ * suporte. Some sozinho depois da janela — não existe "desbloquear" manual.
+ */
+const MAX_FAILED_LOGINS = 10;
+const LOGIN_LOCK_MINUTES = 15;
+
 const RESET_TOKEN_TTL_MINUTES = Number(
   process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES ?? 30,
 );
@@ -91,13 +99,46 @@ export class AuthService {
       throw new UnauthorizedException('Usuário sem senha definida');
     }
 
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      const minutos = Math.max(
+        1,
+        Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000),
+      );
+      throw new UnauthorizedException(
+        `Muitas tentativas seguidas. Tente novamente em ${minutos} minuto(s).`,
+      );
+    }
+
     const passwordValid = await bcrypt.compare(
       data.password,
       user.passwordHash,
     );
 
     if (!passwordValid) {
+      const failed = (user.failedLoginCount ?? 0) + 1;
+      const shouldLock = failed >= MAX_FAILED_LOGINS;
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: {
+            failedLoginCount: shouldLock ? 0 : failed,
+            lockedUntil: shouldLock
+              ? new Date(Date.now() + LOGIN_LOCK_MINUTES * 60_000)
+              : null,
+          },
+        })
+        // Falha ao contabilizar não pode virar 500 num login com senha errada.
+        .catch(() => undefined);
       throw new UnauthorizedException('Usuário ou senha inválidos');
+    }
+
+    if ((user.failedLoginCount ?? 0) > 0 || user.lockedUntil) {
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: { failedLoginCount: 0, lockedUntil: null },
+        })
+        .catch(() => undefined);
     }
 
     if (user.deletedAt || user.status !== UserStatus.ACTIVE) {

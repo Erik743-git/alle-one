@@ -14,6 +14,8 @@ describe('AuthService.login', () => {
   const prisma = {
     user: {
       findFirst: jest.fn(),
+      // O login contabiliza tentativa errada e zera o contador no acerto.
+      update: jest.fn().mockResolvedValue({}),
     },
   };
 
