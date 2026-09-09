@@ -79,7 +79,14 @@ function maintenanceResponse() {
   });
 }
 
-const ORIGIN_DOWN = new Set([502, 503, 504]);
+/**
+ * 502/503/504 vêm do Nginx quando a aplicação caiu mas o servidor responde.
+ * A faixa 52x é gerada pelo próprio Cloudflare quando nem o servidor responde
+ * — 521 (web server is down), 522 (timeout na conexão), 523 (origem
+ * inalcançável), 525/526 (handshake TLS). Sem elas, uma queda da VM inteira
+ * ou do Nginx voltaria a mostrar a página do Cloudflare.
+ */
+const ORIGIN_DOWN = new Set([502, 503, 504, 521, 522, 523, 525, 526]);
 
 export default {
   async fetch(request) {
