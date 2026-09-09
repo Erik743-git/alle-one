@@ -757,6 +757,81 @@ export class TicketsQueryService {
     return resolveClientListFilter(this.tenantScope, actor, requestedClientId);
   }
 
+  /**
+   * Busca rápida da paleta (Ctrl+K). Devolve poucos resultados de cada tipo,
+   * o suficiente para navegar — não substitui a listagem com filtros.
+   *
+   * Respeita o mesmo escopo da lista: usuário de cliente só encontra tickets
+   * da própria empresa, e empresas/colaboradores só aparecem para a equipe
+   * interna (não faz sentido cliente enumerar isso).
+   */
+  async quickSearch(actor: AuthenticatedRequestUser, rawTerm: string) {
+    const term = rawTerm.trim();
+    if (term.length < 2) {
+      return { tickets: [], companies: [], collaborators: [] };
+    }
+
+    const clientScope = await this.resolveClientListFilter(actor, undefined);
+    const isClient = isClientPortalRole(actor.role);
+    const asNumber = /^\d+$/.test(term) ? Number(term) : null;
+
+    const tickets = await this.prisma.portalTicket.findMany({
+      where: {
+        ...(clientScope.clientExternalId != null
+          ? { clientExternalId: clientScope.clientExternalId }
+          : {}),
+        OR: [
+          ...(asNumber != null && Number.isSafeInteger(asNumber)
+            ? [{ ticketNumber: asNumber }]
+            : []),
+          { title: { contains: term, mode: 'insensitive' as const } },
+        ],
+      },
+      select: {
+        ticketNumber: true,
+        title: true,
+        clientName: true,
+        stageName: true,
+        isClosed: true,
+      },
+      // Número exato primeiro; depois os mais recentes.
+      orderBy: [{ updatedAtSource: 'desc' }, { ticketNumber: 'desc' }],
+      take: 8,
+    });
+
+    if (isClient) {
+      return { tickets, companies: [], collaborators: [] };
+    }
+
+    const [companies, collaborators] = await Promise.all([
+      this.prisma.company.findMany({
+        where: {
+          deletedAt: null,
+          name: { contains: term, mode: 'insensitive' },
+        },
+        select: { id: true, name: true, tifluxClientId: true },
+        orderBy: { name: 'asc' },
+        take: 5,
+      }),
+      this.prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          status: 'ACTIVE',
+          role: { in: ['ADMIN', 'COLLABORATOR', 'PJ'] },
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true, name: true, email: true },
+        orderBy: { name: 'asc' },
+        take: 5,
+      }),
+    ]);
+
+    return { tickets, companies, collaborators };
+  }
+
   async listGrouped(
     actor: AuthenticatedRequestUser,
     query: TicketsListQueryDto,
