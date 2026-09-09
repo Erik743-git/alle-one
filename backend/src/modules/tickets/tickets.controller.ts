@@ -41,6 +41,7 @@ import {
   TicketsListQueryDto,
   UpdateTicketStageDto,
   GroupTicketDto,
+  AppointmentOverlapQueryDto,
 } from './tickets.dto';
 import { LinkTicketGmudDto } from './tickets-gmud.dto';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
@@ -414,6 +415,26 @@ export class TicketsController {
       ticketNumber,
       body.parentTicketNumber,
     );
+  }
+
+  /**
+   * Apontamentos do próprio usuário que cruzam o horário informado. Consultado
+   * pela tela antes de salvar, para avisar sobre dupla contagem de hora.
+   */
+  @Get('appointments/overlaps')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @RequirePermission(PermissionModule.TICKETS, 'canCreate')
+  appointmentOverlaps(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query() query: AppointmentOverlapQueryDto,
+  ) {
+    return this.appointmentsService.findOwnOverlaps({
+      actor,
+      date: query.date,
+      initTime: query.initTime,
+      endTime: query.endTime,
+      ignorePortalAppointmentId: query.ignorePortalAppointmentId,
+    });
   }
 
   @Post(':ticketNumber/appointments')

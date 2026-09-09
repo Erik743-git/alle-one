@@ -4,10 +4,28 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
+
+/** Consulta de sobreposição de apontamento (aviso antes de salvar). */
+export class AppointmentOverlapQueryDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Data deve ser YYYY-MM-DD.' })
+  date!: string;
+
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Início deve ser HH:MM.' })
+  initTime!: string;
+
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'Fim deve ser HH:MM.' })
+  endTime!: string;
+
+  @IsOptional()
+  @IsUUID()
+  ignorePortalAppointmentId?: string;
+}
 
 function parseOptionalBoolean(value: unknown): boolean | undefined {
   if (value === true || value === 'true' || value === 1 || value === '1') {
