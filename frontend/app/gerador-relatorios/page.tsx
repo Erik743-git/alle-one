@@ -37,6 +37,7 @@ import type { ReportRow } from "@/lib/services/reports.service";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { Switch } from "@/components/ui/switch";
 import { usersService, type Specialty } from "@/lib/services/users.service";
+import { payrollPeriodRangeForCalendarMonthOf } from "@/lib/date-ranges";
 
 function getReportCompanyLabel(report: ReportRow): string {
   if (report.filters?.allCompanies) {
@@ -112,6 +113,21 @@ export default function GeradorRelatoriosPage() {
   const isMultiCompany = reportTypeSupportsMultiCompany(type);
   const requiresPeriod = reportTypeRequiresPeriod(type);
   const supportsCollaborator = reportTypeSupportsCollaborator(type);
+
+  // No modo "folha" o servidor ignora as datas digitadas e usa o ciclo 26→25 do
+  // mês da data inicial. Sem mostrar isso, quem escolhe 01/08–31/08 recebe um
+  // arquivo de 26/07–25/08 sem entender por quê.
+  const periodoEfetivo = useMemo(() => {
+    if (!isRendimento || !requiresPeriod || periodMode !== "folha" || !start) {
+      return null;
+    }
+    const ref = new Date(`${start}T12:00:00`);
+    if (Number.isNaN(ref.getTime())) return null;
+    const ciclo = payrollPeriodRangeForCalendarMonthOf(ref);
+    if (ciclo.start === start && ciclo.end === end) return null;
+    const br = (iso: string) => iso.split("-").reverse().join("/");
+    return { inicio: br(ciclo.start), fim: br(ciclo.end) };
+  }, [isRendimento, requiresPeriod, periodMode, start, end]);
   const alleCompanyId = useMemo(
     () =>
       companies.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "",
@@ -556,6 +572,18 @@ export default function GeradorRelatoriosPage() {
                     disabled={!requiresPeriod}
                   />
                 </div>
+
+                {periodoEfetivo ? (
+                  <div className="md:col-span-2 xl:col-span-6">
+                    <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      O ciclo de folha usa o mês da data inicial, não as datas
+                      exatas. Este relatório sairá de{" "}
+                      <strong>{periodoEfetivo.inicio}</strong> até{" "}
+                      <strong>{periodoEfetivo.fim}</strong>. Para usar as datas
+                      que você escolheu, troque o período para “Mês civil”.
+                    </p>
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-muted-foreground">

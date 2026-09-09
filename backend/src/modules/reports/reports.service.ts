@@ -91,6 +91,39 @@ function toExcelText(value?: string | null): string {
   return text || '-';
 }
 
+/** Carimbo de geração no fuso de quem usa o portal, não no do servidor. */
+export function formatGeneratedAtBR(date: Date): string {
+  const partes = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const get = (tipo: string) =>
+    partes.find((p) => p.type === tipo)?.value ?? '00';
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}:${get('second')}`;
+}
+
+/** Formato de duração acumulável do Excel: 27:28 em vez de voltar a 03:28. */
+const EXCEL_DURATION_FMT = '[h]:mm';
+
+/**
+ * Duração como número, não como texto.
+ *
+ * O Excel guarda duração em fração de dia; gravando "01:30" como texto ele não
+ * soma nem ao selecionar as células. Devolve null para duração ausente, porque
+ * célula vazia fica de fora da soma enquanto um zero entraria como lançamento.
+ */
+export function toExcelDuration(totalMinutes: number | null | undefined) {
+  const minutes = Number(totalMinutes);
+  if (!Number.isFinite(minutes) || minutes <= 0) return null;
+  return minutes / 1440;
+}
+
 function parseDateOrThrow(value: string, label: string) {
   return parseDateInput(value, label);
 }
@@ -1969,6 +2002,10 @@ export class ReportsService {
       durationHHMM: string;
       overtimeHHMM: string;
       plantaoHHMM: string;
+      /** Minutos crus: a planilha grava duração como número para o Excel somar. */
+      durationMinutes: number;
+      overtimeMinutes: number;
+      plantaoMinutes: number;
       description: string;
       client: string;
       equipe: string;
@@ -2106,6 +2143,9 @@ export class ReportsService {
         durationHHMM,
         overtimeHHMM: overtimeKind === 'EXTRA' ? durationHHMM : '',
         plantaoHHMM: overtimeKind === 'PLANTAO' ? durationHHMM : '',
+        durationMinutes,
+        overtimeMinutes: overtimeKind === 'EXTRA' ? durationMinutes : 0,
+        plantaoMinutes: overtimeKind === 'PLANTAO' ? durationMinutes : 0,
         description: this.formatReportDescription(r.description),
         client: String(r.client_name || '').trim() || '-',
         equipe,
@@ -2904,10 +2944,9 @@ export class ReportsService {
     sheet.getCell('A4').value = 'Período:';
     sheet.getCell('B4').value = `${startDateOnly} até ${endDateOnly}`;
     sheet.getCell('A5').value = 'Gerado em:';
-    sheet.getCell('B5').value = new Date()
-      .toISOString()
-      .slice(0, 19)
-      .replace('T', ' ');
+    // toISOString grava UTC: o carimbo saía 3h à frente do horário de quem
+    // gerou. O servidor roda em UTC, então o fuso precisa ser explícito.
+    sheet.getCell('B5').value = formatGeneratedAtBR(new Date());
 
     ['A2', 'A3', 'A4', 'A5'].forEach((addr) => {
       sheet.getCell(addr).font = { bold: true };
@@ -2970,15 +3009,18 @@ export class ReportsService {
         r.ticketNumber || null,
         toExcelText(r.title),
         toExcelText(r.apontamento),
-        toExcelText(r.durationHHMM),
-        toExcelText(r.overtimeHHMM),
-        toExcelText(r.plantaoHHMM),
+        toExcelDuration(r.durationMinutes),
+        toExcelDuration(r.overtimeMinutes),
+        toExcelDuration(r.plantaoMinutes),
         toExcelText(r.description),
         toExcelText(r.client),
         toExcelText(r.equipe),
         toExcelText(r.monthLabel),
       ];
       sheet.getRow(rowIndex).getCell(2).numFmt = '0';
+      [5, 6, 7].forEach((col) => {
+        sheet.getRow(rowIndex).getCell(col).numFmt = EXCEL_DURATION_FMT;
+      });
       rowIndex += 1;
     }
 
@@ -2988,6 +3030,25 @@ export class ReportsService {
         from: { row: headerRowIndex, column: 1 },
         to: { row: lastDataRow, column: 11 },
       };
+
+      // Total ao final. SUBTOTAL(109) em vez de SUM para acompanhar o filtro:
+      // filtrando por atendente, o total passa a ser o daquele atendente.
+      const totalRow = sheet.getRow(lastDataRow + 1);
+      totalRow.getCell(1).value = 'Total';
+      totalRow.getCell(4).value = `${rows.length} apontamento(s)`;
+      const firstDataRow = headerRowIndex + 1;
+      [5, 6, 7].forEach((col) => {
+        const letra = String.fromCharCode(64 + col);
+        totalRow.getCell(col).value = {
+          formula: `SUBTOTAL(109,${letra}${firstDataRow}:${letra}${lastDataRow})`,
+        };
+        totalRow.getCell(col).numFmt = EXCEL_DURATION_FMT;
+      });
+      totalRow.font = { bold: true };
+      totalRow.getCell(1).border = { top: { style: 'thin' } };
+      [4, 5, 6, 7].forEach((col) => {
+        totalRow.getCell(col).border = { top: { style: 'thin' } };
+      });
     }
 
     const summaries = await this.getRendimentoAttendantSummaries({
@@ -3043,17 +3104,20 @@ export class ReportsService {
       const row = summarySheet.getRow(summaryRowIndex);
       row.values = [
         s.attendant,
-        this.formatMinutesHHMM(s.nonOverlapMinutes),
-        this.formatMinutesHHMM(s.rawMinutes),
-        this.formatMinutesHHMM(s.extraMinutes),
-        this.formatMinutesHHMM(s.plantaoMinutes),
+        toExcelDuration(s.nonOverlapMinutes),
+        toExcelDuration(s.rawMinutes),
+        toExcelDuration(s.extraMinutes),
+        toExcelDuration(s.plantaoMinutes),
         s.alerts,
-        this.formatMinutesHHMM(s.extraApprovedMinutes),
-        this.formatMinutesHHMM(s.extraNotApprovedMinutes),
-        this.formatMinutesHHMM(s.plantaoApprovedMinutes),
-        this.formatMinutesHHMM(s.plantaoNotApprovedMinutes),
+        toExcelDuration(s.extraApprovedMinutes),
+        toExcelDuration(s.extraNotApprovedMinutes),
+        toExcelDuration(s.plantaoApprovedMinutes),
+        toExcelDuration(s.plantaoNotApprovedMinutes),
         s.justifications,
       ];
+      [2, 3, 4, 5, 7, 8, 9, 10].forEach((col) => {
+        row.getCell(col).numFmt = EXCEL_DURATION_FMT;
+      });
       summaryRowIndex += 1;
     }
 
@@ -3063,6 +3127,25 @@ export class ReportsService {
         from: { row: 1, column: 1 },
         to: { row: summaryLastRow, column: 11 },
       };
+    }
+
+    if (summaryLastRow >= 2) {
+      const totalRow = summarySheet.getRow(summaryLastRow + 1);
+      totalRow.getCell(1).value = 'Total';
+      [2, 3, 4, 5, 6, 7, 8, 9, 10, 11].forEach((col) => {
+        const letra = String.fromCharCode(64 + col);
+        totalRow.getCell(col).value = {
+          formula: `SUBTOTAL(109,${letra}2:${letra}${summaryLastRow})`,
+        };
+        if (col !== 6 && col !== 11) {
+          totalRow.getCell(col).numFmt = EXCEL_DURATION_FMT;
+        }
+      });
+      totalRow.font = { bold: true };
+      for (let col = 1; col <= 11; col += 1) {
+        totalRow.getCell(col).border = { top: { style: 'thin' } };
+      }
+      summaryRowIndex += 1;
     }
 
     // As colunas de aprovacao vem da esteira (day events), por apontamento e sem
