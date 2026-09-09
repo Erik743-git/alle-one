@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowLeft,
   CalendarClock,
   Loader2,
@@ -25,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -77,6 +79,18 @@ function formatRuleDate(ymd: string): string {
   return `${d}/${m}/${y}`;
 }
 
+function formatRuleDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const RULE_ROW_ACTIONS_CLASS =
   "flex shrink-0 flex-nowrap items-center gap-2 self-start lg:min-w-[18.5rem] lg:justify-end";
 const RULE_ROW_ACTION_BUTTON_CLASS = "min-w-[6.75rem] shrink-0";
@@ -109,6 +123,9 @@ export default function AdminTicketPage() {
   const [loadingStages, setLoadingStages] = useState(true);
   const [loadingRules, setLoadingRules] = useState(true);
   const [loadingAutomations, setLoadingAutomations] = useState(true);
+  const [stagesError, setStagesError] = useState<string | null>(null);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  const [automationsError, setAutomationsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingRuleId, setTogglingRuleId] = useState<string | null>(null);
@@ -137,13 +154,16 @@ export default function AdminTicketPage() {
     () => new Map(),
   );
 
+  // Estas três listas eram zeradas no erro e a tela dizia "Nenhuma regra
+  // cadastrada" — o admin podia recriar regra que já existia.
   const loadStages = useCallback(async () => {
     try {
       setLoadingStages(true);
+      setStagesError(null);
       const data = await adminService.listTicketStages();
       setStages(Array.isArray(data) ? data : []);
     } catch (err) {
-      notifyError(
+      setStagesError(
         err instanceof Error ? err.message : "Não foi possível carregar os estágios.",
       );
       setStages([]);
@@ -155,10 +175,11 @@ export default function AdminTicketPage() {
   const loadRules = useCallback(async () => {
     try {
       setLoadingRules(true);
+      setRulesError(null);
       const data = await adminService.listTicketAutoOpenRules();
       setRules(Array.isArray(data) ? data : []);
     } catch (err) {
-      notifyError(
+      setRulesError(
         err instanceof Error
           ? err.message
           : "Não foi possível carregar as regras de abertura automática.",
@@ -172,10 +193,11 @@ export default function AdminTicketPage() {
   const loadAutomations = useCallback(async () => {
     try {
       setLoadingAutomations(true);
+      setAutomationsError(null);
       const data = await adminService.listTicketAutomationRules();
       setAutomations(Array.isArray(data) ? data : []);
     } catch (err) {
-      notifyError(
+      setAutomationsError(
         err instanceof Error
           ? err.message
           : "Não foi possível carregar as automações.",
@@ -336,7 +358,7 @@ export default function AdminTicketPage() {
         notifyError(
           firstError
             ? `Falha ao abrir rotina: ${firstError}`
-            : `Nenhum ticket aberto. ${result.errors} regra(s) com erro — verifique os logs da API.`,
+            : `Nenhum ticket aberto. ${result.errors} regra(s) com erro — o motivo aparece na própria regra abaixo.`,
         );
       } else {
         notifySuccess("Nenhuma rotina vencida no momento.");
@@ -492,6 +514,12 @@ export default function AdminTicketPage() {
                     <Loader2 className="h-6 w-6 animate-spin" />
                     Carregando estágios…
                   </div>
+                ) : stagesError ? (
+                  <LoadErrorState
+                    title="Não foi possível carregar os estágios."
+                    message={stagesError}
+                    onRetry={() => void loadStages()}
+                  />
                 ) : (
                   <Card>
                     <CardContent className="divide-y divide-border p-0">
@@ -607,6 +635,12 @@ export default function AdminTicketPage() {
                     <Loader2 className="h-6 w-6 animate-spin" />
                     Carregando regras…
                   </div>
+                ) : rulesError ? (
+                  <LoadErrorState
+                    title="Não foi possível carregar as regras."
+                    message={rulesError}
+                    onRetry={() => void loadRules()}
+                  />
                 ) : rules.length === 0 ? (
                   <Card>
                     <CardContent className="py-10 text-center text-sm text-muted-foreground">
@@ -655,6 +689,24 @@ export default function AdminTicketPage() {
                               <p className="text-xs text-muted-foreground">
                                 Último ticket: #{rule.lastTicketNumber}
                               </p>
+                            ) : null}
+                            {rule.lastError ? (
+                              <div className="alle-alert-error mt-2 flex items-start gap-2 rounded-lg p-2 text-xs">
+                                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                <div className="min-w-0 space-y-0.5">
+                                  <p className="font-medium">
+                                    {rule.active
+                                      ? `Falhou ${rule.consecutiveFailures}× seguidas`
+                                      : "Desativada após falhas seguidas"}
+                                    {rule.lastErrorAt
+                                      ? ` · ${formatRuleDateTime(rule.lastErrorAt)}`
+                                      : ""}
+                                  </p>
+                                  <p className="break-words opacity-90">
+                                    {rule.lastError}
+                                  </p>
+                                </div>
+                              </div>
                             ) : null}
                           </div>
                           <div className={RULE_ROW_ACTIONS_CLASS}>
@@ -749,6 +801,12 @@ export default function AdminTicketPage() {
                     <Loader2 className="h-6 w-6 animate-spin" />
                     Carregando automações…
                   </div>
+                ) : automationsError ? (
+                  <LoadErrorState
+                    title="Não foi possível carregar as automações."
+                    message={automationsError}
+                    onRetry={() => void loadAutomations()}
+                  />
                 ) : automations.length === 0 ? (
                   <Card>
                     <CardContent className="py-10 text-center text-sm text-muted-foreground">
