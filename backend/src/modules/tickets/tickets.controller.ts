@@ -154,6 +154,23 @@ export class TicketsController {
     return this.ticketsService.searchUsersForCc(query.q);
   }
 
+  /**
+   * Busca rápida da paleta (Ctrl+K): tickets, empresas e colaboradores.
+   *
+   * Precisa vir ANTES de `@Get(':ticketNumber')`: o Nest casa rotas na ordem
+   * de declaração, então lá embaixo esta URL batia no parâmetro, o
+   * ParseIntPipe recusava "quick-search" e a busca respondia 400.
+   */
+  @Get('quick-search')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  quickSearch(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query('q') q?: string,
+  ) {
+    return this.ticketsQueryService.quickSearch(actor, q ?? '');
+  }
+
   @Get('attachments/:fileId')
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canView')
@@ -415,17 +432,6 @@ export class TicketsController {
       ticketNumber,
       body.parentTicketNumber,
     );
-  }
-
-  /** Busca rápida da paleta (Ctrl+K): tickets, empresas e colaboradores. */
-  @Get('quick-search')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
-  @RequirePermission(PermissionModule.TICKETS, 'canView')
-  quickSearch(
-    @CurrentUser() actor: AuthenticatedRequestUser,
-    @Query('q') q?: string,
-  ) {
-    return this.ticketsQueryService.quickSearch(actor, q ?? '');
   }
 
   /**

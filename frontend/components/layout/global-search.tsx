@@ -49,6 +49,7 @@ export function GlobalSearch() {
   const [term, setTerm] = useState("");
   const [result, setResult] = useState<QuickSearchResult>(EMPTY);
   const [loading, setLoading] = useState(false);
+  const [erro, setErro] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   const seqRef = useRef(0);
 
@@ -63,6 +64,7 @@ export function GlobalSearch() {
             setResult(EMPTY);
             setHighlighted(0);
             setLoading(false);
+            setErro(false);
           }
           return !current;
         });
@@ -82,6 +84,7 @@ export function GlobalSearch() {
       setResult(EMPTY);
       setHighlighted(0);
       setLoading(false);
+      setErro(false);
     }
   }, []);
 
@@ -98,11 +101,15 @@ export function GlobalSearch() {
         .then((data) => {
           if (seq !== seqRef.current) return;
           setResult(data);
+          setErro(false);
           setHighlighted(0);
         })
         .catch(() => {
           if (seq !== seqRef.current) return;
+          // Engolir a falha aqui mostrava "Nada encontrado" para um erro de
+          // rede ou de rota — foi o que escondeu o 400 do conflito de rota.
           setResult(EMPTY);
+          setErro(true);
         })
         .finally(() => {
           if (seq === seqRef.current) setLoading(false);
@@ -205,6 +212,10 @@ export function GlobalSearch() {
           {term.trim().length < 2 ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
               Digite ao menos 2 letras. Use o número do ticket para ir direto.
+            </p>
+          ) : erro && !loading ? (
+            <p className="px-3 py-8 text-center text-sm text-destructive">
+              Não foi possível buscar agora. Tente de novo em instantes.
             </p>
           ) : rows.length === 0 && !loading ? (
             <p className="px-3 py-8 text-center text-sm text-muted-foreground">
