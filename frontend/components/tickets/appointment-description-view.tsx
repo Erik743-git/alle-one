@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import {
   appointmentDescriptionToPlainText,
@@ -11,16 +11,8 @@ import {
   stripHtmlToPlain,
   type StoredImageBlock,
 } from "@/lib/appointment-doc";
-import { sanitizeEmailHtmlBackground } from "@/components/tickets/email-html-frame";
+import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
 import { AppointmentImageChip } from "@/components/tickets/appointment-image-chip";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ZoomableImagePreview } from "@/components/ui/zoomable-image-preview";
 import { cn } from "@/lib/utils";
 
 type Attachment = {
@@ -63,7 +55,7 @@ function resolveImageAttachment(
 function collectImagePreviews(
   description: string,
   attachments: Attachment[],
-  /** Quando o corpo já renderiza imagens inline, não repetir nos chips. */
+  /** Quando o corpo jÃ¡ renderiza imagens inline, nÃ£o repetir nos chips. */
   skipInlineDocImages: boolean,
 ): ImagePreview[] {
   if (isAppointmentDoc(description)) {
@@ -146,81 +138,6 @@ function InlineDocImage({
   );
 }
 
-function HtmlDescriptionWithLightbox({
-  html,
-}: {
-  html: string;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [lightbox, setLightbox] = useState<{
-    src: string;
-    alt: string;
-  } | null>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const images = container.querySelectorAll("img");
-    images.forEach((image) => {
-      image.classList.add("cursor-zoom-in");
-    });
-
-    const onClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof HTMLImageElement)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setLightbox({
-        src: target.currentSrc || target.src,
-        alt: target.alt || "Imagem",
-      });
-    };
-
-    container.addEventListener("click", onClick);
-    return () => container.removeEventListener("click", onClick);
-  }, [html]);
-
-  return (
-    <>
-      <div
-        ref={containerRef}
-        className="prose prose-sm dark:prose-invert max-w-none rounded-md bg-transparent text-foreground [&_*]:!bg-transparent [&_*]:!text-inherit [&_a]:!text-primary [&_img]:!h-auto [&_img]:max-h-[480px] [&_img]:max-w-full [&_img]:object-contain [&_img]:rounded-md"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      <Dialog
-        open={lightbox != null}
-        onOpenChange={(open) => {
-          if (!open) setLightbox(null);
-        }}
-      >
-        <DialogContent className="flex max-h-[min(92vh,820px)] w-[min(96vw,900px)] max-w-[min(96vw,900px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(96vw,900px)]">
-          <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-12">
-            <DialogTitle className="truncate text-base font-semibold">
-              {lightbox?.alt || "Imagem"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden bg-muted/20 p-6">
-            {lightbox ? (
-              <ZoomableImagePreview src={lightbox.src} alt={lightbox.alt} />
-            ) : null}
-          </div>
-          <div className="flex shrink-0 justify-end border-t border-border bg-muted/30 px-5 pt-4 pb-6">
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 min-w-[96px]"
-              onClick={() => setLightbox(null)}
-            >
-              Fechar
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
 function FullDescriptionBody({
   description,
   attachments,
@@ -275,8 +192,16 @@ function FullDescriptionBody({
   }
 
   if (looksLikeHtml(description)) {
-    const cleaned = sanitizeEmailHtmlBackground(description);
-    return <HtmlDescriptionWithLightbox html={cleaned} />;
+    // HTML aqui vem de e-mail externo (o prÃ©-ticket grava o corpo cru e a
+    // descriÃ§Ã£o do ticket herda), ou seja: conteÃºdo de remetente nÃ£o
+    // autenticado. Renderizar com dangerouslySetInnerHTML deixava a proteÃ§Ã£o
+    // toda por conta da CSP â€” e `script-src-attr 'none'`, que bloqueia
+    // onerror/onload, nÃ£o existe no Safari.
+    //
+    // O iframe sandbox (sem allow-scripts) Ã© o mesmo componente que a tela de
+    // prÃ©-tickets jÃ¡ usa. Preserva a aparÃªncia do e-mail â€” imagens, tabelas,
+    // assinatura â€” em vez de remover tags, e nada ali executa.
+    return <EmailHtmlFrame html={description} />;
   }
 
   return (
@@ -324,7 +249,7 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
   const showCollapsed = hasLongText && !expanded && !hasHtmlImages && !isDoc;
 
   if (!text) {
-    return <span className="text-muted-foreground">—</span>;
+    return <span className="text-muted-foreground">â€”</span>;
   }
 
   const showDescriptionBody = Boolean(plainText) || isHtml || isDoc;
@@ -349,7 +274,7 @@ export function AppointmentDescriptionView({ description, attachments }: Props) 
                 "hover:text-foreground hover:underline",
               )}
             >
-              {expanded ? "Recolher descrição" : "Descrição completa"}
+              {expanded ? "Recolher descriÃ§Ã£o" : "DescriÃ§Ã£o completa"}
             </button>
           ) : null}
         </div>
