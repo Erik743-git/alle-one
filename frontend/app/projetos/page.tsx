@@ -18,6 +18,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import { isClient } from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
 import {
@@ -32,11 +33,13 @@ export default function ProjetosPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [companies, setCompanies] = useState<ProjectCompany[]>([]);
   const [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     try {
       if (silent) setRefreshing(true);
       else setLoading(true);
+      setLoadError(null);
       const data = await projetosService.listCompanies();
       const list = Array.isArray(data) ? data : [];
       setCompanies(list);
@@ -44,9 +47,14 @@ export default function ProjetosPage() {
         router.replace(`/projetos/${list[0].id}`);
       }
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar as empresas.",
-      );
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar as empresas.";
+      // Refresh em segundo plano só avisa: trocar a lista carregada por uma
+      // tela de erro apagaria dado bom por uma falha passageira.
+      if (silent) notifyError(message);
+      else setLoadError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -117,6 +125,12 @@ export default function ProjetosPage() {
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
                 Carregando...
               </div>
+            ) : loadError ? (
+              <LoadErrorState
+                title="Não foi possível carregar as empresas."
+                message={loadError}
+                onRetry={() => void load()}
+              />
             ) : filtered.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">

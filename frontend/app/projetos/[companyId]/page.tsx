@@ -16,6 +16,7 @@ import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import { ProjectCreateCard } from "@/components/projetos/project-create-card";
 import {
   canEditProjetos,
@@ -51,12 +52,14 @@ export default function ProjetosCompanyPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!companyId) return;
     try {
       if (silent) setRefreshing(true);
       else setLoading(true);
+      setLoadError(null);
       const data = await projetosService.listProjects(companyId);
       setCompanyName(data.company.name);
       setProjects(data.projects);
@@ -67,9 +70,14 @@ export default function ProjetosCompanyPage() {
         router.replace(`/projetos/${project.companyId}/${project.id}`);
         return;
       } catch {
-        notifyError(
-          err instanceof Error ? err.message : "Não foi possível carregar os projetos.",
-        );
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Não foi possível carregar os projetos.";
+        // Refresh em segundo plano só avisa: trocar a lista carregada por uma
+        // tela de erro apagaria dado bom por uma falha passageira.
+        if (silent) notifyError(message);
+        else setLoadError(message);
       }
     } finally {
       setLoading(false);
@@ -152,6 +160,12 @@ export default function ProjetosCompanyPage() {
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
                 Carregando...
               </div>
+            ) : loadError ? (
+              <LoadErrorState
+                title="Não foi possível carregar os projetos."
+                message={loadError}
+                onRetry={() => void load()}
+              />
             ) : sorted.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
