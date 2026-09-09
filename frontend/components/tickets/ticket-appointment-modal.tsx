@@ -30,6 +30,7 @@ import {
 import {
   ticketsService,
   type AppointmentCatalogs,
+  type AppointmentOverlap,
   type CreateAppointmentPayload,
   type PortalAppointmentEditContext,
 } from "@/lib/services/tickets.service";
@@ -274,6 +275,53 @@ export function TicketAppointmentModal({
 
   const durationMinutes = appointmentSpanMinutes(initTime, endTime, overnight);
   const endDate = overnight ? addDaysYmd(date, 1) : date;
+
+  // Aviso (não bloqueio) de dupla contagem: quem resolve vários chamados na
+  // mesma hora costuma lançar uma hora em cada sem perceber. No total
+  // trabalhado essas horas contam uma vez só, e antes isso só aparecia no
+  // fechamento do mês.
+  const [overlaps, setOverlaps] = useState<AppointmentOverlap[]>([]);
+
+  useEffect(() => {
+    if (isCommunication || overnight || !open) {
+      setOverlaps([]);
+      return;
+    }
+    if (durationMinutes <= 0) {
+      setOverlaps([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void ticketsService
+        .appointmentOverlaps({
+          date,
+          initTime,
+          endTime,
+          ignorePortalAppointmentId: editingAppointment?.portalAppointmentId,
+        })
+        .then((rows) => {
+          if (!cancelled) setOverlaps(rows);
+        })
+        // Aviso é acessório: falha não pode atrapalhar o lançamento.
+        .catch(() => {
+          if (!cancelled) setOverlaps([]);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    open,
+    date,
+    initTime,
+    endTime,
+    overnight,
+    isCommunication,
+    durationMinutes,
+    editingAppointment?.portalAppointmentId,
+  ]);
 
   function resetFormForAnotherAppointment(
     previousEndTime: string,
@@ -555,6 +603,30 @@ export function TicketAppointmentModal({
                 </p>
               </div>
             </div>
+            ) : null}
+
+            {!isCommunication && overlaps.length > 0 ? (
+              <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  Você já tem apontamento nesse horário
+                </p>
+                <ul className="mt-1.5 space-y-1 text-amber-900/90 dark:text-amber-200/90">
+                  {overlaps.map((item) => (
+                    <li key={item.portalAppointmentId} className="text-xs">
+                      <span className="font-semibold tabular-nums">
+                        {item.initTime}–{item.endTime}
+                      </span>{" "}
+                      · #{item.ticketNumber}
+                      {item.clientName ? ` · ${item.clientName}` : ""}
+                      {item.serviceName ? ` · ${item.serviceName}` : ""}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1.5 text-xs text-amber-900/70 dark:text-amber-200/70">
+                  Se as horas forem as mesmas, elas contam uma vez só no total
+                  trabalhado. Pode salvar assim mesmo se estiver certo.
+                </p>
+              </div>
             ) : null}
 
             {!isCommunication ? (

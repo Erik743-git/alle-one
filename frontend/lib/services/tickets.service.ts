@@ -144,6 +144,15 @@ export type TicketFilterCatalogs = {
   statuses: string[];
 };
 
+export type AppointmentOverlap = {
+  portalAppointmentId: string;
+  ticketNumber: number;
+  initTime: string;
+  endTime: string;
+  serviceName: string | null;
+  clientName: string | null;
+};
+
 export type TicketsListParams = {
   mineOnly?: boolean;
   responsibleExternalId?: number;
@@ -428,6 +437,26 @@ export type TicketAppointmentWarningDetail = {
 export const ticketsService = {
   list(params: TicketsListParams = {}) {
     return apiRequest<TicketListResponse>(`/tickets${toQuery(params)}`);
+  },
+
+  /** Apontamentos seus que cruzam esse horário (aviso de dupla contagem). */
+  appointmentOverlaps(params: {
+    date: string;
+    initTime: string;
+    endTime: string;
+    ignorePortalAppointmentId?: string;
+  }) {
+    const q = new URLSearchParams({
+      date: params.date,
+      initTime: params.initTime,
+      endTime: params.endTime,
+    });
+    if (params.ignorePortalAppointmentId) {
+      q.set("ignorePortalAppointmentId", params.ignorePortalAppointmentId);
+    }
+    return apiRequest<AppointmentOverlap[]>(
+      `/tickets/appointments/overlaps?${q.toString()}`,
+    );
   },
 
   catalogs() {
