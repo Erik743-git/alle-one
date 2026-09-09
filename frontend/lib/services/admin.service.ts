@@ -102,6 +102,7 @@ export type TicketAutoOpenRule = {
   lastError: string | null;
   lastErrorAt: string | null;
   consecutiveFailures: number;
+  classificationStale: boolean;
 };
 
 export type TicketAutoOpenRulePayload = {

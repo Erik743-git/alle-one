@@ -690,6 +690,17 @@ export default function AdminTicketPage() {
                                 Último ticket: #{rule.lastTicketNumber}
                               </p>
                             ) : null}
+                            {rule.classificationStale ? (
+                              <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300">
+                                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+                                <p className="min-w-0">
+                                  A classificação desta regra ganhou
+                                  subclassificações e deixou de ser a mais
+                                  específica. Edite a regra e escolha o nível
+                                  novo — senão o chamado vai parar de abrir.
+                                </p>
+                              </div>
+                            ) : null}
                             {rule.lastError ? (
                               <div className="alle-alert-error mt-2 flex items-start gap-2 rounded-lg p-2 text-xs">
                                 <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
