@@ -1150,15 +1150,19 @@ export default function TicketsPage() {
                                 section.key,
                               );
                               return (
-                              // Um tbody por grupo: assim o cabeçalho sticky fica
-                              // preso ao próprio grupo. Num tbody único, todos
-                              // grudavam na mesma altura e se sobrepunham.
+                              // Um tbody por grupo (agrupamento semântico da
+                              // tabela). O cabeçalho de grupo NÃO é sticky: em
+                              // célula de tabela o bloco de contenção do sticky
+                              // é a tabela inteira, não o tbody, então vários
+                              // cabeçalhos grudavam na mesma altura e ficavam
+                              // escritos um por cima do outro. Só o thead
+                              // (cabeçalho de colunas) fica fixo.
                               <tbody key={section.key} className="relative z-0">
                                 {section.label ? (
                                   <tr className="bg-muted/30">
                                     <td
                                       colSpan={activeColumns.length}
-                                      className="sticky top-10 z-20 cursor-pointer select-none border-b-2 border-l-4 border-b-border/60 border-l-primary/60 bg-muted/30 px-3 py-2.5 text-sm font-semibold text-foreground hover:bg-muted/50"
+                                      className="cursor-pointer select-none border-b-2 border-l-4 border-b-border/60 border-l-primary/60 bg-muted/30 px-3 py-2.5 text-sm font-semibold text-foreground hover:bg-muted/50"
                                       onClick={() =>
                                         toggleGroupCollapsed(section.key)
                                       }
