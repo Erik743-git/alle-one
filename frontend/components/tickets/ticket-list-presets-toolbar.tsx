@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import type { TicketListPreset } from "@/lib/tickets/list-presets";
 import { ticketListPresetsService } from "@/lib/services/ticket-list-presets.service";
@@ -122,6 +123,7 @@ export function TicketListPresetsToolbar({
   onCreate,
   onEdit,
 }: Props) {
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
@@ -156,7 +158,13 @@ export function TicketListPresetsToolbar({
   }
 
   async function removePreset(preset: TicketListPreset) {
-    if (!window.confirm(`Remover o filtro "${preset.name}"?`)) return;
+    const ok = await confirm({
+      title: "Remover filtro?",
+      description: `O filtro "${preset.name}" será apagado.`,
+      confirmText: "Remover",
+      variant: "error",
+    });
+    if (!ok) return;
     try {
       await ticketListPresetsService.remove(preset.id);
       notifySuccess("Filtro removido.");
