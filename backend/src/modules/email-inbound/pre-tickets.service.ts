@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
@@ -53,6 +54,8 @@ export class OpenPreTicketDto {
 
 @Injectable()
 export class PreTicketsService {
+  private readonly logger = new Logger(PreTicketsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly portalStore: TicketsPortalStoreService,
@@ -247,6 +250,56 @@ export class PreTicketsService {
       throw new BadRequestException('Pré-ticket já processado.');
     }
 
+    // Trava atômica: a fila é compartilhada entre operadores e a abertura leva
+    // tempo (chamada ao TiFlux, alocação de número, anexos). Sem marcar OPENED
+    // já aqui, dois cliques simultâneos passariam pela checagem acima e
+    // criariam dois chamados para o mesmo e-mail. Só quem consegue o UPDATE
+    // segue; em caso de falha no meio do caminho, volta para PENDING.
+    const claimed = await this.prisma.preTicket.updateMany({
+      where: { id, status: PreTicketStatus.PENDING, deletedAt: null },
+      data: {
+        status: PreTicketStatus.OPENED,
+        openedAt: new Date(),
+        openedByUserId: actor.userId,
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new BadRequestException(
+        'Pré-ticket já processado por outro usuário.',
+      );
+    }
+
+    try {
+      return await this.openAsTicketClaimed(actor, id, dto, row);
+    } catch (err) {
+      // Devolve para a fila para não perder o e-mail em caso de erro.
+      await this.prisma.preTicket
+        .updateMany({
+          where: { id, status: PreTicketStatus.OPENED, ticketNumber: null },
+          data: {
+            status: PreTicketStatus.PENDING,
+            openedAt: null,
+            openedByUserId: null,
+          },
+        })
+        .catch((revertErr) => {
+          this.logger.error(
+            `Falha ao devolver pré-ticket ${id} para a fila: ${
+              revertErr instanceof Error ? revertErr.message : revertErr
+            }`,
+          );
+        });
+      throw err;
+    }
+  }
+
+  /** Corpo da abertura — só roda para quem venceu a trava em `openAsTicket`. */
+  private async openAsTicketClaimed(
+    actor: AuthenticatedRequestUser,
+    id: string,
+    dto: OpenPreTicketDto,
+    row: Awaited<ReturnType<PreTicketsService['getOne']>>,
+  ) {
     const companyId = dto.companyId?.trim() || row.companyId;
     const company = companyId
       ? await this.prisma.company.findFirst({
@@ -311,7 +364,7 @@ export class PreTicketsService {
         description: descriptionPlain || '(sem descrição)',
         client_id: company.tifluxClientId,
         desk_id: desk.externalId,
-        responsible_id: responsibleExternalId!,
+        responsible_id: responsibleExternalId,
         requestor_name: row.fromName?.trim() || 'Solicitante',
         requestor_email: row.fromEmail?.trim() || undefined,
       });
