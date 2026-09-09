@@ -37,8 +37,8 @@ export default function GlobalError({
           <img
             src="/logo-alle-branca.png"
             alt="Alle Tecnologia"
-            width={150}
-            style={{ height: "auto", marginBottom: 28 }}
+            width={300}
+            style={{ height: "auto", maxWidth: "100%", marginBottom: 28 }}
           />
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: "0 0 8px" }}>
             O portal não conseguiu carregar

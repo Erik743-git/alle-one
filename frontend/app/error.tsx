@@ -34,7 +34,7 @@ export default function AppError({
         aria-hidden
       />
       <div className="relative flex w-full max-w-md flex-col items-center gap-6 text-center">
-        <AlleBrandLogo width={150} height={54} />
+        <AlleBrandLogo width={300} height={108} className="max-w-full" />
 
         <div className="space-y-2">
           <h1 className="text-xl font-semibold">Algo deu errado nesta tela</h1>
