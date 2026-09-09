@@ -144,6 +144,22 @@ export type TicketFilterCatalogs = {
   statuses: string[];
 };
 
+export type QuickSearchResult = {
+  tickets: Array<{
+    ticketNumber: number;
+    title: string | null;
+    clientName: string | null;
+    stageName: string | null;
+    isClosed: boolean;
+  }>;
+  companies: Array<{
+    id: string;
+    name: string;
+    tifluxClientId: number | null;
+  }>;
+  collaborators: Array<{ id: string; name: string; email: string }>;
+};
+
 export type AppointmentOverlap = {
   portalAppointmentId: string;
   ticketNumber: number;
@@ -437,6 +453,13 @@ export type TicketAppointmentWarningDetail = {
 export const ticketsService = {
   list(params: TicketsListParams = {}) {
     return apiRequest<TicketListResponse>(`/tickets${toQuery(params)}`);
+  },
+
+  /** Busca da paleta Ctrl+K. Vazio quando o termo tem menos de 2 letras. */
+  quickSearch(term: string) {
+    return apiRequest<QuickSearchResult>(
+      `/tickets/quick-search?q=${encodeURIComponent(term)}`,
+    );
   },
 
   /** Apontamentos seus que cruzam esse horário (aviso de dupla contagem). */

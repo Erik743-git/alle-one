@@ -417,6 +417,17 @@ export class TicketsController {
     );
   }
 
+  /** Busca rápida da paleta (Ctrl+K): tickets, empresas e colaboradores. */
+  @Get('quick-search')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  quickSearch(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query('q') q?: string,
+  ) {
+    return this.ticketsQueryService.quickSearch(actor, q ?? '');
+  }
+
   /**
    * Apontamentos do próprio usuário que cruzam o horário informado. Consultado
    * pela tela antes de salvar, para avisar sobre dupla contagem de hora.
