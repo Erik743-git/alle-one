@@ -111,6 +111,10 @@ model User {
   status              UserStatus           @default(ACTIVE)
   firstAccess         Boolean              @default(true) @map("first_access")
   tokenVersion        Int                  @default(0) @map("token_version")
+  /// Tentativas seguidas de login com senha errada; zera no login correto.
+  failedLoginCount    Int                  @default(0) @map("failed_login_count")
+  /// Enquanto no futuro, o login e recusado mesmo com a senha certa.
+  lockedUntil         DateTime?            @map("locked_until")
   responsible         Boolean              @default(false)
   companyId           String?              @map("company_id")
   googleId            String?              @unique @map("google_id")
