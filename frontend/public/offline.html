@@ -97,7 +97,9 @@
         O Alle One precisa de internet para funcionar. Verifique o Wi-Fi ou os
         dados móveis — assim que a conexão voltar, esta página sai sozinha.
       </p>
-      <button type="button" onclick="location.reload()">Tentar de novo</button>
+      <!-- Sem onclick= aqui: a CSP do portal usa script-src-attr 'none', que
+           bloqueia atributo de evento inline. O clique é ligado no script. -->
+      <button type="button" id="tentar">Tentar de novo</button>
       <p class="status" id="status"></p>
     </main>
     <script>
@@ -108,6 +110,13 @@
       // Wi-Fi sem saída o valor é `true`, e recarregar aqui criaria um laço
       // infinito — esta página apareceria, recarregaria, apareceria de novo.
       window.addEventListener("online", function () {
+        location.reload();
+      });
+
+      // O evento 'online' cobre a queda e volta da interface de rede. Não
+      // cobre Wi-Fi conectado sem internet: ali a interface nunca ficou
+      // offline, o evento não dispara na volta, e o botão é a única saída.
+      document.getElementById("tentar").addEventListener("click", function () {
         location.reload();
       });
 
