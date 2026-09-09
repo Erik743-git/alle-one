@@ -39,6 +39,12 @@ import {
 import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
 
 const AUTO_OPEN_MAX_ATTACHMENTS = 10;
+/**
+ * Falhas seguidas antes de desativar a regra. Folgado de propósito: erro
+ * passageiro (TiFlux fora do ar) não deve desligar rotina, mas erro
+ * estrutural não pode ficar tentando para sempre.
+ */
+const MAX_FALHAS_SEGUIDAS = 5;
 const AUTO_OPEN_PREVIEW_MAX_BYTES = 1024 * 1024;
 
 export type TicketAutoOpenRuleAttachmentDto = {
@@ -76,6 +82,13 @@ export type TicketAutoOpenRuleDto = {
   lastTicketNumber: number | null;
   createdAt: string;
   attachments: TicketAutoOpenRuleAttachmentDto[];
+  // Sem estes três a falha só existia no log da API: a tela mandava o admin
+  // "verificar os logs" para saber por que o chamado não abriu.
+  lastError: string | null;
+  lastErrorAt: string | null;
+  consecutiveFailures: number;
+  /** A classificação salva ganhou filhos e não é mais o nível mais específico. */
+  classificationStale: boolean;
 };
 
 @Injectable()
@@ -116,8 +129,12 @@ export class TicketAutoOpenService {
       lastRunAt: Date | null;
       lastTicketNumber: number | null;
       createdAt: Date;
+      lastError: string | null;
+      lastErrorAt: Date | null;
+      consecutiveFailures: number;
     },
     attachments: TicketAutoOpenRuleAttachmentDto[] = [],
+    extras: { classificationStale?: boolean } = {},
   ): TicketAutoOpenRuleDto {
     return {
       id: row.id,
@@ -148,6 +165,10 @@ export class TicketAutoOpenService {
       lastTicketNumber: row.lastTicketNumber,
       createdAt: row.createdAt.toISOString(),
       attachments,
+      lastError: row.lastError,
+      lastErrorAt: row.lastErrorAt?.toISOString() ?? null,
+      consecutiveFailures: row.consecutiveFailures,
+      classificationStale: extras.classificationStale ?? false,
     };
   }
 
@@ -389,6 +410,32 @@ export class TicketAutoOpenService {
     throw error;
   }
 
+  /**
+   * Classificações que deixaram de ser folha.
+   *
+   * A regra guarda um classificationId que era o nível mais específico quando
+   * foi salva. Se alguém criar uma subclassificação embaixo dele, a validação
+   * de abertura passa a recusar a regra — ela só falha na próxima execução do
+   * cron, sem ninguém pedir nada. Marcamos aqui para o admin ver o problema
+   * na tela antes do chamado deixar de abrir.
+   */
+  private async findStaleClassificationIds(
+    classificationIds: string[],
+  ): Promise<Set<string>> {
+    const ids = [...new Set(classificationIds)];
+    if (ids.length === 0) return new Set();
+    const children = await this.prisma.specialtyClassification.findMany({
+      where: { parentId: { in: ids }, active: true },
+      select: { parentId: true },
+      distinct: ['parentId'],
+    });
+    return new Set(
+      children
+        .map((child) => child.parentId)
+        .filter((parentId): parentId is string => Boolean(parentId)),
+    );
+  }
+
   async list(): Promise<TicketAutoOpenRuleDto[]> {
     try {
       const rows = await this.prisma.ticketAutoOpenRule.findMany({
@@ -396,9 +443,18 @@ export class TicketAutoOpenService {
         orderBy: [{ active: 'desc' }, { name: 'asc' }],
         include: this.ruleInclude,
       });
+      const stale = await this.findStaleClassificationIds(
+        rows
+          .map((row) => row.classificationId)
+          .filter((id): id is string => Boolean(id)),
+      );
       return Promise.all(
         rows.map(async (row) =>
-          this.map(row, await this.mapAttachments(row.attachments)),
+          this.map(row, await this.mapAttachments(row.attachments), {
+            classificationStale: row.classificationId
+              ? stale.has(row.classificationId)
+              : false,
+          }),
         ),
       );
     } catch (error) {
@@ -643,9 +699,16 @@ export class TicketAutoOpenService {
           lastTicketNumber: number;
           nextScheduledDate?: Date;
           active?: boolean;
+          consecutiveFailures: number;
+          lastError: string | null;
+          lastErrorAt: Date | null;
         } = {
           lastRunAt: now,
           lastTicketNumber: result.ticketNumber,
+          // Sucesso limpa o histórico de falha da regra.
+          consecutiveFailures: 0,
+          lastError: null,
+          lastErrorAt: null,
         };
 
         if (rule.periodicity === TicketAutoOpenPeriodicity.ONCE) {
@@ -704,9 +767,71 @@ export class TicketAutoOpenService {
           `Falha na regra "${rule.name}" (${rule.id}) [próx: ${formatYmdUtc(rule.nextScheduledDate)} ${rule.scheduleTime}]: ${message}`,
           err instanceof Error ? err.stack : undefined,
         );
+
+        // Sem avançar a data, a regra continua vencida e refalha em TODO tick
+        // do cron, para sempre — foi o que encheu o log de staging com a
+        // mesma regra de dias atrás. Avança para a próxima ocorrência e
+        // registra a falha; assim o erro fica visível na tela em vez de só
+        // no log, e a regra tem chance de voltar sozinha quando o motivo
+        // for corrigido.
+        await this.registerRuleFailure(rule, message, now);
       }
     }
 
     return { processed, errors, results };
+  }
+
+  /**
+   * Reagenda a regra que falhou e guarda o motivo.
+   *
+   * Depois de MAX_FALHAS_SEGUIDAS tentativas seguidas sem sucesso a regra é
+   * desativada: se a causa é estrutural — classificação que deixou de ser o
+   * nível mais específico, usuário criador removido — insistir a cada tick só
+   * gera ruído. O motivo fica gravado para o admin ver e reativar.
+   */
+  private async registerRuleFailure(
+    rule: {
+      id: string;
+      name: string;
+      nextScheduledDate: Date;
+      periodicity: TicketAutoOpenPeriodicity;
+      consecutiveFailures: number;
+    },
+    message: string,
+    now: Date,
+  ) {
+    const falhas = (rule.consecutiveFailures ?? 0) + 1;
+    const desativar = falhas >= MAX_FALHAS_SEGUIDAS;
+
+    try {
+      await this.prisma.ticketAutoOpenRule.update({
+        where: { id: rule.id },
+        data: {
+          lastError: message.slice(0, 2000),
+          lastErrorAt: now,
+          consecutiveFailures: falhas,
+          ...(desativar
+            ? { active: false }
+            : {
+                nextScheduledDate: advanceScheduledDate(
+                  rule.nextScheduledDate,
+                  rule.periodicity,
+                ),
+              }),
+        },
+      });
+      if (desativar) {
+        this.logger.error(
+          `Regra "${rule.name}" desativada após ${falhas} falhas seguidas. Último motivo: ${message}`,
+        );
+      }
+    } catch (err) {
+      // Não pode derrubar o processamento das demais regras.
+      this.logger.error(
+        `Falha ao registrar erro da regra "${rule.name}": ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
   }
 }

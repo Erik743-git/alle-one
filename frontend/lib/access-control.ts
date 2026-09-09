@@ -41,6 +41,15 @@ export function isClientMember() {
   return isClientMemberRole(getCurrentRole());
 }
 
+/**
+ * Espelha `@Roles(ADMIN, COLLABORATOR)` das rotas de pré-tickets no backend.
+ * Não usar `!isClient()` aqui: PJ não é cliente, mas também não tem acesso —
+ * veria o botão e levaria 403.
+ */
+export function canAccessPreTickets() {
+  return isAdmin() || isCollaborator();
+}
+
 function getModuleEntry(module: PermissionModuleKey) {
   const user = getStoredUser();
   if (!user?.permissions?.length) {

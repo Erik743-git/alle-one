@@ -111,6 +111,10 @@ model User {
   status              UserStatus           @default(ACTIVE)
   firstAccess         Boolean              @default(true) @map("first_access")
   tokenVersion        Int                  @default(0) @map("token_version")
+  /// Tentativas seguidas de login com senha errada; zera no login correto.
+  failedLoginCount    Int                  @default(0) @map("failed_login_count")
+  /// Enquanto no futuro, o login e recusado mesmo com a senha certa.
+  lockedUntil         DateTime?            @map("locked_until")
   responsible         Boolean              @default(false)
   companyId           String?              @map("company_id")
   googleId            String?              @unique @map("google_id")
@@ -137,6 +141,7 @@ model User {
   ticketListPresets     TicketListPreset[]
   preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
   preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
+  preTicketsClaimed     PreTicket[]       @relation("PreTicketClaimedBy")
   emailInboundRoutesCreated EmailInboundRoute[] @relation("EmailInboundRouteCreator")
   permissions         Permission[]
   passwordResetTokens PasswordResetToken[]
@@ -759,6 +764,11 @@ model TicketAutoOpenRule {
   parentTicketNumber     Int?                      @map("parent_ticket_number")
   lastRunAt              DateTime?                 @map("last_run_at")
   lastTicketNumber       Int?                      @map("last_ticket_number")
+  /// Motivo da última falha, para aparecer na tela em vez de só no log.
+  lastError              String?                   @map("last_error") @db.Text
+  lastErrorAt            DateTime?                 @map("last_error_at")
+  /// Falhas seguidas; zera no primeiro sucesso. Desativa a regra ao estourar.
+  consecutiveFailures    Int                       @default(0) @map("consecutive_failures")
   createdBy              String                    @map("created_by")
   createdAt              DateTime                  @default(now()) @map("created_at")
   updatedAt              DateTime                  @updatedAt @map("updated_at")
@@ -1507,6 +1517,9 @@ model PreTicket {
   ticketNumber      Int?            @map("ticket_number")
   openedByUserId    String?         @map("opened_by_user_id")
   openedAt          DateTime?       @map("opened_at")
+  /// Quem esta atendendo agora. Expira sozinho — ver PRE_TICKET_CLAIM_MINUTES.
+  claimedByUserId   String?         @map("claimed_by_user_id")
+  claimedAt         DateTime?       @map("claimed_at")
   deletedAt         DateTime?       @map("deleted_at")
   receivedAt        DateTime        @map("received_at")
   createdAt         DateTime        @default(now()) @map("created_at")
@@ -1515,6 +1528,7 @@ model PreTicket {
   company       Company?     @relation(fields: [companyId], references: [id], onDelete: SetNull)
   requestorUser User?        @relation("PreTicketRequestor", fields: [requestorUserId], references: [id], onDelete: SetNull)
   openedByUser  User?        @relation("PreTicketOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  claimedByUser User?        @relation("PreTicketClaimedBy", fields: [claimedByUserId], references: [id], onDelete: SetNull)
   specialty     Specialty?   @relation(fields: [specialtyId], references: [id], onDelete: SetNull)
   attachments   PreTicketAttachment[]
 

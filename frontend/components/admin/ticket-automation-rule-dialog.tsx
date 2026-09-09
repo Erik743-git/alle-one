@@ -895,7 +895,7 @@ export function TicketAutomationRuleDialog({
           </div>
         </div>
 
-        <SheetFooter className="!pb-4 mt-0 shrink-0 flex-row justify-end gap-2 border-t border-border bg-muted/40 px-6 py-4">
+        <SheetFooter className="mt-0 shrink-0 flex-row justify-end gap-2 border-t border-border bg-muted/40 px-6">
           <Button
             type="button"
             variant="outline"

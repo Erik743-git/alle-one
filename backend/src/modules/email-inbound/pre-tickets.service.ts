@@ -3,6 +3,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
@@ -51,8 +52,17 @@ export class OpenPreTicketDto {
   companyId?: string;
 }
 
+/**
+ * Janela da reserva de pré-ticket. Curta de propósito: se a pessoa fechar a
+ * aba ou desistir, o e-mail volta sozinho para a fila — não existe estado
+ * travado esperando alguém destravar na mão.
+ */
+const PRE_TICKET_CLAIM_MINUTES = 10;
+
 @Injectable()
 export class PreTicketsService {
+  private readonly logger = new Logger(PreTicketsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly portalStore: TicketsPortalStoreService,
@@ -106,6 +116,9 @@ export class PreTicketsService {
       portalPreTicket: true as const,
       company: row.clientName ? { id: '', name: row.clientName } : null,
       specialty: null,
+      // Reserva vale só para a fila de e-mail; pré-ticket do portal já é um
+      // ticket e tem responsável próprio.
+      claimedBy: null as { id: string; name: string; since: string } | null,
     };
   }
 
@@ -130,6 +143,7 @@ export class PreTicketsService {
         include: {
           company: { select: { id: true, name: true } },
           specialty: { select: { id: true, name: true, externalId: true } },
+          claimedByUser: { select: { id: true, name: true } },
         },
         orderBy: { receivedAt: 'desc' },
         take: 200,
@@ -166,8 +180,25 @@ export class PreTicketsService {
       }),
     ]);
 
+    // Reserva vencida é o mesmo que não ter reserva — some da listagem.
+    const cutoff = this.claimCutoff();
+    const emailRowsWithClaim = emailRows.map((row) => {
+      const active =
+        row.claimedByUserId && row.claimedAt && row.claimedAt > cutoff;
+      return {
+        ...row,
+        claimedBy: active
+          ? {
+              id: row.claimedByUser!.id,
+              name: row.claimedByUser!.name,
+              since: row.claimedAt!.toISOString(),
+            }
+          : null,
+      };
+    });
+
     const merged = [
-      ...emailRows,
+      ...emailRowsWithClaim,
       ...portalRows.map((row) => this.mapPortalPreTicket(row)),
     ].sort(
       (a, b) =>
@@ -175,6 +206,62 @@ export class PreTicketsService {
     );
 
     return merged.slice(0, 200);
+  }
+
+  private claimCutoff(): Date {
+    return new Date(Date.now() - PRE_TICKET_CLAIM_MINUTES * 60_000);
+  }
+
+  /** Reserva o pré-ticket para o operador, se ninguém tiver reserva válida. */
+  async claim(actor: AuthenticatedRequestUser, id: string) {
+    this.assertOperator(actor);
+    const row = await this.getOne(actor, id);
+    if (row.status !== PreTicketStatus.PENDING) {
+      throw new BadRequestException('Pré-ticket já processado.');
+    }
+
+    // Condicional na própria escrita: livre, reserva expirada, ou já é minha.
+    const claimed = await this.prisma.preTicket.updateMany({
+      where: {
+        id,
+        status: PreTicketStatus.PENDING,
+        deletedAt: null,
+        OR: [
+          { claimedByUserId: null },
+          { claimedByUserId: actor.userId },
+          { claimedAt: { lt: this.claimCutoff() } },
+        ],
+      },
+      data: { claimedByUserId: actor.userId, claimedAt: new Date() },
+    });
+
+    if (claimed.count !== 1) {
+      const current = await this.prisma.preTicket.findFirst({
+        where: { id },
+        select: { claimedByUser: { select: { name: true } } },
+      });
+      throw new BadRequestException(
+        `${current?.claimedByUser?.name ?? 'Outro usuário'} está atendendo este pré-ticket.`,
+      );
+    }
+
+    return { ok: true, claimedUntilMinutes: PRE_TICKET_CLAIM_MINUTES };
+  }
+
+  /** Devolve para a fila. Só quem reservou (ou um ADMIN) pode liberar. */
+  async release(actor: AuthenticatedRequestUser, id: string) {
+    this.assertOperator(actor);
+    await this.prisma.preTicket.updateMany({
+      where: {
+        id,
+        deletedAt: null,
+        ...(actor.role === UserRole.ADMIN
+          ? {}
+          : { claimedByUserId: actor.userId }),
+      },
+      data: { claimedByUserId: null, claimedAt: null },
+    });
+    return { ok: true };
   }
 
   async getOne(actor: AuthenticatedRequestUser, id: string) {
@@ -247,6 +334,56 @@ export class PreTicketsService {
       throw new BadRequestException('Pré-ticket já processado.');
     }
 
+    // Trava atômica: a fila é compartilhada entre operadores e a abertura leva
+    // tempo (chamada ao TiFlux, alocação de número, anexos). Sem marcar OPENED
+    // já aqui, dois cliques simultâneos passariam pela checagem acima e
+    // criariam dois chamados para o mesmo e-mail. Só quem consegue o UPDATE
+    // segue; em caso de falha no meio do caminho, volta para PENDING.
+    const claimed = await this.prisma.preTicket.updateMany({
+      where: { id, status: PreTicketStatus.PENDING, deletedAt: null },
+      data: {
+        status: PreTicketStatus.OPENED,
+        openedAt: new Date(),
+        openedByUserId: actor.userId,
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new BadRequestException(
+        'Pré-ticket já processado por outro usuário.',
+      );
+    }
+
+    try {
+      return await this.openAsTicketClaimed(actor, id, dto, row);
+    } catch (err) {
+      // Devolve para a fila para não perder o e-mail em caso de erro.
+      await this.prisma.preTicket
+        .updateMany({
+          where: { id, status: PreTicketStatus.OPENED, ticketNumber: null },
+          data: {
+            status: PreTicketStatus.PENDING,
+            openedAt: null,
+            openedByUserId: null,
+          },
+        })
+        .catch((revertErr) => {
+          this.logger.error(
+            `Falha ao devolver pré-ticket ${id} para a fila: ${
+              revertErr instanceof Error ? revertErr.message : revertErr
+            }`,
+          );
+        });
+      throw err;
+    }
+  }
+
+  /** Corpo da abertura — só roda para quem venceu a trava em `openAsTicket`. */
+  private async openAsTicketClaimed(
+    actor: AuthenticatedRequestUser,
+    id: string,
+    dto: OpenPreTicketDto,
+    row: Awaited<ReturnType<PreTicketsService['getOne']>>,
+  ) {
     const companyId = dto.companyId?.trim() || row.companyId;
     const company = companyId
       ? await this.prisma.company.findFirst({
@@ -311,7 +448,7 @@ export class PreTicketsService {
         description: descriptionPlain || '(sem descrição)',
         client_id: company.tifluxClientId,
         desk_id: desk.externalId,
-        responsible_id: responsibleExternalId!,
+        responsible_id: responsibleExternalId,
         requestor_name: row.fromName?.trim() || 'Solicitante',
         requestor_email: row.fromEmail?.trim() || undefined,
       });

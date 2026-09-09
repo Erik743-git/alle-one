@@ -22,10 +22,13 @@ import {
   ChevronLeft,
   ChevronRight,
   HelpCircle,
+  Image as ImageIcon,
   Loader2,
   MessageSquare,
+  Paperclip,
   User,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -167,6 +170,7 @@ function CompanyEntryCard({
   onQuestion?: () => void;
   onAnswer?: () => void;
 }) {
+  const router = useRouter();
   const [expanded, setExpanded] = React.useState(false);
   const q = entry.question;
   const desc = summarizeCompanyAppointmentDescription(
@@ -180,7 +184,20 @@ function CompanyEntryCard({
         "rounded-xl border border-border bg-muted/20",
         dense ? "px-2 py-2 text-xs" : "px-4 py-3",
         q?.status === "PENDING" && "border-amber-500/40 bg-amber-500/5",
+        "cursor-pointer transition hover:border-primary/40 hover:bg-muted/40",
       )}
+      // Leva ao chamado, onde a descrição completa, os anexos e as imagens
+      // aparecem de verdade. Os botões internos param a propagação.
+      role="link"
+      tabIndex={0}
+      title={`Abrir chamado #${entry.ticketNumber}`}
+      onClick={() => router.push(`/tickets/${entry.ticketNumber}`)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          router.push(`/tickets/${entry.ticketNumber}`);
+        }
+      }}
     >
       <div
         className={cn(
@@ -195,9 +212,29 @@ function CompanyEntryCard({
               {entry.hoursFormatted ?? formatMinutesLabel(entry.minutes)}
             </span>
           </p>
-          <p className="text-muted-foreground">
-            #{entry.ticketNumber}
-            {entry.serviceName ? ` · ${entry.serviceName}` : ""}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+            <span>
+              #{entry.ticketNumber}
+              {entry.serviceName ? ` · ${entry.serviceName}` : ""}
+            </span>
+            {entry.attachmentCount ? (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium"
+                title={`${entry.attachmentCount} anexo(s) — abra o chamado para ver`}
+              >
+                <Paperclip className="size-3" />
+                {entry.attachmentCount}
+              </span>
+            ) : null}
+            {entry.hasImages ? (
+              <span
+                className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium"
+                title="Descrição com imagem — abra o chamado para ver"
+              >
+                <ImageIcon className="size-3" />
+                imagem
+              </span>
+            ) : null}
           </p>
           {entry.userName ? (
             <p className="inline-flex items-center gap-1 text-foreground/80">
@@ -220,7 +257,10 @@ function CompanyEntryCard({
             <button
               type="button"
               className="text-xs font-medium text-primary hover:underline"
-              onClick={() => setExpanded((v) => !v)}
+              onClick={(event) => {
+                event.stopPropagation();
+                setExpanded((v) => !v);
+              }}
             >
               {expanded ? "Ver menos" : "Ver descrição completa"}
             </button>
@@ -244,7 +284,12 @@ function CompanyEntryCard({
           ) : null}
         </div>
         {!dense ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div
+            className="flex shrink-0 flex-wrap items-center gap-2"
+            // Questionar/Responder são ações do apontamento, não devem abrir
+            // o chamado junto.
+            onClick={(event) => event.stopPropagation()}
+          >
             {q?.status === "PENDING" ? (
               <span className="alle-badge-overtime rounded-md border border-amber-500/40 px-2 py-0.5 text-[10px] font-medium">
                 Aguardando

@@ -100,7 +100,9 @@ function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="sheet-footer"
-      className={cn("mt-auto flex flex-col gap-2 px-4 pt-4", className, "pb-6")}
+      // className por último: com "pb-6" depois dele, nenhuma tela conseguia
+      // ajustar o padding inferior sem recorrer a !important.
+      className={cn("mt-auto flex flex-col gap-2 px-4 py-4", className)}
       {...props}
     />
   )

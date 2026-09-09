@@ -580,7 +580,10 @@ export function TicketOptionsMenu({
               </ul>
             ) : null}
           </div>
-          <DialogFooter className="mx-0 shrink-0 rounded-none border-t bg-muted/50 px-4">
+          <DialogFooter
+            bleed={false}
+            className="shrink-0 rounded-none border-t bg-muted/50 px-4"
+          >
             <Button
               type="button"
               variant="outline"

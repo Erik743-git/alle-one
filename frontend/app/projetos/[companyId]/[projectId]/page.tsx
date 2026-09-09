@@ -37,6 +37,7 @@ import {
   ProjectProgressHeader,
 } from "@/components/projetos/project-gantt-parts";
 import { Button } from "@/components/ui/button";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import {
   canEditProjetos,
   canImportProjetos,
@@ -92,19 +93,26 @@ export default function ProjectDetailPage() {
   const [appointmentActivityId, setAppointmentActivityId] = useState<string | undefined>();
   const [mainView, setMainView] = useState<ProjectMainView>("schedule");
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!projectId) return;
     try {
       if (silent) setRefreshing(true);
       else setLoading(true);
+      setLoadError(null);
       const data = await projetosService.getProject(projectId);
       setProject(data);
       setHistoryRefreshToken((value) => value + 1);
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar o projeto.",
-      );
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar o projeto.";
+      // Sem o estado de erro esta tela girava "Carregando projeto..." para
+      // sempre: `project` continua null e o ramo de loading nunca sai.
+      if (silent) notifyError(message);
+      else setLoadError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -246,7 +254,13 @@ export default function ProjectDetailPage() {
       <PermissionGate module="PROJECTS">
         <AppShell>
           <div className="font-sans w-full space-y-6">
-            {loading || !project ? (
+            {loadError && !project ? (
+              <LoadErrorState
+                title="Não foi possível carregar o projeto."
+                message={loadError}
+                onRetry={() => void load()}
+              />
+            ) : loading || !project ? (
               <div className="flex items-center justify-center py-24 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin mr-2" />
                 Carregando projeto...

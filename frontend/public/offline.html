@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Alle One — sem conexão</title>
+    <!--
+      Servida pelo service worker quando o aparelho está sem rede.
+
+      Diferente da página de manutenção: ali o portal caiu, aqui o problema
+      é a conexão do usuário. Por isso o texto é outro e não há recarga
+      automática a cada 30s — em vez disso, a página volta sozinha assim que
+      o navegador avisar que a conexão retornou.
+
+      O logo vem do cache do service worker, então funciona sem rede.
+    -->
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #0b1220;
+        background-image: radial-gradient(
+          ellipse 100% 60% at 50% -15%,
+          rgba(18, 181, 217, 0.11),
+          transparent 50%
+        );
+        color: #e5ecea;
+        font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        line-height: 1.6;
+      }
+      .card {
+        width: 100%;
+        max-width: 440px;
+        text-align: center;
+      }
+      .logo {
+        width: 150px;
+        height: auto;
+        margin-bottom: 32px;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 21px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0 0 8px;
+        font-size: 14.5px;
+        color: #97a6a3;
+      }
+      button {
+        margin-top: 24px;
+        appearance: none;
+        border: 0;
+        border-radius: 6px;
+        background: #12b5d9;
+        color: #07222b;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 10px 22px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #33c3e2;
+      }
+      .status {
+        margin-top: 22px;
+        font-size: 12.5px;
+        color: rgba(151, 166, 163, 0.75);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <img class="logo" src="/logo-alle-branca.png" alt="Alle Tecnologia" />
+      <h1>Você está sem conexão</h1>
+      <p>
+        O Alle One precisa de internet para funcionar. Verifique o Wi-Fi ou os
+        dados móveis — assim que a conexão voltar, esta página sai sozinha.
+      </p>
+      <!-- Sem onclick= aqui: a CSP do portal usa script-src-attr 'none', que
+           bloqueia atributo de evento inline. O clique é ligado no script. -->
+      <button type="button" id="tentar">Tentar de novo</button>
+      <p class="status" id="status"></p>
+    </main>
+    <script>
+      // Recarrega SÓ no evento de volta da conexão.
+      //
+      // Não recarregar com base em navigator.onLine no carregamento: ele diz
+      // apenas que há interface de rede ativa, não que existe internet. Num
+      // Wi-Fi sem saída o valor é `true`, e recarregar aqui criaria um laço
+      // infinito — esta página apareceria, recarregaria, apareceria de novo.
+      window.addEventListener("online", function () {
+        location.reload();
+      });
+
+      // O evento 'online' cobre a queda e volta da interface de rede. Não
+      // cobre Wi-Fi conectado sem internet: ali a interface nunca ficou
+      // offline, o evento não dispara na volta, e o botão é a única saída.
+      document.getElementById("tentar").addEventListener("click", function () {
+        location.reload();
+      });
+
+      var status = document.getElementById("status");
+      function pintaStatus() {
+        status.textContent = navigator.onLine
+          ? "O aparelho está conectado, mas o portal não respondeu."
+          : "Sem conexão no momento.";
+      }
+      pintaStatus();
+      window.addEventListener("offline", pintaStatus);
+    </script>
+  </body>
+</html>

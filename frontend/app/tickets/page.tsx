@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
@@ -34,6 +34,7 @@ import {
   mapFilterResponsibles,
 } from "@/components/tickets/ticket-responsible-select";
 import {
+  canAccessPreTickets,
   canChangeTicketStage,
   canCreateTicket,
   isClient,
@@ -56,6 +57,7 @@ import {
 import { ticketListPresetsService } from "@/lib/services/ticket-list-presets.service";
 import {
   TICKET_LIST_COLUMNS,
+  TICKET_LIST_GROUP_BY_LABELS,
   applyPresetConfigToPageState,
   type TicketColumnKey,
   type TicketListGroupBy,
@@ -65,6 +67,7 @@ import {
 import { useRouter } from "next/navigation";
 
 const TICKET_COLUMNS = TICKET_LIST_COLUMNS;
+
 
 function isDoneStage(stageName: string | null) {
   return (
@@ -159,7 +162,9 @@ export default function TicketsPage() {
   const [columnFilters, setColumnFilters] = useState(emptyColumnFilters);
   const [sortKey, setSortKey] = useState<TicketColumnKey | null>(null);
   const [sortDir, setSortDir] = useState<ExcelSortDir | null>(null);
-  const [groupBy, setGroupBy] = useState<TicketListGroupBy>("none");
+  // Agrupado por estágio por padrão: é o que deixa o acordeon (recolher por
+  // grupo) visível sem precisar aplicar um preset primeiro.
+  const [groupBy, setGroupBy] = useState<TicketListGroupBy>("stage");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(),
   );
@@ -173,8 +178,14 @@ export default function TicketsPage() {
     null,
   );
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const mineOnly = !includeAllResponsibles;
   const [search, setSearch] = useState("");
+  // A busca vai ao servidor; sem debounce cada tecla dispara uma requisição de
+  // até 500 tickets.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [responsibleExternalId, setResponsibleExternalId] = useState("");
@@ -203,7 +214,7 @@ export default function TicketsPage() {
         parsedTicket != null && Number.isFinite(parsedTicket)
           ? parsedTicket
           : undefined,
-      search: search.trim() || undefined,
+      search: debouncedSearch.trim() || undefined,
       externalGmudRef: externalGmudRef.trim() || undefined,
       includeDone: includeDone || undefined,
     };
@@ -218,30 +229,53 @@ export default function TicketsPage() {
     to,
     ticketNumber,
     externalGmudRef,
-    search,
+    debouncedSearch,
     includeDone,
   ]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search), 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  // Catálogos são carregados uma vez; manter `catalogs` fora das dependências
+  // de `load` evita que o próprio setCatalogs redispare o efeito e busque a
+  // lista duas vezes a cada montagem.
+  const catalogsLoadedRef = useRef(false);
+  const loadSeqRef = useRef(0);
+
   const load = useCallback(async (isRefresh = false) => {
+    const seq = ++loadSeqRef.current;
     try {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       const [list, cats] = await Promise.all([
         ticketsService.list(queryParams),
-        catalogs ? Promise.resolve(catalogs) : ticketsService.catalogs(),
+        catalogsLoadedRef.current
+          ? Promise.resolve(null)
+          : ticketsService.catalogs(),
       ]);
+      // Resposta obsoleta (o usuário já digitou de novo): descarta.
+      if (seq !== loadSeqRef.current) return;
       setData(list);
-      if (!catalogs) setCatalogs(cats);
+      setLoadError(null);
+      if (cats) {
+        catalogsLoadedRef.current = true;
+        setCatalogs(cats);
+      }
       refreshPreTicketsBadge();
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar os tickets.",
-      );
+      if (seq !== loadSeqRef.current) return;
+      const message =
+        err instanceof Error ? err.message : "Não foi possível carregar os tickets.";
+      setLoadError(message);
+      notifyError(message);
     } finally {
+      if (seq !== loadSeqRef.current) return;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [queryParams, catalogs]);
+  }, [queryParams]);
 
   useEffect(() => {
     void load();
@@ -314,7 +348,7 @@ export default function TicketsPage() {
     setRequestorName("");
     setTicketNumber("");
     setExternalGmudRef("");
-    setGroupBy("none");
+    setGroupBy("stage");
     setColumnFilters(emptyColumnFilters());
     setSortKey(null);
     setSortDir(null);
@@ -499,6 +533,11 @@ export default function TicketsPage() {
     [displayTickets],
   );
 
+  // `totalCount` é a contagem real no filtro; `total` é só o tamanho da página.
+  const serverTotal = data?.totalCount ?? data?.total ?? 0;
+  const loadedCount = allTickets.length;
+  const hasMore = data?.hasMore ?? false;
+
   const displaySections = useMemo(() => {
     if (groupBy === "none") {
       return [{ key: "all", label: "", tickets: displayTickets }];
@@ -598,6 +637,48 @@ export default function TicketsPage() {
     }
   }
 
+  async function loadMore() {
+    if (!data || loadingMore || !data.hasMore) return;
+    const seq = loadSeqRef.current;
+    try {
+      setLoadingMore(true);
+      const next = await ticketsService.list({
+        ...queryParams,
+        offset: allTickets.length,
+      });
+      // Filtro mudou no meio do caminho: descarta para não misturar páginas.
+      if (seq !== loadSeqRef.current) return;
+      setData((prev) => {
+        if (!prev) return next;
+        const seen = new Set(
+          prev.groups.flatMap((g) => g.tickets.map((t) => t.ticketNumber)),
+        );
+        const merged = [...prev.groups];
+        for (const group of next.groups) {
+          const novos = group.tickets.filter((t) => !seen.has(t.ticketNumber));
+          if (novos.length === 0) continue;
+          const existente = merged.find((g) => g.key === group.key);
+          if (existente) {
+            existente.tickets = [...existente.tickets, ...novos];
+          } else {
+            merged.push({ ...group, tickets: novos });
+          }
+        }
+        return {
+          ...next,
+          groups: merged,
+          total: prev.total + next.total,
+        };
+      });
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível carregar mais.",
+      );
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   function toggleGroupCollapsed(key: string) {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
@@ -647,7 +728,7 @@ export default function TicketsPage() {
               }
               actions={
                 <>
-                  {!isClient() ? (
+                  {canAccessPreTickets() ? (
                     <Button asChild variant="outline" className="relative">
                       <Link href="/tickets/pre-tickets" className="inline-flex items-center">
                         Pré-tickets
@@ -727,6 +808,21 @@ export default function TicketsPage() {
                       setPresetDialogOpen(true);
                     }}
                   />
+                  <div className="flex items-center gap-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">
+                      Agrupar por
+                    </Label>
+                    <SearchableSelectField
+                      value={groupBy}
+                      onChange={(v) => setGroupBy(v as TicketListGroupBy)}
+                      options={Object.entries(TICKET_LIST_GROUP_BY_LABELS).map(
+                        ([value, label]) => ({ value, label }),
+                      )}
+                      preserveOrder
+                      emptyLabel="Nenhum"
+                      className="h-8 w-[150px]"
+                    />
+                  </div>
                   {activeTableFiltersCount > 0 || sortKey ? (
                     <Button
                       type="button"
@@ -920,6 +1016,26 @@ export default function TicketsPage() {
                   </CardContent>
                 </Card>
               </div>
+            ) : loadError ? (
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+                  <p className="text-sm font-medium text-foreground">
+                    Não foi possível carregar os tickets.
+                  </p>
+                  <p className="max-w-md text-sm text-muted-foreground">
+                    {loadError}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void load(true)}
+                  >
+                    <RefreshCw className="mr-2 size-4" />
+                    Tentar de novo
+                  </Button>
+                </CardContent>
+              </Card>
             ) : !(data?.groups?.length) ? (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
@@ -933,11 +1049,17 @@ export default function TicketsPage() {
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
                   <span>
                     {filteredTotal} ticket(s)
-                    {filteredTotal !== data.total ? ` de ${data.total}` : ""}
+                    {filteredTotal !== serverTotal ? ` de ${serverTotal}` : ""}
                     {includeDone
                       ? " · incluindo resolvidos/encerrados"
                       : " · só pendentes"}
                   </span>
+                  {hasMore ? (
+                    <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-800 dark:text-amber-200">
+                      {loadedCount} carregados · filtros de coluna valem só sobre
+                      estes
+                    </span>
+                  ) : null}
                   {sortKey && sortDir ? (
                     <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                       Ordenado por{" "}
@@ -1008,8 +1130,8 @@ export default function TicketsPage() {
                             ))}
                           </tr>
                         </thead>
-                        <tbody className="relative z-0">
-                          {filteredTotal === 0 ? (
+                        {filteredTotal === 0 ? (
+                          <tbody className="relative z-0">
                             <tr>
                               <td
                                 colSpan={activeColumns.length}
@@ -1021,31 +1143,47 @@ export default function TicketsPage() {
                                   : ""}
                               </td>
                             </tr>
+                          </tbody>
                           ) : (
                             displaySections.map((section) => {
                               const isCollapsed = collapsedGroups.has(
                                 section.key,
                               );
                               return (
-                              <Fragment key={section.key}>
+                              // Um tbody por grupo (agrupamento semântico da
+                              // tabela). O cabeçalho de grupo NÃO é sticky: em
+                              // célula de tabela o bloco de contenção do sticky
+                              // é a tabela inteira, não o tbody, então vários
+                              // cabeçalhos grudavam na mesma altura e ficavam
+                              // escritos um por cima do outro. Só o thead
+                              // (cabeçalho de colunas) fica fixo.
+                              <tbody key={section.key} className="relative z-0">
                                 {section.label ? (
-                                  <tr className="bg-muted/20">
+                                  <tr className="bg-muted/30">
                                     <td
                                       colSpan={activeColumns.length}
-                                      className="sticky top-10 z-20 cursor-pointer select-none border-b border-border/60 bg-background px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:bg-muted/30"
+                                      className="cursor-pointer select-none border-b-2 border-l-4 border-b-border/60 border-l-primary/60 bg-muted/30 px-3 py-2.5 text-sm font-semibold text-foreground hover:bg-muted/50"
                                       onClick={() =>
                                         toggleGroupCollapsed(section.key)
                                       }
+                                      title="Clique para recolher ou expandir este grupo"
                                     >
-                                      <span className="inline-flex items-center gap-1.5">
-                                        {isCollapsed ? (
-                                          <ChevronRight className="size-3.5" />
-                                        ) : (
-                                          <ChevronDown className="size-3.5" />
-                                        )}
-                                        {section.label}{" "}
-                                        <span className="font-normal">
+                                      <span className="inline-flex items-center gap-2">
+                                        <span className="inline-flex size-5 items-center justify-center rounded-md border border-border/70 bg-background text-muted-foreground">
+                                          {isCollapsed ? (
+                                            <ChevronRight className="size-3.5" />
+                                          ) : (
+                                            <ChevronDown className="size-3.5" />
+                                          )}
+                                        </span>
+                                        <span className="uppercase tracking-wide">
+                                          {section.label}
+                                        </span>
+                                        <span className="font-normal text-muted-foreground">
                                           ({section.tickets.length})
+                                        </span>
+                                        <span className="hidden font-normal normal-case text-muted-foreground/70 sm:inline">
+                                          · clique para {isCollapsed ? "expandir" : "recolher"}
                                         </span>
                                       </span>
                                     </td>
@@ -1073,13 +1211,35 @@ export default function TicketsPage() {
                                     ))}
                                   </tr>
                                 ))}
-                              </Fragment>
+                              </tbody>
                               );
                             })
                           )}
-                        </tbody>
                       </table>
                     </div>
+                    {hasMore ? (
+                      <div className="flex items-center justify-center gap-3 border-t border-border/60 px-4 py-3">
+                        <span className="text-xs text-muted-foreground">
+                          {loadedCount} de {serverTotal}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={loadingMore}
+                          onClick={() => void loadMore()}
+                        >
+                          {loadingMore ? (
+                            <>
+                              <RefreshCw className="mr-2 size-4 animate-spin" />
+                              Carregando...
+                            </>
+                          ) : (
+                            "Carregar mais"
+                          )}
+                        </Button>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               </div>

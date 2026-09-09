@@ -57,7 +57,36 @@ export class TicketsPortalStoreService {
       next = 1;
     }
 
-    // Evita colisão se o número já existir (ex.: sync paralelo).
+    // `nextval` é atômico: dois pedidos simultâneos nunca recebem o mesmo
+    // número. Sem isso, o MAX+1 acima é lido igual pelos dois e um deles
+    // quebra com violação de unicidade na hora de inserir (erro 500 na
+    // abertura do chamado). Se a sequence estiver ausente, atrás do MAX ou
+    // ainda na faixa de cutover (≥ 1e9), cai no caminho antigo.
+    const floor = next;
+    try {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const seqRows = await this.prisma.$queryRaw<
+          Array<{ n: bigint | number }>
+        >`SELECT nextval('portal_ticket_number_seq') AS n`;
+        const fromSeq = Number(seqRows[0]?.n);
+        if (
+          Number.isSafeInteger(fromSeq) &&
+          fromSeq >= floor &&
+          fromSeq < 1000000000
+        ) {
+          next = fromSeq;
+          break;
+        }
+        // Sequence desalinhada: realinha e tenta de novo.
+        await this.prisma.$executeRaw`
+          SELECT setval('portal_ticket_number_seq', ${floor - 1}::bigint)
+        `;
+      }
+    } catch {
+      // Sequence indisponível — segue com o MAX+1 e a checagem abaixo.
+    }
+
+    // Rede de segurança do caminho antigo (sync paralelo gravando direto).
     for (let i = 0; i < 20; i++) {
       const exists = await this.prisma.portalTicket.findUnique({
         where: { ticketNumber: next },

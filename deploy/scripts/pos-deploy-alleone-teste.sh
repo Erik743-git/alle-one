@@ -52,7 +52,10 @@ if [[ -f "$BACKEND/scripts/add-client-roles-enum.sql" ]]; then
     # shellcheck disable=SC1091
     source <(grep -E '^(DATABASE_URL)=' "$BACKEND/.env" | sed 's/\r$//')
     set +a
-    psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$BACKEND/scripts/add-client-roles-enum.sql" || {
+    # Sem cortar a query string o psql recusa a URL do Prisma com
+    # "invalid URI query parameter: schema" — e o || abaixo engolia o erro,
+    # então este passo nunca chegou a rodar em nenhum deploy.
+    psql "${DATABASE_URL%%\?*}" -v ON_ERROR_STOP=1 -f "$BACKEND/scripts/add-client-roles-enum.sql" || {
       echo "AVISO: falha ao aplicar enum (pode já existir). Seguindo migrate…"
     }
   else

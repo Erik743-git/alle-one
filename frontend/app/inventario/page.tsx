@@ -19,6 +19,7 @@ import PermissionGate from "@/components/auth/permission-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { LoadErrorState } from "@/components/ui/load-error-state";
 import { isClient } from "@/lib/access-control";
 import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -50,11 +51,13 @@ export default function InventarioPage() {
   const [companies, setCompanies] = useState<InventoryCompany[]>([]);
   const [assetTypes, setAssetTypes] = useState<InventoryAssetTypeOverview[]>([]);
   const [search, setSearch] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     try {
       if (silent) setRefreshing(true);
       else setLoading(true);
+      setLoadError(null);
 
       if (clientUser) {
         const data = await inventarioService.listCompanies();
@@ -72,9 +75,14 @@ export default function InventarioPage() {
       setCompanies(companiesData);
       setAssetTypes(typesData);
     } catch (err) {
-      notifyError(
-        err instanceof Error ? err.message : "Não foi possível carregar o inventário.",
-      );
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Não foi possível carregar o inventário.";
+      // No refresh em segundo plano só avisamos: trocar a lista já carregada
+      // por uma tela de erro apagaria dado bom por causa de uma falha passageira.
+      if (silent) notifyError(message);
+      else setLoadError(message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -189,6 +197,12 @@ export default function InventarioPage() {
                 <Loader2 className="h-6 w-6 animate-spin" />
                 Carregando inventário…
               </div>
+            ) : loadError ? (
+              <LoadErrorState
+                title="Não foi possível carregar o inventário."
+                message={loadError}
+                onRetry={() => void load()}
+              />
             ) : view === "companies" ? (
               filteredCompanies.length === 0 ? (
                 <Card>

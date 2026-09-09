@@ -38,6 +38,7 @@ import {
 } from "@/lib/access-control";
 import ThemeToggle from "@/components/theme/theme-toggle";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
+import { GlobalSearchButton } from "@/components/layout/global-search-button";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -308,7 +309,26 @@ const SidebarNav = memo(function SidebarNav({
             )}
           >
             <div className={cn("flex w-full flex-col gap-1", collapsed && "w-auto items-center")}>
-              {pinnedItems.map((item) => renderMenuItem(item))}
+              {pinnedItems.map((item, index) => (
+                // A lupa acompanha o primeiro item fixo ("Novo ticket") na
+                // mesma linha; recolhida, empilha embaixo para não espremer os
+                // dois na faixa estreita. Só no índice 0 para não repetir caso
+                // outro item ganhe `highlight` depois.
+                <div
+                  key={item.name}
+                  className={cn(
+                    "flex w-full items-center gap-2",
+                    collapsed && "w-auto flex-col",
+                  )}
+                >
+                  <div className={cn("min-w-0", collapsed ? "" : "flex-1")}>
+                    {renderMenuItem(item)}
+                  </div>
+                  {index === 0 ? (
+                    <GlobalSearchButton collapsed={collapsed} />
+                  ) : null}
+                </div>
+              ))}
             </div>
             {!collapsed ? (
               <div

@@ -34,7 +34,13 @@ export type TicketListGroup = {
 };
 
 export type TicketListResponse = {
+  /** Itens nesta página. */
   total: number;
+  /** Contagem real no filtro (ausente em respostas antigas/legado). */
+  totalCount?: number;
+  offset?: number;
+  limit?: number;
+  hasMore?: boolean;
   mineOnly: boolean;
   responsibleExternalId: number | null;
   responsibleName: string | null;
@@ -138,6 +144,31 @@ export type TicketFilterCatalogs = {
   statuses: string[];
 };
 
+export type QuickSearchResult = {
+  tickets: Array<{
+    ticketNumber: number;
+    title: string | null;
+    clientName: string | null;
+    stageName: string | null;
+    isClosed: boolean;
+  }>;
+  companies: Array<{
+    id: string;
+    name: string;
+    tifluxClientId: number | null;
+  }>;
+  collaborators: Array<{ id: string; name: string; email: string }>;
+};
+
+export type AppointmentOverlap = {
+  portalAppointmentId: string;
+  ticketNumber: number;
+  initTime: string;
+  endTime: string;
+  serviceName: string | null;
+  clientName: string | null;
+};
+
 export type TicketsListParams = {
   mineOnly?: boolean;
   responsibleExternalId?: number;
@@ -151,6 +182,7 @@ export type TicketsListParams = {
   ticketNumber?: number;
   search?: string;
   limit?: number;
+  offset?: number;
   externalGmudRef?: string;
   /** Inclui resolvidos, encerrados, cancelados e fechados. */
   includeDone?: boolean;
@@ -174,6 +206,7 @@ function toQuery(params: TicketsListParams): string {
   if (params.ticketNumber != null) q.set("ticketNumber", String(params.ticketNumber));
   if (params.search?.trim()) q.set("search", params.search.trim());
   if (params.limit != null) q.set("limit", String(params.limit));
+  if (params.offset) q.set("offset", String(params.offset));
   if (params.externalGmudRef?.trim()) {
     q.set("externalGmudRef", params.externalGmudRef.trim());
   }
@@ -420,6 +453,33 @@ export type TicketAppointmentWarningDetail = {
 export const ticketsService = {
   list(params: TicketsListParams = {}) {
     return apiRequest<TicketListResponse>(`/tickets${toQuery(params)}`);
+  },
+
+  /** Busca da paleta Ctrl+K. Vazio quando o termo tem menos de 2 letras. */
+  quickSearch(term: string) {
+    return apiRequest<QuickSearchResult>(
+      `/tickets/quick-search?q=${encodeURIComponent(term)}`,
+    );
+  },
+
+  /** Apontamentos seus que cruzam esse horário (aviso de dupla contagem). */
+  appointmentOverlaps(params: {
+    date: string;
+    initTime: string;
+    endTime: string;
+    ignorePortalAppointmentId?: string;
+  }) {
+    const q = new URLSearchParams({
+      date: params.date,
+      initTime: params.initTime,
+      endTime: params.endTime,
+    });
+    if (params.ignorePortalAppointmentId) {
+      q.set("ignorePortalAppointmentId", params.ignorePortalAppointmentId);
+    }
+    return apiRequest<AppointmentOverlap[]>(
+      `/tickets/appointments/overlaps?${q.toString()}`,
+    );
   },
 
   catalogs() {

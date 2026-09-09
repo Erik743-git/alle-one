@@ -35,6 +35,28 @@ import {
 
 const RESET_REQUESTS_PER_HOUR = 3;
 
+/**
+ * Custo do bcrypt para hashes novos. O valor fica gravado dentro do próprio
+ * hash, então senhas antigas (custo 10) continuam validando normalmente.
+ */
+const BCRYPT_COST = 12;
+
+/**
+ * Hash descartável usado quando o e-mail não existe. Sem ele o login retorna
+ * antes de qualquer bcrypt e a diferença de tempo denuncia quais e-mails são
+ * contas válidas.
+ */
+const DUMMY_PASSWORD_HASH =
+  '$2b$12$12R4wAIEgkkYUjvQMhr.Aen.GC/8YMPRwkVZmWlx8gyoIliQsFO/.';
+
+/**
+ * Bloqueio temporário por conta. Deliberadamente folgado: o objetivo é tornar
+ * força bruta inviável sem transformar erro de digitação em chamado para o
+ * suporte. Some sozinho depois da janela — não existe "desbloquear" manual.
+ */
+const MAX_FAILED_LOGINS = 10;
+const LOGIN_LOCK_MINUTES = 15;
+
 const RESET_TOKEN_TTL_MINUTES = Number(
   process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES ?? 30,
 );
@@ -67,11 +89,24 @@ export class AuthService {
     });
 
     if (!user) {
+      // Paga o mesmo custo de CPU do caminho com usuário válido, para que o
+      // tempo de resposta não revele se o e-mail existe.
+      await bcrypt.compare(data.password, DUMMY_PASSWORD_HASH);
       throw new UnauthorizedException('Usuário ou senha inválidos');
     }
 
     if (!user.passwordHash) {
       throw new UnauthorizedException('Usuário sem senha definida');
+    }
+
+    if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      const minutos = Math.max(
+        1,
+        Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000),
+      );
+      throw new UnauthorizedException(
+        `Muitas tentativas seguidas. Tente novamente em ${minutos} minuto(s).`,
+      );
     }
 
     const passwordValid = await bcrypt.compare(
@@ -80,7 +115,30 @@ export class AuthService {
     );
 
     if (!passwordValid) {
+      const failed = (user.failedLoginCount ?? 0) + 1;
+      const shouldLock = failed >= MAX_FAILED_LOGINS;
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: {
+            failedLoginCount: shouldLock ? 0 : failed,
+            lockedUntil: shouldLock
+              ? new Date(Date.now() + LOGIN_LOCK_MINUTES * 60_000)
+              : null,
+          },
+        })
+        // Falha ao contabilizar não pode virar 500 num login com senha errada.
+        .catch(() => undefined);
       throw new UnauthorizedException('Usuário ou senha inválidos');
+    }
+
+    if ((user.failedLoginCount ?? 0) > 0 || user.lockedUntil) {
+      await this.prisma.user
+        .update({
+          where: { id: user.id },
+          data: { failedLoginCount: 0, lockedUntil: null },
+        })
+        .catch(() => undefined);
     }
 
     if (user.deletedAt || user.status !== UserStatus.ACTIVE) {
@@ -443,7 +501,7 @@ export class AuthService {
       throw new UnauthorizedException('Senha provisória inválida');
     }
 
-    const newPasswordHash = await bcrypt.hash(data.newPassword, 10);
+    const newPasswordHash = await bcrypt.hash(data.newPassword, BCRYPT_COST);
 
     await this.prisma.user.update({
       where: {
@@ -572,7 +630,7 @@ export class AuthService {
       throw new BadRequestException('Código inválido ou expirado.');
     }
 
-    const newPasswordHash = await bcrypt.hash(data.newPassword, 10);
+    const newPasswordHash = await bcrypt.hash(data.newPassword, BCRYPT_COST);
 
     await this.prisma.user.update({
       where: {

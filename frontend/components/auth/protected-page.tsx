@@ -1,8 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
-import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/use-auth";
+import { AlleBrandLogo } from "@/components/brand/alle-brand-logo";
 
 type ProtectedPageProps = {
   children: ReactNode;
@@ -14,9 +14,24 @@ export default function ProtectedPage({ children }: ProtectedPageProps) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background font-sans text-foreground">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Carregando sessão…</p>
+      <div className="font-sans relative flex min-h-screen flex-col items-center justify-center gap-6 overflow-hidden bg-background text-foreground">
+        {/* Mesmo halo do AppShell, para a transição não "piscar" de fundo. */}
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(18,181,217,0.06),transparent_55%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(18,181,217,0.11),transparent_50%)]"
+          aria-hidden
+        />
+        <div className="relative flex flex-col items-center gap-6">
+          <AlleBrandLogo width={170} height={60} priority />
+          {/* Barra indeterminada: menos ansiosa que spinner girando. */}
+          <div
+            className="h-0.5 w-40 overflow-hidden rounded-full bg-border"
+            role="status"
+            aria-label="Carregando sessão"
+          >
+            <div className="alle-loading-sweep h-full w-1/3 rounded-full bg-primary" />
+          </div>
+          <p className="text-sm text-muted-foreground">Carregando sua sessão…</p>
+        </div>
       </div>
     );
   }
