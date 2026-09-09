@@ -87,6 +87,8 @@ export type TicketAutoOpenRuleDto = {
   lastError: string | null;
   lastErrorAt: string | null;
   consecutiveFailures: number;
+  /** A classificação salva ganhou filhos e não é mais o nível mais específico. */
+  classificationStale: boolean;
 };
 
 @Injectable()
@@ -132,6 +134,7 @@ export class TicketAutoOpenService {
       consecutiveFailures: number;
     },
     attachments: TicketAutoOpenRuleAttachmentDto[] = [],
+    extras: { classificationStale?: boolean } = {},
   ): TicketAutoOpenRuleDto {
     return {
       id: row.id,
@@ -165,6 +168,7 @@ export class TicketAutoOpenService {
       lastError: row.lastError,
       lastErrorAt: row.lastErrorAt?.toISOString() ?? null,
       consecutiveFailures: row.consecutiveFailures,
+      classificationStale: extras.classificationStale ?? false,
     };
   }
 
@@ -406,6 +410,32 @@ export class TicketAutoOpenService {
     throw error;
   }
 
+  /**
+   * Classificações que deixaram de ser folha.
+   *
+   * A regra guarda um classificationId que era o nível mais específico quando
+   * foi salva. Se alguém criar uma subclassificação embaixo dele, a validação
+   * de abertura passa a recusar a regra — ela só falha na próxima execução do
+   * cron, sem ninguém pedir nada. Marcamos aqui para o admin ver o problema
+   * na tela antes do chamado deixar de abrir.
+   */
+  private async findStaleClassificationIds(
+    classificationIds: string[],
+  ): Promise<Set<string>> {
+    const ids = [...new Set(classificationIds)];
+    if (ids.length === 0) return new Set();
+    const children = await this.prisma.specialtyClassification.findMany({
+      where: { parentId: { in: ids }, active: true },
+      select: { parentId: true },
+      distinct: ['parentId'],
+    });
+    return new Set(
+      children
+        .map((child) => child.parentId)
+        .filter((parentId): parentId is string => Boolean(parentId)),
+    );
+  }
+
   async list(): Promise<TicketAutoOpenRuleDto[]> {
     try {
       const rows = await this.prisma.ticketAutoOpenRule.findMany({
@@ -413,9 +443,18 @@ export class TicketAutoOpenService {
         orderBy: [{ active: 'desc' }, { name: 'asc' }],
         include: this.ruleInclude,
       });
+      const stale = await this.findStaleClassificationIds(
+        rows
+          .map((row) => row.classificationId)
+          .filter((id): id is string => Boolean(id)),
+      );
       return Promise.all(
         rows.map(async (row) =>
-          this.map(row, await this.mapAttachments(row.attachments)),
+          this.map(row, await this.mapAttachments(row.attachments), {
+            classificationStale: row.classificationId
+              ? stale.has(row.classificationId)
+              : false,
+          }),
         ),
       );
     } catch (error) {
