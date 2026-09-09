@@ -28,10 +28,25 @@ async function proxyAuth(
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
 
+  // Sem repassar o IP, tudo que passa por aqui chega na API como 127.0.0.1 e
+  // o limite por IP (login, esqueci-senha) vira um balde único do portal
+  // inteiro: força bruta deixa de ser isolada e um atacante consegue trancar
+  // a recuperação de senha de todos. O Nginx já preenche estes cabeçalhos.
+  const forwardedFor = req.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  const realIp = req.headers.get("x-real-ip");
+  if (realIp) headers.set("x-real-ip", realIp);
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  if (forwardedProto) headers.set("x-forwarded-proto", forwardedProto);
+  const userAgent = req.headers.get("user-agent");
+  if (userAgent) headers.set("user-agent", userAgent);
+
   const init: RequestInit = {
     method: req.method,
     headers,
     redirect: "manual",
+    // Sem timeout, uma API pendurada segura o worker do Next indefinidamente.
+    signal: AbortSignal.timeout(30_000),
   };
   if (req.method !== "GET" && req.method !== "HEAD") {
     init.body = await req.arrayBuffer();
