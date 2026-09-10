@@ -195,7 +195,7 @@ export function DeskClassificationModal({
     try {
       setSaving(true);
       await classificationService.create({
-        serviceDeskId: desk!.id,
+        specialtyId: desk!.id,
         parentId: addTarget?.parentId,
         name: newName.trim(),
       });
