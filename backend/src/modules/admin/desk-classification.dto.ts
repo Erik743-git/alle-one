@@ -11,8 +11,13 @@ import {
 } from 'class-validator';
 
 export class CreateDeskClassificationDto {
+  // Opcional na validacao de proposito: o service aceita `serviceDeskId`
+  // (depreciado) como fallback e lanca "Informe a especialidade." quando
+  // nenhum dos dois vem. Exigir aqui derrubava a requisicao no ValidationPipe
+  // antes desse fallback rodar — o GET equivalente ja aceitava os dois nomes.
+  @IsOptional()
   @IsUUID()
-  specialtyId!: string;
+  specialtyId?: string;
 
   /** @deprecated Use specialtyId */
   @IsOptional()

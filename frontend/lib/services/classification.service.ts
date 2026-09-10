@@ -56,7 +56,7 @@ export const classificationService = {
   },
 
   async create(payload: {
-    serviceDeskId: string;
+    specialtyId: string;
     parentId?: string;
     name: string;
   }) {
