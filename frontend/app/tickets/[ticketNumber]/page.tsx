@@ -1107,7 +1107,7 @@ export default function TicketDetailPage() {
                   <div className="px-4 py-3">
                     <AppointmentDescriptionView
                       description={data?.portalDescription?.description ?? null}
-                      attachments={[]}
+                      attachments={data?.portalDescription?.attachments ?? []}
                     />
                   </div>
                 </section>

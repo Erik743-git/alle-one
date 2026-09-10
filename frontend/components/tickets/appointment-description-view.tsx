@@ -12,6 +12,10 @@ import {
   type StoredImageBlock,
 } from "@/lib/appointment-doc";
 import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
+import {
+  reescreverImagensDeEmail,
+  removerImagensVazias,
+} from "@/lib/email-inline-images";
 import { AppointmentImageChip } from "@/components/tickets/appointment-image-chip";
 import { cn } from "@/lib/utils";
 
@@ -192,6 +196,11 @@ function FullDescriptionBody({
   }
 
   if (looksLikeHtml(description)) {
+    // Imagem do TiFlux vira o anexo local; rastreador de terceiro sai fora.
+    const { html: htmlTratado } = reescreverImagensDeEmail(
+      description,
+      attachments,
+    );
     // HTML aqui vem de e-mail externo (o pré-ticket grava o corpo cru e a
     // descrição do ticket herda), ou seja: conteúdo de remetente não
     // autenticado. Renderizar com dangerouslySetInnerHTML deixava a proteção
@@ -201,7 +210,7 @@ function FullDescriptionBody({
     // O iframe sandbox (sem allow-scripts) é o mesmo componente que a tela de
     // pré-tickets já usa. Preserva a aparência do e-mail — imagens, tabelas,
     // assinatura — em vez de remover tags, e nada ali executa.
-    return <EmailHtmlFrame html={description} />;
+    return <EmailHtmlFrame html={removerImagensVazias(htmlTratado)} />;
   }
 
   return (
