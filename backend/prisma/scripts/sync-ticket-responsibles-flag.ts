@@ -4,11 +4,15 @@
  * somente usuários ACTIVE não-CLIENT.
  *
  * Uso:
+ *   cd backend && npx ts-node prisma/scripts/sync-ticket-responsibles-flag.ts --dry-run
  *   cd backend && npx ts-node prisma/scripts/sync-ticket-responsibles-flag.ts
+ *
+ * Com --dry-run apenas lista quem seria marcado, sem gravar nada.
  */
 import { PrismaClient, UserRole, UserStatus } from '@prisma/client';
 
 const prisma = new PrismaClient();
+const dryRun = process.argv.includes('--dry-run');
 
 async function main() {
   const emails = new Set<string>();
@@ -67,16 +71,26 @@ async function main() {
     return;
   }
 
+  console.log(
+    dryRun
+      ? `[dry-run] seriam marcados responsible=true: ${toMark.length}`
+      : `A marcar responsible=true: ${toMark.length}`,
+  );
+  for (const u of toMark) {
+    console.log(`  - ${u.name} <${u.email}>`);
+  }
+
+  if (dryRun) {
+    console.log('[dry-run] nada foi gravado. Rode sem --dry-run para aplicar.');
+    return;
+  }
+
   const result = await prisma.user.updateMany({
     where: { id: { in: toMark.map((u) => u.id) } },
     data: { responsible: true },
   });
 
   console.log(`Marcados responsible=true: ${result.count}`);
-  for (const u of toMark.slice(0, 30)) {
-    console.log(`  - ${u.name} <${u.email}>`);
-  }
-  if (toMark.length > 30) console.log(`  ... +${toMark.length - 30}`);
 }
 
 main()

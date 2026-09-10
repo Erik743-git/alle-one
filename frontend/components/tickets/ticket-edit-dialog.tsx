@@ -218,6 +218,7 @@ export function TicketEditDialog({
               disabled={saving || ticket.isClosed || loadingCatalogs}
               placeholder="Selecione o responsável"
               emptyLabel="Sem responsável"
+              alwaysShowSearch
             />
           </div>
         </div>

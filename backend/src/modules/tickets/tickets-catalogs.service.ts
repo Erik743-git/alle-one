@@ -859,8 +859,12 @@ export class TicketsCatalogsService {
           deskId,
           deskName,
         );
-        responsibles =
-          byDesk.length > 0 ? byDesk : await this.listResponsiblesForCatalogs();
+        // Sem fallback para a lista geral: quando a mesa nao tem ninguem
+        // marcado como responsavel, mostrar todo mundo escondia o problema
+        // (aparecia gente de outras mesas e parecia que o filtro por
+        // especialidade nao funcionava). Vazio aqui e a resposta correta —
+        // a tela avisa que a mesa nao tem responsavel marcado.
+        responsibles = byDesk;
       }
     }
 
