@@ -340,6 +340,7 @@ export default function EditTicketPage() {
                         placeholder="Selecione o responsável (opcional)"
                         emptyLabel="Sem responsável"
                         preserveOrder
+                        alwaysShowSearch
                       />
                       {responsibleId ? (
                         <Button

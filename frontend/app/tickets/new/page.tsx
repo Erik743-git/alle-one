@@ -956,11 +956,19 @@ export default function NewTicketPage() {
                           preserveOrder
                           emptyLabel={
                             responsibleOptions.length === 0
-                              ? "Nenhum atendente encontrado para este catálogo"
+                              ? "Nenhum responsável marcado nesta mesa"
                               : "Selecione o responsável (opcional)"
                           }
                           placeholder="Selecione o responsável (opcional)"
+                          alwaysShowSearch
                         />
+                        {!loading && responsibleOptions.length === 0 ? (
+                          <p className="text-xs text-amber-300/90">
+                            Ninguém desta mesa está marcado como responsável. Marque
+                            em Administração &rarr; Usuários, na opção &ldquo;Marcar
+                            usuário como responsável&rdquo;.
+                          </p>
+                        ) : null}
                         {!responsibleId ? (
                           <p className="text-xs text-muted-foreground">
                             Se não selecionar um responsável, o ticket será criado como pré-ticket e ficará aguardando atribuição.
