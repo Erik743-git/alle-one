@@ -129,12 +129,29 @@ export class DeskClassificationService {
       throw new NotFoundException('Especialidade não encontrada.');
     }
 
-    const linkedUsers = await this.prisma.user.count({
-      where: { specialtyId: id, deletedAt: null },
+    // Os dois lados do vínculo: o campo legado `users.specialty_id` e a
+    // tabela `user_specialties`. Conferir só o legado deixava passar a
+    // exclusão de uma especialidade ligada apenas pela tabela — e, como o
+    // vínculo é onDelete: Cascade, os registros sumiriam sem aviso.
+    const linkedUsers = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { specialtyId: id },
+          { userSpecialties: { some: { specialtyId: id } } },
+        ],
+      },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+      take: 11,
     });
-    if (linkedUsers > 0) {
+    if (linkedUsers.length > 0) {
+      // Nomear quem trava a exclusão: sem isso o admin precisa abrir usuário
+      // por usuário para descobrir onde está o vínculo.
+      const nomes = linkedUsers.slice(0, 10).map((u) => u.name.trim());
+      const resto = linkedUsers.length > 10 ? ' e outros' : '';
       throw new BadRequestException(
-        'Esta especialidade está vinculada a usuários. Remova o vínculo antes de excluir.',
+        `Esta especialidade está vinculada a ${nomes.join(', ')}${resto}. Remova o vínculo antes de excluir.`,
       );
     }
 
