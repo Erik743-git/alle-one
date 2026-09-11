@@ -1,5 +1,7 @@
 "use client";
 
+import { ModuloDesabilitadoAviso } from "@/components/layout/modulo-desabilitado-aviso";
+import { MODULO_INVENTARIO, moduloDesabilitado } from "@/lib/modulos-desabilitados";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -42,7 +44,7 @@ function formatExpiredSuffix(expiredCount: number) {
     : `(${expiredCount} vencidos)`;
 }
 
-export default function InventarioPage() {
+function InventarioPageConteudo() {
   const router = useRouter();
   const clientUser = isClient();
   const [view, setView] = useState<InventarioView>("companies");
@@ -308,4 +310,13 @@ export default function InventarioPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+// Modulo desligado por ambiente: alem de sumir do menu, a rota precisa
+// responder, senao continua acessivel por URL digitada ou link antigo.
+export default function InventarioPage() {
+  if (moduloDesabilitado(MODULO_INVENTARIO)) {
+    return <ModuloDesabilitadoAviso nome="Inventário" />;
+  }
+  return <InventarioPageConteudo />;
 }

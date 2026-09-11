@@ -1,5 +1,7 @@
 "use client";
 
+import { ModuloDesabilitadoAviso } from "@/components/layout/modulo-desabilitado-aviso";
+import { MODULO_FINANCEIRO, moduloDesabilitado } from "@/lib/modulos-desabilitados";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { isClientPortalRole } from "@/lib/app-roles";
@@ -128,7 +130,7 @@ function formatSpecialtyLineSummary(
   return rate == null ? `${name} · ${hours}` : `${name} · ${hours} · excedente ${formatBrl(rate)}`;
 }
 
-export default function FinanceiroPage() {
+function FinanceiroPageConteudo() {
   const { user } = useAuth();
   const isClient = isClientPortalRole(user?.role);
   const isAdmin = user?.role === "ADMIN";
@@ -831,4 +833,13 @@ export default function FinanceiroPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+// Modulo desligado por ambiente: alem de sumir do menu, a rota precisa
+// responder, senao continua acessivel por URL digitada ou link antigo.
+export default function FinanceiroPage() {
+  if (moduloDesabilitado(MODULO_FINANCEIRO)) {
+    return <ModuloDesabilitadoAviso nome="Financeiro" />;
+  }
+  return <FinanceiroPageConteudo />;
 }

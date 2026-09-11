@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  MODULO_HORAS_APONTAMENTOS,
+  moduloDesabilitado,
+} from "@/lib/modulos-desabilitados";
 import * as React from "react";
 import {
   addDays,
@@ -555,88 +559,94 @@ export function RendimentoTimelineCalendar({
         <RendimentoTimelineLegend simplified={pjSimplifiedView} />
       </div>
 
-      <div className="rounded-xl border border-border bg-card px-4 py-3">
-        <p className="mb-3 text-xs text-muted-foreground">
-          Horas trabalhadas = tempo real sem contar sobreposição no mesmo dia. Total
-          apontado = soma de cada ticket, incluindo horas sobrepostas.
-        </p>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div>
-            <p className="text-sm text-muted-foreground">Horas trabalhadas</p>
-            <p className="text-2xl font-bold text-foreground">
-              {loading && !timesheet ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Sem sobreposição</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Normais (sem extra):{" "}
-              <span className="font-semibold text-foreground">
+      {/* Somatório de horas desligado em produção até a reavaliação pós-virada.
+          O cálculo continua existindo no backend e no timesheet; só a
+          apresentação sai do ar. Para religar, remova "horas-apontamentos"
+          de NEXT_PUBLIC_MODULOS_DESABILITADOS e rebuilde. */}
+      {!moduloDesabilitado(MODULO_HORAS_APONTAMENTOS) ? (
+        <div className="rounded-xl border border-border bg-card px-4 py-3">
+          <p className="mb-3 text-xs text-muted-foreground">
+            Horas trabalhadas = tempo real sem contar sobreposição no mesmo dia. Total
+            apontado = soma de cada ticket, incluindo horas sobrepostas.
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Horas trabalhadas</p>
+              <p className="text-2xl font-bold text-foreground">
+                {loading && !timesheet ? "—" : timesheet?.totalHoursFormatted ?? "00:00"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Sem sobreposição</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Normais (sem extra):{" "}
+                <span className="font-semibold text-foreground">
+                  {loading && !timesheet
+                    ? "—"
+                    : timesheet?.totalRegularHoursFormatted ?? "00:00"}
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Total apontado (ticket a ticket)
+              </p>
+              <p className="text-2xl font-bold text-sky-600 dark:text-sky-300">
                 {loading && !timesheet
                   ? "—"
-                  : timesheet?.totalRegularHoursFormatted ?? "00:00"}
-              </span>
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">
-              Total apontado (ticket a ticket)
-            </p>
-            <p className="text-2xl font-bold text-sky-600 dark:text-sky-300">
-              {loading && !timesheet
-                ? "—"
-                : timesheet?.totalRawHoursFormatted ?? "00:00"}
-            </p>
-            {!loading && timesheet &&
-            (timesheet.totalRawMinutes ?? 0) > (timesheet.totalMinutes ?? 0) ? (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Inclui{" "}
-                {formatMinutesDiff(
-                  (timesheet.totalRawMinutes ?? 0) - (timesheet.totalMinutes ?? 0),
-                )}{" "}
-                de sobreposição
+                  : timesheet?.totalRawHoursFormatted ?? "00:00"}
               </p>
-            ) : (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Soma bruta dos apontamentos
-              </p>
-            )}
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">
-              Horas extras
-              {timesheet?.periodOvertimeRangeLabel ? (
-                <span className="block text-[11px] font-normal">
-                  Período {timesheet.periodOvertimeRangeLabel} (dia 26 ao 25)
-                </span>
+              {!loading && timesheet &&
+              (timesheet.totalRawMinutes ?? 0) > (timesheet.totalMinutes ?? 0) ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Inclui{" "}
+                  {formatMinutesDiff(
+                    (timesheet.totalRawMinutes ?? 0) - (timesheet.totalMinutes ?? 0),
+                  )}{" "}
+                  de sobreposição
+                </p>
               ) : (
-                <span className="block text-[11px] font-normal">
-                  Período dia 26 ao dia 25
-                </span>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Soma bruta dos apontamentos
+                </p>
               )}
-            </p>
-            <p className="text-2xl font-bold alle-stat-overtime">
-              {loading && !timesheet
-                ? "—"
-                : timesheet?.periodOvertimeFormatted ?? "00:00"}
-            </p>
-            {!pjSimplifiedView ? (
-              <p className="text-xs text-muted-foreground">
-                {RENDIMENTO_OVERTIME_BALANCE_LABEL}:{" "}
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                Horas extras
+                {timesheet?.periodOvertimeRangeLabel ? (
+                  <span className="block text-[11px] font-normal">
+                    Período {timesheet.periodOvertimeRangeLabel} (dia 26 ao 25)
+                  </span>
+                ) : (
+                  <span className="block text-[11px] font-normal">
+                    Período dia 26 ao dia 25
+                  </span>
+                )}
+              </p>
+              <p className="text-2xl font-bold alle-stat-overtime">
                 {loading && !timesheet
                   ? "—"
-                  : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+                  : timesheet?.periodOvertimeFormatted ?? "00:00"}
               </p>
-            ) : null}
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Horas de plantão</p>
-            <p className="text-2xl font-bold text-violet-600 dark:text-violet-300">
-              {loading && !timesheet
-                ? "—"
-                : timesheet?.periodPlantaoFormatted ?? "00:00"}
-            </p>
+              {!pjSimplifiedView ? (
+                <p className="text-xs text-muted-foreground">
+                  {RENDIMENTO_OVERTIME_BALANCE_LABEL}:{" "}
+                  {loading && !timesheet
+                    ? "—"
+                    : timesheet?.overtimeBalanceFormatted ?? "00:00"}
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Horas de plantão</p>
+              <p className="text-2xl font-bold text-violet-600 dark:text-violet-300">
+                {loading && !timesheet
+                  ? "—"
+                  : timesheet?.periodPlantaoFormatted ?? "00:00"}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {loading && !timesheet ? (
         <div className="flex min-h-[280px] items-center justify-center">

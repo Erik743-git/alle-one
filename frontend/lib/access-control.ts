@@ -9,6 +9,12 @@ import {
   type AppRole,
 } from "./app-roles";
 import { getStoredUser } from "./session";
+import {
+  MODULO_FINANCEIRO,
+  MODULO_INVENTARIO,
+  MODULO_PROJETOS,
+  moduloDesabilitado,
+} from "./modulos-desabilitados";
 
 export type { AppRole };
 
@@ -135,6 +141,7 @@ export function canAccessAdmin() {
 }
 
 export function canAccessFinanceiro() {
+  if (moduloDesabilitado(MODULO_FINANCEIRO)) return false;
   if (isClientMember()) return false;
   if (isClient()) {
     return canViewModule("FINANCIAL");
@@ -262,6 +269,7 @@ export function canAccessCorreio() {
 }
 
 export function canAccessInventario() {
+  if (moduloDesabilitado(MODULO_INVENTARIO)) return false;
   if (isPj()) return false;
   if (isClientMember()) return false;
   if (isClient()) {
@@ -283,6 +291,7 @@ export function canDeleteInventario() {
 }
 
 export function canAccessProjetos() {
+  if (moduloDesabilitado(MODULO_PROJETOS)) return false;
   if (isPj()) return canViewModule("PROJECTS");
   if (isClientMember()) return false;
   if (isClient()) {

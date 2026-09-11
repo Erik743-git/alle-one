@@ -12,7 +12,6 @@ import {
   ExternalLink,
   Activity,
   BarChart3,
-  LifeBuoy,
 } from "lucide-react";
 
 interface Props {
@@ -34,13 +33,6 @@ const aplicativos = [
       "Dashboards e métricas técnicas de infraestrutura e serviços.",
     href: "https://grafana-prd.alletecnologia.com",
     icon: BarChart3,
-  },
-  {
-    nome: "Central de Suporte",
-    descricao:
-      "Atendimento, chamados, SLA e gestão de suporte.",
-    href: "https://suporte.alletecnologia.com/v/",
-    icon: LifeBuoy,
   },
 ];
 

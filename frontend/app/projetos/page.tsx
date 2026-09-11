@@ -1,5 +1,7 @@
 "use client";
 
+import { ModuloDesabilitadoAviso } from "@/components/layout/modulo-desabilitado-aviso";
+import { MODULO_PROJETOS, moduloDesabilitado } from "@/lib/modulos-desabilitados";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,7 +28,7 @@ import {
   type ProjectCompany,
 } from "@/lib/services/projetos.service";
 
-export default function ProjetosPage() {
+function ProjetosPageConteudo() {
   const router = useRouter();
   const clientUser = isClient();
   const [loading, setLoading] = useState(true);
@@ -167,4 +169,13 @@ export default function ProjetosPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+// Modulo desligado por ambiente: alem de sumir do menu, a rota precisa
+// responder, senao continua acessivel por URL digitada ou link antigo.
+export default function ProjetosPage() {
+  if (moduloDesabilitado(MODULO_PROJETOS)) {
+    return <ModuloDesabilitadoAviso nome="Projetos" />;
+  }
+  return <ProjetosPageConteudo />;
 }
