@@ -141,12 +141,12 @@ export default function PreTicketsPage() {
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full table-fixed text-sm">
               <colgroup>
-                <col className="w-[32%]" />
                 <col className="w-[28%]" />
-                <col className="w-[16%]" />
+                <col className="w-[24%]" />
                 <col className="w-[14%]" />
-                <col className="w-[6%]" />
-                <col className="w-[7%]" />
+                <col className="w-[12%]" />
+                <col className="w-[5%]" />
+                <col className="w-[17%]" />
               </colgroup>
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
@@ -256,10 +256,10 @@ export default function PreTicketsPage() {
                       {row.attachmentCount}
                     </td>
                     <td
-                      className="py-1.5 pl-3 pr-1"
+                      className="py-2 pl-3 pr-2"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex justify-end gap-1.5">
+                      <div className="flex flex-wrap justify-end gap-2">
                         {!row.portalPreTicket ? (
                           row.claimedBy?.id === currentUserId ? (
                             <Button

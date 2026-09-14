@@ -226,18 +226,97 @@ export default function AdminEmailPage() {
             ) : null}
 
             {tab === "geral" ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Geral</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <p>
-                    Separador de resposta e logos de assinatura ficam para uma
-                    próxima iteração. O recebimento via Microsoft Graph já está
-                    na aba Recebimento.
-                  </p>
-                </CardContent>
-              </Card>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Fluxo de E-mail</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-sm font-semibold">
+                          1
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium">Receber E-mails</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Integração com Microsoft Graph lê emails de uma caixa compartilhada
+                            (ex: suporte@alletecnologia.com) a cada 1 minuto.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-sm font-semibold">
+                          2
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium">Criar Pré-Ticket</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Cada email novo vira um pré-ticket para triagem. Resposta/edições
+                            do mesmo remetente linkam ao pré-ticket existente (sem duplicação).
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-sm font-semibold">
+                          3
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium">Aplicar Roteamento</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Regras de roteamento (aba 4) atribuem mesa, cliente e prioridade.
+                            Sem regra, abre direto para triagem manual.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 text-sm font-semibold">
+                          4
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-medium">Triagem & Abertura</h4>
+                          <p className="text-sm text-muted-foreground">
+                            Triador aprova/rejeita pré-tickets. Aprovados viram chamados
+                            no Portal (com os dados já extraídos do email).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Configuração Mínima</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <p className="text-muted-foreground">
+                      Para começar, siga estes passos:
+                    </p>
+                    <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
+                      <li><strong>Aba Recebimento (passo 1-3):</strong> Configure Azure AD e ative recebimento</li>
+                      <li><strong>Aba Envio:</strong> Customize templates de notificação (opcional)</li>
+                      <li><strong>Aba Recebimento (passo 4):</strong> Crie regras para rotear emails automáticos</li>
+                    </ol>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Próximas Iterações</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-muted-foreground">
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li>Separador visual de respostas nas conversas de email</li>
+                      <li>Upload de logos/assinaturas para templates</li>
+                      <li>Sincronização com TiFlux (campo descontinuado)</li>
+                    </ul>
+                  </CardContent>
+                </Card>
+              </div>
             ) : null}
 
             {tab === "envio" ? (
@@ -343,26 +422,34 @@ export default function AdminEmailPage() {
               <div className="space-y-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>Configure a abertura de ticket por e-mail</CardTitle>
+                    <CardTitle>1. Configuração do Azure AD</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    <p className="text-muted-foreground">
+                      Registre um app no Azure AD com acesso à caixa compartilhada:
+                    </p>
+                    <ol className="list-decimal pl-5 space-y-1 text-muted-foreground">
+                      <li>Crie um App Registration no Azure AD</li>
+                      <li>Adicione permissão <code>Mail.Read</code> para o mailbox</li>
+                      <li>Gere um Client Secret (copie o valor, aparece uma vez)</li>
+                      <li>Defina as 3 variáveis no <code>.env</code> do backend</li>
+                    </ol>
+                    <div className="bg-muted/50 p-3 rounded-md space-y-1 text-xs font-mono text-muted-foreground">
+                      <div>GRAPH_TENANT_ID=32a2dcf4-25d8...</div>
+                      <div>GRAPH_CLIENT_ID=604142d2-3ec9...</div>
+                      <div>GRAPH_CLIENT_SECRET=iC18Q~gB3aLq...</div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>2. Ativar Recebimento</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <ol className="list-decimal pl-5 text-sm space-y-2 text-muted-foreground">
-                      <li>
-                        No Azure AD, registre um app com permissão Application{" "}
-                        <code>Mail.Read</code> na caixa compartilhada e defina{" "}
-                        <code>GRAPH_TENANT_ID</code>, <code>GRAPH_CLIENT_ID</code>{" "}
-                        e <code>GRAPH_CLIENT_SECRET</code> no backend.
-                      </li>
-                      <li>
-                        Informe o endereço da caixa (ex.: suporte@…) abaixo e
-                        ative o recebimento. E-mails viram pré-tickets para
-                        triagem.
-                      </li>
-                    </ol>
-
-                    <div className="grid gap-3 md:grid-cols-2">
+                    <div className="space-y-3">
                       <div className="space-y-1">
-                        <Label>Caixa compartilhada</Label>
+                        <Label>Caixa compartilhada (Microsoft 365)</Label>
                         <Input
                           value={settings.sharedMailboxAddress ?? ""}
                           onChange={(e) =>
@@ -373,61 +460,22 @@ export default function AdminEmailPage() {
                           }
                           placeholder="suporte@alletecnologia.com"
                         />
+                        <p className="text-xs text-muted-foreground">
+                          Qual e-mail lê os emails? (Tenant ID e Client ID devem ter acesso)
+                        </p>
                       </div>
-                      <div className="space-y-1">
-                        <Label>Usar como solicitante</Label>
-                        <Input value={settings.useAsRequester} disabled />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Graph Tenant ID</Label>
-                        <Input
-                          value={settings.graphTenantId ?? ""}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              graphTenantId: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label>Graph Client ID</Label>
-                        <Input
-                          value={settings.graphClientId ?? ""}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              graphClientId: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
 
-                    <div className="space-y-1">
-                      <Label>Remetentes bloqueados (não viram pré-ticket)</Label>
-                      <textarea
-                        className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        value={settings.blockedSenders ?? ""}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            blockedSenders: e.target.value,
-                          })
-                        }
-                        placeholder={
-                          "noreply@empresa.com\n*@newsletter.com\nmonitoramento@…"
-                        }
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Um por linha: e-mail completo ou domínio (
-                        <code>*@dominio.com</code>). Esses remetentes não geram
-                        pré-ticket e não voltam a ser processados.
-                      </p>
-                    </div>
+                      <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-md border border-blue-200 dark:border-blue-900">
+                        <p className="text-xs text-muted-foreground">
+                          <strong>Status Graph API:</strong>{" "}
+                          {settings.graphConfigured &&
+                          settings.graphClientSecretConfigured
+                            ? "✓ Configurado (Tenant, Client e Secret prontos)"
+                            : "⚠ Incompleto (defina as 3 variáveis no backend)"}
+                        </p>
+                      </div>
 
-                    <div className="flex flex-wrap items-center gap-3 text-sm">
-                      <label className="flex items-center gap-2">
+                      <label className="flex items-center gap-2 p-3 rounded-md border border-input hover:bg-muted/50 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={settings.enabled}
@@ -437,74 +485,110 @@ export default function AdminEmailPage() {
                               enabled: e.target.checked,
                             })
                           }
+                          className="w-4 h-4"
                         />
-                        Recebimento ativo
+                        <span className="font-medium">
+                          {settings.enabled ? "✓ Recebimento ATIVO" : "Ativar recebimento de emails"}
+                        </span>
                       </label>
-                      <span>
-                        Graph:{" "}
-                        {settings.graphConfigured &&
-                        settings.graphClientSecretConfigured
-                          ? "configurado"
-                          : "incompleto (env)"}
-                      </span>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={busy}
-                        onClick={() => void saveSettings()}
-                      >
-                        Salvar
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() => void pollNow()}
-                      >
-                        <RefreshCw className="mr-1 size-4" />
-                        Buscar
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Com o recebimento ativo, a caixa é lida{" "}
-                      <strong>automaticamente a cada minuto</strong>. O botão
-                      Buscar só força uma leitura imediata. Mensagens já
-                      convertidas (mesmo message-id) não viram pré-ticket
-                      duplicado.
-                    </p>
-                    {settings.lastPolledAt ? (
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void saveSettings()}
+                        >
+                          Salvar Configuração
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void pollNow()}
+                        >
+                          <RefreshCw className="mr-1 size-4" />
+                          Buscar Agora
+                        </Button>
+                      </div>
+
                       <p className="text-xs text-muted-foreground">
-                        Última leitura:{" "}
-                        {new Date(settings.lastPolledAt).toLocaleString("pt-BR")}
+                        <strong>Automação:</strong> Com recebimento ativo, a caixa é lida a cada 1 minuto.
+                        O botão &quot;Buscar Agora&quot; força uma leitura imediata.
+                        Emails duplicados (mesmo message-id) são ignorados.
                       </p>
-                    ) : null}
+                      {settings.lastPolledAt ? (
+                        <p className="text-xs text-muted-foreground">
+                          <strong>Última leitura:</strong>{" "}
+                          {new Date(settings.lastPolledAt).toLocaleString("pt-BR")}
+                        </p>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
 
                 <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle>Direcionamentos</CardTitle>
+                  <CardHeader>
+                    <CardTitle>3. Filtros & Bloqueios</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1">
+                      <Label>Remetentes bloqueados</Label>
+                      <textarea
+                        className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                        value={settings.blockedSenders ?? ""}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            blockedSenders: e.target.value,
+                          })
+                        }
+                        placeholder={
+                          "noreply@empresa.com\n*@newsletter.com\nmonitoramento@alletecnologia.com"
+                        }
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Um por linha: <code>email@completo.com</code> ou <code>*@dominio.com</code>.
+                        Esses remetentes nunca viram pré-ticket.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void saveSettings()}
+                    >
+                      Salvar Filtros
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>4. Roteamento de E-mails</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="flex flex-wrap gap-2 items-end">
-                      <div className="min-w-[12rem] flex-1 space-y-1">
-                        <Label>E-mail (remetente ou *@dominio)</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Direcione emails específicos para mesas/clientes/prioridades.
+                      Sem regra, o email vira pré-ticket aberto (sem mesa).
+                    </p>
+
+                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+                      <div className="space-y-1">
+                        <Label className="text-xs">E-mail ou Domínio *</Label>
                         <Input
                           value={matchEmail}
                           onChange={(e) => setMatchEmail(e.target.value)}
-                          placeholder="monitoramento@…"
+                          placeholder="monitoramento@alletecnologia.com"
                         />
                       </div>
-                      <div className="min-w-[10rem] space-y-1">
-                        <Label>Mesa</Label>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Mesa (opcional)</Label>
                         <SearchableSelectField
                           value={routeDeskId}
                           onChange={setRouteDeskId}
-                          placeholder="Opcional"
-                          emptyLabel="Nenhuma mesa"
+                          placeholder="Selecione"
+                          emptyLabel="Nenhuma"
                           options={[
-                            { value: "", label: "— (nenhuma)" },
+                            { value: "", label: "—" },
                             ...desks.map((d) => ({
                               value: d.id,
                               label: d.name,
@@ -513,13 +597,13 @@ export default function AdminEmailPage() {
                           preserveOrder
                         />
                       </div>
-                      <div className="min-w-[10rem] space-y-1">
-                        <Label>Cliente</Label>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Cliente (opcional)</Label>
                         <SearchableSelectField
                           value={routeCompanyId}
                           onChange={setRouteCompanyId}
-                          placeholder="Opcional"
-                          emptyLabel="Nenhum cliente"
+                          placeholder="Selecione"
+                          emptyLabel="Todos"
                           options={[
                             { value: "", label: "Todos" },
                             ...companies.map((c) => ({
@@ -530,55 +614,50 @@ export default function AdminEmailPage() {
                           preserveOrder
                         />
                       </div>
-                      <div className="min-w-[8rem] space-y-1">
-                        <Label>Prioridade</Label>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Prioridade (opcional)</Label>
                         <Input
                           value={priorityName}
                           onChange={(e) => setPriorityName(e.target.value)}
+                          placeholder="Baixa, Média, Alta"
                         />
                       </div>
-                      <Button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void addRoute()}
-                      >
-                        <Plus className="mr-1 size-4" />
-                        Direcionamento
-                      </Button>
+                      <div className="flex items-end">
+                        <Button
+                          type="button"
+                          className="w-full"
+                          disabled={busy}
+                          onClick={() => void addRoute()}
+                        >
+                          <Plus className="mr-1 size-4" />
+                          Adicionar
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b text-left text-muted-foreground">
-                            <th className="py-2 pr-3">E-mail</th>
-                            <th className="py-2 pr-3">Mesa</th>
-                            <th className="py-2 pr-3">Cliente</th>
-                            <th className="py-2 pr-3">Prioridade</th>
-                            <th className="py-2 pr-3">Verificado</th>
-                            <th className="py-2" />
+                          <tr className="border-b bg-muted/50">
+                            <th className="py-2 px-3 text-left font-medium">E-mail/Domínio</th>
+                            <th className="py-2 px-3 text-left font-medium">Mesa</th>
+                            <th className="py-2 px-3 text-left font-medium">Cliente</th>
+                            <th className="py-2 px-3 text-left font-medium">Prioridade</th>
+                            <th className="py-2 px-3 text-right">Ação</th>
                           </tr>
                         </thead>
                         <tbody>
                           {routes.map((r) => (
-                            <tr key={r.id} className="border-b">
-                              <td className="py-2 pr-3">{r.matchEmail}</td>
-                              <td className="py-2 pr-3">
-                                {r.desk?.name ?? "—"}
-                              </td>
-                              <td className="py-2 pr-3">
-                                {r.company?.name ?? "Todos"}
-                              </td>
-                              <td className="py-2 pr-3">
-                                {r.priorityName ?? "—"}
-                              </td>
-                              <td className="py-2 pr-3">
-                                {r.verified ? "✓" : "—"}
-                              </td>
-                              <td className="py-2">
+                            <tr key={r.id} className="border-b hover:bg-muted/30">
+                              <td className="py-2 px-3 font-mono text-xs">{r.matchEmail}</td>
+                              <td className="py-2 px-3">{r.desk?.name ?? "—"}</td>
+                              <td className="py-2 px-3">{r.company?.name ?? "Todos"}</td>
+                              <td className="py-2 px-3">{r.priorityName ?? "—"}</td>
+                              <td className="py-2 px-3 text-right">
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  className="h-8 w-8"
                                   onClick={() => void removeRoute(r.id)}
                                 >
                                   <Trash2 className="size-4" />
@@ -589,10 +668,10 @@ export default function AdminEmailPage() {
                           {routes.length === 0 ? (
                             <tr>
                               <td
-                                colSpan={6}
-                                className="py-6 text-muted-foreground"
+                                colSpan={5}
+                                className="py-4 px-3 text-center text-muted-foreground"
                               >
-                                Nenhum direcionamento ainda.
+                                Nenhuma regra ainda. Emails vão abrir direto para triagem.
                               </td>
                             </tr>
                           ) : null}
