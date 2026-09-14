@@ -1,4 +1,4 @@
-import { buildApiUrl, getBrowserApiBase } from "@/lib/env";
+import { API_URL, buildApiUrl } from "@/lib/env";
 
 function normalizeAuthPath(path: string): string {
   const trimmed = path.trim();
@@ -16,14 +16,23 @@ export function buildAuthApiUrl(path: string): string {
   const authPath = normalizeAuthPath(path);
 
   if (typeof window !== "undefined") {
-    const apiBase = getBrowserApiBase();
-    if (apiBase.startsWith("http://") || apiBase.startsWith("https://")) {
-      return `${apiBase.replace(/\/$/, "")}${authPath}`;
+    const configured = API_URL.trim().replace(/\/$/, "");
+
+    try {
+      const url = new URL(configured);
+      if (url.origin !== window.location.origin) {
+        return `${configured}${authPath}`;
+      }
+      // Mesma origem: só prefixa quando a URL pública declara um path (ex.: /api).
+      // Sem path, auth fica na raiz — não usa o fallback /api de getBrowserApiBase.
+      const prefix = url.pathname.replace(/\/+$/, "");
+      return `${window.location.origin}${prefix}${authPath}`;
+    } catch {
+      const prefix = configured.startsWith("/")
+        ? configured.replace(/\/+$/, "")
+        : "";
+      return `${window.location.origin}${prefix}${authPath}`;
     }
-    if (apiBase) {
-      return `${window.location.origin}${apiBase}${authPath}`;
-    }
-    return `${window.location.origin}${authPath}`;
   }
 
   return buildApiUrl(authPath);

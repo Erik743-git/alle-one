@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import {
   classificationService,
@@ -24,9 +25,22 @@ import { Plus, RefreshCw, Trash2 } from "lucide-react";
 
 type Tab = "geral" | "recebimento" | "envio";
 
+/** Aceita `email@dominio.com` ou o curinga `*@dominio.com`. */
+const BLOCKED_SENDER_PATTERN =
+  /^(\*@[^@\s]+\.[^@\s]+|[^@\s]+@[^@\s]+\.[^@\s]+)$/;
+
+function parseBlockedSenders(raw: string | null | undefined): string[] {
+  return (raw ?? "")
+    .split(/[\n,;]+/)
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 export default function AdminEmailPage() {
   const [tab, setTab] = useState<Tab>("recebimento");
   const [settings, setSettings] = useState<EmailInboundSettings | null>(null);
+  const [blockedDraft, setBlockedDraft] = useState("");
+  const [blockedError, setBlockedError] = useState("");
   const [routes, setRoutes] = useState<EmailInboundRoute[]>([]);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
   const [selectedTemplateKey, setSelectedTemplateKey] = useState("");
@@ -116,6 +130,34 @@ export default function AdminEmailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const blockedList = parseBlockedSenders(settings?.blockedSenders);
+
+  function addBlockedSender() {
+    if (!settings) return;
+    const entry = blockedDraft.trim().toLowerCase();
+    if (!entry) return;
+    if (!BLOCKED_SENDER_PATTERN.test(entry)) {
+      setBlockedError("Use o formato email@dominio.com ou *@dominio.com.");
+      return;
+    }
+    const list = parseBlockedSenders(settings.blockedSenders);
+    if (list.includes(entry)) {
+      setBlockedError("Esse remetente já está na lista.");
+      return;
+    }
+    setSettings({ ...settings, blockedSenders: [...list, entry].join("\n") });
+    setBlockedDraft("");
+    setBlockedError("");
+  }
+
+  function removeBlockedSender(entry: string) {
+    if (!settings) return;
+    const list = parseBlockedSenders(settings.blockedSenders).filter(
+      (item) => item !== entry,
+    );
+    setSettings({ ...settings, blockedSenders: list.join("\n") });
+  }
 
   async function saveSettings() {
     if (!settings) return;
@@ -435,9 +477,9 @@ export default function AdminEmailPage() {
                       <li>Defina as 3 variáveis no <code>.env</code> do backend</li>
                     </ol>
                     <div className="bg-muted/50 p-3 rounded-md space-y-1 text-xs font-mono text-muted-foreground">
-                      <div>GRAPH_TENANT_ID=32a2dcf4-25d8...</div>
-                      <div>GRAPH_CLIENT_ID=604142d2-3ec9...</div>
-                      <div>GRAPH_CLIENT_SECRET=iC18Q~gB3aLq...</div>
+                      <div>GRAPH_TENANT_ID=&lt;id do diretório (tenant)&gt;</div>
+                      <div>GRAPH_CLIENT_ID=&lt;id do aplicativo (client)&gt;</div>
+                      <div>GRAPH_CLIENT_SECRET=&lt;valor do segredo&gt;</div>
                     </div>
                   </CardContent>
                 </Card>
@@ -475,22 +517,27 @@ export default function AdminEmailPage() {
                         </p>
                       </div>
 
-                      <label className="flex items-center gap-2 p-3 rounded-md border border-input hover:bg-muted/50 cursor-pointer">
-                        <input
-                          type="checkbox"
+                      <div className="flex items-center justify-between gap-3 rounded-md border border-input p-3">
+                        <div className="min-w-0">
+                          <Label htmlFor="inbound-enabled" className="font-medium">
+                            Receber e-mails desta caixa
+                          </Label>
+                          <p className="text-xs text-muted-foreground">
+                            {settings.enabled
+                              ? "Ativo — a caixa é lida automaticamente a cada 1 minuto."
+                              : "Desligado — nenhum e-mail vira pré-ticket."}
+                          </p>
+                        </div>
+                        <Switch
+                          id="inbound-enabled"
                           checked={settings.enabled}
-                          onChange={(e) =>
-                            setSettings({
-                              ...settings,
-                              enabled: e.target.checked,
-                            })
+                          disabled={busy}
+                          aria-label="Ativar recebimento de e-mails"
+                          onCheckedChange={(checked) =>
+                            setSettings({ ...settings, enabled: checked })
                           }
-                          className="w-4 h-4"
                         />
-                        <span className="font-medium">
-                          {settings.enabled ? "✓ Recebimento ATIVO" : "Ativar recebimento de emails"}
-                        </span>
-                      </label>
+                      </div>
 
                       <div className="flex flex-wrap gap-2">
                         <Button
@@ -531,25 +578,81 @@ export default function AdminEmailPage() {
                     <CardTitle>3. Filtros & Bloqueios</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="space-y-1">
-                      <Label>Remetentes bloqueados</Label>
-                      <textarea
-                        className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                        value={settings.blockedSenders ?? ""}
-                        onChange={(e) =>
-                          setSettings({
-                            ...settings,
-                            blockedSenders: e.target.value,
-                          })
-                        }
-                        placeholder={
-                          "noreply@empresa.com\n*@newsletter.com\nmonitoramento@alletecnologia.com"
-                        }
-                      />
+                    <div className="space-y-2">
+                      <Label htmlFor="blocked-sender">
+                        Remetentes bloqueados
+                      </Label>
                       <p className="text-xs text-muted-foreground">
-                        Um por linha: <code>email@completo.com</code> ou <code>*@dominio.com</code>.
-                        Esses remetentes nunca viram pré-ticket.
+                        E-mails desses remetentes nunca viram pré-ticket. Use o
+                        endereço completo (<code>noreply@empresa.com</code>) ou
+                        um domínio inteiro (<code>*@newsletter.com</code>).
                       </p>
+
+                      <div className="flex flex-wrap items-start gap-2">
+                        <Input
+                          id="blocked-sender"
+                          className="min-w-0 flex-1 sm:max-w-sm"
+                          value={blockedDraft}
+                          onChange={(e) => {
+                            setBlockedDraft(e.target.value);
+                            if (blockedError) setBlockedError("");
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addBlockedSender();
+                            }
+                          }}
+                          placeholder="noreply@empresa.com ou *@newsletter.com"
+                          aria-invalid={blockedError ? true : undefined}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy || !blockedDraft.trim()}
+                          onClick={addBlockedSender}
+                        >
+                          <Plus className="mr-1 size-4" />
+                          Adicionar
+                        </Button>
+                      </div>
+
+                      {blockedError ? (
+                        <p className="text-xs font-medium text-destructive">
+                          {blockedError}
+                        </p>
+                      ) : null}
+
+                      {blockedList.length ? (
+                        <ul className="divide-y rounded-md border">
+                          {blockedList.map((entry) => (
+                            <li
+                              key={entry}
+                              className="flex items-center justify-between gap-3 px-3 py-2"
+                            >
+                              <span className="min-w-0 truncate font-mono text-sm">
+                                {entry}
+                              </span>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="ghost"
+                                className="size-8 shrink-0"
+                                disabled={busy}
+                                title={`Desbloquear ${entry}`}
+                                aria-label={`Desbloquear ${entry}`}
+                                onClick={() => removeBlockedSender(entry)}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="rounded-md border border-dashed px-3 py-4 text-center text-xs text-muted-foreground">
+                          Nenhum remetente bloqueado.
+                        </p>
+                      )}
                     </div>
                     <Button
                       type="button"
