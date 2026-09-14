@@ -473,7 +473,19 @@ function LoginPageContent() {
 
   return (
     <AuthShell>
-        <Card className="gap-3 rounded-[20px] border border-white/10 bg-[#08182f]/92 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+      <div className="flex min-h-screen gap-0 overflow-hidden bg-slate-900 lg:gap-4">
+        {/* Imagem à esquerda (desktop) */}
+        <div className="hidden lg:flex flex-1 items-center justify-center bg-gradient-to-br from-blue-600/20 to-cyan-600/20 overflow-hidden">
+          <img
+            src="/login-bg.jpg"
+            alt="Alle Tecnologia"
+            className="h-full w-full object-cover"
+          />
+        </div>
+
+        {/* Formulário à direita */}
+        <div className="flex w-full flex-col items-center justify-center px-4 py-8 lg:w-auto lg:max-w-md">
+        <Card className="gap-3 w-full rounded-[20px] border border-white/10 bg-[#08182f]/92 py-0 shadow-[0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-xl">
           <CardHeader className="space-y-4 px-4 pb-1 pt-4 sm:px-6 sm:pt-5">
             <div className="relative space-y-1.5 px-9 text-center sm:px-10">
               <a
@@ -949,6 +961,8 @@ function LoginPageContent() {
             )}
           </CardContent>
         </Card>
+        </div>
+      </div>
     </AuthShell>
   );
 }
