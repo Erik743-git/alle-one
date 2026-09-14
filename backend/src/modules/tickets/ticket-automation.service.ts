@@ -235,6 +235,26 @@ export class TicketAutomationService {
     const ctx = await this.loadTicketContext(ticketNumber);
     if (!ctx) return;
     await this.dispatchTrigger(actor, 'TICKET_OPENED', ctx);
+
+    // Um chamado que já nasce em "Novo" entrou em "Novo", mas nunca passa
+    // pelo fluxo de mudança de estágio — então regras "ao entrar em Novo"
+    // não rodavam na abertura, que é justamente quando mais se espera que
+    // elas atribuam o responsável. Avalia aqui como entrada sem estágio de
+    // origem. Só regras com `stageOnEntry` explícito entram: regra de
+    // "qualquer mudança" ou só de saída não deve disparar numa criação.
+    if (ctx.stageName) {
+      await this.dispatchTrigger(
+        actor,
+        'STAGE_CHANGE',
+        {
+          ...ctx,
+          fromStageName: null,
+          toStageName: ctx.stageName,
+        } as TicketAutomationTicketContext,
+        { fromStageName: null, toStageName: ctx.stageName, onCreate: true },
+        (conditions) => Boolean(conditions.stageOnEntry?.trim()),
+      );
+    }
   }
 
   async handleNewReply(actor: AuthenticatedRequestUser, ticketNumber: number) {
@@ -402,6 +422,7 @@ export class TicketAutomationService {
     trigger: TicketAutomationTrigger,
     ctx: TicketAutomationTicketContext,
     detailExtra?: Record<string, unknown>,
+    ruleFilter?: (conditions: TicketAutomationConditions) => boolean,
   ) {
     const rules = await this.prisma.ticketAutomationRule.findMany({
       where: { active: true, deletedAt: null, trigger },
@@ -412,6 +433,9 @@ export class TicketAutomationService {
       const conditions = normalizeAutomationConditions(
         rule.conditions as TicketAutomationConditions,
       );
+      if (ruleFilter && !ruleFilter(conditions)) {
+        continue;
+      }
       if (!matchesAutomationConditions(trigger, conditions, ctx)) {
         continue;
       }
