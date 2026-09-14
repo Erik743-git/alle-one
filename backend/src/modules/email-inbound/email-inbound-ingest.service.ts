@@ -52,8 +52,21 @@ export class EmailInboundIngestService {
       clientId: settings.graphClientId,
     });
 
+    const ignoreBefore = emailInboundIgnoreBefore();
+
     let created = 0;
     for (const msg of messages) {
+      // A leitura pega sempre os 40 mais recentes da caixa. Numa caixa que já
+      // está em uso há anos (suporte@), ligar a integração transformaria
+      // e-mails antigos, já atendidos, em pré-tickets novos. O corte deixa
+      // entrar só o que chegou depois do momento em que a caixa foi ligada.
+      if (
+        ignoreBefore &&
+        msg.receivedDateTime &&
+        new Date(msg.receivedDateTime).getTime() < ignoreBefore.getTime()
+      ) {
+        continue;
+      }
       const messageId = msg.internetMessageId?.trim() || `graph:${msg.id}`;
       const existing = await this.prisma.preTicket.findUnique({
         where: { messageId },
@@ -764,6 +777,20 @@ export class EmailInboundIngestService {
     }
     return null;
   }
+}
+
+/**
+ * `EMAIL_INBOUND_IGNORE_BEFORE` (data ISO, ex. 2026-09-14T15:00:00-03:00):
+ * e-mails recebidos antes disso nunca viram pré-ticket. Vazio ou inválido
+ * desliga o corte.
+ */
+export function emailInboundIgnoreBefore(
+  raw: string | undefined = process.env.EMAIL_INBOUND_IGNORE_BEFORE,
+): Date | null {
+  const value = raw?.trim();
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function stripHtml(html: string): string {
