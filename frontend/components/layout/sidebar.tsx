@@ -86,6 +86,12 @@ function buildMenuItems(): MenuItem[] {
       visible: canAccessDashboard(),
     },
     {
+      name: "Tickets",
+      href: "/tickets",
+      icon: Ticket,
+      visible: canAccessTickets(),
+    },
+    {
       name: "Console",
       href: "/console",
       icon: MonitorDot,
@@ -114,12 +120,6 @@ function buildMenuItems(): MenuItem[] {
       href: "/apontamentos",
       icon: CalendarRange,
       visible: canAccessRendimento(),
-    },
-    {
-      name: "Tickets",
-      href: "/tickets",
-      icon: Ticket,
-      visible: canAccessTickets(),
     },
     {
       name: "Inventário",
