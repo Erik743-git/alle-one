@@ -434,12 +434,12 @@ export class PreTicketsService {
     if (syncToTiflux) {
       if (!company?.tifluxClientId) {
         throw new BadRequestException(
-          'Cliente sem vínculo externo (tifluxClientId).',
+          'Cliente sem vínculo externo configurado.',
         );
       }
       if (!desk?.externalId) {
         throw new BadRequestException(
-          'Catálogo sem vínculo externo para integração TiFlux.',
+          'Catálogo sem vínculo externo configurado.',
         );
       }
       const descriptionPlain = appointmentDescriptionToPlainText(description);
@@ -457,7 +457,7 @@ export class PreTicketsService {
       );
       if (!Number.isFinite(ticketNumber)) {
         throw new BadGatewayException(
-          'Não foi possível obter o número do ticket criado no TiFlux.',
+          'Não foi possível obter o número do ticket criado.',
         );
       }
     } else {

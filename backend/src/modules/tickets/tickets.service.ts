@@ -1316,7 +1316,7 @@ export class TicketsService {
         : dto.deskId != null
           ? `Ticket transferido para o catálogo "${nextDeskName}".`
           : isClearingPreTicket
-            ? 'Responsável atribuído. Ticket sincronizado com TiFlux.'
+            ? 'Responsável atribuído. O ticket saiu da triagem.'
             : writeTiflux && nextOrigin !== PortalTicketOrigin.PORTAL
               ? 'Ticket atualizado.'
               : 'Ticket atualizado no portal.',
@@ -1463,12 +1463,12 @@ export class TicketsService {
     const deskId = input.deskExternalId;
     if (clientId == null || !Number.isFinite(clientId)) {
       throw new BadRequestException(
-        'Cliente sem vínculo externo (tifluxClientId). Não foi possível sincronizar com TiFlux.',
+        'Cliente sem vínculo externo configurado. Não foi possível sincronizar o ticket.',
       );
     }
     if (deskId == null || !Number.isFinite(deskId)) {
       throw new BadRequestException(
-        'Catálogo sem vínculo externo. Não foi possível sincronizar com TiFlux.',
+        'Catálogo sem vínculo externo configurado. Não foi possível sincronizar o ticket.',
       );
     }
 
@@ -1498,7 +1498,7 @@ export class TicketsService {
     );
     if (!Number.isFinite(tifluxNumber)) {
       throw new BadGatewayException(
-        'Não foi possível obter o número do ticket criado no TiFlux.',
+        'Não foi possível obter o número do ticket criado.',
       );
     }
     if (tifluxNumber !== input.ticketNumber) {

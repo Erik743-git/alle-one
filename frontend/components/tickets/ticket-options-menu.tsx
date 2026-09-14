@@ -520,8 +520,7 @@ export function TicketOptionsMenu({
               </p>
               <p className="mt-1 text-xs leading-relaxed text-amber-100/85">
                 Busque e selecione o ticket pai que permanece aberto. No Alle
-                One você escolhe qual chamado manter — diferente do TiFlux, onde
-                se escolhe qual encerrar.
+                One você escolhe qual chamado manter, não qual encerrar.
               </p>
             </div>
             <div className="flex min-w-0 gap-2">

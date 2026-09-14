@@ -555,7 +555,7 @@ export function TicketAutoOpenRuleDialog({
                     {catalogHasHierarchy ? (
                       <div className="grid gap-4 lg:grid-cols-2">
                         <div className="space-y-2">
-                          <FieldLabel required>Catálogo TiFlux</FieldLabel>
+                          <FieldLabel required>Catálogo</FieldLabel>
                           <SearchableSelectField
                             value={catalogFilterKey}
                             onChange={(value) => {

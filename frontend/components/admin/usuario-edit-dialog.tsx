@@ -295,8 +295,8 @@ export function UsuarioEditDialog({
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Selecione uma ou mais especialidades (mesas TiFlux). Use o sync
-                TiFlux para preencher automaticamente.
+                Selecione uma ou mais especialidades. Use a sincronização para
+                preencher automaticamente.
               </p>
             </div>
 

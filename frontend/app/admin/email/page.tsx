@@ -354,7 +354,7 @@ export default function AdminEmailPage() {
                     <ul className="list-disc pl-5 space-y-1">
                       <li>Separador visual de respostas nas conversas de email</li>
                       <li>Upload de logos/assinaturas para templates</li>
-                      <li>Sincronização com TiFlux (campo descontinuado)</li>
+                      <li>Sincronização externa (campo descontinuado)</li>
                     </ul>
                   </CardContent>
                 </Card>
