@@ -141,12 +141,12 @@ export default function PreTicketsPage() {
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full table-fixed text-sm">
               <colgroup>
-                <col className="w-[28%]" />
-                <col className="w-[24%]" />
+                <col className="w-[32%]" />
+                <col className="w-[26%]" />
+                <col className="w-[16%]" />
                 <col className="w-[14%]" />
-                <col className="w-[12%]" />
-                <col className="w-[5%]" />
-                <col className="w-[17%]" />
+                <col className="w-12" />
+                <col className="w-[184px]" />
               </colgroup>
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
@@ -259,13 +259,13 @@ export default function PreTicketsPage() {
                       className="py-2 pl-3 pr-2"
                       onClick={(event) => event.stopPropagation()}
                     >
-                      <div className="flex flex-wrap justify-end gap-2">
+                      <div className="flex flex-nowrap items-center justify-end gap-1.5">
                         {!row.portalPreTicket ? (
                           row.claimedBy?.id === currentUserId ? (
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-8"
+                              className="h-8 shrink-0 whitespace-nowrap"
                               disabled={busy}
                               title="Devolver para a fila"
                               onClick={() => void releaseClaim(row.id)}
@@ -276,16 +276,20 @@ export default function PreTicketsPage() {
                             <Button
                               size="sm"
                               variant="outline"
-                              className="h-8"
+                              className={
+                                row.claimedBy
+                                  ? "h-8 shrink-0 whitespace-nowrap border-amber-500/60 text-amber-600 dark:text-amber-400"
+                                  : "h-8 shrink-0 whitespace-nowrap"
+                              }
                               disabled={busy}
                               title={
                                 row.claimedBy
-                                  ? `${row.claimedBy.name} está atendendo`
+                                  ? `${row.claimedBy.name} está atendendo — assumir mesmo assim`
                                   : "Reservar para você enquanto atende"
                               }
                               onClick={() => void claim(row.id)}
                             >
-                              {row.claimedBy ? "Assumir mesmo assim" : "Assumir"}
+                              Assumir
                             </Button>
                           )
                         ) : null}
@@ -293,7 +297,7 @@ export default function PreTicketsPage() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-8"
+                            className="size-8 shrink-0"
                             disabled={busy}
                             title="Atribuir responsável"
                             aria-label={`Atribuir responsável: ${row.title}`}
@@ -307,7 +311,7 @@ export default function PreTicketsPage() {
                           <Button
                             size="icon"
                             variant="ghost"
-                            className="size-8"
+                            className="size-8 shrink-0"
                             disabled={busy}
                             title="Abrir ticket"
                             aria-label={`Abrir ticket: ${row.title}`}
@@ -320,7 +324,7 @@ export default function PreTicketsPage() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="size-8"
+                          className="size-8 shrink-0"
                           disabled={busy}
                           title="Remover"
                           aria-label={`Remover pré-ticket: ${row.title}`}
