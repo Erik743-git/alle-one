@@ -159,6 +159,7 @@ export default function TicketsPage() {
     () => isClientGestor(),
   );
   const [includeDone, setIncludeDone] = useState(false);
+  const [withoutResponsible, setWithoutResponsible] = useState(false);
   const [columnFilters, setColumnFilters] = useState(emptyColumnFilters);
   const [sortKey, setSortKey] = useState<TicketColumnKey | null>(null);
   const [sortDir, setSortDir] = useState<ExcelSortDir | null>(null);
@@ -217,8 +218,10 @@ export default function TicketsPage() {
       search: debouncedSearch.trim() || undefined,
       externalGmudRef: externalGmudRef.trim() || undefined,
       includeDone: includeDone || undefined,
+      withoutResponsible: withoutResponsible || undefined,
     };
   }, [
+    withoutResponsible,
     mineOnly,
     responsibleExternalId,
     clientExternalId,
@@ -338,6 +341,7 @@ export default function TicketsPage() {
   function clearListFilters() {
     setIncludeAllResponsibles(isClientGestor());
     setIncludeDone(false);
+    setWithoutResponsible(false);
     setSearch("");
     setFrom("");
     setTo("");
@@ -862,13 +866,27 @@ export default function TicketsPage() {
                   />
                 </div>
 
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                  <FlipCheckbox
-                    checked={includeDone}
-                    onChange={(e) => setIncludeDone(e.target.checked)}
-                  />
-                  Incluir resolvidos, encerrados e cancelados
-                </label>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+                    <FlipCheckbox
+                      checked={includeDone}
+                      onChange={(e) => setIncludeDone(e.target.checked)}
+                    />
+                    Incluir resolvidos, encerrados e cancelados
+                  </label>
+                  {!isClient() ? (
+                    <label
+                      className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+                      title="Tickets de toda a fila sem responsável. Pré-tickets só aparecem se já tiverem apontamento."
+                    >
+                      <FlipCheckbox
+                        checked={withoutResponsible}
+                        onChange={(e) => setWithoutResponsible(e.target.checked)}
+                      />
+                      Somente sem responsável
+                    </label>
+                  ) : null}
+                </div>
 
                 {showAdvanced ? (
                   <div className="space-y-4">

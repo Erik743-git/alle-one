@@ -186,6 +186,7 @@ export type TicketsListParams = {
   externalGmudRef?: string;
   /** Inclui resolvidos, encerrados, cancelados e fechados. */
   includeDone?: boolean;
+  withoutResponsible?: boolean;
 };
 
 function toQuery(params: TicketsListParams): string {
@@ -211,6 +212,7 @@ function toQuery(params: TicketsListParams): string {
     q.set("externalGmudRef", params.externalGmudRef.trim());
   }
   if (params.includeDone === true) q.set("includeDone", "true");
+  if (params.withoutResponsible === true) q.set("withoutResponsible", "true");
   const s = q.toString();
   return s ? `?${s}` : "";
 }

@@ -89,6 +89,12 @@ export class TicketsListQueryDto {
   @Transform(({ value }) => parseOptionalBoolean(value))
   includeDone?: boolean;
 
+  /** Só tickets sem responsável; pré-tickets entram apenas se já tiverem apontamento. */
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => parseOptionalBoolean(value))
+  withoutResponsible?: boolean;
+
   @IsOptional()
   @IsString()
   deskName?: string;
