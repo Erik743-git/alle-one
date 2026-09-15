@@ -7,8 +7,9 @@
  * script busca DIRETO da API do TiFlux e atualiza o espelho; depois o ETL
  * existente (cutover-final-sync.ts) copia espelho → portal.
  *
- * Grava só no schema `tiflux`, com uma exceção: activate-auto-open-rules
- * (religa as rotinas de abertura automática; exige --apply).
+ * Grava no schema `tiflux`, com duas exceções que exigem --apply:
+ * apply-appointments (deixa os apontamentos do portal iguais ao TiFlux,
+ * protegendo usuários) e activate-auto-open-rules.
  *
  * Uso (na VM, em /home/alleone/producao/backend):
  *   npx ts-node prisma/scripts/cutover-tiflux-final.ts check
@@ -557,6 +558,253 @@ async function check() {
   log(`Relatório completo: ${file}`);
 }
 
+// ---------------------------------------------------------------- appointments → portal
+
+/** Apontamentos destes usuários do portal não mudam de jeito nenhum na migração. */
+const DEFAULT_PROTECTED_EMAILS = [
+  'erik.manarin@alletecnologia.com',
+  'alisson.ravizza@alletecnologia.com',
+];
+
+class DryRunRollback extends Error {}
+
+/**
+ * Deixa os apontamentos vindos do TiFlux IGUAIS ao espelho: insere os novos,
+ * atualiza os alterados e apaga os que o TiFlux apagou. Substitui o passo de
+ * apontamentos do ETL na virada (o ETL não apaga nem protege usuários).
+ *
+ * Nunca toca: apontamento criado no portal (sem id do TiFlux) e qualquer
+ * apontamento dos usuários protegidos — nem quando o TiFlux mudou.
+ * Sem --apply roda tudo numa transação e desfaz no fim (simulação real).
+ */
+async function applyAppointments() {
+  const apply = flag('apply');
+  const protectEmails = (arg('protect-emails') ?? DEFAULT_PROTECTED_EMAILS.join(','))
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  const protectedUsers = await prisma.user.findMany({
+    where: { email: { in: protectEmails, mode: 'insensitive' }, deletedAt: null },
+    select: { id: true, name: true, email: true },
+  });
+  const found = new Set(protectedUsers.map((u) => u.email.toLowerCase()));
+  const missing = protectEmails.filter((e) => !found.has(e));
+  if (missing.length) {
+    throw new Error(`Usuário protegido não encontrado no portal: ${missing.join(', ')}. Nada foi feito.`);
+  }
+  log(`Protegidos (apontamentos intocados): ${protectedUsers.map((u) => `${u.name} <${u.email}>`).join('; ')}`);
+  const protectedIds = protectedUsers.map((u) => u.id);
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`
+          CREATE TEMP TABLE cutover_mirror ON COMMIT DROP AS
+          SELECT DISTINCT ON (a.external_id)
+            a.external_id,
+            a.ticket_number,
+            COALESCE(a.appointment_date::date, CURRENT_DATE) AS appointment_date,
+            COALESCE(to_char(a.init_time::time, 'HH24:MI'), '00:00') AS init_time,
+            COALESCE(to_char(a.end_time::time, 'HH24:MI'), '00:00') AS end_time,
+            NULLIF(trim(a.description), '') AS description,
+            left(COALESCE(
+              NULLIF(trim(a.valorization_raw #>> '{loose_service,name}'), ''),
+              NULLIF(trim(a.valorization_raw #>> '{contract,name}'), ''),
+              NULLIF(trim(a.valorization_raw #>> '{service,name}'), ''),
+              NULLIF(trim(a.valorization_raw #>> '{name}'), '')
+            ), 120) AS service_name,
+            a.user_external_id,
+            a.user_name,
+            lower(trim(tu.email)) AS tiflux_email,
+            (
+              SELECT u.id FROM users u
+              WHERE lower(trim(u.email)) = lower(trim(tu.email)) AND u.deleted_at IS NULL
+              ORDER BY u.created_at ASC LIMIT 1
+            ) AS portal_user_id
+          FROM tiflux.ticket_appointments a
+          LEFT JOIN tiflux.users tu ON tu.external_id = a.user_external_id AND NULLIF(trim(tu.email), '') IS NOT NULL
+          WHERE a.external_id IS NOT NULL
+          ORDER BY a.external_id, a.synced_at DESC
+        `);
+
+        const protectedMirror = `(m.portal_user_id = ANY($1::text[]) OR m.tiflux_email = ANY($2::text[]))`;
+
+        const unmapped = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+          `
+          SELECT m.user_external_id AS tiflux_id, max(m.user_name) AS tecnico, max(m.tiflux_email) AS email_tiflux, count(*)::int AS apontamentos
+          FROM cutover_mirror m
+          WHERE m.portal_user_id IS NULL AND NOT ${protectedMirror}
+            AND (
+              NOT EXISTS (SELECT 1 FROM portal_ticket_appointments p WHERE p.tiflux_appointment_external_id = m.external_id)
+              OR EXISTS (SELECT 1 FROM portal_ticket_appointments p WHERE p.tiflux_appointment_external_id = m.external_id AND NOT (p.created_by = ANY($1::text[])))
+            )
+          GROUP BY 1 ORDER BY 4 DESC`,
+          protectedIds,
+          protectEmails,
+        );
+        if (unmapped.length && !flag('allow-unmapped')) {
+          console.table(unmapped);
+          throw new Error(
+            `${unmapped.length} técnico(s) do TiFlux sem usuário no portal (tabela acima). Cadastre-os ou ajuste o e-mail e rode de novo. Nada foi gravado.`,
+          );
+        }
+
+        const toDelete = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+          `
+          SELECT p.*, u.name AS tecnico,
+            (SELECT count(*)::int FROM portal_ticket_appointment_attachments x WHERE x.portal_appointment_id = p.id) AS anexos,
+            (SELECT count(*)::int FROM project_activity_appointments x WHERE x.portal_appointment_id = p.id) AS vinculo_projeto,
+            (SELECT json_agg(x) FROM portal_ticket_appointment_attachments x WHERE x.portal_appointment_id = p.id) AS anexos_json,
+            (SELECT json_agg(x) FROM project_activity_appointments x WHERE x.portal_appointment_id = p.id) AS projeto_json,
+            (SELECT json_agg(x) FROM portal_ticket_appointment_warning_acks x WHERE x.portal_appointment_id = p.id) AS avisos_json
+          FROM portal_ticket_appointments p
+          LEFT JOIN users u ON u.id = p.created_by
+          WHERE p.tiflux_appointment_external_id IS NOT NULL
+            AND NOT (p.created_by = ANY($1::text[]))
+            AND NOT EXISTS (SELECT 1 FROM cutover_mirror m WHERE m.external_id = p.tiflux_appointment_external_id)
+          ORDER BY p.appointment_date, p.init_time`,
+          protectedIds,
+        );
+
+        const updateWhere = `
+          FROM cutover_mirror m
+          WHERE p.tiflux_appointment_external_id = m.external_id
+            AND NOT (p.created_by = ANY($1::text[]))
+            AND NOT ${protectedMirror}
+            AND m.portal_user_id IS NOT NULL
+            AND (
+              p.ticket_number IS DISTINCT FROM m.ticket_number
+              OR p.appointment_date IS DISTINCT FROM m.appointment_date
+              OR p.init_time IS DISTINCT FROM m.init_time
+              OR p.end_time IS DISTINCT FROM m.end_time
+              OR p.description IS DISTINCT FROM COALESCE(m.description, p.description)
+              OR p.service_name IS DISTINCT FROM COALESCE(m.service_name, p.service_name)
+              OR p.created_by IS DISTINCT FROM m.portal_user_id
+            )`;
+        const toUpdate = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(
+          `SELECT p.id, p.tiflux_appointment_external_id,
+             p.ticket_number AS antes_ticket, m.ticket_number AS depois_ticket,
+             p.appointment_date AS antes_data, m.appointment_date AS depois_data,
+             p.init_time AS antes_inicio, m.init_time AS depois_inicio,
+             p.end_time AS antes_fim, m.end_time AS depois_fim,
+             p.created_by AS antes_usuario, m.portal_user_id AS depois_usuario,
+             p.service_name AS antes_servico, COALESCE(m.service_name, p.service_name) AS depois_servico,
+             p.description AS antes_descricao
+           FROM portal_ticket_appointments p ${updateWhere}`,
+          protectedIds,
+          protectEmails,
+        );
+
+        const insertWhere = `
+          FROM cutover_mirror m
+          WHERE NOT EXISTS (SELECT 1 FROM portal_ticket_appointments p WHERE p.tiflux_appointment_external_id = m.external_id)
+            AND NOT ${protectedMirror}
+            AND m.portal_user_id IS NOT NULL`;
+        const [{ c: toInsert }] = await tx.$queryRawUnsafe<Array<{ c: number }>>(
+          `SELECT count(*)::int AS c ${insertWhere}`,
+          protectedIds,
+          protectEmails,
+        );
+
+        const [protectedInfo] = await tx.$queryRawUnsafe<Array<Record<string, number>>>(
+          `SELECT
+            (SELECT count(*)::int FROM portal_ticket_appointments p WHERE p.created_by = ANY($1::text[]) AND p.tiflux_appointment_external_id IS NOT NULL
+               AND NOT EXISTS (SELECT 1 FROM cutover_mirror m WHERE m.external_id = p.tiflux_appointment_external_id)) AS protegidos_apagados_no_tiflux_mantidos,
+            (SELECT count(*)::int FROM cutover_mirror m WHERE NOT EXISTS (SELECT 1 FROM portal_ticket_appointments p WHERE p.tiflux_appointment_external_id = m.external_id)
+               AND ${protectedMirror}) AS protegidos_novos_no_tiflux_nao_trazidos`,
+          protectedIds,
+          protectEmails,
+        );
+
+        const byTech = new Map<string, { excluir: number; horas_excluir: number }>();
+        for (const row of toDelete) {
+          const k = String(row.tecnico ?? '?');
+          const cur = byTech.get(k) ?? { excluir: 0, horas_excluir: 0 };
+          const [ih, im] = String(row.init_time).split(':').map(Number);
+          const [eh, em] = String(row.end_time).split(':').map(Number);
+          cur.excluir++;
+          cur.horas_excluir += Math.max(0, eh * 60 + em - (ih * 60 + im)) / 60;
+          byTech.set(k, cur);
+        }
+
+        console.log('\n== Apontamentos TiFlux → portal ==');
+        console.table([
+          {
+            incluir: toInsert,
+            alterar: toUpdate.length,
+            excluir: toDelete.length,
+            excluir_com_anexo: toDelete.filter((r) => Number(r.anexos) > 0).length,
+            excluir_com_vinculo_projeto: toDelete.filter((r) => Number(r.vinculo_projeto) > 0).length,
+            ...protectedInfo,
+          },
+        ]);
+        if (toDelete.length) {
+          console.log('\n-- A excluir, por técnico --');
+          console.table(
+            [...byTech.entries()].map(([tecnico, v]) => ({ tecnico, ...v, horas_excluir: Number(v.horas_excluir.toFixed(2)) })),
+          );
+        }
+
+        const exportFile = join(logDir, `apontamentos-${apply ? 'aplicado' : 'simulacao'}-${stamp}.json`);
+        writeFileSync(
+          exportFile,
+          JSON.stringify({ protegidos: protectedUsers, excluidos: toDelete, alterados_antes_depois: toUpdate }, null, 2),
+        );
+        log(`Cópia completa (excluídos com anexos/vínculos, e valores antes de alterar): ${exportFile}`);
+
+        await tx.$executeRawUnsafe(
+          `
+          INSERT INTO portal_ticket_appointments (
+            id, ticket_number, appointment_date, init_time, end_time, description,
+            service_name, attendance, tiflux_appointment_external_id, sync_status,
+            created_by, created_at, updated_at
+          )
+          SELECT gen_random_uuid()::text, m.ticket_number, m.appointment_date, m.init_time, m.end_time,
+            COALESCE(m.description, '(sem descrição)'), COALESCE(m.service_name, 'HORA NORMAL'), 'Remote',
+            m.external_id, 'SYNCED'::"PortalTicketAppointmentSyncStatus", m.portal_user_id, NOW(), NOW()
+          ${insertWhere}`,
+          protectedIds,
+          protectEmails,
+        );
+        await tx.$executeRawUnsafe(
+          `
+          UPDATE portal_ticket_appointments p SET
+            ticket_number = m.ticket_number,
+            appointment_date = m.appointment_date,
+            init_time = m.init_time,
+            end_time = m.end_time,
+            description = COALESCE(m.description, p.description),
+            service_name = COALESCE(m.service_name, p.service_name),
+            created_by = m.portal_user_id,
+            sync_status = 'SYNCED'::"PortalTicketAppointmentSyncStatus",
+            updated_at = NOW()
+          ${updateWhere}`,
+          protectedIds,
+          protectEmails,
+        );
+        if (toDelete.length) {
+          await tx.$executeRawUnsafe(
+            `DELETE FROM portal_ticket_appointments WHERE id = ANY($1::text[])`,
+            toDelete.map((r) => String(r.id)),
+          );
+        }
+
+        if (!apply) throw new DryRunRollback();
+      },
+      { timeout: 30 * 60_000, maxWait: 60_000 },
+    );
+    log('Apontamentos aplicados no portal.');
+  } catch (err) {
+    if (err instanceof DryRunRollback) {
+      log('Simulação: tudo foi executado e DESFEITO. Rode com --apply para gravar.');
+      return;
+    }
+    throw err;
+  }
+}
+
 // ---------------------------------------------------------------- auto-open rules
 
 /**
@@ -685,8 +933,9 @@ async function main() {
   else if (cmd === 'refresh-tickets') await refreshTickets();
   else if (cmd === 'refresh-appointments') await refreshAppointments();
   else if (cmd === 'activate-auto-open-rules') await activateAutoOpenRules();
+  else if (cmd === 'apply-appointments') await applyAppointments();
   else {
-    console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N] | activate-auto-open-rules [--apply]');
+    console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N] | apply-appointments [--apply] [--protect-emails=a,b] | activate-auto-open-rules [--apply]');
     process.exitCode = 1;
   }
 }
