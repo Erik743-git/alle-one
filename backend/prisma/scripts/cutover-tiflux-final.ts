@@ -805,6 +805,42 @@ async function applyAppointments() {
   }
 }
 
+// ---------------------------------------------------------------- responsible names
+
+/**
+ * Com o TiFlux desligado, "meus tickets" casa o responsável pelo NOME do
+ * usuário do portal. Tickets herdados do TiFlux trazem o nome como está lá
+ * ("Erik Bramoski Manarin" x "Erik Manarin" no portal) e somem da fila.
+ * Troca o nome do responsável pelo do cadastro do portal, casando o técnico do
+ * TiFlux pelo e-mail. Rodar depois do ETL final e com o cron já removido, senão
+ * o ETL devolve o nome do TiFlux. Sem --apply só lista.
+ */
+async function normalizeResponsibleNames() {
+  const apply = flag('apply');
+  const rows = await prisma.$queryRawUnsafe<Array<{ de: string | null; para: string; email: string; tickets: number; abertos: number }>>(`
+    SELECT p.responsible_name AS de, u.name AS para, u.email, count(*)::int AS tickets,
+      count(*) FILTER (WHERE p.is_closed = false)::int AS abertos
+    FROM portal_tickets p
+    JOIN tiflux.users tu ON tu.external_id = p.responsible_external_id AND NULLIF(trim(tu.email), '') IS NOT NULL
+    JOIN users u ON lower(trim(u.email)) = lower(trim(tu.email)) AND u.deleted_at IS NULL
+    WHERE p.responsible_name IS DISTINCT FROM u.name
+    GROUP BY 1, 2, 3 ORDER BY 5 DESC, 4 DESC`);
+  console.log('\n== Nomes de responsável a alinhar com o cadastro do portal ==');
+  console.table(rows);
+  if (!apply) {
+    log(`Simulação: ${rows.reduce((s, r) => s + r.tickets, 0)} tickets teriam o nome do responsável ajustado. Rode com --apply.`);
+    return;
+  }
+  const n = await prisma.$executeRawUnsafe(`
+    UPDATE portal_tickets p SET responsible_name = u.name, updated_at = NOW()
+    FROM tiflux.users tu
+    JOIN users u ON lower(trim(u.email)) = lower(trim(tu.email)) AND u.deleted_at IS NULL
+    WHERE tu.external_id = p.responsible_external_id
+      AND NULLIF(trim(tu.email), '') IS NOT NULL
+      AND p.responsible_name IS DISTINCT FROM u.name`);
+  log(`Nome do responsável ajustado em ${n} tickets.`);
+}
+
 // ---------------------------------------------------------------- auto-open rules
 
 /**
@@ -934,6 +970,7 @@ async function main() {
   else if (cmd === 'refresh-appointments') await refreshAppointments();
   else if (cmd === 'activate-auto-open-rules') await activateAutoOpenRules();
   else if (cmd === 'apply-appointments') await applyAppointments();
+  else if (cmd === 'normalize-responsible-names') await normalizeResponsibleNames();
   else {
     console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N] | apply-appointments [--apply] [--protect-emails=a,b] | activate-auto-open-rules [--apply]');
     process.exitCode = 1;
