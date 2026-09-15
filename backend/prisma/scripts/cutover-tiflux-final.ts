@@ -34,6 +34,7 @@ import {
   formatYmdUtc,
   parseRuleDueAt,
 } from '../../src/modules/admin/ticket-auto-open.helper';
+import { DEFAULT_COMPANY_PACK_MODULES } from '../../src/modules/permissions/company-pack.constants';
 
 const prisma = new PrismaClient();
 
@@ -805,6 +806,162 @@ async function applyAppointments() {
   }
 }
 
+// ---------------------------------------------------------------- companies
+
+const normCompany = (s: string | null | undefined) =>
+  (s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/\b(ltda|s\.?\/?a|me|epp|eireli|cia)\b\.?/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+const digits = (s: unknown) => String(s ?? '').replace(/\D/g, '');
+
+/**
+ * Liga os clientes do TiFlux às empresas do portal. O vínculo que o sistema usa
+ * é companies.tiflux_client_id (integration_tiflux_accounts não é lida em lugar
+ * nenhum). Antes de criar, procura a empresa por CNPJ e por nome normalizado.
+ *
+ * Só age sozinho quando não há dúvida: um candidato forte (mesmo CNPJ ou mesmo
+ * nome) ainda sem ID do TiFlux → liga; nenhum candidato → cria. Conflitos e
+ * semelhanças fracas ficam listados. Para decidir um caso na mão:
+ * --link=<tiflux_client_id>:<company_id> (repetível, separado por vírgula).
+ */
+async function linkCompanies() {
+  const apply = flag('apply');
+  const forced = new Map(
+    (arg('link') ?? '')
+      .split(',')
+      .filter(Boolean)
+      .map((pair) => {
+        const [tid, cid] = pair.split(':');
+        return [Number(tid), cid] as const;
+      }),
+  );
+
+  const missing = await prisma.$queryRawUnsafe<Array<{ id: number; nome: string | null; abertos: number; total: number }>>(`
+    SELECT t.client_external_id AS id, max(t.client_name) AS nome,
+      count(*) FILTER (WHERE COALESCE(t.is_closed, false) = false)::int AS abertos, count(*)::int AS total
+    FROM tiflux.tickets t
+    WHERE t.client_external_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM companies c WHERE c.deleted_at IS NULL AND c.tiflux_client_id = t.client_external_id)
+    GROUP BY 1 ORDER BY 3 DESC, 4 DESC`);
+  if (!missing.length) {
+    log('Todos os clientes do TiFlux já estão ligados a uma empresa do portal.');
+    return;
+  }
+
+  const apiClients = new Map<number, any>(
+    (await fetchAllPages('/clients', {})).map((c) => [Number(c.id), c]),
+  );
+  const companies = await prisma.company.findMany({
+    select: { id: true, name: true, tifluxClientName: true, cnpj: true, email: true, tifluxClientId: true, deletedAt: true },
+  });
+  const takenEmails = new Set(companies.map((c) => c.email.toLowerCase()));
+  const takenCnpjs = new Set(companies.map((c) => digits(c.cnpj)).filter(Boolean));
+
+  type Plan =
+    | { kind: 'link'; tid: number; companyId: string; name: string }
+    | { kind: 'create'; tid: number; name: string; social: string | null; email: string; cnpj: string | null };
+  const plans: Plan[] = [];
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const m of missing) {
+    const api = apiClients.get(Number(m.id));
+    const tName: string = (api?.name ?? m.nome ?? `Cliente TiFlux ${m.id}`).trim();
+    const tSocial: string | null = api?.social?.trim() || null;
+    const tCnpj = digits(api?.document ?? api?.cnpj ?? api?.social_number ?? api?.cpf_cnpj);
+    const names = [normCompany(tName), normCompany(tSocial)].filter(Boolean);
+
+    const scored = companies
+      .map((c) => {
+        const cNames = [normCompany(c.name), normCompany(c.tifluxClientName)].filter(Boolean);
+        const byCnpj = tCnpj.length >= 11 && digits(c.cnpj) === tCnpj;
+        const byName = names.some((n) => cNames.some((cn) => cn.replace(/ /g, "") === n.replace(/ /g, "")));
+        const weak =
+          !byCnpj &&
+          !byName &&
+          names.some((n) => n.length >= 4 && cNames.some((cn) => cn.length >= 4 && (cn.includes(n) || n.includes(cn))));
+        return { c, strong: byCnpj || byName, weak, how: byCnpj ? 'CNPJ' : byName ? 'nome' : 'parecido' };
+      })
+      .filter((x) => x.strong || x.weak);
+    const describe = (x: (typeof scored)[number]) =>
+      `${x.c.name} [${x.how}]${x.c.tifluxClientId ? ` (já ligada ao TiFlux ${x.c.tifluxClientId})` : ''}${x.c.deletedAt ? ' (EXCLUÍDA)' : ''} id=${x.c.id}`;
+
+    const base = { tiflux_id: m.id, cliente_tiflux: tName, abertos: m.abertos, total: m.total };
+    const forcedId = forced.get(Number(m.id));
+    if (forcedId) {
+      const target = companies.find((c) => c.id === forcedId && !c.deletedAt);
+      if (!target) throw new Error(`--link: empresa ${forcedId} não existe ou está excluída.`);
+      if (target.tifluxClientId) throw new Error(`--link: ${target.name} já está ligada ao TiFlux ${target.tifluxClientId}.`);
+      plans.push({ kind: 'link', tid: m.id, companyId: target.id, name: target.name });
+      rows.push({ ...base, acao: 'LIGAR (manual)', empresa_portal: target.name });
+      continue;
+    }
+
+    const strongActive = scored.filter((x) => x.strong && !x.c.deletedAt);
+    const free = strongActive.filter((x) => !x.c.tifluxClientId);
+    if (strongActive.length === 1 && free.length === 1) {
+      plans.push({ kind: 'link', tid: m.id, companyId: free[0].c.id, name: free[0].c.name });
+      rows.push({ ...base, acao: 'LIGAR', empresa_portal: describe(free[0]) });
+    } else if (strongActive.length > 0) {
+      rows.push({ ...base, acao: 'DECIDIR: conflito ou mais de um candidato', empresa_portal: strongActive.map(describe).join(' | ') });
+    } else if (scored.length > 0) {
+      rows.push({ ...base, acao: 'DECIDIR: parecida (confirmar ou criar)', empresa_portal: scored.map(describe).join(' | ') });
+    } else {
+      const apiEmail = String(api?.email ?? '').trim().toLowerCase();
+      const email =
+        /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(apiEmail) && !takenEmails.has(apiEmail)
+          ? apiEmail
+          : `tiflux-${m.id}@sem-email.alletecnologia.internal`;
+      const cnpj = tCnpj.length === 14 && !takenCnpjs.has(tCnpj) ? tCnpj : null;
+      takenEmails.add(email);
+      if (cnpj) takenCnpjs.add(cnpj);
+      plans.push({ kind: 'create', tid: m.id, name: tName, social: tSocial, email, cnpj });
+      rows.push({ ...base, acao: 'CRIAR', empresa_portal: `${tName} <${email}>${cnpj ? ` CNPJ ${cnpj}` : ' (sem CNPJ)'}` });
+    }
+  }
+
+  console.log('\n== Clientes do TiFlux x empresas do portal ==');
+  console.table(rows);
+  writeFileSync(
+    join(logDir, `empresas-${apply ? 'aplicado' : 'simulacao'}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`),
+    JSON.stringify(rows, null, 2),
+  );
+  if (!apply) {
+    log('Simulação: nada gravado. Rode com --apply para ligar/criar (casos DECIDIR ficam de fora).');
+    return;
+  }
+
+  for (const p of plans) {
+    if (p.kind === 'link') {
+      const tName = (apiClients.get(p.tid)?.name ?? null) as string | null;
+      await prisma.company.update({ where: { id: p.companyId }, data: { tifluxClientId: p.tid, tifluxClientName: tName } });
+      log(`Ligada: ${p.name} ← TiFlux ${p.tid}`);
+    } else {
+      await prisma.$transaction(async (tx) => {
+        const created = await tx.company.create({
+          data: {
+            name: p.name,
+            responsibleName: p.social ?? p.name,
+            email: p.email,
+            cnpj: p.cnpj,
+            tifluxClientId: p.tid,
+            tifluxClientName: p.name,
+            status: true,
+          },
+        });
+        await tx.companyModule.createMany({
+          data: DEFAULT_COMPANY_PACK_MODULES.map((module) => ({ companyId: created.id, module, enabled: true })),
+          skipDuplicates: true,
+        });
+      });
+      log(`Criada: ${p.name} (TiFlux ${p.tid}, e-mail ${p.email})`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------- responsible names
 
 /**
@@ -971,6 +1128,7 @@ async function main() {
   else if (cmd === 'activate-auto-open-rules') await activateAutoOpenRules();
   else if (cmd === 'apply-appointments') await applyAppointments();
   else if (cmd === 'normalize-responsible-names') await normalizeResponsibleNames();
+  else if (cmd === 'link-companies') await linkCompanies();
   else {
     console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N] | apply-appointments [--apply] [--protect-emails=a,b] | activate-auto-open-rules [--apply]');
     process.exitCode = 1;
