@@ -693,7 +693,7 @@ async function applyAppointments() {
              p.created_by AS antes_usuario, m.portal_user_id AS depois_usuario,
              p.service_name AS antes_servico, COALESCE(m.service_name, p.service_name) AS depois_servico,
              p.description AS antes_descricao
-           FROM portal_ticket_appointments p ${updateWhere}`,
+           FROM portal_ticket_appointments p ${updateWhere.replace('FROM cutover_mirror m', 'JOIN cutover_mirror m ON true')}`,
           protectedIds,
           protectEmails,
         );
