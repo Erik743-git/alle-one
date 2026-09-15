@@ -7,8 +7,8 @@
  * script busca DIRETO da API do TiFlux e atualiza o espelho; depois o ETL
  * existente (cutover-final-sync.ts) copia espelho → portal.
  *
- * Nada aqui grava em tabelas do portal. Só lê o portal (relatório) e grava no
- * schema `tiflux`.
+ * Grava só no schema `tiflux`, com uma exceção: activate-auto-open-rules
+ * (religa as rotinas de abertura automática; exige --apply).
  *
  * Uso (na VM, em /home/alleone/producao/backend):
  *   npx ts-node prisma/scripts/cutover-tiflux-final.ts check
@@ -27,7 +27,12 @@
 import 'dotenv/config';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, TicketAutoOpenPeriodicity } from '@prisma/client';
+import {
+  advanceScheduledDate,
+  formatYmdUtc,
+  parseRuleDueAt,
+} from '../../src/modules/admin/ticket-auto-open.helper';
 
 const prisma = new PrismaClient();
 
@@ -552,6 +557,122 @@ async function check() {
   log(`Relatório completo: ${file}`);
 }
 
+// ---------------------------------------------------------------- auto-open rules
+
+/**
+ * Religa as rotinas de abertura automática desligadas. ÚNICO comando que grava
+ * numa tabela do portal. Sem --apply só mostra o que faria.
+ *
+ * O job abre o chamado da data agendada e avança UM período por execução, a
+ * cada minuto. Religar uma rotina diária parada em junho abriria um chamado por
+ * minuto para cada dia perdido. Por isso a próxima data é empurrada para a
+ * primeira ocorrência futura antes de ativar — nenhum atraso é "pago".
+ */
+async function activateAutoOpenRules() {
+  const apply = flag('apply');
+  const now = new Date();
+  const rules = await prisma.ticketAutoOpenRule.findMany({
+    where: { active: false, deletedAt: null },
+    orderBy: { name: 'asc' },
+  });
+
+  const clientIds = new Set(
+    (
+      await prisma.$queryRawUnsafe<Array<{ id: number }>>(`
+        SELECT tiflux_client_id AS id FROM companies WHERE deleted_at IS NULL AND tiflux_client_id IS NOT NULL
+        UNION SELECT tiflux_company_id::int FROM integration_tiflux_accounts WHERE enabled AND tiflux_company_id ~ '^[0-9]+$'`)
+    ).map((r) => Number(r.id)),
+  );
+  const deskIds = new Set(
+    (
+      await prisma.specialty.findMany({
+        where: { deletedAt: null, externalId: { not: null } },
+        select: { externalId: true },
+      })
+    ).map((s) => Number(s.externalId)),
+  );
+
+  const toActivate: Array<{ id: string; next: Date; resetFailures: boolean }> = [];
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (const rule of rules) {
+    const base = {
+      rotina: rule.name,
+      periodicidade: rule.periodicity,
+      proxima_hoje_no_banco: `${formatYmdUtc(rule.nextScheduledDate)} ${rule.scheduleTime}`,
+      ultima_execucao: rule.lastRunAt?.toISOString().slice(0, 16) ?? null,
+      ultimo_erro: rule.lastError?.slice(0, 80) ?? null,
+    };
+    const cadastro = [
+      clientIds.has(rule.clientExternalId) ? null : 'cliente sem empresa no portal',
+      deskIds.has(rule.deskExternalId) ? null : 'catálogo sem especialidade no portal',
+    ]
+      .filter(Boolean)
+      .join('; ');
+
+    if (rule.periodicity === TicketAutoOpenPeriodicity.ONCE) {
+      const due = parseRuleDueAt(rule);
+      if (rule.lastRunAt) {
+        rows.push({ ...base, acao: 'IGNORADA: uso único que já rodou (religar abriria de novo)', cadastro });
+        continue;
+      }
+      if (due.getTime() <= now.getTime()) {
+        rows.push({ ...base, acao: 'DECIDIR: uso único que nunca rodou e a data já passou', cadastro });
+        continue;
+      }
+      toActivate.push({ id: rule.id, next: rule.nextScheduledDate, resetFailures: rule.consecutiveFailures > 0 });
+      rows.push({ ...base, acao: 'ATIVAR', nova_proxima: base.proxima_hoje_no_banco, cadastro });
+      continue;
+    }
+
+    let next = rule.nextScheduledDate;
+    let skipped = 0;
+    while (parseRuleDueAt({ nextScheduledDate: next, scheduleTime: rule.scheduleTime }).getTime() <= now.getTime()) {
+      next = advanceScheduledDate(next, rule.periodicity);
+      skipped++;
+      if (skipped > 5000) throw new Error(`Rotina "${rule.name}": não achei data futura.`);
+    }
+    toActivate.push({ id: rule.id, next, resetFailures: rule.consecutiveFailures > 0 });
+    rows.push({
+      ...base,
+      acao: 'ATIVAR',
+      nova_proxima: `${formatYmdUtc(next)} ${rule.scheduleTime}`,
+      ocorrencias_puladas: skipped,
+      cadastro,
+    });
+  }
+
+  console.log(`\n== Rotinas de abertura automática desligadas: ${rules.length} ==`);
+  console.table(rows);
+  const semCadastro = rows.filter((r) => r.acao === 'ATIVAR' && r.cadastro).length;
+  log(
+    `Rotinas: ${toActivate.length} a ativar (${semCadastro} com cadastro faltando — vão falhar até corrigir), ` +
+      `${rows.length - toActivate.length} fora (ver coluna acao).`,
+  );
+  writeFileSync(
+    join(logDir, `rotinas-${apply ? 'ativadas' : 'simulacao'}-${now.toISOString().replace(/[:.]/g, '-')}.json`),
+    JSON.stringify(rows, null, 2),
+  );
+
+  if (!apply) {
+    log('Simulação: nada gravado. Rode com --apply para ativar.');
+    return;
+  }
+  await prisma.$transaction(
+    toActivate.map((r) =>
+      prisma.ticketAutoOpenRule.update({
+        where: { id: r.id },
+        data: {
+          active: true,
+          nextScheduledDate: r.next,
+          ...(r.resetFailures ? { consecutiveFailures: 0 } : {}),
+        },
+      }),
+    ),
+  );
+  log(`Ativadas ${toActivate.length} rotinas.`);
+}
+
 // ---------------------------------------------------------------- main
 
 const api = loadApiConfig();
@@ -563,8 +684,9 @@ async function main() {
   else if (cmd === 'refresh-users') await refreshUsers();
   else if (cmd === 'refresh-tickets') await refreshTickets();
   else if (cmd === 'refresh-appointments') await refreshAppointments();
+  else if (cmd === 'activate-auto-open-rules') await activateAutoOpenRules();
   else {
-    console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N]');
+    console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N] | activate-auto-open-rules [--apply]');
     process.exitCode = 1;
   }
 }
