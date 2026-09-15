@@ -430,7 +430,7 @@ export class PreTicketsService {
     const writeTiflux = isTicketsTifluxWriteEnabled();
     const syncToTiflux = writeTiflux && !isPreTicket;
 
-    let ticketNumber: number;
+    let ticketNumber = 0;
     if (syncToTiflux) {
       if (!company?.tifluxClientId) {
         throw new BadRequestException(
@@ -460,12 +460,9 @@ export class PreTicketsService {
           'Não foi possível obter o número do ticket criado.',
         );
       }
-    } else {
-      ticketNumber = await this.portalStore.allocatePortalTicketNumber();
     }
 
-    await this.portalStore.upsertByTicketNumber({
-      ticketNumber,
+    const ticketInput = {
       title,
       clientName: company?.tifluxClientName || company?.name || null,
       clientExternalId: company?.tifluxClientId ?? null,
@@ -493,7 +490,17 @@ export class PreTicketsService {
       createdAtSource: row.receivedAt,
       updatedAtSource: new Date(),
       createdBy: actor.userId,
-    });
+    };
+
+    if (syncToTiflux) {
+      await this.portalStore.upsertByTicketNumber({
+        ...ticketInput,
+        ticketNumber,
+      });
+    } else {
+      ticketNumber =
+        await this.portalStore.createWithNewTicketNumber(ticketInput);
+    }
 
     await this.prisma.portalTicketDescription.upsert({
       where: { ticketNumber },

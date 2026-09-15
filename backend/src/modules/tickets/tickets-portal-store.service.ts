@@ -77,9 +77,13 @@ export class TicketsPortalStoreService {
           next = fromSeq;
           break;
         }
-        // Sequence desalinhada: realinha e tenta de novo.
+        // Sequence desalinhada: realinha e tenta de novo. GREATEST impede
+        // voltar atrás de um número que um pedido concorrente acabou de pegar.
         await this.prisma.$executeRaw`
-          SELECT setval('portal_ticket_number_seq', ${floor - 1}::bigint)
+          SELECT setval(
+            'portal_ticket_number_seq',
+            GREATEST(${floor - 1}::bigint, (SELECT last_value FROM portal_ticket_number_seq))
+          )
         `;
       }
     } catch {
@@ -104,9 +108,15 @@ export class TicketsPortalStoreService {
 
     // Não usa MAX(ticket_number) da tabela inteira: números de cutover (≥ 1e9)
     // ou lixo fora de INT4 derrubavam o setval e a abertura do chamado.
+    // Só avança: com pedidos simultâneos terminando fora de ordem, um setval
+    // simples para `next` rebobinava a sequence e o próximo nextval devolvia um
+    // número já entregue a outro usuário.
     try {
       await this.prisma.$executeRaw`
-        SELECT setval('portal_ticket_number_seq', ${next}::bigint)
+        SELECT setval(
+          'portal_ticket_number_seq',
+          GREATEST(${next}::bigint, (SELECT last_value FROM portal_ticket_number_seq))
+        )
       `;
     } catch {
       // Sequence ausente ou incompatível — o número já foi escolhido acima.
@@ -115,54 +125,38 @@ export class TicketsPortalStoreService {
     return next;
   }
 
-  async upsertByTicketNumber(input: UpsertPortalTicketInput) {
-    if (!fitsPrismaInt4(input.ticketNumber)) {
-      throw new Error(
-        `Número de chamado ${input.ticketNumber} não cabe no cadastro. Tente novamente.`,
-      );
+  /**
+   * Abre um chamado novo: aloca o número e INSERE (nunca atualiza). Se outro
+   * pedido simultâneo já gravou esse número, pega o próximo em vez de
+   * sobrescrever o chamado alheio, como o upsert fazia.
+   */
+  async createWithNewTicketNumber(
+    input: Omit<UpsertPortalTicketInput, 'ticketNumber'>,
+  ): Promise<number> {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const ticketNumber = await this.allocatePortalTicketNumber();
+      try {
+        await this.prisma.portalTicket.create({
+          data: this.buildTicketData({ ...input, ticketNumber }),
+        });
+        return ticketNumber;
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          continue;
+        }
+        throw error;
+      }
     }
-    const responsibleExternalId =
-      input.responsibleExternalId != null &&
-      fitsPrismaInt4(input.responsibleExternalId)
-        ? input.responsibleExternalId
-        : null;
-    const clientExternalId =
-      input.clientExternalId != null && fitsPrismaInt4(input.clientExternalId)
-        ? input.clientExternalId
-        : null;
-    const deskExternalId =
-      input.deskExternalId != null && fitsPrismaInt4(input.deskExternalId)
-        ? input.deskExternalId
-        : null;
+    throw new Error(
+      'Não foi possível gerar um número de chamado livre. Tente novamente.',
+    );
+  }
 
-    const data: Prisma.PortalTicketUncheckedCreateInput = {
-      ticketNumber: input.ticketNumber,
-      title: input.title ?? null,
-      clientName: input.clientName ?? null,
-      clientExternalId,
-      createdByWayOf: input.createdByWayOf ?? null,
-      priorityName: input.priorityName ?? null,
-      statusName: input.statusName ?? null,
-      stageName: input.stageName ?? null,
-      responsibleExternalId,
-      responsibleName: input.responsibleName ?? null,
-      deskName: input.deskName ?? null,
-      deskExternalId,
-      requestorName: input.requestorName ?? null,
-      requestorEmail: input.requestorEmail ?? null,
-      requestorTelephone: input.requestorTelephone ?? null,
-      isClosed: input.isClosed ?? false,
-      origin: input.origin ?? PortalTicketOrigin.TIFLUX,
-      isPreTicket: input.isPreTicket ?? false,
-      becamePreTicketAt: input.becamePreTicketAt ?? null,
-      specialtyId: input.specialtyId ?? null,
-      classificationId: input.classificationId ?? null,
-      emailConversationId: input.emailConversationId ?? null,
-      createdAtSource: input.createdAtSource ?? null,
-      updatedAtSource: input.updatedAtSource ?? new Date(),
-      createdBy: input.createdBy ?? null,
-    };
-
+  async upsertByTicketNumber(input: UpsertPortalTicketInput) {
+    const data = this.buildTicketData(input);
     return this.prisma.portalTicket.upsert({
       where: { ticketNumber: input.ticketNumber },
       create: data,
@@ -203,6 +197,57 @@ export class TicketsPortalStoreService {
         updatedAtSource: data.updatedAtSource,
       },
     });
+  }
+
+  private buildTicketData(
+    input: UpsertPortalTicketInput,
+  ): Prisma.PortalTicketUncheckedCreateInput {
+    if (!fitsPrismaInt4(input.ticketNumber)) {
+      throw new Error(
+        `Número de chamado ${input.ticketNumber} não cabe no cadastro. Tente novamente.`,
+      );
+    }
+    const responsibleExternalId =
+      input.responsibleExternalId != null &&
+      fitsPrismaInt4(input.responsibleExternalId)
+        ? input.responsibleExternalId
+        : null;
+    const clientExternalId =
+      input.clientExternalId != null && fitsPrismaInt4(input.clientExternalId)
+        ? input.clientExternalId
+        : null;
+    const deskExternalId =
+      input.deskExternalId != null && fitsPrismaInt4(input.deskExternalId)
+        ? input.deskExternalId
+        : null;
+
+    return {
+      ticketNumber: input.ticketNumber,
+      title: input.title ?? null,
+      clientName: input.clientName ?? null,
+      clientExternalId,
+      createdByWayOf: input.createdByWayOf ?? null,
+      priorityName: input.priorityName ?? null,
+      statusName: input.statusName ?? null,
+      stageName: input.stageName ?? null,
+      responsibleExternalId,
+      responsibleName: input.responsibleName ?? null,
+      deskName: input.deskName ?? null,
+      deskExternalId,
+      requestorName: input.requestorName ?? null,
+      requestorEmail: input.requestorEmail ?? null,
+      requestorTelephone: input.requestorTelephone ?? null,
+      isClosed: input.isClosed ?? false,
+      origin: input.origin ?? PortalTicketOrigin.TIFLUX,
+      isPreTicket: input.isPreTicket ?? false,
+      becamePreTicketAt: input.becamePreTicketAt ?? null,
+      specialtyId: input.specialtyId ?? null,
+      classificationId: input.classificationId ?? null,
+      emailConversationId: input.emailConversationId ?? null,
+      createdAtSource: input.createdAtSource ?? null,
+      updatedAtSource: input.updatedAtSource ?? new Date(),
+      createdBy: input.createdBy ?? null,
+    };
   }
 
   async patchStage(

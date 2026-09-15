@@ -482,7 +482,7 @@ export class TicketsService {
         : null);
 
     try {
-      let ticketNumber: number;
+      let ticketNumber = 0;
       let tifluxRaw: unknown = null;
 
       if (syncToTiflux) {
@@ -506,12 +506,9 @@ export class TicketsService {
           errorMessage: null,
           createdBy: actor.userId,
         });
-      } else {
-        ticketNumber = await this.portalStore.allocatePortalTicketNumber();
       }
 
-      await this.portalStore.upsertByTicketNumber({
-        ticketNumber,
+      const ticketInput = {
         title: dto.title.trim(),
         clientName,
         clientExternalId: dto.clientId,
@@ -536,7 +533,17 @@ export class TicketsService {
         createdAtSource: new Date(),
         updatedAtSource: new Date(),
         createdBy: ticketCreatedBy,
-      });
+      };
+
+      if (syncToTiflux) {
+        await this.portalStore.upsertByTicketNumber({
+          ...ticketInput,
+          ticketNumber,
+        });
+      } else {
+        ticketNumber =
+          await this.portalStore.createWithNewTicketNumber(ticketInput);
+      }
 
       const externalGmudRef = this.normalizeExternalGmudRef(
         dto.externalGmudRef,
