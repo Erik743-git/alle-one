@@ -1033,12 +1033,26 @@ async function activateAutoOpenRules() {
     ).map((s) => Number(s.externalId)),
   );
 
+  const companyByClient = new Map(
+    (
+      await prisma.company.findMany({
+        where: { deletedAt: null, tifluxClientId: { not: null } },
+        select: { tifluxClientId: true, name: true },
+      })
+    ).map((c) => [Number(c.tifluxClientId), c.name]),
+  );
+  const excludeRaw = (arg('exclude') ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const excludeIds = new Set(excludeRaw.map((s) => s.toLowerCase()));
+  const excludes = excludeRaw.map((s) => normCompany(s)).filter(Boolean);
+
   const toActivate: Array<{ id: string; next: Date; resetFailures: boolean }> = [];
   const rows: Array<Record<string, unknown>> = [];
 
   for (const rule of rules) {
     const base = {
       rotina: rule.name,
+      cliente: companyByClient.get(rule.clientExternalId) ?? `TiFlux ${rule.clientExternalId}`,
+      id: rule.id,
       periodicidade: rule.periodicity,
       proxima_hoje_no_banco: `${formatYmdUtc(rule.nextScheduledDate)} ${rule.scheduleTime}`,
       ultima_execucao: rule.lastRunAt?.toISOString().slice(0, 16) ?? null,
@@ -1050,6 +1064,12 @@ async function activateAutoOpenRules() {
     ]
       .filter(Boolean)
       .join('; ');
+
+    const ruleName = normCompany(rule.name);
+    if (excludeIds.has(rule.id.toLowerCase()) || excludes.some((e) => ruleName.includes(e))) {
+      rows.push({ ...base, acao: 'EXCLUÍDA por --exclude', cadastro });
+      continue;
+    }
 
     if (rule.periodicity === TicketAutoOpenPeriodicity.ONCE) {
       const due = parseRuleDueAt(rule);
@@ -1129,6 +1149,7 @@ async function main() {
   else if (cmd === 'apply-appointments') await applyAppointments();
   else if (cmd === 'normalize-responsible-names') await normalizeResponsibleNames();
   else if (cmd === 'link-companies') await linkCompanies();
+  // activate-auto-open-rules [--apply] [--exclude=<id ou trecho do nome>,...]
   else {
     console.log('Comandos: check | refresh-users | refresh-tickets | refresh-appointments --since=AAAA-MM-DD [--dry-run] [--skip-synced-after=ISO] [--limit=N] | apply-appointments [--apply] [--protect-emails=a,b] | activate-auto-open-rules [--apply]');
     process.exitCode = 1;
