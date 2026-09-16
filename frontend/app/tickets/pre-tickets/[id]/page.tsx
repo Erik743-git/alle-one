@@ -13,11 +13,13 @@ import {
 } from "@/lib/services/email-inbound.service";
 import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
 import { Download, Trash2 } from "lucide-react";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 export default function PreTicketDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [item, setItem] = useState<PreTicketDetail | null>(null);
+  usePortalTabTitle(item ? `Pré-ticket · ${item.title}` : null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);

@@ -1,6 +1,7 @@
 import { buildAuthApiUrl } from "@/lib/auth-api-url";
 import type { ModulePermission } from "./permission-modules";
 import { purgeInvalidPersistedCompanyIds } from "./selected-company";
+import { PORTAL_TABS_STORAGE_PREFIX } from "./portal-tabs/tab-model";
 
 export type AuthCompanyMembership = {
   id: string;
@@ -113,6 +114,17 @@ export function clearSessionSync() {
     /* ignore */
   }
   purgeInvalidPersistedCompanyIds();
+  // Guias do portal duram o tempo do login.
+  try {
+    for (let i = window.localStorage.length - 1; i >= 0; i--) {
+      const key = window.localStorage.key(i);
+      if (key?.startsWith(PORTAL_TABS_STORAGE_PREFIX)) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 export type SessionEndReason = "expired" | "idle";

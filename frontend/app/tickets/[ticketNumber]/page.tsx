@@ -98,6 +98,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -398,6 +399,11 @@ export default function TicketDetailPage() {
   }, [data?.externalGmudRef]);
 
   const ticket = data?.ticket;
+  usePortalTabTitle(
+    ticket
+      ? `#${ticketNumber}${ticket.title ? ` - ${ticket.title}` : ""}`
+      : null,
+  );
   const externalGmudRef = data?.externalGmudRef;
   const canAddAppointment =
     Boolean(ticket) &&

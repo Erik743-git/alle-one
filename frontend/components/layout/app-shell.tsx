@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import Sidebar from "./sidebar";
 import { SidebarProvider, useSidebar } from "./sidebar-context";
 import { GlobalSearch } from "./global-search";
+import { PortalTabsBar } from "./portal-tabs-bar";
 
 function AppShellMain({ children }: { children: React.ReactNode }) {
   const { setMobileOpen } = useSidebar();
@@ -37,6 +38,7 @@ function AppShellMain({ children }: { children: React.ReactNode }) {
           "motion-reduce:md:transition-none",
         ].join(" ")}
       >
+        <PortalTabsBar />
         <div className="w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-9 xl:px-10 2xl:px-12">
           <div className="mx-auto w-full max-w-[1800px]">{children}</div>
         </div>

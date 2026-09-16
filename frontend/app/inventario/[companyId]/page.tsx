@@ -41,6 +41,7 @@ import {
   type InventoryAssetFile,
   type InventoryImportResult,
 } from "@/lib/services/inventario.service";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 function formatDueDate(value: string | null) {
   if (!value) return "Sem vencimento";
@@ -71,6 +72,7 @@ export default function InventarioEmpresaPage() {
 
   const [loading, setLoading] = useState(true);
   const [companyName, setCompanyName] = useState("");
+  usePortalTabTitle(companyName ? `Inventário · ${companyName}` : null);
   const [assets, setAssets] = useState<InventoryAsset[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");

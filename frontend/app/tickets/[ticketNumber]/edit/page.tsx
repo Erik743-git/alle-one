@@ -30,6 +30,7 @@ import {
   type TicketDetailResponse,
   type TicketStagesResponse,
 } from "@/lib/services/tickets.service";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 function FormSkeleton() {
   return (
@@ -57,6 +58,11 @@ export default function EditTicketPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState<TicketDetailResponse | null>(null);
+  usePortalTabTitle(
+    detail?.ticket
+      ? `Editar #${ticketNumber}${detail.ticket.title ? ` - ${detail.ticket.title}` : ""}`
+      : null,
+  );
   const [stages, setStages] = useState<TicketStagesResponse | null>(null);
   const [catalogs, setCatalogs] = useState<TicketCreateCatalogs | null>(null);
   const [title, setTitle] = useState("");

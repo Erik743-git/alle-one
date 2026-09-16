@@ -32,6 +32,7 @@ import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { triggerBrowserDownload } from "@/lib/download-blob";
 import { FileDown } from "lucide-react";
 import { parseGmudDecisionNote } from "../_components/gmud-decision-note";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 function ApproverDecisionDetails({
   gmudId,
@@ -141,6 +142,7 @@ export default function GmudDetailPage() {
 
   const user = getStoredUser();
   const [gmud, setGmud] = useState<Gmud | null>(null);
+  usePortalTabTitle(gmud ? `GMUD #${gmud.code} - ${gmud.title}` : null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");

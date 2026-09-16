@@ -54,6 +54,7 @@ import {
   type ProjectDetail,
   type ProjectStatus,
 } from "@/lib/services/projetos.service";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 const PROJECT_STATUS_STYLES: Record<ProjectStatus, string> = {
   PLANNING: "bg-sky-500/15 text-sky-400",
@@ -85,6 +86,9 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [project, setProject] = useState<ProjectDetail | null>(null);
+  usePortalTabTitle(
+    project ? `${project.name} · ${project.company.name}` : null,
+  );
   const [modalOpen, setModalOpen] = useState(false);
   const [phaseModalOpen, setPhaseModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ActivityFormMode | null>(null);

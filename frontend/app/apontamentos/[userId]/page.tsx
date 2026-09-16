@@ -58,6 +58,7 @@ import {
   type RendimentoCalendarView,
   type RendimentoTimesheet,
 } from "@/lib/services/rendimento.service";
+import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
 function parseTimeToMinutes(value: string): number | null {
   if (!value?.trim()) return null;
@@ -91,6 +92,9 @@ export default function RendimentoAgendaPage() {
   const [view, setView] = useState<RendimentoCalendarView>("month");
   const [referenceDate, setReferenceDate] = useState(() => new Date());
   const [timesheet, setTimesheet] = useState<RendimentoTimesheet | null>(null);
+  usePortalTabTitle(
+    timesheet?.userName ? `Apontamentos · ${timesheet.userName}` : null,
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const loadSeqRef = useRef(0);
