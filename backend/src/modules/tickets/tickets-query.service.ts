@@ -189,7 +189,6 @@ export class TicketsQueryService {
       select: { id: true, name: true },
     });
 
-
     try {
       const rows =
         (await this.prisma.$queryRaw<
@@ -393,30 +392,13 @@ export class TicketsQueryService {
 
     const andParts: Prisma.PortalTicketWhereInput[] = [];
     if (withoutResponsible) {
-      const preTicketsWithAppointments = await this.prisma.$queryRaw<
-        { ticket_number: number }[]
-      >`
-        SELECT DISTINCT a.ticket_number
-        FROM portal_ticket_appointments a
-        JOIN portal_tickets t ON t.ticket_number = a.ticket_number
-        WHERE t.is_pre_ticket = true
-          AND t.responsible_external_id IS NULL
-      `;
+      // O filtro é um recorte do que a lista já mostra: todo chamado sem
+      // responsável aparece aqui, inclusive pré-ticket. Exigir apontamento no
+      // pré-ticket escondia os chamados de rotina, que nascem sem responsável
+      // e são justamente os que alguém precisa assumir.
       andParts.push(
         { responsibleExternalId: null },
         { OR: [{ responsibleName: null }, { responsibleName: '' }] },
-        {
-          OR: [
-            { isPreTicket: false },
-            {
-              ticketNumber: {
-                in: preTicketsWithAppointments.map((r) =>
-                  Number(r.ticket_number),
-                ),
-              },
-            },
-          ],
-        },
       );
     }
     if (mineOnly) {
