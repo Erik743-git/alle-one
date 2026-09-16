@@ -130,14 +130,6 @@ export class TicketsService {
       select: { id: true, name: true },
     });
 
-    if (isTifluxDisconnected()) {
-      const name = user?.name?.trim();
-      if (!user || !name) return null;
-      return {
-        externalId: portalResponsibleSyntheticId(user.id),
-        name,
-      };
-    }
 
     try {
       const rows =

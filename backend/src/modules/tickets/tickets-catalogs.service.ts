@@ -9,7 +9,6 @@ import { resolveClientListFilter } from './tickets-client-scope';
 import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
-  isTifluxDisconnected,
 } from './tickets-portal.config';
 import {
   portalResponsibleSyntheticId,
@@ -279,9 +278,6 @@ export class TicketsCatalogsService {
     userId: string,
     tifluxId: number | undefined,
   ): number {
-    if (isTifluxDisconnected()) {
-      return portalResponsibleSyntheticId(userId);
-    }
     return resolveResponsibleExternalId(userId, tifluxId ?? null);
   }
 
@@ -289,7 +285,7 @@ export class TicketsCatalogsService {
     emails: string[],
   ): Promise<Map<string, number>> {
     const map = new Map<string, number>();
-    if (isTifluxDisconnected() || emails.length === 0) return map;
+    if (emails.length === 0) return map;
     try {
       const normalized = emails
         .map((e) => e.trim().toLowerCase())

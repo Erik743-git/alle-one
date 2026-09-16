@@ -19,6 +19,7 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { isTicketsTifluxWriteEnabled } from '../tickets/tickets-portal.config';
 import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
+import { portalResponsibleSyntheticId } from '../tickets/portal-responsible.helper';
 
 export class OpenPreTicketDto {
   @IsOptional()
@@ -425,8 +426,46 @@ export class PreTicketsService {
       : null;
     const responsibleName = dto.responsibleName?.trim() || opener?.name || null;
 
-    const isPreTicket =
-      responsibleExternalId == null || !Number.isFinite(responsibleExternalId);
+    const isPreTicket = !responsibleName;
+
+    let resolvedResponsibleExternalId = Number.isFinite(
+      responsibleExternalId as number,
+    )
+      ? (responsibleExternalId as number)
+      : null;
+    if (resolvedResponsibleExternalId == null && responsibleName) {
+      const respUser = await this.prisma.user.findFirst({
+        where: {
+          name: { equals: responsibleName, mode: 'insensitive' },
+          deletedAt: null,
+        },
+        select: { id: true, email: true },
+      });
+      if (respUser?.email) {
+        const respEmail = respUser.email.trim().toLowerCase();
+        try {
+          const respRows =
+            (await this.prisma.$queryRaw<Array<{ external_id: number }>>`
+              SELECT tu.external_id
+              FROM tiflux.users tu
+              WHERE lower(trim(tu.email)) = ${respEmail}
+                AND COALESCE(tu.active, true) = true
+              ORDER BY tu.external_id ASC
+              LIMIT 1
+            `) ?? [];
+          if (respRows[0]) {
+            resolvedResponsibleExternalId = Number(respRows[0].external_id);
+          }
+        } catch {
+          /* schema tiflux.* ausente */
+        }
+      }
+      if (resolvedResponsibleExternalId == null && respUser) {
+        resolvedResponsibleExternalId = portalResponsibleSyntheticId(
+          respUser.id,
+        );
+      }
+    }
     const writeTiflux = isTicketsTifluxWriteEnabled();
     const syncToTiflux = writeTiflux && !isPreTicket;
 
@@ -468,9 +507,7 @@ export class PreTicketsService {
       clientExternalId: company?.tifluxClientId ?? null,
       deskExternalId: desk?.externalId ?? null,
       deskName: desk?.name ?? null,
-      responsibleExternalId: Number.isFinite(responsibleExternalId)
-        ? responsibleExternalId
-        : null,
+      responsibleExternalId: resolvedResponsibleExternalId,
       responsibleName,
       requestorName: row.fromName,
       requestorEmail: row.fromEmail,
