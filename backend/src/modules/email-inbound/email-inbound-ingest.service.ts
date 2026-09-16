@@ -207,8 +207,38 @@ export class EmailInboundIngestService {
         ? bodyContent
         : (params.message.bodyPreview ?? stripHtml(bodyContent));
 
-    const conversationId = params.message.conversationId?.trim() || null;
     const headers = params.message.internetMessageHeaders ?? [];
+
+    // Aviso de "não entregue" e resposta de ausência chegam aqui porque o
+    // portal envia pela mesma caixa que lê. Com o chamado aberto, eles eram
+    // colados na descrição como se fossem resposta do cliente.
+    const automated = detectAutomatedMessage({
+      fromEmail,
+      subject: title,
+      headers,
+    });
+    if (automated) {
+      await this.recordIgnoredMessage({
+        messageId: params.messageId,
+        graphMessageId: params.message.id,
+        fromEmail,
+        fromName,
+        toEmails,
+        mailbox,
+        title,
+        receivedAt: params.message.receivedDateTime
+          ? new Date(params.message.receivedDateTime)
+          : new Date(),
+        reason: AUTOMATED_MESSAGE_REASON[automated],
+        detailText: descriptionText,
+      });
+      this.logger.log(
+        `E-mail automático ignorado (${automated}): ${fromEmail} — ${title.slice(0, 120)}`,
+      );
+      return false;
+    }
+
+    const conversationId = params.message.conversationId?.trim() || null;
     const headerValue = (name: string) =>
       headers
         .find((h) => h.name?.toLowerCase() === name.toLowerCase())
@@ -726,15 +756,22 @@ export class EmailInboundIngestService {
     mailbox: string;
     title: string;
     receivedAt: Date;
+    reason?: string;
+    /** Guardado junto: o aviso de não entrega diz qual endereço falhou. */
+    detailText?: string | null;
   }) {
+    const reason =
+      params.reason ??
+      'Remetente bloqueado nas configurações de e-mail — não vira pré-ticket.';
     try {
       await this.prisma.preTicket.create({
         data: {
           id: randomUUID(),
           status: PreTicketStatus.IGNORED,
           title: `[ignorado] ${params.title}`.slice(0, 500),
-          descriptionText:
-            'Remetente bloqueado nas configurações de e-mail — não vira pré-ticket.',
+          descriptionText: params.detailText?.trim()
+            ? `${reason}\n\n${params.detailText.trim()}`.slice(0, 20_000)
+            : reason,
           fromName: params.fromName,
           fromEmail: params.fromEmail,
           toEmails: params.toEmails.length ? params.toEmails : [params.mailbox],
@@ -831,6 +868,63 @@ export function isSenderBlocked(
     if (domain && domain === pattern) return true;
   }
   return false;
+}
+
+export type AutomatedMessageKind = 'NAO_ENTREGUE' | 'RESPOSTA_AUTOMATICA';
+
+const AUTOMATED_MESSAGE_REASON: Record<AutomatedMessageKind, string> = {
+  NAO_ENTREGUE:
+    'Aviso de não entrega do servidor de e-mail — não vira pré-ticket nem entra em chamado.',
+  RESPOSTA_AUTOMATICA:
+    'Resposta automática (ausência) — não vira pré-ticket nem entra em chamado.',
+};
+
+/** Remetentes que só mandam aviso de entrega (o do Exchange tem um hash fixo por tenant). */
+const BOUNCE_SENDER_LOCAL =
+  /^(mailer-daemon|postmaster|microsoftexchange[0-9a-f]{32})$/i;
+/** Com dois-pontos: é o prefixo que o servidor coloca, não um assunto escrito por gente. */
+const BOUNCE_SUBJECT =
+  /^(não é possível entregar|nao e possivel entregar|não entregue|undeliverable|undelivered mail returned to sender)\s*:|^delivery status notification\b/i;
+const AUTO_REPLY_SUBJECT =
+  /^(resposta automática|resposta automatica|automatic reply|auto-reply|autoreply|out of office|fora do escritório|ausência temporária)\s*:/i;
+
+/**
+ * Reconhece aviso de "não entregue" e resposta automática de ausência.
+ * Alertas de monitoramento também são automáticos, mas são chamados de
+ * verdade — por isso `Auto-Submitted: auto-generated` não conta, só
+ * `auto-replied`.
+ */
+export function detectAutomatedMessage(params: {
+  fromEmail: string;
+  subject: string;
+  headers: Array<{ name?: string; value?: string }>;
+}): AutomatedMessageKind | null {
+  const header = (name: string) =>
+    params.headers
+      .find((h) => h.name?.toLowerCase() === name)
+      ?.value?.trim()
+      .toLowerCase() ?? null;
+  const local = params.fromEmail.trim().split('@')[0] ?? '';
+  const subject = params.subject.trim();
+
+  if (
+    BOUNCE_SENDER_LOCAL.test(local) ||
+    header('x-ms-exchange-message-is-ndr') !== null ||
+    header('content-type')?.includes('report-type=delivery-status') ||
+    BOUNCE_SUBJECT.test(subject)
+  ) {
+    return 'NAO_ENTREGUE';
+  }
+
+  if (
+    header('auto-submitted')?.startsWith('auto-replied') ||
+    header('x-autoreply') !== null ||
+    header('x-autorespond') !== null ||
+    AUTO_REPLY_SUBJECT.test(subject)
+  ) {
+    return 'RESPOSTA_AUTOMATICA';
+  }
+  return null;
 }
 
 function escapeRegExp(value: string): string {
