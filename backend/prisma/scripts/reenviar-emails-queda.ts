@@ -80,6 +80,8 @@ type TipoFalha =
   | 'REDEFINICAO'
   | 'SUPORTE';
 type FalhaLog = { tipo: TipoFalha; ref: string; em: Date };
+/** Linhas de falha cuja data não foi reconhecida — não pode passar calado. */
+let linhasSemData = 0;
 
 type ItemReenvio = {
   chave: string;
@@ -90,7 +92,7 @@ type ItemReenvio = {
 };
 
 const NEST_TS =
-  /\[Nest\]\s+\d+\s+-\s+(\d{2})\/(\d{2})\/(\d{4}),\s+(\d{1,2}):(\d{2}):(\d{2})\s+(AM|PM)/;
+  /\[Nest\]\s+\d+\s+-\s*(\d{2})\/(\d{2})\/(\d{4}),\s*(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)/;
 
 /** O processo roda em UTC na VM, e o Nest escreve no formato en-US. */
 function parseNestTimestamp(line: string): Date | null {
@@ -120,10 +122,17 @@ async function lerFalhasDoLog(): Promise<FalhaLog[]> {
       input: createReadStream(join(logsDir, arquivo)),
       crlfDelay: Infinity,
     });
-    for await (const line of rl) {
-      if (!line.includes('Falha ao enviar')) continue;
+    for await (const raw of rl) {
+      if (!raw.includes('Falha ao enviar')) continue;
+      // O Nest grava as cores do terminal no arquivo do PM2.
+      // eslint-disable-next-line no-control-regex
+      const line = raw.replace(/\x1b\[[0-9;]*m/g, '');
       const em = parseNestTimestamp(line);
-      if (!em || em < desde || em > ate) continue;
+      if (!em) {
+        linhasSemData += 1;
+        continue;
+      }
+      if (em < desde || em > ate) continue;
 
       const template =
         /Falha ao enviar (TICKET_REGISTERED|APPOINTMENT_CLIENT_NOTIFY|GMUD_NOTIFY) #(\S+?):/.exec(
@@ -464,6 +473,11 @@ async function main() {
     console.log(`Redefinição de senha:      ${contar('REDEFINICAO')} falha(s)`);
     console.log(`"Fale com o suporte":      ${contar('SUPORTE')} falha(s) — quem enviou viu erro na tela na hora`);
     console.log(`GMUD:                      ${contar('GMUD_NOTIFY')} falha(s) — não reenviado por este script`);
+    if (linhasSemData > 0) {
+      console.log(
+        `\nATENÇÃO: ${linhasSemData} linha(s) de falha com data ilegível foram ignoradas — o formato do log mudou; não envie antes de corrigir.`,
+      );
+    }
 
     const porTipo = (tipo: ItemReenvio['tipo']) =>
       fila.filter((i) => i.tipo === tipo);
@@ -511,6 +525,11 @@ async function main() {
     );
     console.log(`\nRelatório: ${relatorio}`);
 
+    if (ENVIAR && linhasSemData > 0) {
+      console.error('Envio cancelado: há falhas no log que não foram lidas.');
+      process.exitCode = 1;
+      return;
+    }
     if (!ENVIAR) {
       console.log('\nSimulação: nada foi enviado. Rode de novo com --enviar.');
       return;
