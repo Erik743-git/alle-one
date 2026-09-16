@@ -143,6 +143,13 @@ export const emailInboundService = {
   deletePreTicket(id: string) {
     return apiRequest(`/pre-tickets/${id}`, { method: "DELETE" });
   },
+
+  deletePreTickets(ids: string[]) {
+    return apiRequest<{ excluidos: number; ignorados: number }>(
+      "/pre-tickets/bulk-delete",
+      { method: "POST", body: { ids } },
+    );
+  },
   /** Reserva o pré-ticket para você (evita dois atendendo o mesmo e-mail). */
   claimPreTicket(id: string) {
     return apiRequest<{ ok: boolean; claimedUntilMinutes: number }>(

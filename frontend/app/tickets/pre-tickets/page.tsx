@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ProtectedPage from "@/components/auth/protected-page";
 import AppShell from "@/components/layout/app-shell";
@@ -11,11 +11,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { useConfirm } from "@/components/providers/confirm-provider";
+import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   emailInboundService,
   type PreTicketListItem,
 } from "@/lib/services/email-inbound.service";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Lock, Trash2 } from "lucide-react";
 import { getStoredUser } from "@/lib/session";
 import { useRouter } from "next/navigation";
 
@@ -38,12 +41,32 @@ export default function PreTicketsPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const currentUserId = getStoredUser()?.id ?? null;
+  const confirm = useConfirm();
+
+  // Chamado do portal entra na fila só por estar sem responsável: ele já é
+  // um ticket de verdade e não pode ser excluído daqui.
+  const excluiveis = useMemo(
+    () => items.filter((row) => !row.portalPreTicket),
+    [items],
+  );
+  const selecionados = useMemo(
+    () => excluiveis.filter((row) => selected.has(row.id)),
+    [excluiveis, selected],
+  );
+  const todosMarcados =
+    excluiveis.length > 0 && selecionados.length === excluiveis.length;
 
   const load = useCallback(async () => {
     try {
       const rows = await emailInboundService.listPreTickets(q);
       setItems(rows);
+      setSelected((atual) => {
+        const vivos = new Set(rows.map((row) => row.id));
+        const mantidos = [...atual].filter((id) => vivos.has(id));
+        return mantidos.length === atual.size ? atual : new Set(mantidos);
+      });
       setError(null);
       refreshPreTicketsBadge();
     } catch (e) {
@@ -69,6 +92,54 @@ export default function PreTicketsPage() {
     }
   }
 
+  function alternar(id: string) {
+    setSelected((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
+
+  function alternarTodos() {
+    setSelected((atual) =>
+      atual.size >= excluiveis.length
+        ? new Set()
+        : new Set(excluiveis.map((row) => row.id)),
+    );
+  }
+
+  async function removerEmLote(alvos: PreTicketListItem[], tudo: boolean) {
+    if (alvos.length === 0) return;
+    const ok = await confirm({
+      title: tudo ? "Excluir todos os pré-tickets" : "Excluir selecionados",
+      description:
+        alvos.length === 1
+          ? `Excluir o pré-ticket "${alvos[0].title}"? Ele sai da fila de e-mail.`
+          : `Excluir ${alvos.length} pré-tickets? Eles saem da fila de e-mail.`,
+      confirmText: "Excluir",
+      variant: "error",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await emailInboundService.deletePreTickets(
+        alvos.map((row) => row.id),
+      );
+      setSelected(new Set());
+      setError(null);
+      notifySuccess(
+        r.excluidos === 1
+          ? "1 pré-ticket excluído."
+          : `${r.excluidos} pré-tickets excluídos.`,
+      );
+      await load();
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Falha ao excluir");
+    } finally {
+      setBusy(false);
+    }
+  }
   async function claim(id: string) {
     setBusy(true);
     try {
@@ -137,12 +208,54 @@ export default function PreTicketsPage() {
           {error ? (
             <p className="text-sm text-amber-600 dark:text-amber-400">{error}</p>
           ) : null}
+          {excluiveis.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <span className="text-sm text-muted-foreground">
+                {selecionados.length > 0
+                  ? `${selecionados.length} de ${excluiveis.length} selecionado${selecionados.length > 1 ? "s" : ""}`
+                  : `${excluiveis.length} pré-ticket${excluiveis.length > 1 ? "s" : ""} de e-mail na fila`}
+              </span>
+              <div className="ml-auto flex flex-nowrap items-center gap-2">
+                {selecionados.length > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 shrink-0 whitespace-nowrap"
+                    disabled={busy}
+                    onClick={() => setSelected(new Set())}
+                  >
+                    Limpar seleção
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 shrink-0 whitespace-nowrap"
+                  disabled={busy || selecionados.length === 0}
+                  onClick={() => void removerEmLote(selecionados, false)}
+                >
+                  <Trash2 className="mr-1.5 size-4" />
+                  Excluir selecionados
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 whitespace-nowrap border-destructive/50 text-destructive hover:bg-destructive/10"
+                  disabled={busy}
+                  onClick={() => void removerEmLote(excluiveis, true)}
+                >
+                  Excluir todos
+                </Button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="overflow-x-auto rounded-md border">
             <table className="w-full table-fixed text-sm">
               <colgroup>
-                <col className="w-[32%]" />
-                <col className="w-[26%]" />
+                <col className="w-10" />
+                <col className="w-[30%]" />
+                <col className="w-[24%]" />
                 <col className="w-[16%]" />
                 <col className="w-[14%]" />
                 <col className="w-12" />
@@ -150,6 +263,16 @@ export default function PreTicketsPage() {
               </colgroup>
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                  <th className="px-2 py-2">
+                    <FlipCheckbox
+                      className="h-4 w-4"
+                      checked={todosMarcados}
+                      disabled={busy || excluiveis.length === 0}
+                      onChange={alternarTodos}
+                      aria-label="Selecionar todos os pré-tickets de e-mail"
+                      title="Selecionar todos os pré-tickets de e-mail"
+                    />
+                  </th>
                   <th className="px-3 py-2 font-medium">Título</th>
                   <th className="px-3 py-2 font-medium">Solicitante</th>
                   <th className="px-3 py-2 font-medium">Cliente</th>
@@ -162,6 +285,9 @@ export default function PreTicketsPage() {
                 {loading ? (
                   Array.from({ length: 6 }).map((_, i) => (
                     <tr key={`sk-${i}`} className="border-b">
+                      <td className="px-2 py-3">
+                        <Skeleton className="h-4 w-4" />
+                      </td>
                       <td className="px-3 py-3">
                         <Skeleton className="h-4 w-4/5" />
                         <Skeleton className="mt-2 h-3 w-1/2" />
@@ -196,6 +322,27 @@ export default function PreTicketsPage() {
                         : router.push(`/tickets/pre-tickets/${row.id}`)
                     }
                   >
+                    <td
+                      className="px-2 py-2.5 align-top"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {row.portalPreTicket ? (
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground/60"
+                          title="Chamado sem responsável: atribua um responsável em vez de excluir"
+                        >
+                          <Lock className="size-3.5" />
+                        </span>
+                      ) : (
+                        <FlipCheckbox
+                          className="h-4 w-4"
+                          checked={selected.has(row.id)}
+                          disabled={busy}
+                          onChange={() => alternar(row.id)}
+                          aria-label={`Selecionar pré-ticket: ${row.title}`}
+                        />
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       <span
                         className="line-clamp-2 font-medium text-teal-600 dark:text-teal-400"
@@ -340,7 +487,7 @@ export default function PreTicketsPage() {
                   : null}
                 {!loading && items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-muted-foreground">
+                    <td colSpan={7} className="p-8 text-muted-foreground">
                       Nenhum pré-ticket pendente.
                     </td>
                   </tr>

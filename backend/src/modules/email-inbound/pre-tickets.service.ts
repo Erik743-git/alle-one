@@ -15,12 +15,25 @@ import { TicketsPortalStoreService } from '../tickets/tickets-portal-store.servi
 import { PORTAL_STAGE } from '../tickets/portal-ticket-stages';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { isTicketsTifluxWriteEnabled } from '../tickets/tickets-portal.config';
 import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
 import { portalResponsibleSyntheticId } from '../tickets/portal-responsible.helper';
 
+/** Exclusao em lote da fila de pre-tickets. */
+export class BulkDeletePreTicketsDto {
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  ids!: string[];
+}
 export class OpenPreTicketDto {
   @IsOptional()
   @IsString()
@@ -309,8 +322,22 @@ export class PreTicketsService {
     };
   }
 
+  /**
+   * Chamado do portal que caiu na fila só por estar sem responsável. Ele já é
+   * um ticket de verdade: sai daqui quando alguém assume, e excluir seria
+   * apagar atendimento real.
+   */
+  private assertNaoEhTicketDoPortal(id: string) {
+    if (id.startsWith('portal:')) {
+      throw new BadRequestException(
+        'Este é um chamado sem responsável, não um pré-ticket de e-mail. Atribua um responsável em vez de excluir.',
+      );
+    }
+  }
+
   async softDelete(actor: AuthenticatedRequestUser, id: string) {
     this.assertOperator(actor);
+    this.assertNaoEhTicketDoPortal(id);
     const row = await this.getOne(actor, id);
     if (row.status !== PreTicketStatus.PENDING) {
       throw new BadRequestException('Pré-ticket já processado.');
@@ -324,6 +351,39 @@ export class PreTicketsService {
     });
   }
 
+  /**
+   * Exclusão em lote da fila de e-mail. Vale a mesma regra do botão de uma
+   * linha só: chamado do portal não é excluível, e pré-ticket já processado
+   * por outra pessoa é ignorado em silêncio em vez de derrubar o lote todo.
+   */
+  async softDeleteMany(actor: AuthenticatedRequestUser, ids: string[]) {
+    this.assertOperator(actor);
+    const unicos = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+    const doPortal = unicos.filter((id) => id.startsWith('portal:'));
+    if (doPortal.length > 0) {
+      throw new BadRequestException(
+        'A seleção inclui chamados sem responsável, que não podem ser excluídos. Desmarque-os e tente de novo.',
+      );
+    }
+    if (unicos.length === 0) {
+      return { excluidos: 0, ignorados: 0 };
+    }
+    const result = await this.prisma.preTicket.updateMany({
+      where: {
+        id: { in: unicos },
+        status: PreTicketStatus.PENDING,
+        deletedAt: null,
+      },
+      data: {
+        status: PreTicketStatus.DELETED,
+        deletedAt: new Date(),
+      },
+    });
+    return {
+      excluidos: result.count,
+      ignorados: unicos.length - result.count,
+    };
+  }
   async openAsTicket(
     actor: AuthenticatedRequestUser,
     id: string,

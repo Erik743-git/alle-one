@@ -24,7 +24,11 @@ import {
   UpdateEmailInboundRouteDto,
   UpsertEmailInboundSettingsDto,
 } from './email-inbound-admin.service';
-import { OpenPreTicketDto, PreTicketsService } from './pre-tickets.service';
+import {
+  BulkDeletePreTicketsDto,
+  OpenPreTicketDto,
+  PreTicketsService,
+} from './pre-tickets.service';
 
 class UpdateEmailTemplateDto {
   @IsOptional()
@@ -163,6 +167,15 @@ export class EmailInboundController {
       `${meta.inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(meta.originalName)}"`,
     );
     return stream;
+  }
+
+  @Post('pre-tickets/bulk-delete')
+  @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
+  removeMany(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body() dto: BulkDeletePreTicketsDto,
+  ) {
+    return this.preTickets.softDeleteMany(actor, dto.ids);
   }
 
   @Delete('pre-tickets/:id')
