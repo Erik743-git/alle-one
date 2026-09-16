@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { MailAddress } from '../mail/mail-address.util';
 
 type TokenCache = { accessToken: string; expiresAt: number };
 
@@ -16,6 +17,33 @@ export type GraphMailMessage = {
   hasAttachments?: boolean;
   internetMessageHeaders?: Array<{ name?: string; value?: string }>;
 };
+
+export type GraphOutgoingAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType?: string;
+  cid?: string;
+};
+
+export type GraphOutgoingMail = {
+  mailbox: string;
+  fromName?: string | null;
+  to: MailAddress[];
+  cc?: MailAddress[];
+  replyTo?: MailAddress[];
+  subject: string;
+  text: string;
+  html?: string;
+  attachments?: GraphOutgoingAttachment[];
+};
+
+/** Folga para o limite de 4 MB do corpo JSON, já que o base64 cresce ~33%. */
+const GRAPH_INLINE_ATTACHMENTS_MAX_BYTES = 2_500_000;
+/** A partir daqui o Graph só aceita o anexo por sessão de upload. */
+const GRAPH_UPLOAD_SESSION_MIN_BYTES = 3_000_000;
+/** Fatias da sessão de upload precisam ser múltiplas de 320 KiB. */
+const GRAPH_UPLOAD_CHUNK_BYTES = 320 * 1024 * 10;
+const GRAPH_SEND_MAX_ATTEMPTS = 3;
 
 @Injectable()
 export class MicrosoftGraphMailClient {
@@ -234,4 +262,206 @@ export class MicrosoftGraphMailClient {
       isInline: json.isInline,
     };
   }
+
+  /**
+   * Envia pela própria caixa (`/users/{mailbox}`), com credencial de
+   * aplicativo — não depende de senha nem de MFA da conta.
+   *
+   * O corpo JSON do Graph aceita no máximo 4 MB já com o base64 dos anexos.
+   * Acima disso a mensagem vira rascunho, os anexos sobem um a um (os grandes
+   * por sessão de upload) e só então o rascunho é enviado.
+   */
+  async sendMail(
+    mail: GraphOutgoingMail,
+    auth?: { tenantId?: string | null; clientId?: string | null },
+  ): Promise<void> {
+    const attachments = mail.attachments ?? [];
+    const total = attachments.reduce((sum, a) => sum + a.content.length, 0);
+    const mailbox = encodeURIComponent(mail.mailbox);
+    const message = this.buildOutgoingMessage(mail);
+
+    if (total <= GRAPH_INLINE_ATTACHMENTS_MAX_BYTES) {
+      const res = await this.graphSend(
+        `/users/${mailbox}/sendMail`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: {
+              ...message,
+              attachments: attachments.map(toGraphFileAttachment),
+            },
+            saveToSentItems: true,
+          }),
+        },
+        auth,
+      );
+      await assertGraphOk(res, 'envio');
+      return;
+    }
+
+    const draftRes = await this.graphSend(
+      `/users/${mailbox}/messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message),
+      },
+      auth,
+    );
+    await assertGraphOk(draftRes, 'rascunho');
+    const draft = (await draftRes.json()) as { id: string };
+    const messagePath = `/users/${mailbox}/messages/${encodeURIComponent(draft.id)}`;
+
+    try {
+      for (const attachment of attachments) {
+        if (attachment.content.length < GRAPH_UPLOAD_SESSION_MIN_BYTES) {
+          const res = await this.graphSend(
+            `${messagePath}/attachments`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(toGraphFileAttachment(attachment)),
+            },
+            auth,
+          );
+          await assertGraphOk(res, `anexo ${attachment.filename}`);
+        } else {
+          await this.uploadLargeAttachment(messagePath, attachment, auth);
+        }
+      }
+      const sent = await this.graphSend(
+        `${messagePath}/send`,
+        { method: 'POST' },
+        auth,
+      );
+      await assertGraphOk(sent, 'envio do rascunho');
+    } catch (err) {
+      // Sem isso o rascunho fica esquecido na pasta Rascunhos da caixa.
+      await this.graphSend(messagePath, { method: 'DELETE' }, auth).catch(
+        () => undefined,
+      );
+      throw err;
+    }
+  }
+
+  private buildOutgoingMessage(mail: GraphOutgoingMail) {
+    const recipient = (r: MailAddress) => ({
+      emailAddress: r.name
+        ? { name: r.name, address: r.address }
+        : { address: r.address },
+    });
+    return {
+      subject: mail.subject,
+      body: mail.html
+        ? { contentType: 'HTML', content: mail.html }
+        : { contentType: 'Text', content: mail.text },
+      toRecipients: mail.to.map(recipient),
+      ccRecipients: (mail.cc ?? []).map(recipient),
+      replyTo: (mail.replyTo ?? []).map(recipient),
+      ...(mail.fromName
+        ? {
+            from: {
+              emailAddress: { name: mail.fromName, address: mail.mailbox },
+            },
+          }
+        : {}),
+    };
+  }
+
+  private async uploadLargeAttachment(
+    messagePath: string,
+    attachment: GraphOutgoingAttachment,
+    auth?: { tenantId?: string | null; clientId?: string | null },
+  ) {
+    const size = attachment.content.length;
+    const res = await this.graphSend(
+      `${messagePath}/attachments/createUploadSession`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          AttachmentItem: {
+            attachmentType: 'file',
+            name: attachment.filename,
+            size,
+            contentType: attachment.contentType ?? 'application/octet-stream',
+            ...(attachment.cid
+              ? { isInline: true, contentId: attachment.cid }
+              : {}),
+          },
+        }),
+      },
+      auth,
+    );
+    await assertGraphOk(res, `sessão de upload de ${attachment.filename}`);
+    const { uploadUrl } = (await res.json()) as { uploadUrl: string };
+
+    for (let start = 0; start < size; start += GRAPH_UPLOAD_CHUNK_BYTES) {
+      const end = Math.min(start + GRAPH_UPLOAD_CHUNK_BYTES, size);
+      // A URL da sessão já vem autenticada: mandar Authorization aqui dá 401.
+      const put = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Range': `bytes ${start}-${end - 1}/${size}`,
+        },
+        body: new Uint8Array(attachment.content.subarray(start, end)),
+      });
+      await assertGraphOk(put, `upload de ${attachment.filename}`);
+    }
+  }
+
+  /** graphFetch com nova tentativa quando o Graph pede para esperar. */
+  private async graphSend(
+    path: string,
+    init: RequestInit,
+    auth?: { tenantId?: string | null; clientId?: string | null },
+  ): Promise<Response> {
+    for (let attempt = 1; ; attempt++) {
+      const res = await this.graphFetch(path, init, auth);
+      const retryable =
+        res.status === 429 || res.status === 503 || res.status === 504;
+      if (!retryable || attempt >= GRAPH_SEND_MAX_ATTEMPTS) return res;
+      const retryAfter = Number(res.headers.get('retry-after'));
+      const waitMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter, 30) * 1000
+          : 2000 * attempt;
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+}
+
+async function assertGraphOk(res: Response, etapa: string) {
+  if (res.ok) return;
+  const text = await res.text().catch(() => '');
+  let detail = text.slice(0, 300);
+  try {
+    const parsed = JSON.parse(text) as {
+      error?: { code?: string; message?: string };
+    };
+    if (parsed.error?.message) {
+      detail = `${parsed.error.code ?? ''} ${parsed.error.message}`.trim();
+    }
+  } catch {
+    // resposta não-JSON: fica o texto cru
+  }
+  const dica =
+    res.status === 403
+      ? ' (o aplicativo tem a permissão Mail.Send com consentimento de administrador?)'
+      : '';
+  throw new Error(
+    `Microsoft Graph ${res.status} no ${etapa}: ${detail}${dica}`,
+  );
+}
+
+function toGraphFileAttachment(attachment: GraphOutgoingAttachment) {
+  return {
+    '@odata.type': '#microsoft.graph.fileAttachment',
+    name: attachment.filename,
+    contentType: attachment.contentType ?? 'application/octet-stream',
+    contentBytes: attachment.content.toString('base64'),
+    ...(attachment.cid ? { isInline: true, contentId: attachment.cid } : {}),
+  };
 }

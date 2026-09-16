@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import nodemailer from 'nodemailer';
+import { PrismaService } from '../../prisma/prisma.service';
+import { MicrosoftGraphMailClient } from '../email-inbound/microsoft-graph-mail.client';
+import { parseMailAddress, parseMailAddressList } from './mail-address.util';
 
 export type SendMailAttachment = {
   filename: string;
@@ -35,6 +38,11 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
   private transport: nodemailer.Transporter | null = null;
   private transportState: 'unknown' | 'disabled' | 'ready' = 'unknown';
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly graph: MicrosoftGraphMailClient,
+  ) {}
 
   private buildTransport() {
     const host = envTrim(process.env.SMTP_HOST);
@@ -102,7 +110,20 @@ export class MailService {
     return this.transport;
   }
 
+  /**
+   * `MAIL_TRANSPORT=graph` envia pelo Microsoft Graph com a credencial de
+   * aplicativo da caixa de entrada — não depende de senha nem de MFA da
+   * conta, que foi o que derrubou o SMTP. Sem a variável, segue SMTP.
+   */
+  private usingGraph(): boolean {
+    return envTrim(process.env.MAIL_TRANSPORT)?.toLowerCase() === 'graph';
+  }
+
   async sendMail(payload: SendMailPayload): Promise<boolean> {
+    if (this.usingGraph()) {
+      return this.sendViaGraph(payload);
+    }
+
     const from =
       envTrim(process.env.MAIL_FROM) ??
       envTrim(process.env.SMTP_USER) ??
@@ -136,6 +157,63 @@ export class MailService {
 
     this.logger.log(
       `E-mail enviado (messageId: ${String((info as any)?.messageId ?? 'n/d')})`,
+    );
+    return true;
+  }
+
+  private async sendViaGraph(payload: SendMailPayload): Promise<boolean> {
+    const from = parseMailAddress(envTrim(process.env.MAIL_FROM) ?? '');
+    const mailbox =
+      envTrim(process.env.MAIL_GRAPH_SENDER) ??
+      from?.address ??
+      envTrim(process.env.SMTP_USER);
+    const to = parseMailAddressList(payload.to);
+    if (!mailbox) {
+      this.logger.warn(
+        'Graph sem caixa remetente: defina MAIL_GRAPH_SENDER ou MAIL_FROM. E-mail não enviado.',
+      );
+      return false;
+    }
+    if (to.length === 0) {
+      this.logger.warn(
+        `E-mail sem destinatário válido não enviado (assunto=${payload.subject}).`,
+      );
+      return false;
+    }
+
+    // Tenant e aplicativo são os mesmos da leitura da caixa de entrada.
+    const settings = await this.prisma.emailInboundSettings.findUnique({
+      where: { id: 'default' },
+      select: { graphTenantId: true, graphClientId: true },
+    });
+    const auth = {
+      tenantId: settings?.graphTenantId,
+      clientId: settings?.graphClientId,
+    };
+    if (!this.graph.isConfigured(auth)) {
+      this.logger.warn(
+        `Microsoft Graph não configurado: e-mail não enviado (assunto=${payload.subject}).`,
+      );
+      return false;
+    }
+
+    await this.graph.sendMail(
+      {
+        mailbox,
+        fromName: from?.name ?? null,
+        to,
+        cc: parseMailAddressList(payload.cc),
+        replyTo: parseMailAddressList(payload.replyTo),
+        subject: payload.subject,
+        text: payload.text,
+        html: payload.html,
+        attachments: payload.attachments,
+      },
+      auth,
+    );
+
+    this.logger.log(
+      `E-mail enviado via Microsoft Graph (${to.length} destinatário(s))`,
     );
     return true;
   }
