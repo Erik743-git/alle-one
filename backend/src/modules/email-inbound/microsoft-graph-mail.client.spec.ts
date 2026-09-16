@@ -220,6 +220,58 @@ describe('MicrosoftGraphMailClient.sendMail', () => {
     );
   });
 
+  it('sem permissão de rascunho, envia direto sem os anexos que não cabem e avisa no corpo', async () => {
+    responder = (call) => {
+      if (call.url.endsWith('/messages')) {
+        return json(403, {
+          error: { code: 'ErrorAccessDenied', message: 'Access is denied.' },
+        });
+      }
+      if (call.url.endsWith('/sendMail')) return json(202, undefined);
+      throw new Error(`chamada inesperada ${call.url}`);
+    };
+
+    await new MicrosoftGraphMailClient().sendMail(
+      {
+        mailbox: 'suporte@alle.com',
+        to: [{ address: 'cli@x.com' }],
+        subject: 'Apontamento',
+        text: 'corpo',
+        html: '<p>corpo</p><img src="cid:img1">',
+        attachments: [
+          { filename: 'grande.pdf', content: Buffer.alloc(3_500_000) },
+          { filename: 'medio.xlsx', content: Buffer.alloc(1_000_000) },
+          {
+            filename: 'img1.png',
+            content: Buffer.alloc(10),
+            contentType: 'image/png',
+            cid: 'img1',
+          },
+        ],
+      },
+      auth,
+    );
+
+    const base = 'https://graph.microsoft.com/v1.0/users/suporte%40alle.com';
+    expect(graphCalls().map((c) => c.url)).toEqual([
+      `${base}/messages`,
+      `${base}/sendMail`,
+    ]);
+    const body = JSON.parse(graphCalls()[1].init.body as string) as {
+      message: {
+        body: { content: string };
+        attachments: Array<{ name: string }>;
+      };
+    };
+    expect(body.message.attachments.map((a) => a.name)).toEqual([
+      'img1.png',
+      'medio.xlsx',
+    ]);
+    expect(body.message.body.content).toContain(
+      'Alguns anexos não couberam neste e-mail e estão disponíveis no chamado, no portal: grande.pdf.',
+    );
+    expect(body.message.body.content.startsWith('<p>corpo</p>')).toBe(true);
+  });
   it('respeita Retry-After em 429 e tenta de novo', async () => {
     jest.useFakeTimers();
     let tentativas = 0;

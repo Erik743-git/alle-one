@@ -270,6 +270,11 @@ export class MicrosoftGraphMailClient {
    * O corpo JSON do Graph aceita no máximo 4 MB já com o base64 dos anexos.
    * Acima disso a mensagem vira rascunho, os anexos sobem um a um (os grandes
    * por sessão de upload) e só então o rascunho é enviado.
+   *
+   * Rascunho exige Mail.ReadWrite; só com Mail.Send o Graph responde 403.
+   * Nesse caso o e-mail sai mesmo assim, sem os anexos que não cabem no
+   * envio direto e com um aviso no corpo — aviso sem anexo é melhor que
+   * aviso nenhum.
    */
   async sendMail(
     mail: GraphOutgoingMail,
@@ -281,22 +286,7 @@ export class MicrosoftGraphMailClient {
     const message = this.buildOutgoingMessage(mail);
 
     if (total <= GRAPH_INLINE_ATTACHMENTS_MAX_BYTES) {
-      const res = await this.graphSend(
-        `/users/${mailbox}/sendMail`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: {
-              ...message,
-              attachments: attachments.map(toGraphFileAttachment),
-            },
-            saveToSentItems: true,
-          }),
-        },
-        auth,
-      );
-      await assertGraphOk(res, 'envio');
+      await this.sendDirect(mailbox, message, attachments, auth);
       return;
     }
 
@@ -309,6 +299,11 @@ export class MicrosoftGraphMailClient {
       },
       auth,
     );
+    if (draftRes.status === 403) {
+      await draftRes.text().catch(() => undefined);
+      await this.sendWithoutOversizedAttachments(mail, auth);
+      return;
+    }
     await assertGraphOk(draftRes, 'rascunho');
     const draft = (await draftRes.json()) as { id: string };
     const messagePath = `/users/${mailbox}/messages/${encodeURIComponent(draft.id)}`;
@@ -343,6 +338,76 @@ export class MicrosoftGraphMailClient {
       );
       throw err;
     }
+  }
+
+  private async sendDirect(
+    mailbox: string,
+    message: ReturnType<MicrosoftGraphMailClient['buildOutgoingMessage']>,
+    attachments: GraphOutgoingAttachment[],
+    auth?: { tenantId?: string | null; clientId?: string | null },
+  ) {
+    const res = await this.graphSend(
+      `/users/${mailbox}/sendMail`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: {
+            ...message,
+            attachments: attachments.map(toGraphFileAttachment),
+          },
+          saveToSentItems: true,
+        }),
+      },
+      auth,
+    );
+    await assertGraphOk(res, 'envio');
+  }
+
+  /**
+   * Plano B quando não dá para criar rascunho: imagens do corpo (cid) vêm
+   * primeiro, porque sem elas o texto fica quebrado; depois os anexos, na
+   * ordem, enquanto couberem no envio direto.
+   */
+  private async sendWithoutOversizedAttachments(
+    mail: GraphOutgoingMail,
+    auth?: { tenantId?: string | null; clientId?: string | null },
+  ) {
+    const all = mail.attachments ?? [];
+    const ordered = [...all.filter((a) => a.cid), ...all.filter((a) => !a.cid)];
+    const kept: GraphOutgoingAttachment[] = [];
+    const dropped: GraphOutgoingAttachment[] = [];
+    let size = 0;
+    for (const attachment of ordered) {
+      if (
+        size + attachment.content.length <=
+        GRAPH_INLINE_ATTACHMENTS_MAX_BYTES
+      ) {
+        kept.push(attachment);
+        size += attachment.content.length;
+      } else {
+        dropped.push(attachment);
+      }
+    }
+
+    const names = dropped.map((a) => a.filename).join(', ');
+    const note = `Alguns anexos não couberam neste e-mail e estão disponíveis no chamado, no portal: ${names}.`;
+    const withNote: GraphOutgoingMail = {
+      ...mail,
+      text: `${mail.text}\n\n${note}`,
+      html: mail.html
+        ? `${mail.html}<p><em>${escapeHtml(note)}</em></p>`
+        : undefined,
+    };
+    this.logger.warn(
+      `Graph sem permissão de rascunho (Mail.ReadWrite): "${mail.subject}" enviado sem ${dropped.length} anexo(s): ${names}`,
+    );
+    await this.sendDirect(
+      encodeURIComponent(mail.mailbox),
+      this.buildOutgoingMessage(withNote),
+      kept,
+      auth,
+    );
   }
 
   private buildOutgoingMessage(mail: GraphOutgoingMail) {
@@ -464,4 +529,12 @@ function toGraphFileAttachment(attachment: GraphOutgoingAttachment) {
     contentBytes: attachment.content.toString('base64'),
     ...(attachment.cid ? { isInline: true, contentId: attachment.cid } : {}),
   };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
