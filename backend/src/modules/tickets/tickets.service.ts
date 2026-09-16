@@ -100,22 +100,13 @@ export class TicketsService {
     return email.trim().toLowerCase();
   }
 
-  /** ADMIN ou técnico responsável (mesmo external_id TiFlux / e-mail casado). */
-  async actorCanChangeTicketClient(
-    actor: AuthenticatedRequestUser,
-    responsibleExternalId: number | null | undefined,
-  ): Promise<boolean> {
-    if (actor.role === 'ADMIN') return true;
-    if (
-      responsibleExternalId == null ||
-      !Number.isFinite(Number(responsibleExternalId))
-    ) {
-      return false;
-    }
-    const mine = await this.resolveTifluxExternalIdForUser(actor.email);
-    return (
-      mine != null && Number(mine.externalId) === Number(responsibleExternalId)
-    );
+  /**
+   * Qualquer pessoa da equipe troca o cliente, não só quem está no chamado —
+   * a troca fica no histórico (CLIENT_CHANGED). Usuário de cliente não troca:
+   * isso moveria o chamado para outra empresa.
+   */
+  actorCanChangeTicketClient(actor: AuthenticatedRequestUser): boolean {
+    return !isClientPortalRole(actor.role);
   }
 
   private async resolveTifluxExternalIdForUser(
@@ -129,7 +120,6 @@ export class TicketsService {
       },
       select: { id: true, name: true },
     });
-
 
     try {
       const rows =
@@ -719,31 +709,11 @@ export class TicketsService {
     const isClientChanging =
       dto.clientId != null &&
       dto.clientId !== (portal?.clientExternalId ?? null);
+    let previousGmudRef: string | null = null;
     if (dto.clientId != null) {
-      let responsibleExternalId = portal?.responsibleExternalId ?? null;
-      if (responsibleExternalId == null) {
-        try {
-          const rows =
-            (await this.prisma.$queryRaw<
-              Array<{ responsible_external_id: number | null }>
-            >`
-              SELECT t.responsible_external_id
-              FROM tiflux.tickets t
-              WHERE t.ticket_number = ${ticketNumber}
-              LIMIT 1
-            `) ?? [];
-          responsibleExternalId = rows[0]?.responsible_external_id ?? null;
-        } catch {
-          responsibleExternalId = null;
-        }
-      }
-      const canChangeClient = await this.actorCanChangeTicketClient(
-        actor,
-        responsibleExternalId,
-      );
-      if (!canChangeClient) {
+      if (!this.actorCanChangeTicketClient(actor)) {
         throw new ForbiddenException(
-          'Somente o administrador ou o responsável do chamado podem alterar o cliente.',
+          'Somente a equipe da Alle pode alterar o cliente do chamado.',
         );
       }
       if (isClientChanging) {
@@ -778,6 +748,7 @@ export class TicketsService {
           select: { externalGmudRef: true },
         });
         const previousGmud = existingGmud?.externalGmudRef?.trim() ?? '';
+        previousGmudRef = previousGmud || null;
         if (previousGmud) {
           const nextGmud = this.normalizeExternalGmudRef(dto.externalGmudRef);
           if (!nextGmud) {
@@ -1156,6 +1127,61 @@ export class TicketsService {
     }
 
     const actorName = await actorDisplayName(this.prisma, actor);
+
+    if (isClientChanging) {
+      const nextGmudRef =
+        dto.externalGmudRef !== undefined
+          ? this.normalizeExternalGmudRef(dto.externalGmudRef)
+          : null;
+      const requestorLabel = (name: string | null, email: string | null) => {
+        const n = name?.trim() ?? '';
+        const e = email?.trim() ?? '';
+        return [n, e ? `<${e}>` : ''].filter(Boolean).join(' ') || '—';
+      };
+      const fromRequestor = requestorLabel(
+        portal?.requestorName ?? null,
+        portal?.requestorEmail ?? null,
+      );
+      const toRequestor = requestorLabel(nextRequestorName, nextRequestorEmail);
+      const detalhes = [
+        `Cliente alterado de "${portal?.clientName ?? '—'}" para "${nextClientName ?? '—'}"`,
+        fromRequestor !== toRequestor
+          ? `solicitante ${fromRequestor} → ${toRequestor}`
+          : null,
+        previousGmudRef || nextGmudRef
+          ? `GMUD ${previousGmudRef ?? '—'} → ${nextGmudRef ?? '—'}`
+          : null,
+      ].filter(Boolean);
+      try {
+        await this.prisma.ticketHistory.create({
+          data: {
+            ticketNumber,
+            eventType: 'CLIENT_CHANGED',
+            summary: detalhes.join(' · ').slice(0, 2000),
+            actorName,
+            source: 'PORTAL',
+            externalKey: `client_changed:${ticketNumber}:${Date.now()}`,
+            payload: {
+              actorUserId: actor.userId,
+              fromClientId: portal?.clientExternalId ?? null,
+              fromClientName: portal?.clientName ?? null,
+              toClientId: nextClientExternalId,
+              toClientName: nextClientName,
+              fromRequestorName: portal?.requestorName ?? null,
+              fromRequestorEmail: portal?.requestorEmail ?? null,
+              toRequestorName: nextRequestorName,
+              toRequestorEmail: nextRequestorEmail,
+              fromGmudRef: previousGmudRef,
+              toGmudRef: nextGmudRef,
+            },
+            occurredAt: new Date(),
+          },
+        });
+      } catch {
+        // Histórico não deve bloquear a atualização do ticket.
+      }
+    }
+
     const previousDescription = descriptionRaw
       ? await this.prisma.portalTicketDescription.findUnique({
           where: { ticketNumber },

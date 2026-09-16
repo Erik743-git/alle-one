@@ -43,6 +43,7 @@ const EVENT_LABELS: Record<string, string> = {
   STAGE_CHANGED: "Estágio alterado",
   RESPONSIBLE_CHANGED: "Responsável alterado",
   DESK_CHANGED: "Ticket transferido",
+  CLIENT_CHANGED: "Cliente alterado",
   TICKET_GROUPED: "Ticket agrupado",
   COMMUNICATION_UPDATED: "Comunicação alterada",
   COMMUNICATION_REMOVED: "Comunicação removida",
@@ -67,6 +68,7 @@ export function ticketHistoryFilterCategory(
     eventType === "STAGE_CHANGED" ||
     eventType === "RESPONSIBLE_CHANGED" ||
     eventType === "DESK_CHANGED" ||
+    eventType === "CLIENT_CHANGED" ||
     eventType === "TICKET_GROUPED" ||
     eventType === "TIFLUX_EVENT" ||
     eventType === "TICKET_UPDATED" ||
@@ -128,7 +130,8 @@ export function ticketHistoryTone(eventType: string): TicketHistoryTone {
     eventType === "TICKET_CLOSED" ||
     eventType === "TICKET_CANCELLED" ||
     eventType === "TICKET_GROUPED" ||
-    eventType === "DESK_CHANGED"
+    eventType === "DESK_CHANGED" ||
+    eventType === "CLIENT_CHANGED"
   ) {
     return "stage";
   }

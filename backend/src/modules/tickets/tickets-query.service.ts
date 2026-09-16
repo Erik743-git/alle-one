@@ -160,21 +160,9 @@ export class TicketsQueryService {
     return email.trim().toLowerCase();
   }
 
-  private async actorCanChangeTicketClient(
-    actor: AuthenticatedRequestUser,
-    responsibleExternalId: number | null | undefined,
-  ): Promise<boolean> {
-    if (actor.role === 'ADMIN') return true;
-    if (
-      responsibleExternalId == null ||
-      !Number.isFinite(Number(responsibleExternalId))
-    ) {
-      return false;
-    }
-    const mine = await this.resolveTifluxExternalIdForUser(actor.email);
-    return (
-      mine != null && Number(mine.externalId) === Number(responsibleExternalId)
-    );
+  /** Mesma regra de TicketsService.actorCanChangeTicketClient. */
+  private actorCanChangeTicketClient(actor: AuthenticatedRequestUser): boolean {
+    return !isClientPortalRole(actor.role);
   }
 
   private async resolveTifluxExternalIdForUser(
@@ -686,10 +674,7 @@ export class TicketsQueryService {
       portalDescription,
       syncPending: true,
       grouping,
-      canChangeClient: await this.actorCanChangeTicketClient(
-        actor,
-        apiTicket.responsible?.id ?? null,
-      ),
+      canChangeClient: this.actorCanChangeTicketClient(actor),
     };
   }
 
@@ -1194,10 +1179,7 @@ export class TicketsQueryService {
         portalDescription,
         source: 'portal_tickets',
         grouping,
-        canChangeClient: await this.actorCanChangeTicketClient(
-          actor,
-          row.responsible_external_id,
-        ),
+        canChangeClient: this.actorCanChangeTicketClient(actor),
         classificationId: portal.classificationId ?? null,
         watchers: watchers.map((w) => ({ email: w.email })),
       };
@@ -1269,10 +1251,7 @@ export class TicketsQueryService {
       externalGmudRef,
       portalDescription,
       grouping,
-      canChangeClient: await this.actorCanChangeTicketClient(
-        actor,
-        row.responsible_external_id,
-      ),
+      canChangeClient: this.actorCanChangeTicketClient(actor),
     };
   }
 
@@ -1381,6 +1360,7 @@ export class TicketsQueryService {
       'STAGE_CHANGED',
       'RESPONSIBLE_CHANGED',
       'DESK_CHANGED',
+      'CLIENT_CHANGED',
       'TICKET_GROUPED',
       'COMMUNICATION_UPDATED',
       'COMMUNICATION_REMOVED',
