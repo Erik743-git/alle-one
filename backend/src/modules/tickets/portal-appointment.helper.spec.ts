@@ -1,5 +1,6 @@
 import {
   appointmentDurationMinutes,
+  excludeActorEmail,
   hhmmDurationMinutes,
   hhmmIntervalsOverlap,
   overtimeKindFromServiceName,
@@ -79,5 +80,26 @@ describe('portal-appointment.helper', () => {
     const b = portalAppointmentNumericId(undefined, 'uuid-aaaa');
     expect(a).toBe(b);
     expect(a).toBeGreaterThan(0);
+  });
+});
+
+describe('excludeActorEmail', () => {
+  it('quem apontou não recebe o próprio aviso, mesmo sendo responsável ou solicitante', () => {
+    expect(
+      excludeActorEmail(
+        ['Tecnico@Alle.com', 'cliente@x.com', null, ' tecnico@alle.com '],
+        'tecnico@alle.com',
+      ),
+    ).toEqual(['cliente@x.com']);
+  });
+
+  it('remove vazios e repetidos e mantém a lista quando não há ator', () => {
+    expect(
+      excludeActorEmail(['a@x.com', 'A@x.com', '', undefined], null),
+    ).toEqual(['a@x.com']);
+  });
+
+  it('só o ator na lista vira lista vazia', () => {
+    expect(excludeActorEmail(['eu@alle.com'], 'EU@alle.com')).toEqual([]);
   });
 });

@@ -166,3 +166,24 @@ export function portalAppointmentNumericId(
   // Evita 0; mantém positivo
   return Math.abs(hash) || 1;
 }
+
+/**
+ * Tira da lista o e-mail de quem fez o apontamento (sem diferenciar
+ * maiúsculas), além de vazios e repetidos.
+ */
+export function excludeActorEmail(
+  emails: Array<string | null | undefined>,
+  actorEmail: string | null | undefined,
+): string[] {
+  const actor = actorEmail?.trim().toLowerCase() ?? '';
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of emails) {
+    const email = raw?.trim() ?? '';
+    const key = email.toLowerCase();
+    if (!email || key === actor || seen.has(key)) continue;
+    seen.add(key);
+    out.push(email);
+  }
+  return out;
+}
