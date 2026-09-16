@@ -50,6 +50,7 @@ import {
   addDaysYmd,
   appointmentDurationMinutes,
   daysBetweenYmd,
+  excludeActorEmail,
   hhmmDurationMinutes,
   isOvernightAppointment,
   parseHhMmToMinutes,
@@ -1707,8 +1708,11 @@ export class TicketsAppointmentsService {
 
     try {
       const sent = await this.sendClientCommunicationEmail(params);
+      if (sent === 'SEM_DESTINATARIO') {
+        return ' Nenhum e-mail enviado: você é o único destinatário desta comunicação.';
+      }
       return sent
-        ? ' E-mail enviado ao responsável e aos seguidores.'
+        ? ' E-mail de comunicação enviado.'
         : ' Apontamento salvo, mas o e-mail de comunicação não foi enviado.';
     } catch (err) {
       this.logger.warn(
@@ -1730,7 +1734,7 @@ export class TicketsAppointmentsService {
     endTime: string;
     endDate?: string;
     description: string;
-  }): Promise<boolean> {
+  }): Promise<boolean | 'SEM_DESTINATARIO'> {
     const ticket = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber: params.ticketNumber },
     });
@@ -1757,11 +1761,17 @@ export class TicketsAppointmentsService {
         ),
       ]);
 
-    const requestorEmail = ticket.requestorEmail?.trim() || null;
-    const to: string[] = [];
-    if (responsibleEmail) to.push(responsibleEmail);
-    if (requestorEmail) to.push(requestorEmail);
-    const cc = watchers.map((row) => row.email);
+    // Quem apontou já sabe o que escreveu: não recebe o próprio aviso, mesmo
+    // sendo responsável, solicitante ou seguidor do chamado.
+    const to = excludeActorEmail(
+      [responsibleEmail, ticket.requestorEmail],
+      params.actor.email,
+    );
+    const cc = excludeActorEmail(
+      watchers.map((row) => row.email),
+      params.actor.email,
+    );
+    if (to.length === 0 && cc.length === 0) return 'SEM_DESTINATARIO';
 
     const ticketDescRaw = ticketDescriptionRow?.description?.trim() || '';
     const imagesByFileId = await this.loadNotifyImagesByFileId([
