@@ -180,10 +180,14 @@ export class TicketsController {
   }
 
   @Get('users/search')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente só encontra pessoas da própria empresa (filtrado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  searchUsers(@Query() query: SearchTicketUsersQueryDto) {
-    return this.ticketsService.searchUsersForCc(query.q);
+  searchUsers(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query() query: SearchTicketUsersQueryDto,
+  ) {
+    return this.ticketsService.searchUsersForCc(query.q, actor);
   }
 
   /**
@@ -413,7 +417,8 @@ export class TicketsController {
   }
 
   @Post(':ticketNumber/watchers')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente só no ticket da própria empresa (checado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   addWatcher(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -428,7 +433,7 @@ export class TicketsController {
   }
 
   @Delete(':ticketNumber/watchers/:email')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   removeWatcher(
     @CurrentUser() actor: AuthenticatedRequestUser,

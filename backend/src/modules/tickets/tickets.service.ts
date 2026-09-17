@@ -75,9 +75,13 @@ export class TicketsService {
   ) {}
 
   /** Autocomplete de usuários do portal para pessoas em cópia (seguidores). */
-  async searchUsersForCc(q?: string) {
+  async searchUsersForCc(q?: string, actor?: AuthenticatedRequestUser) {
     const term = q?.trim() ?? '';
     if (term.length < 2) return [];
+
+    const isClient = Boolean(actor && isClientPortalRole(actor.role));
+    const clientCompanyId = isClient ? actor?.companyId : null;
+    if (isClient && !clientCompanyId) return [];
 
     return this.prisma.user.findMany({
       where: {
@@ -87,6 +91,22 @@ export class TicketsService {
           { name: { contains: term, mode: 'insensitive' } },
           { email: { contains: term, mode: 'insensitive' } },
         ],
+        ...(clientCompanyId
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { companyId: clientCompanyId },
+                    {
+                      companyMemberships: {
+                        some: { companyId: clientCompanyId },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -1758,12 +1778,11 @@ export class TicketsService {
       },
     );
 
-    await this.prisma.portalTicketWatcher.create({
-      data: {
-        ticketNumber,
-        email: normalized,
-        createdBy: actor.userId,
-      },
+    // Já seguidor: não é erro.
+    await this.prisma.portalTicketWatcher.upsert({
+      where: { ticketNumber_email: { ticketNumber, email: normalized } },
+      create: { ticketNumber, email: normalized, createdBy: actor.userId },
+      update: {},
     });
 
     return {
