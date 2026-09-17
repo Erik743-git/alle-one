@@ -35,6 +35,7 @@ import {
   type PortalAppointmentEditContext,
 } from "@/lib/services/tickets.service";
 import { useAuth } from "@/lib/use-auth";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { cn } from "@/lib/utils";
 import { TicketAppointmentNotStartedDialog } from "@/components/tickets/ticket-appointment-not-started-dialog";
 import { TICKET_APPOINTMENT_WARNING_HINT } from "@/lib/module-copy";
@@ -122,6 +123,8 @@ export function TicketAppointmentModal({
   const isCommunication = variant === "communication";
   const isEdit = Boolean(editingAppointment?.portalAppointmentId) && !isCommunication;
   const { user } = useAuth();
+  // Cliente sempre aponta em hora normal (o servidor também força).
+  const clientActor = isClientPortalRole(user?.role);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
@@ -360,7 +363,7 @@ export function TicketAppointmentModal({
     const mode = saveModeRef.current;
     saveModeRef.current = "save";
 
-    if (!isCommunication && !serviceName.trim()) {
+    if (!isCommunication && !clientActor && !serviceName.trim()) {
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
@@ -399,7 +402,8 @@ export function TicketAppointmentModal({
       endTime: isCommunication ? alertTime : endTime,
       ...(overnight && !isCommunication ? { endDate } : {}),
       description: exported.description,
-      serviceName: isCommunication ? "HORA NORMAL" : serviceName.trim(),
+      serviceName:
+        isCommunication || clientActor ? "HORA NORMAL" : serviceName.trim(),
       attendance: DEFAULT_ATTENDANCE,
       notifyClient: isCommunication ? true : notifyClient,
       isWarning: isCommunication ? true : isWarning,
@@ -629,7 +633,7 @@ export function TicketAppointmentModal({
               </div>
             ) : null}
 
-            {!isCommunication ? (
+            {!isCommunication && !clientActor ? (
             <div className="space-y-2">
               <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
                 Tipo de atendimento

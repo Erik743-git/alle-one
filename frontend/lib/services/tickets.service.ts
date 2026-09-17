@@ -459,6 +459,23 @@ export type TicketAppointmentWarningDetail = {
 /** Endpoint do estado da tela de tickets (salvo por usuário). */
 export const TICKET_LIST_STATE_ENDPOINT = "/tickets/list-state";
 
+/** Igual a TICKET_APPOINTMENT_MAX_FILES no backend (imagens coladas + anexos). */
+export const TICKET_MAX_FILES_PER_REQUEST = 30;
+
+function ticketFormData(payload: unknown, files: File[]): FormData {
+  if (files.length > TICKET_MAX_FILES_PER_REQUEST) {
+    throw new Error(
+      `Limite de ${TICKET_MAX_FILES_PER_REQUEST} arquivos por envio (imagens coladas + anexos) — este tem ${files.length}. Remova alguns ou divida em dois apontamentos.`,
+    );
+  }
+  const body = new FormData();
+  body.append("payload", JSON.stringify(payload));
+  for (const file of files) {
+    body.append("files", file);
+  }
+  return body;
+}
+
 export const ticketsService = {
   list(params: TicketsListParams = {}) {
     return apiRequest<TicketListResponse>(`/tickets${toQuery(params)}`);
@@ -535,12 +552,8 @@ export const ticketsService = {
     >(`/tickets/users/search${query ? `?${query}` : ""}`);
   },
 
-  createTicket(payload: CreateTicketPayload, files: File[] = []) {
-    const body = new FormData();
-    body.append("payload", JSON.stringify(payload));
-    for (const file of files) {
-      body.append("files", file);
-    }
+  async createTicket(payload: CreateTicketPayload, files: File[] = []) {
+    const body = ticketFormData(payload, files);
     return apiRequest<CreateTicketResult>("/tickets", {
       method: "POST",
       body,
@@ -566,16 +579,12 @@ export const ticketsService = {
     });
   },
 
-  updateTicket(
+  async updateTicket(
     ticketNumber: number,
     payload: UpdateTicketPayload,
     files: File[] = [],
   ) {
-    const body = new FormData();
-    body.append("payload", JSON.stringify(payload));
-    for (const file of files) {
-      body.append("files", file);
-    }
+    const body = ticketFormData(payload, files);
     return apiRequest<UpdateTicketResult>(`/tickets/${ticketNumber}`, {
       method: "PATCH",
       body,
@@ -648,16 +657,12 @@ export const ticketsService = {
     );
   },
 
-  createAppointment(
+  async createAppointment(
     ticketNumber: number,
     payload: CreateAppointmentPayload,
     files: File[] = [],
   ) {
-    const body = new FormData();
-    body.append("payload", JSON.stringify(payload));
-    for (const file of files) {
-      body.append("files", file);
-    }
+    const body = ticketFormData(payload, files);
     return apiRequest<CreateAppointmentResult>(
       `/tickets/${ticketNumber}/appointments`,
       { method: "POST", body },
@@ -684,17 +689,13 @@ export const ticketsService = {
     );
   },
 
-  updateAppointment(
+  async updateAppointment(
     ticketNumber: number,
     portalAppointmentId: string,
     payload: CreateAppointmentPayload,
     files: File[] = [],
   ) {
-    const body = new FormData();
-    body.append("payload", JSON.stringify(payload));
-    for (const file of files) {
-      body.append("files", file);
-    }
+    const body = ticketFormData(payload, files);
     return apiRequest<{ ok: boolean; message: string }>(
       `/tickets/${ticketNumber}/appointments/${portalAppointmentId}`,
       { method: "PATCH", body },

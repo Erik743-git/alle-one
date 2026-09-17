@@ -792,6 +792,7 @@ export function TicketAutomationRuleDialog({
                       {action.type === "SET_FIELD" ? (
                         <div className="space-y-2">
                           <SearchableSelectField
+                            clearable={false}
                             value={action.field}
                             onChange={(value) =>
                               updateAction(index, {

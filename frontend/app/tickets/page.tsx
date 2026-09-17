@@ -1041,6 +1041,7 @@ export default function TicketsPage() {
                       Agrupar por
                     </Label>
                     <SearchableSelectField
+                      clearable={false}
                       value={groupBy}
                       onChange={(v) => setGroupBy(v as TicketListGroupBy)}
                       options={Object.entries(TICKET_LIST_GROUP_BY_LABELS).map(
