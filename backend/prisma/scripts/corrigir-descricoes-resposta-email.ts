@@ -47,10 +47,6 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 const fmt = (d: Date) =>
   d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
@@ -66,21 +62,52 @@ type PreTicketRow = {
   attachments: { fileId: string }[];
 };
 
-/** Regex de UM bloco como applyEmailToOpenTicket montava (hora incerta). */
-export function blocoRegex(pre: PreTicketRow): string {
-  const nomes = [...new Set([pre.fromName, pre.fromEmail].filter(Boolean))]
-    .map((n) => escapeRegExp(escapeHtml(n as string)))
-    .join('|');
+const CARIMBO = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
+
+/**
+ * Onde começa UM bloco (como applyEmailToOpenTicket montava) que termina
+ * exatamente no fim de `texto`; -1 se não bater. Comparação de texto em vez
+ * de regex: e-mails de aviso enormes estouravam o limite de regex.
+ */
+function inicioDoBlocoNoFim(texto: string, pre: PreTicketRow): number {
   const corpo =
     pre.descriptionHtml?.trim() ||
     `<pre>${escapeHtml(pre.descriptionText || '(sem conteúdo)')}</pre>`;
-  return (
-    escapeRegExp(`<hr/>\n${MARCADOR} — `) +
-    `(?:${nomes})` +
-    escapeRegExp(` &lt;${escapeHtml(pre.fromEmail)}&gt; · `) +
-    '\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}' +
-    escapeRegExp(`</p>\n<p><em>${escapeHtml(pre.title)}</em></p>\n${corpo}`)
-  );
+  const cauda = `</p>\n<p><em>${escapeHtml(pre.title)}</em></p>\n${corpo}`;
+  if (!texto.endsWith(cauda)) return -1;
+  const fimCarimbo = texto.length - cauda.length;
+  const inicioCarimbo = fimCarimbo - 19;
+  if (inicioCarimbo < 0) return -1;
+  if (!CARIMBO.test(texto.slice(inicioCarimbo, fimCarimbo))) return -1;
+  const antes = texto.slice(0, inicioCarimbo);
+  const nomes = [...new Set([pre.fromName, pre.fromEmail].filter(Boolean))];
+  for (const nome of nomes) {
+    const cabeca = `<hr/>\n${MARCADOR} — ${escapeHtml(nome as string)} &lt;${escapeHtml(pre.fromEmail)}&gt; · `;
+    if (antes.endsWith(cabeca)) return antes.length - cabeca.length;
+  }
+  return -1;
+}
+
+/**
+ * Fim da descrição = exatamente os blocos, na ordem, separados por "\n".
+ * Devolve a descrição original (antes do primeiro bloco) ou null.
+ */
+export function descricaoSemBlocos(
+  texto: string,
+  pres: PreTicketRow[],
+): string | null {
+  let resto = texto;
+  for (let i = pres.length - 1; i >= 0; i--) {
+    const inicio = inicioDoBlocoNoFim(resto, pres[i]);
+    if (inicio < 0) return null;
+    if (i === 0) {
+      if (inicio === 0) return '';
+      return resto[inicio - 1] === '\n' ? resto.slice(0, inicio - 1) : null;
+    }
+    if (inicio === 0 || resto[inicio - 1] !== '\n') return null;
+    resto = resto.slice(0, inicio - 1);
+  }
+  return null;
 }
 
 async function main() {
@@ -142,16 +169,13 @@ async function main() {
       }
 
       // O fim da descrição tem que ser exatamente a sequência de blocos.
-      const sequencia = pres.map(blocoRegex).join('\\n');
-      const re = new RegExp(`(?:^|\\n)${sequencia}$`);
-      const m = re.exec(atual);
-      if (!m) {
+      const original = descricaoSemBlocos(atual, pres);
+      if (original === null) {
         revisar.push(
           `#${ticketNumber} — o fim da descrição não bate com os e-mails colados (editada depois?).`,
         );
         continue;
       }
-      const original = atual.slice(0, m.index);
 
       const respostas = pres.filter(
         (p) =>
