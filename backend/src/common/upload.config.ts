@@ -19,6 +19,15 @@ export const ticketAppointmentUploadLimits = {
   limits: { fileSize: TICKET_APPOINTMENT_UPLOAD_MAX_BYTES },
 } as const;
 
+/**
+ * Máximo de arquivos por requisição de apontamento (campo "files"). Conta
+ * tanto anexos quanto imagens coladas na descrição — passar disso faz o
+ * Multer rejeitar a requisição inteira com "Unexpected field - files",
+ * sem salvar nada. Subiu de 10 para 30 depois de um apontamento com muitas
+ * capturas de tela precisar ser dividido em dois tickets para caber.
+ */
+export const TICKET_APPOINTMENT_MAX_FILES = 30;
+
 const ALLOWED_MIME_PREFIXES = [
   'image/',
   'video/',

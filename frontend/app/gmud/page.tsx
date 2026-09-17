@@ -387,6 +387,7 @@ export default function GmudPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <SearchableSelectField
+                        clearable={false}
                         value={statusFilter}
                         onChange={(value) => setStatusFilter(value as StatusFilter)}
                         options={[

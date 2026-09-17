@@ -42,6 +42,7 @@ export const TICKET_LIST_COLUMN_KEYS = [
   'priority',
   'stage',
   'responsible',
+  'created',
   'updated',
 ] as const;
 

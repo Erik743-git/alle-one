@@ -409,6 +409,7 @@ export default function ConsolePage() {
                     {showGroupPicker ? (
                       <FilterField label="Visão de empresas prioritárias">
                         <SearchableSelectField
+                          clearable={false}
                           value={priorityOnly ? "yes" : "no"}
                           onChange={(value) => setPriorityOnly(value === "yes")}
                           options={[
@@ -442,6 +443,7 @@ export default function ConsolePage() {
 
                 <FilterField label="Reconhecimento">
                   <SearchableSelectField
+                    clearable={false}
                     value={ackFilter}
                     onChange={(v) => setAckFilter(v as "all" | "yes" | "no")}
                     options={ACK_FILTERS}
@@ -452,6 +454,7 @@ export default function ConsolePage() {
 
                 <FilterField label="Auto refresh">
                   <SearchableSelectField
+                    clearable={false}
                     value={String(refreshInterval)}
                     onChange={(v) => setRefreshInterval(Number(v))}
                     options={REFRESH_OPTIONS}

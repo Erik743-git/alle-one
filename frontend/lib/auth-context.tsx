@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { isPublicRoute } from "./auth";
 import {
   clearSessionSync,
+  getStoredUser,
   logoutSession,
   setStoredUser,
   type AuthUser,
@@ -32,7 +33,13 @@ type AuthContextValue = {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
-async function tryRestoreSessionFromCookie(): Promise<AuthUser | null> {
+/**
+ * `null` = sessão realmente inválida (401/403). `"transient"` = falha passageira
+ * (rede, 429, 5xx, deploy) — não pode derrubar o login.
+ */
+async function tryRestoreSessionFromCookie(): Promise<
+  AuthUser | null | "transient"
+> {
   try {
     const deviceTrustToken = readDeviceTrustToken();
     const res = await fetch(authMeUrl(), {
@@ -42,8 +49,11 @@ async function tryRestoreSessionFromCookie(): Promise<AuthUser | null> {
         ? { "X-Alleone-Device-Trust": deviceTrustToken }
         : undefined,
     });
-    if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
       return null;
+    }
+    if (!res.ok) {
+      return "transient";
     }
     const data = (await res.json()) as { user?: AuthUser; deviceTrustToken?: string };
     if (data?.user) {
@@ -52,7 +62,7 @@ async function tryRestoreSessionFromCookie(): Promise<AuthUser | null> {
       return data.user;
     }
   } catch {
-    /* rede */
+    return "transient";
   }
   return null;
 }
@@ -103,6 +113,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const task = (async () => {
       const restored = await tryRestoreSessionFromCookie();
+      if (restored === "transient") {
+        // Mantém o usuário atual; na carga inicial usa o perfil salvo, se houver.
+        setUser((prev) => prev ?? getStoredUser());
+        return;
+      }
       if (restored) {
         setUser(restored);
         return;

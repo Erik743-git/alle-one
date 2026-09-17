@@ -735,11 +735,11 @@ export function TicketAppointmentModal({
                   <p className="text-xs text-muted-foreground">
                     Você está apontando como
                   </p>
-                  <p className="truncate text-sm font-bold text-foreground">
+                  <p
+                    className="truncate text-sm font-bold text-foreground"
+                    title={user.email}
+                  >
                     {user.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {user.email}
                   </p>
                 </div>
               </div>

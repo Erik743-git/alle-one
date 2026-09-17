@@ -206,7 +206,7 @@ export function TicketAppointmentWarningsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="font-sans max-h-[min(90vh,820px)] max-w-2xl overflow-hidden border-amber-500/30 bg-card p-0 text-card-foreground">
         <DialogHeader className="space-y-2 border-b border-amber-500/20 bg-amber-500/10 px-6 py-4">
-          <div className="flex items-center gap-2 text-amber-200">
+          <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
             <AlertTriangle className="size-5 shrink-0" />
             <DialogTitle className="text-lg text-foreground">
               {showList

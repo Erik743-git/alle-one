@@ -139,7 +139,8 @@ export default function EditTicketPage() {
     () =>
       responsibles.map((r) => ({
         value: String(r.externalId),
-        label: r.email ? `${r.name} (${r.email})` : r.name,
+        label: r.name,
+        searchText: r.email ?? undefined,
       })),
     [responsibles],
   );
@@ -316,6 +317,7 @@ export default function EditTicketPage() {
                         Estágio
                       </Label>
                       <SearchableSelectField
+                        clearable={false}
                         value={stageId}
                         onChange={setStageId}
                         options={stageOptions}

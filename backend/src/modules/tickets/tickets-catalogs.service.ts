@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { UserStatus } from '@prisma/client';
-import { isClientPortalRole } from '../../common/security/client-portal-role';
+import { UserRole, UserStatus } from '@prisma/client';
+import {
+  isClientGestorRole,
+  isClientPortalRole,
+} from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -183,6 +186,11 @@ export class TicketsCatalogsService {
   async listResponsiblesForDeskExternalId(
     deskExternalId: number,
     deskNameHint?: string | null,
+    /**
+     * Cliente gestor: só a equipe interna e os usuários desta empresa
+     * (sempre entre os marcados como responsáveis da mesa).
+     */
+    onlyStaffOrCompanyId?: string,
   ): Promise<Array<{ id: number; name: string; email: string | null }>> {
     const portalDesk = await this.findPortalDeskForTifluxDesk(
       deskExternalId,
@@ -199,6 +207,31 @@ export class TicketsCatalogsService {
           { userSpecialties: { some: { specialtyId: portalDesk.id } } },
           { specialtyId: portalDesk.id },
         ],
+        ...(onlyStaffOrCompanyId
+          ? {
+              AND: [
+                {
+                  OR: [
+                    {
+                      role: {
+                        in: [
+                          UserRole.ADMIN,
+                          UserRole.COLLABORATOR,
+                          UserRole.PJ,
+                        ],
+                      },
+                    },
+                    { companyId: onlyStaffOrCompanyId },
+                    {
+                      companyMemberships: {
+                        some: { companyId: onlyStaffOrCompanyId },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
       select: { id: true, name: true, email: true },
       orderBy: { name: 'asc' },
@@ -850,7 +883,24 @@ export class TicketsCatalogsService {
         requireServiceCatalog: usesServiceCatalog,
         requiredFields: {},
       };
-      if (!isClientPortalRole(actor.role)) {
+      if (isClientGestorRole(actor.role)) {
+        // Gestor troca responsável: equipe da Alle + gente da empresa dele
+        // marcada como responsável da mesa.
+        const gestorCompanyId =
+          (scopedClientId != null
+            ? companies.find((c) => Number(c.tifluxClientId) === scopedClientId)
+                ?.id
+            : null) ??
+          actor.companyId ??
+          null;
+        responsibles = gestorCompanyId
+          ? await this.listResponsiblesForDeskExternalId(
+              deskId,
+              deskName,
+              gestorCompanyId,
+            )
+          : [];
+      } else if (!isClientPortalRole(actor.role)) {
         const byDesk = await this.listResponsiblesForDeskExternalId(
           deskId,
           deskName,

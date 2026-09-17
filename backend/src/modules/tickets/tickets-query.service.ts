@@ -93,6 +93,10 @@ export type TicketListItemDto = {
   stageGroup: TicketStageGroupKey;
   externalGmudRef: string | null;
   isPreTicket?: boolean;
+  /** Há comunicação de atenção que este usuário ainda não confirmou (mesma regra do pop-up). */
+  hasPendingWarning?: boolean;
+  /** Quem fez a última alteração registrada no histórico. */
+  updatedByName?: string | null;
 };
 
 export type TicketHistoryDto = {
@@ -821,6 +825,121 @@ export class TicketsQueryService {
   }
 
   async listGrouped(
+    actor: AuthenticatedRequestUser,
+    query: TicketsListQueryDto,
+  ) {
+    const result = await this.listGroupedInner(actor, query);
+    await Promise.all([
+      this.markPendingWarnings(actor, result.groups),
+      this.markLastUpdatedBy(result.groups),
+    ]);
+    return result;
+  }
+
+  /**
+   * Nome de quem fez a última alteração (último evento do histórico).
+   * Alguns eventos gravam o e-mail do autor: troca pelo nome do usuário.
+   */
+  private async markLastUpdatedBy(
+    groups: Array<{ tickets: TicketListItemDto[] }>,
+  ): Promise<void> {
+    const ticketNumbers = groups.flatMap((g) =>
+      g.tickets.map((t) => t.ticketNumber),
+    );
+    if (ticketNumbers.length === 0) return;
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ ticket_number: number; actor_name: string }>
+      >`
+        SELECT DISTINCT ON (h.ticket_number) h.ticket_number, h.actor_name
+        FROM ticket_history h
+        WHERE h.ticket_number = ANY(${ticketNumbers}::int[])
+          AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
+        ORDER BY h.ticket_number, h.occurred_at DESC
+      `;
+
+      const emails = [
+        ...new Set(
+          rows
+            .map((r) => r.actor_name.trim().toLowerCase())
+            .filter((v) => /^[^\s@]+@[^\s@]+$/.test(v)),
+        ),
+      ];
+      const users = emails.length
+        ? await this.prisma.user.findMany({
+            where: { email: { in: emails, mode: 'insensitive' } },
+            select: { email: true, name: true },
+          })
+        : [];
+      const nameByEmail = new Map(
+        users.map((u) => [u.email.trim().toLowerCase(), u.name]),
+      );
+
+      const byTicket = new Map<number, string>();
+      for (const row of rows) {
+        const raw = row.actor_name.trim();
+        // "Nome (email@x)" (resposta por e-mail) → só o nome.
+        const withoutEmail = raw.replace(/\s*\([^()\s]+@[^()\s]+\)$/, '');
+        byTicket.set(
+          Number(row.ticket_number),
+          nameByEmail.get(raw.toLowerCase()) ?? withoutEmail,
+        );
+      }
+      for (const group of groups) {
+        for (const ticket of group.tickets) {
+          ticket.updatedByName = byTicket.get(ticket.ticketNumber) ?? null;
+        }
+      }
+    } catch (err) {
+      // Informação só visual: não derruba a listagem.
+      this.logger.warn(
+        `Falha ao buscar quem atualizou: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Marca os tickets com comunicação de atenção pendente para o usuário —
+   * exatamente o que faz o pop-up aparecer ao abrir o ticket.
+   */
+  private async markPendingWarnings(
+    actor: AuthenticatedRequestUser,
+    groups: Array<{ tickets: TicketListItemDto[] }>,
+  ): Promise<void> {
+    const ticketNumbers = groups.flatMap((g) =>
+      g.tickets.map((t) => t.ticketNumber),
+    );
+    if (ticketNumbers.length === 0) return;
+    try {
+      const rows = await this.prisma.portalTicketAppointment.findMany({
+        where: {
+          ticketNumber: { in: ticketNumbers },
+          isWarning: true,
+          createdBy: { not: actor.userId },
+          warningAcks: { none: { userId: actor.userId } },
+        },
+        select: { ticketNumber: true },
+        distinct: ['ticketNumber'],
+      });
+      const pending = new Set(rows.map((r) => r.ticketNumber));
+      for (const group of groups) {
+        for (const ticket of group.tickets) {
+          ticket.hasPendingWarning = pending.has(ticket.ticketNumber);
+        }
+      }
+    } catch (err) {
+      // Indicador é só visual: não derruba a listagem.
+      this.logger.warn(
+        `Falha ao marcar atenções pendentes: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  private async listGroupedInner(
     actor: AuthenticatedRequestUser,
     query: TicketsListQueryDto,
   ) {

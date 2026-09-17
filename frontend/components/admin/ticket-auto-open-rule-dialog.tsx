@@ -428,6 +428,7 @@ export function TicketAutoOpenRuleDialog({
             <div className="space-y-2">
               <FieldLabel required>Periodicidade</FieldLabel>
               <SearchableSelectField
+                clearable={false}
                 value={periodicity}
                 onChange={(v) =>
                   setPeriodicity(v as TicketAutoOpenPeriodicity)

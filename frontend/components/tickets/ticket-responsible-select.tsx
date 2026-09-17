@@ -34,6 +34,8 @@ type TicketResponsibleSelectProps = {
     isPreTicket?: boolean;
   }) => void;
   hasAppointments?: boolean;
+  /** Mostra a opção "Sem responsável" (equipe interna). */
+  allowEmpty?: boolean;
 };
 
 function resolveValue(
@@ -61,6 +63,7 @@ export function TicketResponsibleSelect({
   compact = false,
   onUpdated,
   hasAppointments = false,
+  allowEmpty = true,
 }: TicketResponsibleSelectProps) {
   const { user } = useAuth();
   const [saving, setSaving] = useState(false);
@@ -88,10 +91,11 @@ export function TicketResponsibleSelect({
       a.name.localeCompare(b.name, "pt-BR"),
     );
     return pinCurrentUserFirst(sorted, user?.email).map((row) => {
-      const label = row.email ? `${row.name} (${row.email})` : row.name;
+      const label = row.name;
       return {
         value: String(row.id),
         label: emailsMatch(row.email, user?.email) ? `${label} — você` : label,
+        searchText: row.email ?? undefined,
       };
     });
   }, [options, responsibleId, responsibleName, user?.email]);
@@ -148,7 +152,7 @@ export function TicketResponsibleSelect({
 
   return (
     <div
-      className={cn(compact && "min-w-[220px]")}
+      className={cn(compact && "w-full min-w-0")}
       onClick={(event) => event.stopPropagation()}
       onKeyDown={(event) => event.stopPropagation()}
     >
@@ -164,7 +168,8 @@ export function TicketResponsibleSelect({
         side={compact ? "bottom" : "left"}
         align={compact ? "start" : "center"}
         popoverMinWidth="min(24rem, calc(100vw - 2rem))"
-        emptyLabel={compact ? undefined : "Sem responsável"}
+        emptyLabel={compact || !allowEmpty ? undefined : "Sem responsável"}
+        clearable={allowEmpty}
         placeholder="Selecione o responsável"
         className={compact ? "h-9" : undefined}
       />

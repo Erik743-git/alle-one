@@ -114,7 +114,8 @@ export function TicketEditDialog({
     () =>
       responsibles.map((r) => ({
         value: String(r.externalId),
-        label: r.email ? `${r.name} (${r.email})` : r.name,
+        label: r.name,
+        searchText: r.email ?? undefined,
       })),
     [responsibles],
   );
@@ -199,6 +200,7 @@ export function TicketEditDialog({
           <div className="space-y-2">
             <Label>Estágio</Label>
             <SearchableSelectField
+              clearable={false}
               value={stageId}
               onChange={setStageId}
               options={stageOptions}

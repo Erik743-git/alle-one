@@ -668,7 +668,12 @@ export class RendimentoCompanyService {
           endTime: row.endTime,
           minutes,
           hoursFormatted: this.formatMinutes(minutes),
-          userName: row.creator.name,
+          // Comunicação vinda de e-mail: mostra quem escreveu.
+          userName: row.externalAuthorEmail
+            ? row.externalAuthorName
+              ? `${row.externalAuthorName} (${row.externalAuthorEmail})`
+              : row.externalAuthorEmail
+            : row.creator.name,
           ...desc,
           serviceName: row.serviceName,
           question: q

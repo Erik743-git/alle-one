@@ -438,6 +438,8 @@ export class TicketsAppointmentsService {
       syncPausedAt: Date | null;
       isWarning: boolean;
       createdBy: string;
+      externalAuthorName: string | null;
+      externalAuthorEmail: string | null;
       creator: { name: string };
       attachments: Array<{
         id: string;
@@ -562,7 +564,7 @@ export class TicketsAppointmentsService {
           portal.initTime,
           portal.endTime,
         ),
-        userName: portal.creator.name,
+        userName: appointmentAuthorLabel(portal),
         createdByUserId: access.createdByUserId,
         canManage: access.canManage,
         description: portal.description,
@@ -654,6 +656,37 @@ export class TicketsAppointmentsService {
     return row.id;
   }
 
+  /**
+   * Cliente só mexe em ticket da própria empresa (mesma regra do detalhe).
+   * Equipe interna passa direto.
+   */
+  private async assertActorCanAccessTicket(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+  ): Promise<void> {
+    if (!isClientPortalRole(actor.role)) return;
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+      select: {
+        clientExternalId: true,
+        createdBy: true,
+        requestorEmail: true,
+      },
+    });
+    if (!portal) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+    await assertTicketClientScope(
+      this.tenantScope,
+      actor,
+      portal.clientExternalId,
+      {
+        createdBy: portal.createdBy,
+        requestorEmail: portal.requestorEmail,
+      },
+    );
+  }
+
   private async getTicketContext(ticketNumber: number) {
     const portal = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber },
@@ -737,11 +770,16 @@ export class TicketsAppointmentsService {
     });
   }
 
-  async getAppointmentCatalogs(ticketNumber: number) {
+  async getAppointmentCatalogs(
+    ticketNumber: number,
+    actor?: AuthenticatedRequestUser,
+  ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    if (actor) await this.assertActorCanAccessTicket(actor, ticketNumber);
+    const isClientActor = Boolean(actor && isClientPortalRole(actor.role));
 
     const clientId = ticket.client_external_id;
 
@@ -763,7 +801,10 @@ export class TicketsAppointmentsService {
         appointmentType: '',
         tifluxSyncAvailable,
       },
-      projectLink: await this.projetos.listActivitiesForTicket(ticketNumber),
+      // Projeto é informação interna.
+      projectLink: isClientActor
+        ? null
+        : await this.projetos.listActivitiesForTicket(ticketNumber),
       serviceTypes: getTicketAppointmentServiceTypes(),
       attendances: [
         { value: 'Remote', label: 'Remoto' },
@@ -1133,7 +1174,11 @@ export class TicketsAppointmentsService {
   async getPortalAppointmentEditContext(
     ticketNumber: number,
     portalAppointmentId: string,
+    actor?: AuthenticatedRequestUser,
   ) {
+    if (actor) {
+      await this.assertActorCanAccessTicket(actor, ticketNumber);
+    }
     const row = await this.getPortalAppointmentOrThrow(
       ticketNumber,
       portalAppointmentId,
@@ -1269,6 +1314,7 @@ export class TicketsAppointmentsService {
     dto: UpdateTicketAppointmentDto,
     files: Express.Multer.File[] = [],
   ) {
+    await this.assertActorCanAccessTicket(actor, ticketNumber);
     this.validateAppointmentDto(dto);
 
     const row = await this.getPortalAppointmentOrThrow(
@@ -1457,6 +1503,7 @@ export class TicketsAppointmentsService {
     ticketNumber: number,
     portalAppointmentId: string,
   ) {
+    await this.assertActorCanAccessTicket(actor, ticketNumber);
     const row = await this.getPortalAppointmentOrThrow(
       ticketNumber,
       portalAppointmentId,
@@ -1524,7 +1571,16 @@ export class TicketsAppointmentsService {
     }
 
     await this.assertCanAddAppointmentToTicket(ticket);
-    await this.assertCanCreateAppointment(actor, ticket.stage_name);
+
+    if (isClientPortalRole(actor.role)) {
+      // Cliente aponta só em ticket da própria empresa; projeto é interno.
+      // A regra de "chamado não iniciado" (só NOC aponta em Novo) é da
+      // equipe: chamado aberto pelo cliente nasce em Novo.
+      await this.assertActorCanAccessTicket(actor, ticketNumber);
+      dto.projectActivityId = undefined;
+    } else {
+      await this.assertCanCreateAppointment(actor, ticket.stage_name);
+    }
 
     this.validateAppointmentDto(dto);
 
@@ -2010,6 +2066,14 @@ export class TicketsAppointmentsService {
 
   private warningDescriptionPreview(description: string, max = 120): string {
     const plain = appointmentDescriptionToPlainText(description)
+      // Comunicação vinda de e-mail é HTML: mostra só o texto.
+      .replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&amp;/gi, '&')
       .replace(/\s+/g, ' ')
       .trim();
     if (plain.length <= max) return plain;
@@ -2027,6 +2091,7 @@ export class TicketsAppointmentsService {
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    await this.assertActorCanAccessTicket(actor, ticketNumber);
 
     const [ticketTitle, rows] = await Promise.all([
       this.getPortalTicketTitle(ticketNumber),
@@ -2049,7 +2114,7 @@ export class TicketsAppointmentsService {
         appointmentDate: this.formatDateOnly(row.appointmentDate) ?? '',
         initTime: row.initTime,
         endTime: row.endTime,
-        userName: row.creator.name,
+        userName: appointmentAuthorLabel(row),
         descriptionPreview: this.warningDescriptionPreview(row.description),
       })),
     };
@@ -2060,6 +2125,7 @@ export class TicketsAppointmentsService {
     ticketNumber: number,
     portalAppointmentId: string,
   ): Promise<TicketAppointmentWarningDetail> {
+    await this.assertActorCanAccessTicket(actor, ticketNumber);
     const row = await this.prisma.portalTicketAppointment.findFirst({
       where: {
         id: portalAppointmentId,
@@ -2092,7 +2158,7 @@ export class TicketsAppointmentsService {
       appointmentDate: this.formatDateOnly(row.appointmentDate) ?? '',
       initTime: row.initTime,
       endTime: row.endTime,
-      userName: row.creator.name,
+      userName: appointmentAuthorLabel(row),
       description: row.description,
       descriptionPlain: appointmentDescriptionToPlainText(row.description),
       attachments: this.mapPortalAttachments(row.attachments, previewMap),
@@ -2105,6 +2171,7 @@ export class TicketsAppointmentsService {
     portalAppointmentId: string,
     permanent: boolean,
   ) {
+    await this.assertActorCanAccessTicket(actor, ticketNumber);
     const row = await this.prisma.portalTicketAppointment.findFirst({
       where: {
         id: portalAppointmentId,
@@ -2168,4 +2235,21 @@ export class TicketsAppointmentsService {
       permanent: true,
     };
   }
+}
+
+/**
+ * Comunicação que veio de e-mail: mostra quem escreveu (nome e e-mail), não o
+ * usuário técnico gravado como criador.
+ */
+function appointmentAuthorLabel(row: {
+  externalAuthorName?: string | null;
+  externalAuthorEmail?: string | null;
+  creator: { name: string };
+}): string {
+  const email = row.externalAuthorEmail?.trim();
+  if (!email) return row.creator.name;
+  const name = row.externalAuthorName?.trim();
+  return name && name.toLowerCase() !== email.toLowerCase()
+    ? `${name} (${email})`
+    : email;
 }

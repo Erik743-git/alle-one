@@ -220,6 +220,19 @@ export function canChangeTicketStage() {
   return canCreateTicketAppointment();
 }
 
+/**
+ * Cliente gestor nos tickets da empresa: trocar responsável, solicitante e
+ * mesa, fechar (Resolvido/Encerrado) e reabrir. O servidor confere tudo.
+ */
+export function isTicketClientGestorEditor() {
+  return isClientGestor() && hasPermission("TICKETS", "canCreate");
+}
+
+/** Responsável, solicitante, mesa e fechar/reabrir: equipe ou cliente gestor. */
+export function canManageTicketAssignment() {
+  return canChangeTicketStage() || isTicketClientGestorEditor();
+}
+
 /** Referência GMUD no ticket — somente equipe interna. */
 export function canManageTicketGmud() {
   if (isClient()) return false;

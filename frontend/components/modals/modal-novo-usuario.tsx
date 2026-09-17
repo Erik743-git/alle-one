@@ -314,6 +314,7 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
               </Label>
 
               <SearchableSelectField
+                clearable={false}
                 value={role}
                 onChange={setRole}
                 options={[

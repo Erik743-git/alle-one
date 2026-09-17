@@ -537,6 +537,7 @@ export default function GeradorRelatoriosPage() {
                       Período
                     </label>
                     <SearchableSelectField
+                      clearable={false}
                       value={periodMode}
                       onChange={(v) =>
                         setPeriodMode(v === "civil" ? "civil" : "folha")
@@ -809,6 +810,7 @@ export default function GeradorRelatoriosPage() {
                     Relatório
                   </label>
                   <SearchableSelectField
+                    clearable={false}
                     value={type}
                     onChange={setType}
                     options={typeOptions}
@@ -820,6 +822,7 @@ export default function GeradorRelatoriosPage() {
                     Formato
                   </label>
                   <SearchableSelectField
+                    clearable={false}
                     value={format}
                     onChange={(value) => setFormat(value as ReportFormatOption)}
                     options={formatSelectOptions}

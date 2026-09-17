@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -58,6 +59,9 @@ import {
   canManageTicketFollowers,
   canManageTicketGmud,
   canManageTicketAppointment,
+  canManageTicketAssignment,
+  isClient,
+  isTicketClientGestorEditor,
   TICKETS_APPOINTMENT_CREATE_RESTRICTED,
 } from "@/lib/access-control";
 import {
@@ -260,6 +264,8 @@ export default function TicketDetailPage() {
   const [followersOpen, setFollowersOpen] = useState(false);
   const [followers, setFollowers] = useState<TicketFollowerPerson[]>([]);
 
+  const lastDetailJsonRef = useRef<string | null>(null);
+
   const checkPendingWarnings = useCallback(async () => {
     if (!Number.isFinite(ticketNumber)) return;
     try {
@@ -277,6 +283,11 @@ export default function TicketDetailPage() {
     try {
       if (!silent) setLoading(true);
       const res = await ticketsService.detail(ticketNumber);
+      // Recarga em segundo plano (depois de editar/fechar um apontamento):
+      // sem mudança real, não mexe na tela — nem no histórico.
+      const json = JSON.stringify(res);
+      if (silent && json === lastDetailJsonRef.current) return;
+      lastDetailJsonRef.current = json;
       setData(res);
       setFollowers(
         (res.watchers ?? []).map((watcher) => ({ email: watcher.email })),
@@ -345,7 +356,7 @@ export default function TicketDetailPage() {
     const deskId = data?.ticket?.deskExternalId;
     const responsibleId = data?.ticket?.responsibleExternalId;
     const responsibleName = data?.ticket?.responsibleName;
-    if (!canChangeTicketStage() || deskId == null) {
+    if (!canManageTicketAssignment() || deskId == null) {
       setDeskResponsibles(
         mapFilterResponsibles(filterCatalogs?.responsibles ?? []),
       );
@@ -532,7 +543,8 @@ export default function TicketDetailPage() {
       setRequestorOptions(
         (catalogs.requestors ?? []).map((row) => ({
           value: String(row.id),
-          label: row.email ? `${row.name} (${row.email})` : row.name,
+          label: row.name,
+          searchText: row.email ?? undefined,
         })),
       );
     } catch (err) {
@@ -562,6 +574,10 @@ export default function TicketDetailPage() {
   }
 
   async function confirmChangeRequestor() {
+    if (isTicketClientGestorEditor() && !requestorId) {
+      notifyError("Selecione um solicitante da sua empresa.");
+      return;
+    }
     if (!requestorName.trim()) {
       notifyError("Informe o nome do solicitante.");
       return;
@@ -649,7 +665,8 @@ export default function TicketDetailPage() {
       setChangeClientRequestorOptions(
         requestors.map((row) => ({
           value: String(row.id),
-          label: row.email ? `${row.name} (${row.email})` : row.name,
+          label: row.name,
+          searchText: row.email ?? undefined,
         })),
       );
     } catch (err) {
@@ -744,7 +761,7 @@ export default function TicketDetailPage() {
           : "Cliente e solicitante do ticket atualizados.",
       );
       setChangeClientOpen(false);
-      await Promise.all([load(), loadStages()]);
+      await Promise.all([load(true), loadStages()]);
       setHistoryRefreshToken((n) => n + 1);
     } catch (err) {
       notifyError(
@@ -789,7 +806,7 @@ export default function TicketDetailPage() {
     if (!portalAppointmentId || !Number.isFinite(ticketNumber)) return;
     try {
       await ticketsService.resumeAppointmentSync(ticketNumber, portalAppointmentId);
-      await load();
+      await load(true);
     } catch {
       /* ignore */
     }
@@ -808,7 +825,9 @@ export default function TicketDetailPage() {
       );
       return;
     }
+    // Regra de "chamado não iniciado" é da equipe; cliente aponta direto.
     if (
+      !isClient() &&
       !canAppointmentOnTicketStage({
         stageName: ticket.stageName,
         user,
@@ -836,7 +855,9 @@ export default function TicketDetailPage() {
       );
       return;
     }
+    // Regra de "chamado não iniciado" é da equipe; cliente comunica direto.
     if (
+      !isClient() &&
       !canAppointmentOnTicketStage({
         stageName: ticket.stageName,
         user,
@@ -932,7 +953,7 @@ export default function TicketDetailPage() {
       if (ctx.canPauseSync) {
         await ticketsService.pauseAppointmentSync(ticketNumber, portalAppointmentId);
         setPendingResumeId(portalAppointmentId);
-        await load();
+        await load(true);
       }
 
       const proceed = () => onProceed(ctx);
@@ -977,7 +998,7 @@ export default function TicketDetailPage() {
         );
         setPendingResumeId(null);
         notifySuccess(res.message);
-        await load();
+        await load(true);
       } catch (err) {
         notifyError(
           err instanceof Error ? err.message : "Não foi possível excluir.",
@@ -1051,12 +1072,13 @@ export default function TicketDetailPage() {
                     </Link>
                   </Button>
                 ) : null}
-                {ticket && canChangeTicketStage() ? (
+                {ticket && canManageTicketAssignment() ? (
                   <TicketOptionsMenu
                     ticketNumber={ticket.ticketNumber}
                     isClosed={ticket.isClosed}
                     currentDeskId={ticket.deskExternalId}
                     disabled={lifecycleBusy}
+                    clientGestorMode={!canChangeTicketStage()}
                     onChanged={applyOptionsChange}
                   />
                 ) : null}
@@ -1072,12 +1094,12 @@ export default function TicketDetailPage() {
             ) : (
               <>
                 {data?.syncPending ? (
-                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
                     {TICKET_SYNC_PENDING_BANNER}
                   </p>
                 ) : null}
                 {ticket.isPreTicket ? (
-                  <p className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-50/95">
+                  <p className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-900 dark:text-teal-100">
                     {TICKET_PRETICKET_BANNER}
                   </p>
                 ) : null}
@@ -1161,7 +1183,7 @@ export default function TicketDetailPage() {
                             {ticket.requestorTelephone ?? "—"}
                           </p>
                         </div>
-                        {canChangeTicketStage() && !ticket.isClosed ? (
+                        {canManageTicketAssignment() && !ticket.isClosed ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -1217,9 +1239,9 @@ export default function TicketDetailPage() {
                                 key={person.email}
                                 className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
                               >
-                                {person.name
-                                  ? `${person.name} (${person.email})`
-                                  : person.email}
+                                <span title={person.email}>
+                                  {person.name || person.email}
+                                </span>
                                 {canManageTicketFollowers() && !ticket.isClosed ? (
                                   <button
                                     type="button"
@@ -1256,7 +1278,7 @@ export default function TicketDetailPage() {
                         <span className="text-muted-foreground">Prioridade: </span>
                         {ticket.priorityName ?? "—"}
                       </p>
-                      {canChangeTicketStage() ? (
+                      {canManageTicketAssignment() ? (
                         <div className="space-y-2">
                           <Label className="text-xs font-semibold text-muted-foreground">
                             Responsável
@@ -1267,6 +1289,7 @@ export default function TicketDetailPage() {
                             responsibleName={ticket.responsibleName}
                             hasAppointments={(data?.appointments?.length ?? 0) > 0}
                             options={deskResponsibles}
+                            allowEmpty={canChangeTicketStage()}
                             disabled={ticket.isClosed}
                             onUpdated={(next) => {
                               setData((prev) =>
@@ -1310,6 +1333,7 @@ export default function TicketDetailPage() {
                           ) : (
                             <>
                               <SearchableSelectField
+                                clearable={false}
                                 value={stageIdInput}
                                 onChange={handleStageChange}
                                 options={stageOptions}
@@ -1420,16 +1444,44 @@ export default function TicketDetailPage() {
                           </tr>
                         ) : (
                           data?.appointments.map((row) => {
+                            const rowEditable =
+                              Boolean(row.portalAppointmentId) &&
+                              canManageTicketAppointment(
+                                row.createdByUserId,
+                                row.canManage,
+                              );
                             return (
                             <tr
                               key={appointmentRowKey(row)}
-                              className="border-b border-border/60 align-top"
+                              className={cn(
+                                "border-b border-border/60 align-top",
+                                rowEditable &&
+                                  "cursor-pointer transition-colors hover:bg-muted/30",
+                              )}
+                              title={rowEditable ? "Clique para editar" : undefined}
+                              onClick={(event) => {
+                                if (!rowEditable) return;
+                                // Botões, links, menu e seleção de texto não abrem a edição.
+                                const target = event.target as HTMLElement;
+                                // Pop-ups (menu, prévia de imagem) ficam fora da linha no DOM,
+                                // mas o clique neles ainda sobe até aqui.
+                                if (!event.currentTarget.contains(target)) return;
+                                if (
+                                  target.closest(
+                                    'button, a, input, textarea, select, [role="menuitem"], [role="menu"], [data-no-row-click]',
+                                  )
+                                ) {
+                                  return;
+                                }
+                                if (window.getSelection()?.toString()) return;
+                                void handleEditAppointment(row.portalAppointmentId!);
+                              }}
                             >
                               <td className="px-4 py-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span>{row.userName ?? "—"}</span>
                                   {row.isWarning ? (
-                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
                                       <AlertTriangle className="size-3" />
                                       Atenção
                                     </span>
@@ -1668,7 +1720,7 @@ export default function TicketDetailPage() {
                       onCreated={() => {
                         setEditingAppointment(null);
                         setPendingResumeId(null);
-                        void load();
+                        void load(true);
                         void loadStages();
                         void checkPendingWarnings();
                       }}
@@ -1679,7 +1731,7 @@ export default function TicketDetailPage() {
                       open={communicationOpen}
                       onOpenChange={setCommunicationOpen}
                       onCreated={() => {
-                        void load();
+                        void load(true);
                         void loadStages();
                         void checkPendingWarnings();
                       }}
@@ -1748,43 +1800,54 @@ export default function TicketDetailPage() {
                     />
                   </div>
                 ) : null}
-                <div className="space-y-2">
-                  <Label>Nome</Label>
-                  <Input
-                    value={requestorName}
-                    onChange={(e) => {
-                      setRequestorName(e.target.value);
-                      setRequestorId("");
-                    }}
-                    placeholder="Nome de quem está solicitando"
-                    disabled={requestorSaving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>E-mail</Label>
-                  <Input
-                    type="email"
-                    value={requestorEmail}
-                    onChange={(e) => {
-                      setRequestorEmail(e.target.value);
-                      setRequestorId("");
-                    }}
-                    placeholder="email@empresa.com"
-                    disabled={requestorSaving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Telefone</Label>
-                  <Input
-                    value={requestorTelephone}
-                    onChange={(e) => {
-                      setRequestorTelephone(formatBrPhone(e.target.value));
-                      setRequestorId("");
-                    }}
-                    placeholder="(00) 00000-0000"
-                    disabled={requestorSaving}
-                  />
-                </div>
+                {isTicketClientGestorEditor() ? (
+                  // Gestor escolhe só entre os usuários da empresa.
+                  requestorOptions.length === 0 && !loadingRequestors ? (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum usuário da empresa disponível.
+                    </p>
+                  ) : null
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Nome</Label>
+                      <Input
+                        value={requestorName}
+                        onChange={(e) => {
+                          setRequestorName(e.target.value);
+                          setRequestorId("");
+                        }}
+                        placeholder="Nome de quem está solicitando"
+                        disabled={requestorSaving}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>E-mail</Label>
+                      <Input
+                        type="email"
+                        value={requestorEmail}
+                        onChange={(e) => {
+                          setRequestorEmail(e.target.value);
+                          setRequestorId("");
+                        }}
+                        placeholder="email@empresa.com"
+                        disabled={requestorSaving}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Telefone</Label>
+                      <Input
+                        value={requestorTelephone}
+                        onChange={(e) => {
+                          setRequestorTelephone(formatBrPhone(e.target.value));
+                          setRequestorId("");
+                        }}
+                        placeholder="(00) 00000-0000"
+                        disabled={requestorSaving}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
               <DialogFooter>
                 <Button

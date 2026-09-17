@@ -363,7 +363,7 @@ export function GmudForm({
             <div className="text-sm text-muted-foreground">Responsável</div>
             <div className="flex gap-2">
               <Input
-                value={responsible ? `${responsible.name} (${responsible.email})` : ""}
+                value={responsible ? responsible.name : ""}
                 disabled
                 className="min-w-0 flex-1"
                 placeholder="Selecione um usuário"
@@ -470,8 +470,9 @@ export function GmudForm({
               className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="text-sm">
-                <div className="font-semibold">{u.name}</div>
-                <div className="text-xs text-muted-foreground">{u.email}</div>
+                <div className="font-semibold" title={u.email}>
+                  {u.name}
+                </div>
               </div>
               <Button
                 type="button"
@@ -514,8 +515,9 @@ export function GmudForm({
               className="flex flex-col gap-2 rounded-xl border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="text-sm">
-                <div className="font-semibold">{u.name}</div>
-                <div className="text-xs text-muted-foreground">{u.email}</div>
+                <div className="font-semibold" title={u.email}>
+                  {u.name}
+                </div>
               </div>
               <Button
                 type="button"
@@ -704,7 +706,7 @@ export function GmudForm({
       </Card>
 
       {needsReapproval && mode === "edit" ? (
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50/95">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
           {GMUD_REAPPROVAL_WARNING}
         </div>
       ) : null}
@@ -763,4 +765,3 @@ export function GmudForm({
     </div>
   );
 }
-

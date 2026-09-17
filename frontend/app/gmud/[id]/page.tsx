@@ -289,7 +289,8 @@ export default function GmudDetailPage() {
                       .filter((a) => a.status === "PENDING")
                       .map((a) => ({
                         value: a.user.id,
-                        label: `${a.user.name} (${a.user.email})`,
+                        label: a.user.name,
+                        searchText: a.user.email,
                       }))}
                     emptyLabel="Selecione..."
                   />
@@ -714,4 +715,3 @@ export default function GmudDetailPage() {
     </ProtectedPage>
   );
 }
-

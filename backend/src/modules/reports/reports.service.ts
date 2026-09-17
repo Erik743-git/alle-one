@@ -145,6 +145,29 @@ function escapeCsv(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+/**
+ * Parte "empresa" do nome do arquivo. Em "Todas as empresas" o relatório fica
+ * gravado com uma empresa representante (a primeira em ordem alfabética); sem
+ * olhar os filtros o arquivo saía com o nome dela (ex.: "acp-rendimento...").
+ */
+export function reportCompanyFilenamePart(params: {
+  filters: {
+    allCompanies?: boolean;
+    multiCompany?: boolean;
+    companyLabel?: string;
+  } | null;
+  companyName: string | null | undefined;
+}): string {
+  const f = params.filters;
+  if (f?.allCompanies) return 'todas-empresas';
+  if (f?.multiCompany) return 'multiplas-empresas';
+  return (
+    safeFilenamePart(f?.companyLabel ?? '') ||
+    safeFilenamePart(params.companyName ?? '') ||
+    'empresa'
+  );
+}
+
 function safeFilenamePart(value: string) {
   return (value || '')
     .normalize('NFD')
@@ -3416,9 +3439,19 @@ export class ReportsService {
     const snapshotPart = toDateOnlyISO(generatedAt);
     const startPart = toDateOnlyISO(range.start);
     const endPart = toDateOnlyISO(range.end);
+    const collaboratorPart = userId
+      ? safeFilenamePart(
+          (
+            await this.prisma.user.findUnique({
+              where: { id: userId },
+              select: { name: true },
+            })
+          )?.name ?? '',
+        )
+      : '';
     const baseName = isInventario
       ? `${companyPart}-${typePart}-${snapshotPart}`
-      : `${companyPart}-${typePart}-${startPart}-a-${endPart}`;
+      : `${companyPart}-${typePart}${collaboratorPart ? `-${collaboratorPart}` : ''}-${startPart}-a-${endPart}`;
 
     const billingRows = isCobranca
       ? await buildBillingReportRowsForCompanies(this.prisma, {
@@ -3632,12 +3665,29 @@ export class ReportsService {
       throw new NotFoundException('Arquivo não encontrado no servidor');
     }
 
-    const companyPart =
-      safeFilenamePart(report.company?.name ?? '') || 'empresa';
     const filters = report.filters as {
       noPeriod?: boolean;
       type?: string;
+      allCompanies?: boolean;
+      multiCompany?: boolean;
+      companyLabel?: string;
+      userId?: string;
     } | null;
+    const companyPart = reportCompanyFilenamePart({
+      filters,
+      companyName: report.company?.name,
+    });
+    const collaboratorName = filters?.userId
+      ? (
+          await this.prisma.user.findUnique({
+            where: { id: filters.userId },
+            select: { name: true },
+          })
+        )?.name
+      : null;
+    const collaboratorPart = collaboratorName
+      ? `-${safeFilenamePart(collaboratorName)}`
+      : '';
     const typeKey = filters?.type ?? report.type;
     const typePart =
       REPORT_TYPE_SLUGS[typeKey] ??
@@ -3647,7 +3697,7 @@ export class ReportsService {
       report.type === ReportType.INVENTARIO || filters?.noPeriod === true;
     const downloadName = isInventario
       ? `${companyPart}-${typePart}-${toDateOnlyISO(new Date(report.createdAt))}.${ext}`
-      : `${companyPart}-${typePart}-${toDateOnlyISO(new Date(report.periodStart))}-a-${toDateOnlyISO(new Date(report.periodEnd))}.${ext}`;
+      : `${companyPart}-${typePart}${collaboratorPart}-${toDateOnlyISO(new Date(report.periodStart))}-a-${toDateOnlyISO(new Date(report.periodEnd))}.${ext}`;
 
     return {
       file: new StreamableFile(createReadStream(report.file.path)),

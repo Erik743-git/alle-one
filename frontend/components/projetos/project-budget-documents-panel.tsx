@@ -139,7 +139,7 @@ export function ProjectBudgetDocumentsPanel({
 
         {completionApproval.status === "PENDING" ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
-            <p className="font-medium text-amber-300">
+            <p className="font-medium text-amber-800 dark:text-amber-300">
               Aprovação pendente — {PROJECT_APPROVAL_LABELS.PENDING}
             </p>
             {isAdmin ? (

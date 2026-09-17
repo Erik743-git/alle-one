@@ -6,6 +6,12 @@ import { FileStorageService } from '../../common/storage/file-storage.service';
 import { QueueService } from '../../common/redis/queue.service';
 import { TicketAutomationService } from '../tickets/ticket-automation.service';
 import {
+  createEmailReplyCommunication,
+  isReopenableStage,
+  reopenTicketFromEmail,
+  senderCanReopenTicket,
+} from './email-reply-communication';
+import {
   MicrosoftGraphMailClient,
   type GraphMailMessage,
 } from './microsoft-graph-mail.client';
@@ -251,7 +257,7 @@ export class EmailInboundIngestService {
         email: { equals: fromEmail, mode: 'insensitive' },
         deletedAt: null,
       },
-      select: { id: true, companyId: true, name: true },
+      select: { id: true, companyId: true, name: true, role: true },
     });
 
     const route = await this.matchRoute(fromEmail);
@@ -282,6 +288,8 @@ export class EmailInboundIngestService {
 
     const linkedTicketNumber: number | null = matchedTicketNumber;
     let appliedToTicket = false;
+    let reopenTicket = false;
+    let reopenFromStage: string | null = null;
     let status: PreTicketStatus = PreTicketStatus.PENDING;
 
     if (matchedTicketNumber != null) {
@@ -290,14 +298,38 @@ export class EmailInboundIngestService {
         select: {
           ticketNumber: true,
           isClosed: true,
-          emailConversationId: true,
+          stageName: true,
+          requestorEmail: true,
+          clientExternalId: true,
         },
       });
       if (ticket && !ticket.isClosed) {
         appliedToTicket = true;
         status = PreTicketStatus.OPENED;
+      } else if (
+        ticket &&
+        isReopenableStage(ticket.stageName) &&
+        (await senderCanReopenTicket(this.prisma, {
+          fromEmail,
+          sender: requestor
+            ? {
+                userId: requestor.id,
+                role: requestor.role,
+                companyId: requestor.companyId,
+              }
+            : null,
+          routeCompanyId: route?.companyId ?? null,
+          ticket,
+        }))
+      ) {
+        // Cliente respondeu e-mail de chamado fechado: reabre.
+        appliedToTicket = true;
+        reopenTicket = true;
+        reopenFromStage = ticket.stageName;
+        status = PreTicketStatus.OPENED;
       }
-      // fechado: permanece PENDING com linkedTicketNumber para o operador
+      // Demais casos (cancelado, remetente sem vínculo, equipe interna):
+      // permanece PENDING com linkedTicketNumber para o operador.
     }
 
     const normalizedSubject = normalizeEmailSubject(title);
@@ -446,19 +478,38 @@ export class EmailInboundIngestService {
     }
 
     if (appliedToTicket && linkedTicketNumber != null) {
-      await this.applyEmailToOpenTicket({
+      const applied = await this.applyEmailToTicket({
         ticketNumber: linkedTicketNumber,
-        fromName: fromName ?? fromEmail,
+        fromName: fromName ?? requestor?.name ?? null,
         fromEmail,
         title,
         html: html ?? descriptionHtml,
         text: descriptionText,
         conversationId,
         preTicketId: preTicket.id,
-        systemUploaderId: systemUploader ?? null,
+        receivedAt: preTicket.receivedAt,
+        authorUserId: requestor?.id ?? systemUploader ?? null,
+        reopen: reopenTicket,
+        reopenFromStage,
       });
+      if (!applied) {
+        // Sem autor para gravar: devolve para a fila de pré-tickets em vez
+        // de sumir com a resposta do cliente.
+        await this.prisma.preTicket.update({
+          where: { id: preTicket.id },
+          data: {
+            status: PreTicketStatus.PENDING,
+            appliedToTicket: false,
+            ticketNumber: null,
+            openedAt: null,
+          },
+        });
+        return true;
+      }
       this.logger.log(
-        `E-mail aplicado ao chamado #${linkedTicketNumber} (${params.messageId})`,
+        `E-mail aplicado ao chamado #${linkedTicketNumber}` +
+          (reopenTicket ? ' (reaberto)' : '') +
+          ` (${params.messageId})`,
       );
       return true;
     }
@@ -522,80 +573,64 @@ export class EmailInboundIngestService {
     return null;
   }
 
-  private async applyEmailToOpenTicket(params: {
+  /**
+   * Resposta por e-mail vira comunicação do ticket (não mexe mais na
+   * descrição). Retorna false se não houver usuário para autor.
+   */
+  private async applyEmailToTicket(params: {
     ticketNumber: number;
-    fromName: string;
+    fromName: string | null;
     fromEmail: string;
     title: string;
     html: string | null;
     text: string;
     conversationId: string | null;
     preTicketId: string;
-    systemUploaderId: string | null;
-  }) {
-    const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    const blockHtml = [
-      `<hr/>`,
-      `<p><strong>Resposta por e-mail</strong> — ${escapeHtml(params.fromName)} &lt;${escapeHtml(params.fromEmail)}&gt; · ${stamp}</p>`,
-      `<p><em>${escapeHtml(params.title)}</em></p>`,
-      params.html?.trim() ||
-        `<pre>${escapeHtml(params.text || '(sem conteúdo)')}</pre>`,
-    ].join('\n');
-
-    const existing = await this.prisma.portalTicketDescription.findUnique({
-      where: { ticketNumber: params.ticketNumber },
-      select: { description: true },
-    });
-    const nextDescription = existing?.description?.trim()
-      ? `${existing.description}\n${blockHtml}`
-      : blockHtml;
-
-    const uploader = params.systemUploaderId;
-    if (!uploader) {
+    receivedAt: Date;
+    authorUserId: string | null;
+    reopen: boolean;
+    reopenFromStage: string | null;
+  }): Promise<boolean> {
+    if (!params.authorUserId) {
       this.logger.warn(
-        `Sem uploader para aplicar e-mail ao ticket #${params.ticketNumber}`,
+        `Sem usuário autor para aplicar e-mail ao ticket #${params.ticketNumber}`,
       );
-      return;
+      return false;
     }
 
-    await this.prisma.portalTicketDescription.upsert({
-      where: { ticketNumber: params.ticketNumber },
-      create: {
-        ticketNumber: params.ticketNumber,
-        description: nextDescription,
-        createdBy: uploader,
-      },
-      update: { description: nextDescription },
+    const actorName = params.fromName
+      ? `${params.fromName} (${params.fromEmail})`
+      : params.fromEmail;
+
+    await createEmailReplyCommunication(this.prisma, {
+      ticketNumber: params.ticketNumber,
+      preTicketId: params.preTicketId,
+      fromName: params.fromName,
+      fromEmail: params.fromEmail,
+      html: params.html,
+      text: params.text,
+      receivedAt: params.receivedAt,
+      authorUserId: params.authorUserId,
     });
 
-    if (params.conversationId) {
-      await this.prisma.portalTicket.update({
-        where: { ticketNumber: params.ticketNumber },
-        data: {
-          emailConversationId: params.conversationId,
-          updatedAtSource: new Date(),
-        },
+    if (params.reopen) {
+      await reopenTicketFromEmail(this.prisma, {
+        ticketNumber: params.ticketNumber,
+        fromStageName: params.reopenFromStage,
+        actorName,
+        preTicketId: params.preTicketId,
       });
     }
 
-    const preAttachments = await this.prisma.preTicketAttachment.findMany({
-      where: { preTicketId: params.preTicketId },
+    await this.prisma.portalTicket.update({
+      where: { ticketNumber: params.ticketNumber },
+      data: {
+        ...(params.conversationId
+          ? { emailConversationId: params.conversationId }
+          : {}),
+        updatedAtSource: new Date(),
+      },
     });
-    for (const att of preAttachments) {
-      try {
-        await this.prisma.portalTicketAppointmentAttachment.create({
-          data: {
-            id: randomUUID(),
-            ticketNumber: params.ticketNumber,
-            portalAppointmentId: null,
-            fileId: att.fileId,
-            createdBy: uploader,
-          },
-        });
-      } catch {
-        /* ignore duplicates */
-      }
-    }
 
     try {
       await this.prisma.ticketHistory.create({
@@ -604,7 +639,7 @@ export class EmailInboundIngestService {
           ticketNumber: params.ticketNumber,
           eventType: 'EMAIL_REPLY',
           summary: `Resposta por e-mail de ${params.fromEmail}: ${params.title.slice(0, 160)}`,
-          actorName: params.fromName,
+          actorName,
           source: 'PORTAL',
           occurredAt: new Date(),
           externalKey: `email:${params.preTicketId}`,
@@ -615,7 +650,7 @@ export class EmailInboundIngestService {
     }
 
     void this.ticketAutomation
-      .dispatchNewReplyForUser(uploader, params.ticketNumber)
+      .dispatchNewReplyForUser(params.authorUserId, params.ticketNumber)
       .catch((err) =>
         this.logger.warn(
           `Automações TICKET_NEW_REPLY (e-mail) falharam #${params.ticketNumber}: ${
@@ -623,6 +658,7 @@ export class EmailInboundIngestService {
           }`,
         ),
       );
+    return true;
   }
 
   /**
@@ -997,12 +1033,4 @@ function normalizeEmailSubject(subject: string): string {
     .replace(/^(re|fw|fwd|enc|res)\s*:\s*/gi, '')
     .trim()
     .toLowerCase();
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }

@@ -14,6 +14,7 @@ import {
   PortalTicketOrigin,
   PortalTifluxOutboxKind,
   PortalTifluxOutboxStatus,
+  UserStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -40,7 +41,10 @@ import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
-import { isClientPortalRole } from '../../common/security/client-portal-role';
+import {
+  isClientGestorRole,
+  isClientPortalRole,
+} from '../../common/security/client-portal-role';
 import {
   assertTicketClientScope,
   assertTicketCreateClientScope,
@@ -105,6 +109,141 @@ export class TicketsService {
    * a troca fica no histórico (CLIENT_CHANGED). Usuário de cliente não troca:
    * isso moveria o chamado para outra empresa.
    */
+  /**
+   * Cliente gestor pode, nos tickets da própria empresa: trocar responsável
+   * (equipe Alle ou gente da empresa marcada como responsável da mesa),
+   * trocar solicitante (usuário da empresa), transferir para mesa liberada
+   * à empresa, fechar (Resolvido/Encerrado) e reabrir. Nada além disso.
+   * Cliente funcionário não edita o ticket.
+   * Normaliza o dto (nome/e-mail do solicitante vêm do cadastro).
+   */
+  private async assertClientGestorTicketUpdate(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    dto: UpdateTicketDto,
+  ): Promise<void> {
+    if (!isClientGestorRole(actor.role)) {
+      throw new ForbiddenException(
+        'Somente o gestor da empresa pode alterar o chamado.',
+      );
+    }
+    const portal = await this.prisma.portalTicket.findUnique({
+      where: { ticketNumber },
+      select: {
+        clientExternalId: true,
+        createdBy: true,
+        requestorEmail: true,
+        deskExternalId: true,
+        deskName: true,
+      },
+    });
+    if (!portal) throw new NotFoundException('Ticket não encontrado.');
+    await assertTicketClientScope(
+      this.tenantScope,
+      actor,
+      portal.clientExternalId,
+      { createdBy: portal.createdBy, requestorEmail: portal.requestorEmail },
+    );
+
+    const forbidden =
+      dto.title != null ||
+      dto.description != null ||
+      dto.clientId != null ||
+      dto.externalGmudRef !== undefined ||
+      (dto.stageName != null && dto.isClosed === undefined) ||
+      (dto.statusName != null && dto.isClosed === undefined);
+    if (forbidden) {
+      throw new ForbiddenException(
+        'O gestor pode alterar responsável, solicitante, mesa e fechar ou reabrir o chamado.',
+      );
+    }
+
+    const company = await this.prisma.company.findFirst({
+      where: { tifluxClientId: portal.clientExternalId, deletedAt: null },
+      select: { id: true },
+    });
+    const companyId = company?.id ?? null;
+    if (!companyId) {
+      throw new ForbiddenException('Empresa do chamado não encontrada.');
+    }
+
+    // Fechar / reabrir
+    if (dto.isClosed === true) {
+      const stage = canonicalizeStageName(dto.stageName?.trim());
+      if (
+        stage !== PORTAL_STAGE.RESOLVIDO &&
+        stage !== PORTAL_STAGE.ENCERRADO
+      ) {
+        throw new ForbiddenException(
+          'O gestor fecha o chamado como Resolvido ou Encerrado.',
+        );
+      }
+      dto.stageName = stage;
+      dto.statusName = stage;
+    } else if (dto.isClosed === false) {
+      dto.stageName = PORTAL_STAGE.NOVO;
+      dto.statusName = PORTAL_STAGE.NOVO;
+    }
+
+    // Mesa
+    if (dto.deskId != null) {
+      await assertDeskAllowedForCompany(this.prisma, companyId, dto.deskId);
+    }
+
+    // Responsável
+    if (dto.responsibleId !== undefined) {
+      if (dto.responsibleId === null) {
+        throw new ForbiddenException(
+          'O gestor troca o responsável, mas não deixa o chamado sem responsável.',
+        );
+      }
+      const deskId = dto.deskId ?? portal.deskExternalId;
+      if (deskId == null) {
+        throw new BadRequestException('Chamado sem mesa: defina a mesa antes.');
+      }
+      const allowed = await this.catalogs.listResponsiblesForDeskExternalId(
+        deskId,
+        dto.deskId != null ? null : portal.deskName,
+        companyId,
+      );
+      const match = allowed.find((r) => r.id === dto.responsibleId);
+      if (!match) {
+        throw new ForbiddenException(
+          'Responsável não disponível para esta mesa.',
+        );
+      }
+      dto.responsibleName = match.name;
+    }
+
+    // Solicitante
+    if (
+      dto.requestorEmail != null ||
+      dto.requestorName != null ||
+      dto.requestorId !== undefined
+    ) {
+      const email = dto.requestorEmail?.trim().toLowerCase();
+      if (!email) {
+        throw new BadRequestException('Selecione o solicitante.');
+      }
+      const requestor = await this.prisma.user.findFirst({
+        where: {
+          email: { equals: email, mode: 'insensitive' },
+          deletedAt: null,
+          status: UserStatus.ACTIVE,
+          OR: [{ companyId }, { companyMemberships: { some: { companyId } } }],
+        },
+        select: { name: true, email: true },
+      });
+      if (!requestor) {
+        throw new ForbiddenException(
+          'O solicitante precisa ser um usuário da sua empresa.',
+        );
+      }
+      dto.requestorName = requestor.name;
+      dto.requestorEmail = requestor.email;
+    }
+  }
+
   actorCanChangeTicketClient(actor: AuthenticatedRequestUser): boolean {
     return !isClientPortalRole(actor.role);
   }
@@ -674,6 +813,10 @@ export class TicketsService {
 
     if (!exists) {
       throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    if (isClientPortalRole(actor.role)) {
+      await this.assertClientGestorTicketUpdate(actor, ticketNumber, dto);
     }
 
     if (portal?.isClosed && dto.isClosed !== false) {

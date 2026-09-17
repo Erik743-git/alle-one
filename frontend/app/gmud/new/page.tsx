@@ -24,4 +24,3 @@ export default function NewGmudPage() {
     </ProtectedPage>
   );
 }
-
