@@ -43,10 +43,10 @@ describe('ticket-auto-open.helper', () => {
     expect(formatYmdUtc(next)).toBe('2027-02-28');
   });
 
-  it('resolveAutoOpenResponsibleId distingue automático, pré-ticket e explícito', () => {
+  it('resolveAutoOpenResponsibleId: automático legado e pré-ticket abrem sem responsável', () => {
     expect(
       resolveAutoOpenResponsibleId(TICKET_AUTO_OPEN_AUTO_RESPONSIBLE),
-    ).toBe(undefined);
+    ).toBeNull();
     expect(
       resolveAutoOpenResponsibleId(TICKET_AUTO_OPEN_PRE_TICKET),
     ).toBeNull();
@@ -55,7 +55,7 @@ describe('ticket-auto-open.helper', () => {
 
   it('normalizeAutoOpenResponsibleStorage persiste modos de responsável', () => {
     expect(normalizeAutoOpenResponsibleStorage(undefined)).toBe(
-      TICKET_AUTO_OPEN_AUTO_RESPONSIBLE,
+      TICKET_AUTO_OPEN_PRE_TICKET,
     );
     expect(
       normalizeAutoOpenResponsibleStorage(TICKET_AUTO_OPEN_PRE_TICKET),
@@ -67,7 +67,7 @@ describe('ticket-auto-open.helper', () => {
     expect(normalizeAutoOpenResponsibleFromDb(null)).toBe(
       TICKET_AUTO_OPEN_PRE_TICKET,
     );
-    expect(normalizeAutoOpenResponsibleFromDb(0)).toBe(0);
+    expect(normalizeAutoOpenResponsibleFromDb(0)).toBe(-1);
     expect(normalizeAutoOpenResponsibleFromDb(-1)).toBe(-1);
   });
 });
