@@ -345,7 +345,9 @@ export class TicketsController {
   }
 
   @Patch(':ticketNumber/stage')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente gestor troca o estágio dos chamados da própria empresa
+  // (escopo checado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   updateStage(
     @CurrentUser() actor: AuthenticatedRequestUser,

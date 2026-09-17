@@ -308,7 +308,7 @@ export default function TicketDetailPage() {
   }, [ticketNumber]);
 
   const loadStages = useCallback(async () => {
-    if (!Number.isFinite(ticketNumber) || !canChangeTicketStage()) return;
+    if (!Number.isFinite(ticketNumber) || !canManageTicketAssignment()) return;
     try {
       setStagesLoading(true);
       const res = await ticketsService.listStages(ticketNumber);
@@ -1323,7 +1323,7 @@ export default function TicketDetailPage() {
                           {ticket.responsibleName ?? "—"}
                         </p>
                       )}
-                      {canChangeTicketStage() && (stagesLoading || stagesData) ? (
+                      {canManageTicketAssignment() && (stagesLoading || stagesData) ? (
                         <div className="space-y-2 border-t border-border pt-3">
                           <Label className="text-xs font-semibold text-muted-foreground">
                             Estágio

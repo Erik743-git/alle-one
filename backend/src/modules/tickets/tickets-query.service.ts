@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -8,7 +9,10 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
-import { isClientPortalRole } from '../../common/security/client-portal-role';
+import {
+  isClientGestorRole,
+  isClientPortalRole,
+} from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
@@ -2122,6 +2126,16 @@ export class TicketsQueryService {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    if (isClientPortalRole(actor.role)) {
+      // Só o gestor, e só nos chamados da própria empresa.
+      if (!isClientGestorRole(actor.role)) {
+        throw new ForbiddenException(
+          'Somente o gestor da empresa pode alterar o estágio do chamado.',
+        );
+      }
+      await this.assertTicketClientScope(actor, ticket.client_external_id);
     }
 
     if (ticket.is_closed) {

@@ -133,7 +133,8 @@ export class TicketsService {
    * Cliente gestor pode, nos tickets da própria empresa: trocar responsável
    * (equipe Alle ou gente da empresa marcada como responsável da mesa),
    * trocar solicitante (usuário da empresa), transferir para mesa liberada
-   * à empresa, fechar (Resolvido/Encerrado) e reabrir. Nada além disso.
+   * à empresa, mudar o estágio, fechar (Resolvido/Encerrado) e reabrir.
+   * Nada além disso.
    * Cliente funcionário não edita o ticket.
    * Normaliza o dto (nome/e-mail do solicitante vêm do cadastro).
    */
@@ -169,9 +170,7 @@ export class TicketsService {
       dto.title != null ||
       dto.description != null ||
       dto.clientId != null ||
-      dto.externalGmudRef !== undefined ||
-      (dto.stageName != null && dto.isClosed === undefined) ||
-      (dto.statusName != null && dto.isClosed === undefined);
+      dto.externalGmudRef !== undefined;
     if (forbidden) {
       throw new ForbiddenException(
         'O gestor pode alterar responsável, solicitante, mesa e fechar ou reabrir o chamado.',
