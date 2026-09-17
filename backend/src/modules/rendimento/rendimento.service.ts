@@ -2517,7 +2517,8 @@ export class RendimentoService {
       where: {
         deletedAt: null,
         status: UserStatus.ACTIVE,
-        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] }, // PJ não entra na lista de Rendimento
+        // Terceiro (PJ) também é colaborador, com restrições em outras telas.
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
       },
       include: { company: true },
       orderBy: { name: 'asc' },
@@ -2764,16 +2765,25 @@ export class RendimentoService {
     }));
   }
 
-  async listCollaboratorListPreferences(): Promise<
-    RendimentoCollaboratorListPreferenceDto[]
-  > {
-    const collaborators = await this.listCollaboratorsForSelect();
-    const prefs = await this.prisma.rendimentoCollaboratorListPref.findMany({
-      select: { collaboratorUserId: true, listed: true },
+  async listCollaboratorListPreferences(
+    ownerUserId: string,
+  ): Promise<RendimentoCollaboratorListPreferenceDto[]> {
+    const collaborators = await this.listCollaboratorsForSelect({
+      includePj: true,
     });
-    const listedByCollaboratorId = new Map(
-      prefs.map((pref) => [pref.collaboratorUserId, pref.listed]),
+    // Preferência deste admin; sem ela, vale a configuração antiga (owner nulo).
+    const prefs = await this.prisma.rendimentoCollaboratorListPref.findMany({
+      where: { OR: [{ ownerUserId }, { ownerUserId: null }] },
+      select: { ownerUserId: true, collaboratorUserId: true, listed: true },
+    });
+    const listedByCollaboratorId = new Map<string, boolean>(
+      prefs
+        .filter((pref) => pref.ownerUserId === null)
+        .map((pref) => [pref.collaboratorUserId, pref.listed]),
     );
+    for (const pref of prefs.filter((p) => p.ownerUserId === ownerUserId)) {
+      listedByCollaboratorId.set(pref.collaboratorUserId, pref.listed);
+    }
 
     return collaborators.map((collaborator) => ({
       collaboratorId: collaborator.id,
@@ -2786,6 +2796,7 @@ export class RendimentoService {
   }
 
   async setCollaboratorListPreference(params: {
+    ownerUserId: string;
     collaboratorUserId: string;
     listed: boolean;
   }): Promise<{ collaboratorId: string; listed: boolean }> {
@@ -2794,7 +2805,7 @@ export class RendimentoService {
         id: params.collaboratorUserId,
         deletedAt: null,
         status: UserStatus.ACTIVE,
-        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] },
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR, UserRole.PJ] },
       },
       select: { id: true },
     });
@@ -2804,8 +2815,14 @@ export class RendimentoService {
     }
 
     await this.prisma.rendimentoCollaboratorListPref.upsert({
-      where: { collaboratorUserId: params.collaboratorUserId },
+      where: {
+        ownerUserId_collaboratorUserId: {
+          ownerUserId: params.ownerUserId,
+          collaboratorUserId: params.collaboratorUserId,
+        },
+      },
       create: {
+        ownerUserId: params.ownerUserId,
         collaboratorUserId: params.collaboratorUserId,
         listed: params.listed,
       },
