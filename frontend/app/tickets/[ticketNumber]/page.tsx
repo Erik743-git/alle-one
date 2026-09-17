@@ -283,6 +283,11 @@ export default function TicketDetailPage() {
     try {
       if (!silent) setLoading(true);
       const res = await ticketsService.detail(ticketNumber);
+      if (!res?.ticket) {
+        throw new Error(
+          "Servidor indisponível no momento. Aguarde alguns segundos e tente novamente.",
+        );
+      }
       // Recarga em segundo plano (depois de editar/fechar um apontamento):
       // sem mudança real, não mexe na tela — nem no histórico.
       const json = JSON.stringify(res);
