@@ -227,7 +227,7 @@ export function TicketListPresetsToolbar({
                     type="button"
                     className="min-w-0 flex-1 truncate text-left text-sm font-medium"
                     onClick={() => {
-                      onApply(preset);
+                      onApply(preset, { toggle: true });
                       setOpen(false);
                     }}
                   >
