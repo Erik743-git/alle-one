@@ -29,6 +29,8 @@ export type TicketListItem = {
   hasPendingWarning?: boolean;
   /** Quem fez a última alteração (histórico). */
   updatedByName?: string | null;
+  /** Quem abriu o chamado (usuário, evento de criação ou origem). */
+  createdByName?: string | null;
 };
 
 export type TicketListGroup = {

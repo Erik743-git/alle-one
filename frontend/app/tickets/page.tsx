@@ -843,8 +843,18 @@ export default function TicketsPage() {
         );
       case "created":
         return (
-          <td className="whitespace-nowrap border-r border-border/30 px-3 py-2.5 text-xs tabular-nums text-muted-foreground">
-            {formatWhen(ticket.createdAt)}
+          <td className="border-r border-border/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <div className="whitespace-nowrap tabular-nums">
+              {formatWhen(ticket.createdAt)}
+            </div>
+            {ticket.createdByName ? (
+              <div
+                className="truncate text-[11px] text-muted-foreground/80"
+                title={ticket.createdByName}
+              >
+                por {ticket.createdByName}
+              </div>
+            ) : null}
           </td>
         );
       case "updated":

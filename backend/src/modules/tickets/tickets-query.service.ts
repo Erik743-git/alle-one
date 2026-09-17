@@ -97,6 +97,7 @@ export type TicketListItemDto = {
   hasPendingWarning?: boolean;
   /** Quem fez a última alteração registrada no histórico. */
   updatedByName?: string | null;
+  createdByName?: string | null;
 };
 
 export type TicketHistoryDto = {
@@ -837,7 +838,7 @@ export class TicketsQueryService {
   }
 
   /**
-   * Nome de quem fez a última alteração (último evento do histórico).
+   * Nome de quem criou e de quem fez a última alteração (histórico).
    * Alguns eventos gravam o e-mail do autor: troca pelo nome do usuário.
    */
   private async markLastUpdatedBy(
@@ -848,20 +849,48 @@ export class TicketsQueryService {
     );
     if (ticketNumbers.length === 0) return;
     try {
-      const rows = await this.prisma.$queryRaw<
-        Array<{ ticket_number: number; actor_name: string }>
-      >`
-        SELECT DISTINCT ON (h.ticket_number) h.ticket_number, h.actor_name
-        FROM ticket_history h
-        WHERE h.ticket_number = ANY(${ticketNumbers}::int[])
-          AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
-        ORDER BY h.ticket_number, h.occurred_at DESC
-      `;
+      const [updatedRows, createdRows] = await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{ ticket_number: number; actor_name: string }>
+        >`
+          SELECT DISTINCT ON (h.ticket_number) h.ticket_number, h.actor_name
+          FROM ticket_history h
+          WHERE h.ticket_number = ANY(${ticketNumbers}::int[])
+            AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
+          ORDER BY h.ticket_number, h.occurred_at DESC
+        `,
+        // Criador: usuário do portal; senão o evento de criação; senão a origem.
+        this.prisma.$queryRaw<
+          Array<{ ticket_number: number; actor_name: string | null }>
+        >`
+          SELECT pt.ticket_number,
+            COALESCE(
+              NULLIF(TRIM(u.name), ''),
+              (
+                SELECT h.actor_name
+                FROM ticket_history h
+                WHERE h.ticket_number = pt.ticket_number
+                  AND h.event_type IN ('TICKET_CREATED', 'PRE_TICKET_CREATED')
+                  AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
+                ORDER BY h.occurred_at ASC
+                LIMIT 1
+              ),
+              NULLIF(TRIM(pt.created_by_way_of), '')
+            ) AS actor_name
+          FROM portal_tickets pt
+          LEFT JOIN users u ON u.id = pt.created_by
+          WHERE pt.ticket_number = ANY(${ticketNumbers}::int[])
+        `,
+      ]);
 
+      const actors = [
+        ...updatedRows.map((r) => r.actor_name),
+        ...createdRows.map((r) => r.actor_name ?? ''),
+      ];
       const emails = [
         ...new Set(
-          rows
-            .map((r) => r.actor_name.trim().toLowerCase())
+          actors
+            .map((v) => v.trim().toLowerCase())
             .filter((v) => /^[^\s@]+@[^\s@]+$/.test(v)),
         ),
       ];
@@ -874,20 +903,27 @@ export class TicketsQueryService {
       const nameByEmail = new Map(
         users.map((u) => [u.email.trim().toLowerCase(), u.name]),
       );
-
-      const byTicket = new Map<number, string>();
-      for (const row of rows) {
-        const raw = row.actor_name.trim();
+      const displayName = (value: string) => {
+        const raw = value.trim();
         // "Nome (email@x)" (resposta por e-mail) → só o nome.
         const withoutEmail = raw.replace(/\s*\([^()\s]+@[^()\s]+\)$/, '');
-        byTicket.set(
-          Number(row.ticket_number),
-          nameByEmail.get(raw.toLowerCase()) ?? withoutEmail,
-        );
+        return nameByEmail.get(raw.toLowerCase()) ?? withoutEmail;
+      };
+
+      const updatedBy = new Map<number, string>();
+      for (const row of updatedRows) {
+        updatedBy.set(Number(row.ticket_number), displayName(row.actor_name));
+      }
+      const createdBy = new Map<number, string>();
+      for (const row of createdRows) {
+        if (row.actor_name?.trim()) {
+          createdBy.set(Number(row.ticket_number), displayName(row.actor_name));
+        }
       }
       for (const group of groups) {
         for (const ticket of group.tickets) {
-          ticket.updatedByName = byTicket.get(ticket.ticketNumber) ?? null;
+          ticket.updatedByName = updatedBy.get(ticket.ticketNumber) ?? null;
+          ticket.createdByName = createdBy.get(ticket.ticketNumber) ?? null;
         }
       }
     } catch (err) {
