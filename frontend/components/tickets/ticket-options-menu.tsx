@@ -515,10 +515,10 @@ export function TicketOptionsMenu({
           </DialogHeader>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
             <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2.5 text-sm">
-              <p className="font-medium text-amber-50">
+              <p className="font-medium text-amber-900 dark:text-amber-100">
                 Atenção: o chamado atual (#{ticketNumber}) será encerrado.
               </p>
-              <p className="mt-1 text-xs leading-relaxed text-amber-100/85">
+              <p className="mt-1 text-xs leading-relaxed text-amber-900/85 dark:text-amber-100/85">
                 Busque e selecione o ticket pai que permanece aberto. No Alle
                 One você escolhe qual chamado manter, não qual encerrar.
               </p>

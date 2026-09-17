@@ -488,7 +488,7 @@ export function ZabbixGroupMultiSelectField({
               className={cn(
                 "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
                 validation?.exists === false
-                  ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-300"
                   : "border-primary/20 bg-primary/10 text-primary",
               )}
               title={group}

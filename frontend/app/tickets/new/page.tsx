@@ -768,7 +768,7 @@ export default function NewTicketPage() {
                           }
                         />
                         {catalogBlocked ? (
-                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
                             Este catálogo exige serviços, mas não há itens
                             cadastrados. Cadastre serviços no catálogo{" "}
                             <strong>{catalogs?.desk?.name ?? "selecionado"}</strong>{" "}
@@ -963,7 +963,7 @@ export default function NewTicketPage() {
                           alwaysShowSearch
                         />
                         {!loading && responsibleOptions.length === 0 ? (
-                          <p className="text-xs text-amber-300/90">
+                          <p className="text-xs text-amber-800 dark:text-amber-300">
                             Ninguém desta mesa está marcado como responsável. Marque
                             em Administração &rarr; Usuários, na opção &ldquo;Marcar
                             usuário como responsável&rdquo;.
@@ -982,7 +982,7 @@ export default function NewTicketPage() {
 
                 <div className="space-y-3">
                   {!canSubmit && !loading && !saving ? (
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50/95">
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
                       {catalogBlocked ? (
                         <p>
                           Não é possível abrir o ticket: o catálogo exige serviços, mas

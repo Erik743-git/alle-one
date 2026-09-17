@@ -1072,12 +1072,12 @@ export default function TicketDetailPage() {
             ) : (
               <>
                 {data?.syncPending ? (
-                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
                     {TICKET_SYNC_PENDING_BANNER}
                   </p>
                 ) : null}
                 {ticket.isPreTicket ? (
-                  <p className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-50/95">
+                  <p className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-sm text-teal-900 dark:text-teal-100">
                     {TICKET_PRETICKET_BANNER}
                   </p>
                 ) : null}
@@ -1429,7 +1429,7 @@ export default function TicketDetailPage() {
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span>{row.userName ?? "—"}</span>
                                   {row.isWarning ? (
-                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
                                       <AlertTriangle className="size-3" />
                                       Atenção
                                     </span>
