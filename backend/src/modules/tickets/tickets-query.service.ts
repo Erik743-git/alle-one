@@ -43,6 +43,11 @@ import {
 } from './tickets-client-scope';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import {
+  assertPjAccessToTicketNumber,
+  loadPjTicketScope,
+  pjTicketListWhere,
+} from './tickets-pj-scope';
+import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
   isTifluxDisconnected,
@@ -407,6 +412,25 @@ export class TicketsQueryService {
       });
       andParts.push({ OR: mineOr });
     }
+    // Terceiro: só as empresas e mesas dele, mais os chamados em que está.
+    const pjScope = await loadPjTicketScope(this.prisma, actor);
+    if (pjScope) {
+      const [mine, pjWatchers] = await Promise.all([
+        this.resolveTifluxExternalIdForUser(actor.email),
+        this.prisma.portalTicketWatcher.findMany({
+          where: { email: actorEmail },
+          select: { ticketNumber: true },
+        }),
+      ]);
+      andParts.push(
+        pjTicketListWhere({
+          scope: pjScope,
+          actor,
+          responsibleExternalId: mine?.externalId ?? null,
+          watcherTicketNumbers: pjWatchers.map((w) => w.ticketNumber),
+        }),
+      );
+    }
     if (search) {
       andParts.push({
         OR: [
@@ -738,7 +762,11 @@ export class TicketsQueryService {
       createdBy?: string | null;
       requestorEmail?: string | null;
     },
+    ticketNumber?: number,
   ) {
+    if (ticketNumber != null) {
+      await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
+    }
     return assertTicketClientScope(
       this.tenantScope,
       actor,
@@ -1263,10 +1291,12 @@ export class TicketsQueryService {
       where: { ticketNumber },
     });
     if (portal) {
-      await this.assertTicketClientScope(actor, portal.clientExternalId, {
-        createdBy: portal.createdBy,
-        requestorEmail: portal.requestorEmail,
-      });
+      await this.assertTicketClientScope(
+        actor,
+        portal.clientExternalId,
+        { createdBy: portal.createdBy, requestorEmail: portal.requestorEmail },
+        ticketNumber,
+      );
       const [
         appointments,
         externalGmudRef,
@@ -1382,9 +1412,12 @@ export class TicketsQueryService {
       return this.getDetailFromTifluxApi(actor, ticketNumber);
     }
 
-    await this.assertTicketClientScope(actor, row.client_external_id, {
-      requestorEmail: row.requestor_email ?? null,
-    });
+    await this.assertTicketClientScope(
+      actor,
+      row.client_external_id,
+      { requestorEmail: row.requestor_email ?? null },
+      ticketNumber,
+    );
 
     const [appointments, externalGmudRef, portalDescription, grouping] =
       await Promise.all([
@@ -1422,10 +1455,12 @@ export class TicketsQueryService {
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
-    await this.assertTicketClientScope(actor, ticket.client_external_id, {
-      createdBy: ticket.created_by,
-      requestorEmail: ticket.requestor_email,
-    });
+    await this.assertTicketClientScope(
+      actor,
+      ticket.client_external_id,
+      { createdBy: ticket.created_by, requestorEmail: ticket.requestor_email },
+      ticketNumber,
+    );
 
     if (!isTifluxDisconnected()) {
       await this.syncTifluxTicketHistory(ticketNumber).catch((err) => {
@@ -2089,10 +2124,12 @@ export class TicketsQueryService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
-    await this.assertTicketClientScope(actor, ticket.client_external_id, {
-      createdBy: ticket.created_by,
-      requestorEmail: ticket.requestor_email,
-    });
+    await this.assertTicketClientScope(
+      actor,
+      ticket.client_external_id,
+      { createdBy: ticket.created_by, requestorEmail: ticket.requestor_email },
+      ticketNumber,
+    );
 
     const deskExternalId = Number(ticket.desk_external_id);
     const deskOk =

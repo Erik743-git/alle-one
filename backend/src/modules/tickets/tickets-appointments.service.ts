@@ -72,6 +72,7 @@ import {
 import { isDonePortalStage } from './portal-ticket-stages';
 import { resolveTicketStageGroup } from './tickets-stage-groups';
 import { parseClockToMinutes } from '../rendimento/rendimento-worked-minutes.helper';
+import { assertPjAccessToTicketNumber } from './tickets-pj-scope';
 
 type AppointmentRow = {
   external_id: number;
@@ -664,6 +665,7 @@ export class TicketsAppointmentsService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
   ): Promise<void> {
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     if (!isClientPortalRole(actor.role)) return;
     const portal = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber },

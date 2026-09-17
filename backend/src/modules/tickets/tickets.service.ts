@@ -38,6 +38,7 @@ import {
 } from './tickets-portal.config';
 import { applyClientTitlePrefix } from './ticket-title.util';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
+import { assertPjAccessToTicketNumber } from './tickets-pj-scope';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -159,6 +160,7 @@ export class TicketsService {
       },
     });
     if (!portal) throw new NotFoundException('Ticket não encontrado.');
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     await assertTicketClientScope(
       this.tenantScope,
       actor,
@@ -1767,6 +1769,7 @@ export class TicketsService {
     if (!portal) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     await assertTicketClientScope(
       this.tenantScope,
       actor,
@@ -1804,6 +1807,7 @@ export class TicketsService {
     if (!portal) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     await assertTicketClientScope(
       this.tenantScope,
       actor,

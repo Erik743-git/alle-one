@@ -75,6 +75,8 @@ export type FormEdicao = {
   firstAccess: boolean;
   responsible: boolean;
   specialtyIds: string[];
+  /** Terceiro (PJ): empresas que ele atende. */
+  servedCompanyIds: string[];
   rendimentoSchedule: UserRendimentoScheduleValue;
 };
 
@@ -95,6 +97,7 @@ export function createEmptyFormEdicao(): FormEdicao {
     firstAccess: false,
     responsible: false,
     specialtyIds: [],
+    servedCompanyIds: [],
     rendimentoSchedule: normalizeUserRendimentoSchedule({}),
   };
 }
@@ -230,6 +233,7 @@ export function formEdicaoFromUser(usuario: ApiUser): FormEdicao {
     firstAccess: usuario.firstAccess,
     responsible: usuario.responsible,
     specialtyIds: resolveUserSpecialtyIds(usuario),
+    servedCompanyIds: (usuario.companyMemberships ?? []).map((m) => m.companyId),
     rendimentoSchedule: normalizeUserRendimentoSchedule(usuario),
   };
 }

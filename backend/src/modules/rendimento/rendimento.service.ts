@@ -2217,7 +2217,10 @@ export class RendimentoService {
       );
     }
 
-    const collaborators = await this.listCollaboratorsForSelect();
+    // Terceiro tambem aponta: entra na sincronizacao e na aprovacao.
+    const collaborators = await this.listCollaboratorsForSelect({
+      includePj: true,
+    });
     const targets = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
       : isTicketsPortalCanonical()
@@ -3679,7 +3682,10 @@ export class RendimentoService {
   }): Promise<void> {
     const start = this.parseDateOnly(params.start);
     const end = this.parseDateOnly(params.end);
-    const collaborators = await this.listCollaboratorsForSelect();
+    // Terceiro tambem aponta: entra na sincronizacao e na aprovacao.
+    const collaborators = await this.listCollaboratorsForSelect({
+      includePj: true,
+    });
     const targets = params.userId
       ? collaborators.filter((c) => c.id === params.userId)
       : isTicketsPortalCanonical()
