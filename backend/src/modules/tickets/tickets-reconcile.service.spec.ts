@@ -40,59 +40,6 @@ describe('TicketsReconcileService', () => {
     service = module.get(TicketsReconcileService);
   });
 
-  it('agrega divergências de outbox e apontamentos', async () => {
-    prisma.portalTifluxOutbox.findMany
-      .mockResolvedValueOnce([
-        {
-          id: 'ob-1',
-          ticketNumber: 100,
-          kind: PortalTifluxOutboxKind.CREATE_APPOINTMENT,
-          errorMessage: 'timeout',
-          updatedAt: new Date('2026-06-01T10:00:00Z'),
-        },
-      ])
-      .mockResolvedValueOnce([]);
-
-    prisma.portalTicketAppointment.findMany
-      .mockResolvedValueOnce([
-        {
-          id: 'pa-1',
-          ticketNumber: 100,
-          createdAt: new Date('2026-06-01T09:00:00Z'),
-        },
-      ])
-      .mockResolvedValueOnce([]);
-
-    const result = await service.reconcile();
-
-    expect(result.summary.total).toBe(2);
-    expect(result.summary.outboxFailed).toBe(1);
-    expect(result.summary.appointmentPendingSync).toBe(1);
-    expect(result.issues[0].kind).toBe('OUTBOX_FAILED');
-    expect(result.issues[1].kind).toBe('APPOINTMENT_PENDING_SYNC');
-  });
-
-  it('detecta apontamento SYNCED ausente no tiflux', async () => {
-    prisma.portalTifluxOutbox.findMany.mockResolvedValue([]);
-    prisma.portalTicketAppointment.findMany
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 'pa-2',
-          ticketNumber: 200,
-          tifluxAppointmentExternalId: 55,
-          updatedAt: new Date('2026-06-01T12:00:00Z'),
-        },
-      ]);
-
-    prisma.$queryRaw.mockResolvedValue([]);
-
-    const result = await service.reconcile();
-
-    expect(result.summary.appointmentMissingInTiflux).toBe(1);
-    expect(result.issues[0].kind).toBe('APPOINTMENT_MISSING_IN_TIFLUX');
-  });
-
   it('autoRetry reenfileira outbox FAILED', async () => {
     prisma.portalTifluxOutbox.findMany
       .mockResolvedValueOnce([

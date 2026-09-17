@@ -540,8 +540,11 @@ export default function TicketsPage() {
     setActivePresetId(null);
   }
 
-  function applyPreset(preset: TicketListPreset) {
-    if (activePresetId === preset.id) {
+  function applyPreset(
+    preset: TicketListPreset,
+    options: { toggle?: boolean } = {},
+  ) {
+    if (options.toggle && activePresetId === preset.id) {
       clearListFilters();
       return;
     }
@@ -1027,6 +1030,7 @@ export default function TicketsPage() {
                     activePresetId={activePresetId}
                     onRefresh={() => void loadPresets()}
                     onApply={applyPreset}
+                    onClear={clearListFilters}
                     onCreate={() => {
                       setEditingPreset(null);
                       setPresetDialogOpen(true);
@@ -1565,7 +1569,11 @@ export default function TicketsPage() {
             pageState={pageState}
             catalogs={catalogs}
             editing={editingPreset}
-            onSaved={() => void loadPresets()}
+            onSaved={(saved) => {
+              void loadPresets();
+              // Editou o filtro que está aplicado: a tela passa a refletir a versão nova.
+              if (saved && saved.id === activePresetId) applyPreset(saved);
+            }}
           />
         </AppShell>
       </PermissionGate>
