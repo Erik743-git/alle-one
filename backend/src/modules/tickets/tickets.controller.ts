@@ -585,6 +585,7 @@ export class TicketsController {
         actor,
         ticketNumber,
         target.id,
+        { systemTransition: true },
       );
     } catch (error) {
       // O apontamento já foi salvo; falhar aqui não pode desfazer isso.

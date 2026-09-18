@@ -1808,14 +1808,14 @@ export class TicketsAppointmentsService {
       }
       return sent
         ? ' E-mail de comunicação enviado.'
-        : ' Apontamento salvo, mas o e-mail de comunicação não foi enviado.';
+        : ' O e-mail de comunicação não foi enviado.';
     } catch (err) {
       this.logger.warn(
         `Falha na comunicação com cliente do apontamento ${params.portalAppointmentId}: ${
           err instanceof Error ? err.message : err
         }`,
       );
-      return ' Apontamento salvo, mas o e-mail de comunicação não foi enviado.';
+      return ' O e-mail de comunicação não foi enviado.';
     }
   }
 

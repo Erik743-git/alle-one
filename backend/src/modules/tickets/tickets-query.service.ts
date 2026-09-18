@@ -2159,7 +2159,7 @@ export class TicketsQueryService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
     stageId: number,
-    options?: { skipAutomations?: boolean },
+    options?: { skipAutomations?: boolean; systemTransition?: boolean },
   ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
@@ -2167,8 +2167,10 @@ export class TicketsQueryService {
     }
 
     if (isClientPortalRole(actor.role)) {
-      // Só o gestor, e só nos chamados da própria empresa.
-      if (!isClientGestorRole(actor.role)) {
+      // O escopo da empresa vale sempre; a exigência de ser gestor só vale
+      // para a troca feita na tela. Transições do próprio portal (o chamado
+      // entra em atendimento quando o cliente aponta) não passam por ela.
+      if (!options?.systemTransition && !isClientGestorRole(actor.role)) {
         throw new ForbiddenException(
           'Somente o gestor da empresa pode alterar o estágio do chamado.',
         );
