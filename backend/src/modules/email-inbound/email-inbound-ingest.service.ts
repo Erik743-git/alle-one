@@ -10,6 +10,7 @@ import {
   isReopenableStage,
   reopenTicketFromEmail,
   senderCanReopenTicket,
+  senderCanReplyToTicket,
 } from './email-reply-communication';
 import {
   MicrosoftGraphMailClient,
@@ -303,21 +304,32 @@ export class EmailInboundIngestService {
           clientExternalId: true,
         },
       });
-      if (ticket && !ticket.isClosed) {
+      const senderInfo = requestor
+        ? {
+            userId: requestor.id,
+            role: requestor.role,
+            companyId: requestor.companyId,
+          }
+        : null;
+      if (
+        ticket &&
+        !ticket.isClosed &&
+        (await senderCanReplyToTicket(this.prisma, {
+          fromEmail,
+          sender: senderInfo,
+          routeCompanyId: route?.companyId ?? null,
+          ticket,
+        }))
+      ) {
         appliedToTicket = true;
         status = PreTicketStatus.OPENED;
       } else if (
         ticket &&
+        ticket.isClosed &&
         isReopenableStage(ticket.stageName) &&
         (await senderCanReopenTicket(this.prisma, {
           fromEmail,
-          sender: requestor
-            ? {
-                userId: requestor.id,
-                role: requestor.role,
-                companyId: requestor.companyId,
-              }
-            : null,
+          sender: senderInfo,
           routeCompanyId: route?.companyId ?? null,
           ticket,
         }))

@@ -4,6 +4,7 @@ import {
   isReopenableStage,
   saoPauloDateTime,
   senderCanReopenTicket,
+  senderCanReplyToTicket,
 } from './email-reply-communication';
 
 function prismaMock(overrides: {
@@ -184,5 +185,51 @@ describe('createEmailReplyCommunication', () => {
     });
     // Texto puro é escapado.
     expect(data.description).toContain('texto &lt;b&gt;');
+  });
+});
+
+describe('senderCanReplyToTicket', () => {
+  it('equipe interna responde chamado aberto', async () => {
+    await expect(
+      senderCanReplyToTicket(prismaMock({}), {
+        fromEmail: 'tecnico@alletecnologia.com',
+        sender: { userId: 'u1', role: 'COLLABORATOR', companyId: null },
+        routeCompanyId: null,
+        ticket,
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('solicitante responde chamado aberto', async () => {
+    await expect(
+      senderCanReplyToTicket(prismaMock({}), {
+        fromEmail: 'cliente@empresa.com',
+        sender: null,
+        routeCompanyId: null,
+        ticket,
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it('pessoa de outra empresa não entra no chamado, mesmo com #número no assunto', async () => {
+    await expect(
+      senderCanReplyToTicket(prismaMock({ company: null }), {
+        fromEmail: 'alguem@outraempresa.com',
+        sender: { userId: 'u9', role: 'CLIENT_MEMBER', companyId: 'outra' },
+        routeCompanyId: null,
+        ticket,
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it('remetente desconhecido não entra no chamado', async () => {
+    await expect(
+      senderCanReplyToTicket(prismaMock({}), {
+        fromEmail: 'estranho@qualquer.com',
+        sender: null,
+        routeCompanyId: null,
+        ticket,
+      }),
+    ).resolves.toBe(false);
   });
 });
