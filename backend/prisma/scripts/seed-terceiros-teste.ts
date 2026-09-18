@@ -112,8 +112,7 @@ async function main() {
       orderBy: { name: 'asc' },
     });
     console.log(
-      mesas.map((m) => `${m.name}${m.active ? '' : ' (inativa)'}`).join('
-'),
+      mesas.map((m) => `${m.name}${m.active ? '' : ' (inativa)'}`).join('\n'),
     );
     return;
   }
