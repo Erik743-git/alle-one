@@ -27,7 +27,7 @@ export class CreateTicketDto {
 
   @IsString()
   @MinLength(2)
-  @MaxLength(8000)
+  @MaxLength(50_000)
   description!: string;
 
   @IsInt()
@@ -119,7 +119,7 @@ export class CreateTicketAppointmentDto {
 
   @IsString()
   @MinLength(2)
-  @MaxLength(8000)
+  @MaxLength(50_000)
   description!: string;
 
   /** Tipo de atendimento: HORA NORMAL, HORA EXTRA ou PLANTÃO. */
