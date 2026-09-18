@@ -56,6 +56,7 @@ const PLANOS: Plano[] = [
 
 const aplicar = process.argv.includes('--aplicar');
 const limpar = process.argv.includes('--limpar');
+const listarMesas = process.argv.includes('--mesas');
 
 /** Id sintético do responsável — mesma conta de portal-responsible.helper.ts. */
 function responsibleSyntheticId(userId: string): number {
@@ -104,6 +105,18 @@ async function limparTudo() {
 }
 
 async function main() {
+  if (listarMesas) {
+    const mesas = await prisma.specialty.findMany({
+      where: { deletedAt: null },
+      select: { name: true, active: true },
+      orderBy: { name: 'asc' },
+    });
+    console.log(
+      mesas.map((m) => `${m.name}${m.active ? '' : ' (inativa)'}`).join('
+'),
+    );
+    return;
+  }
   if (limpar) {
     await limparTudo();
     return;
@@ -123,9 +136,10 @@ async function main() {
       select: { id: true, name: true },
     });
     if (!empresa || !mesa) {
-      console.error(
-        `PULADO ${plano.email}: ${!empresa ? `empresa "${plano.empresa}"` : `mesa "${plano.mesa}"`} não encontrada.`,
-      );
+      const dica = !empresa
+        ? `empresa "${plano.empresa}"`
+        : `mesa "${plano.mesa}" (rode com --mesas para ver os nomes)`;
+      console.error(`PULADO ${plano.email}: ${dica} não encontrada.`);
       continue;
     }
     if (empresa.tifluxClientId == null) {
@@ -218,7 +232,13 @@ async function main() {
       });
 
       // Um apontamento por chamado, uma hora cada, sem sobrepor a agenda.
+      // Rodar o script de novo não duplica: cada chamado fica com o seu.
       const hora = 8 + i;
+      const jaTem = await prisma.portalTicketAppointment.findFirst({
+        where: { ticketNumber },
+        select: { id: true },
+      });
+      if (jaTem) continue;
       await prisma.portalTicketAppointment.create({
         data: {
           ticketNumber,
