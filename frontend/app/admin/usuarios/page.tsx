@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 import { useAdminUsuarios } from "@/hooks/use-admin-usuarios";
 
-export default function AdminUsuariosPage() {
+function AdminUsuariosPageImpl() {
   const vm = useAdminUsuarios();
 
   return (
@@ -256,4 +257,10 @@ export default function AdminUsuariosPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AdminUsuariosPageImpl as PortalPageComponent };
+
+export default function AdminUsuariosPage() {
+  return <PortalTabSlot route="/admin/usuarios" Component={AdminUsuariosPageImpl} />;
 }

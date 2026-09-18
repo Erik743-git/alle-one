@@ -20,6 +20,12 @@ export type PortalTab = {
    */
   entryKey?: string | null;
   lastActiveAt: number;
+  /**
+   * A tela desta guia já foi montada nesta sessão e continua viva em
+   * segundo plano. Depois de um F5 as guias voltam "adormecidas" e só
+   * montam quando alguém clica nelas.
+   */
+  live?: boolean;
 };
 
 export type PortalTabsState = {
@@ -96,6 +102,7 @@ export function applyRouteChange(
       state: withTab(state, active.id, {
         lastActiveAt: now,
         entryKey: entryKey ?? active.entryKey ?? null,
+        live: true,
       }),
       evicted: [],
     };
@@ -114,6 +121,7 @@ export function applyRouteChange(
           href,
           entryKey: entryKey ?? active.entryKey ?? null,
           lastActiveAt: now,
+          live: true,
         }),
         evicted: [],
       };
@@ -128,7 +136,7 @@ export function applyRouteChange(
               .filter((tab) => tab.id !== active.id)
               .map((tab) =>
                 tab.id === existing.id
-                  ? { ...tab, entryKey, lastActiveAt: now }
+                  ? { ...tab, entryKey, lastActiveAt: now, live: true }
                   : tab,
               ),
             activeId: existing.id,
@@ -143,6 +151,7 @@ export function applyRouteChange(
           customTitle: false,
           entryKey,
           lastActiveAt: now,
+          live: true,
         }),
         evicted: [],
       };
@@ -155,6 +164,7 @@ export function applyRouteChange(
         ...withTab(state, existing.id, {
           lastActiveAt: now,
           entryKey: entryKey ?? existing.entryKey ?? null,
+          live: true,
         }),
         activeId: existing.id,
       },
@@ -168,6 +178,7 @@ export function applyRouteChange(
     title: defaultTabTitle(href),
     entryKey,
     lastActiveAt: now,
+    live: true,
   };
   return enforceLimit({ tabs: [...state.tabs, tab], activeId: tab.id });
 }
@@ -178,7 +189,10 @@ export function activateTab(
   now: number,
 ): PortalTabsState {
   if (!state.tabs.some((tab) => tab.id === id)) return state;
-  return { ...withTab(state, id, { lastActiveAt: now }), activeId: id };
+  return {
+    ...withTab(state, id, { lastActiveAt: now, live: true }),
+    activeId: id,
+  };
 }
 
 /** Fecha a guia; se era a ativa, passa para a vizinha da direita (ou da esquerda). */
@@ -224,6 +238,7 @@ export function duplicateTab(
     id: newId,
     entryKey: null,
     lastActiveAt: now,
+    live: true,
   };
   const tabs = [...state.tabs];
   tabs.splice(index + 1, 0, copy);
@@ -301,8 +316,19 @@ export function portalTabsStorageKey(userId: string): string {
   return `${PORTAL_TABS_STORAGE_PREFIX}${userId}`;
 }
 
+/** Só o que faz sentido depois de recarregar: nem chave de histórico nem "viva". */
 export function serializeTabs(state: PortalTabsState): string {
-  return JSON.stringify({ v: 1, ...state });
+  return JSON.stringify({
+    v: 1,
+    activeId: state.activeId,
+    tabs: state.tabs.map((tab) => ({
+      id: tab.id,
+      href: tab.href,
+      title: tab.title,
+      customTitle: tab.customTitle,
+      lastActiveAt: tab.lastActiveAt,
+    })),
+  });
 }
 
 /** Lê o que foi salvo; qualquer coisa estranha vira "sem guias". */

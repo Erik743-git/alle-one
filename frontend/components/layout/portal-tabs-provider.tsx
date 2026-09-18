@@ -12,6 +12,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 
 import { getDefaultAppRoute } from "@/lib/access-control";
+import { pruneRenderCacheTo } from "@/lib/portal-tabs/render-cache";
 import { notify, notifyError, notifySuccess } from "@/lib/notify";
 import { useAuth } from "@/lib/use-auth";
 import {
@@ -88,6 +89,8 @@ function loadFor(userId: string | null) {
 function commit(state: PortalTabsState) {
   if (state === snapshot.state) return;
   snapshot = { ...snapshot, state };
+  // Guia fechada = tela descartada de verdade (limpa timers, formulário etc.).
+  pruneRenderCacheTo(new Set(state.tabs.map((tab) => tab.href)));
   if (snapshot.userId) {
     try {
       window.localStorage.setItem(
@@ -164,6 +167,15 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
   }, [userId]);
 
   const ready = userId !== null && snap.userId === userId;
+
+  // Guia aberta prefetchada: trocar de guia não espera o RSC da página.
+  const hrefsKey = snap.state.tabs.map((tab) => tab.href).join("|");
+  useEffect(() => {
+    if (!ready) return;
+    for (const href of hrefsKey.split("|").filter(Boolean)) {
+      router.prefetch(href);
+    }
+  }, [ready, hrefsKey, router]);
 
   const goTo = useCallback(
     (tab: PortalTab | null) => {

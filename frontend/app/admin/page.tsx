@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useState } from "react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
@@ -21,7 +22,7 @@ import {
   type AdminOverviewStats,
 } from "@/lib/services/admin.service";
 
-export default function AdminPage() {
+function AdminPageImpl() {
   const [stats, setStats] = useState<AdminOverviewStats | null>(null);
   const [statsError, setStatsError] = useState(false);
 
@@ -282,4 +283,10 @@ export default function AdminPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AdminPageImpl as PortalPageComponent };
+
+export default function AdminPage() {
+  return <PortalTabSlot route="/admin" Component={AdminPageImpl} />;
 }

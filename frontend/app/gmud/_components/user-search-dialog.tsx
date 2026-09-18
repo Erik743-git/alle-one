@@ -95,8 +95,9 @@ export function UserSearchDialog({
                 }}
                 className="w-full rounded-lg border border-border bg-background/40 p-3 text-left hover:bg-muted/40"
               >
-                <div className="text-sm font-semibold">{user.name}</div>
-                <div className="text-xs text-muted-foreground">{user.email}</div>
+                <div className="text-sm font-semibold" title={user.email}>
+                  {user.name}
+                </div>
               </button>
             ))}
           </div>

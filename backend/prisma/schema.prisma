@@ -139,6 +139,7 @@ model User {
   companyMemberships  UserCompany[]
   dashboardChartPresets DashboardChartPreset[]
   ticketListPresets     TicketListPreset[]
+  ticketListState       TicketListUserState?
   preTicketsAsRequestor PreTicket[]       @relation("PreTicketRequestor")
   preTicketsOpened      PreTicket[]       @relation("PreTicketOpenedBy")
   preTicketsClaimed     PreTicket[]       @relation("PreTicketClaimedBy")
@@ -299,6 +300,18 @@ model DashboardChartPreset {
 }
 
 /// Filtro/agrupamento salvo da lista de tickets (busca avançada pré-definida).
+/// Estado da tela de tickets de cada usuário (filtros, colunas, larguras,
+/// agrupamento, ordenação, filtro salvo ativo). Restaurado ao voltar à tela.
+model TicketListUserState {
+  userId    String   @id @map("user_id")
+  state     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_list_user_states")
+}
+
 model TicketListPreset {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
@@ -1047,6 +1060,11 @@ model PortalTicketAppointment {
   notifyClient                Boolean                           @default(false) @map("notify_client")
   /// Advertência: exige leitura dos demais usuários ao abrir o chamado.
   isWarning                   Boolean                           @default(false) @map("is_warning")
+  /// Comunicação vinda de e-mail: quem escreveu (o createdBy é só o usuário técnico).
+  externalAuthorName          String?                           @map("external_author_name") @db.VarChar(255)
+  externalAuthorEmail         String?                           @map("external_author_email") @db.VarChar(255)
+  /// Pré-ticket (e-mail) que originou esta comunicação — evita duplicar.
+  sourcePreTicketId           String?                           @unique @map("source_pre_ticket_id")
   tifluxAppointmentExternalId Int?                              @map("tiflux_appointment_external_id")
   syncStatus                  PortalTicketAppointmentSyncStatus @default(PENDING_TIFLUX) @map("sync_status")
   syncPausedAt                DateTime?                         @map("sync_paused_at")

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -47,7 +48,7 @@ type CompanyEmployee = {
   status: string;
 };
 
-export default function ApontamentosPage() {
+function ApontamentosPageImpl() {
   const router = useRouter();
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
@@ -456,4 +457,10 @@ export default function ApontamentosPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { ApontamentosPageImpl as PortalPageComponent };
+
+export default function ApontamentosPage() {
+  return <PortalTabSlot route="/apontamentos" Component={ApontamentosPageImpl} />;
 }

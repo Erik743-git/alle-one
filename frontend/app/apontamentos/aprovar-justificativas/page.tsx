@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -56,7 +57,7 @@ import {
   type RendimentoCollaborator,
 } from "@/lib/services/rendimento.service";
 
-export default function AprovarJustificativasPage() {
+function AprovarJustificativasPageImpl() {
   const router = useRouter();
   const confirm = useConfirm();
   const authUser = getStoredUser();
@@ -543,4 +544,10 @@ export default function AprovarJustificativasPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AprovarJustificativasPageImpl as PortalPageComponent };
+
+export default function AprovarJustificativasPage() {
+  return <PortalTabSlot route="/apontamentos/aprovar-justificativas" Component={AprovarJustificativasPageImpl} />;
 }

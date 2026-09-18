@@ -424,7 +424,8 @@ export function ProjectActivityModal({
                   onChange={setAssigneeUserId}
                   options={userOptions.map((u) => ({
                     value: u.id,
-                    label: `${u.name} (${u.email})`,
+                    label: u.name,
+                    searchText: u.email,
                   }))}
                   loading={loadingUsers}
                   placeholder="Selecione o responsável"

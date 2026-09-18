@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -40,6 +40,12 @@ type ExcelColumnHeaderProps = {
   distinctValues: string[];
   className?: string;
   align?: "left" | "right" | "center";
+  /** Largura atual em px (tabela com layout fixo). */
+  width?: number;
+  /** Chamado ao soltar a alça de redimensionar. */
+  onResize?: (width: number) => void;
+  minWidth?: number;
+  maxWidth?: number;
 };
 
 export function emptyExcelFilter(): ExcelColumnFilterState {
@@ -84,8 +90,43 @@ export function ExcelColumnHeader({
   distinctValues,
   className,
   align = "left",
+  width,
+  onResize,
+  minWidth = 70,
+  maxWidth = 800,
 }: ExcelColumnHeaderProps) {
   const [open, setOpen] = useState(false);
+  const [dragWidth, setDragWidth] = useState<number | null>(null);
+  const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const shownWidth = dragWidth ?? width;
+
+  const clamp = (n: number) => Math.min(maxWidth, Math.max(minWidth, n));
+
+  const onResizePointerDown = (e: React.PointerEvent<HTMLSpanElement>) => {
+    if (!onResize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const th = e.currentTarget.closest("th");
+    const startWidth = th?.getBoundingClientRect().width ?? width ?? minWidth;
+    dragRef.current = { startX: e.clientX, startWidth };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragWidth(clamp(startWidth));
+  };
+
+  const onResizePointerMove = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    setDragWidth(clamp(drag.startWidth + e.clientX - drag.startX));
+  };
+
+  const onResizePointerEnd = (e: React.PointerEvent<HTMLSpanElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    dragRef.current = null;
+    const final = clamp(drag.startWidth + e.clientX - drag.startX);
+    setDragWidth(null);
+    onResize?.(final);
+  };
   const active = excelFilterActive(filter);
   const sorted = sortKey === columnKey;
 
@@ -108,9 +149,10 @@ export function ExcelColumnHeader({
   return (
     <th
       className={cn(
-        "border-r border-border/50 bg-background p-0 font-sans last:border-r-0",
+        "relative border-r border-border/50 bg-background p-0 font-sans last:border-r-0",
         className,
       )}
+      style={shownWidth != null ? { width: shownWidth } : undefined}
     >
       <div
         className={cn(
@@ -277,6 +319,24 @@ export function ExcelColumnHeader({
           </PopoverContent>
         </Popover>
       </div>
+      {onResize ? (
+        <span
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={`Redimensionar coluna ${label}`}
+          title="Arraste para ajustar a largura"
+          className={cn(
+            "absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none select-none",
+            "after:absolute after:left-1/2 after:top-1/4 after:h-1/2 after:w-0.5 after:-translate-x-1/2 after:rounded after:bg-primary/60 after:opacity-0 after:transition hover:after:opacity-100",
+            dragWidth != null && "after:opacity-100",
+          )}
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerEnd}
+          onPointerCancel={onResizePointerEnd}
+          onClick={(e) => e.stopPropagation()}
+        />
+      ) : null}
     </th>
   );
 }

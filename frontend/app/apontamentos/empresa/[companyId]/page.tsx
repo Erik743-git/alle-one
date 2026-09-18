@@ -1,10 +1,11 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-export default function ApontamentosEmpresaRedirectPage() {
+function ApontamentosEmpresaRedirectPageImpl() {
   const router = useRouter();
   const params = useParams<{ companyId: string }>();
 
@@ -20,4 +21,10 @@ export default function ApontamentosEmpresaRedirectPage() {
       </span>
     </div>
   );
+}
+
+export { ApontamentosEmpresaRedirectPageImpl as PortalPageComponent };
+
+export default function ApontamentosEmpresaRedirectPage() {
+  return <PortalTabSlot route="/apontamentos/empresa/[companyId]" Component={ApontamentosEmpresaRedirectPageImpl} />;
 }

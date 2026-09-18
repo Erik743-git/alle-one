@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -41,7 +42,7 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-export default function ProjetosCompanyPage() {
+function ProjetosCompanyPageImpl() {
   const params = useParams<{ companyId: string }>();
   const router = useRouter();
   const companyId = params.companyId;
@@ -211,4 +212,10 @@ export default function ProjetosCompanyPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { ProjetosCompanyPageImpl as PortalPageComponent };
+
+export default function ProjetosCompanyPage() {
+  return <PortalTabSlot route="/projetos/[companyId]" Component={ProjetosCompanyPageImpl} />;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useState } from "react";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
@@ -36,7 +37,7 @@ function parseBlockedSenders(raw: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-export default function AdminEmailPage() {
+function AdminEmailPageImpl() {
   const [tab, setTab] = useState<Tab>("recebimento");
   const [settings, setSettings] = useState<EmailInboundSettings | null>(null);
   const [blockedDraft, setBlockedDraft] = useState("");
@@ -790,4 +791,10 @@ export default function AdminEmailPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AdminEmailPageImpl as PortalPageComponent };
+
+export default function AdminEmailPage() {
+  return <PortalTabSlot route="/admin/email" Component={AdminEmailPageImpl} />;
 }

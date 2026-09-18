@@ -443,8 +443,13 @@ export class TicketAutomationService {
       const actions = normalizeAutomationActions(
         rule.actions as TicketAutomationAction[],
       );
+      // A regra roda em nome de quem a criou (equipe interna), não de quem
+      // disparou o gatilho: chamado aberto por usuário cliente não tem
+      // permissão para trocar responsável, e a automação falhava.
+      const ruleActor =
+        (await this.buildActorFromUserId(rule.createdBy)) ?? actor;
       try {
-        await this.executeActions(actor, ctx.ticketNumber, actions);
+        await this.executeActions(ruleActor, ctx.ticketNumber, actions);
         await this.prisma.ticketAutomationRun.create({
           data: {
             ruleId: rule.id,

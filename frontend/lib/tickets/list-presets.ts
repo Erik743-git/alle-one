@@ -8,6 +8,7 @@ export type TicketColumnKey =
   | "gmud"
   | "stage"
   | "responsible"
+  | "created"
   | "updated";
 
 export const TICKET_LIST_COLUMNS: Array<{ key: TicketColumnKey; label: string }> =
@@ -18,6 +19,7 @@ export const TICKET_LIST_COLUMNS: Array<{ key: TicketColumnKey; label: string }>
     { key: "gmud", label: "GMUD" },
     { key: "stage", label: "Estágio" },
     { key: "responsible", label: "Responsável" },
+    { key: "created", label: "Criado em" },
     { key: "updated", label: "Atualizado" },
   ];
 
@@ -111,6 +113,7 @@ export type TicketListPageState = {
   from: string;
   to: string;
   responsibleExternalId: string;
+  withoutResponsible: boolean;
   clientExternalId: string;
   stageName: string;
   deskName: string;
@@ -160,6 +163,9 @@ export function buildPresetConfigFromPageState(
       value: state.responsibleExternalId,
     });
   }
+  if (state.withoutResponsible) {
+    rules.push({ field: "unassigned", value: "true" });
+  }
   if (state.deskName) {
     rules.push({ field: "deskName", value: state.deskName });
   }
@@ -192,6 +198,7 @@ export function applyPresetConfigToPageState(
     from: "",
     to: "",
     responsibleExternalId: "",
+    withoutResponsible: false,
     clientExternalId: "",
     stageName: "",
     deskName: "",
@@ -210,6 +217,7 @@ export function applyPresetConfigToPageState(
     sortDir: config.sortDir ?? null,
   };
 
+  let hasExplicitResponsibleFilter = false;
   for (const rule of config.rules ?? []) {
     switch (rule.field) {
       case "mineOnly":
@@ -235,6 +243,7 @@ export function applyPresetConfigToPageState(
         break;
       case "responsibleExternalId":
         next.responsibleExternalId = rule.value;
+        hasExplicitResponsibleFilter = true;
         break;
       case "deskName":
         next.deskName = rule.value;
@@ -249,11 +258,18 @@ export function applyPresetConfigToPageState(
         next.to = rule.value;
         break;
       case "unassigned":
+        // Valor vazio no editor de filtro equivale a "Sim" (ver ticket-list-preset-dialog.tsx).
+        next.withoutResponsible = rule.value !== "false";
+        if (next.withoutResponsible) hasExplicitResponsibleFilter = true;
         break;
       default:
         break;
     }
   }
+
+  // "Responsavel especifico" ou "Sem responsavel" so funcionam com "Meus tickets"
+  // desligado -- no servidor, mineOnly tem prioridade e ignoraria o filtro salvo.
+  if (hasExplicitResponsibleFilter) next.includeAllResponsibles = true;
 
   return next;
 }
@@ -262,6 +278,7 @@ export function presetConfigToQueryParams(
   config: TicketListPresetConfig,
 ): TicketsListParams {
   const params: TicketsListParams = {};
+  let hasExplicitResponsibleFilter = false;
   for (const rule of config.rules ?? []) {
     switch (rule.field) {
       case "mineOnly":
@@ -291,7 +308,10 @@ export function presetConfigToQueryParams(
       }
       case "responsibleExternalId": {
         const n = Number(rule.value);
-        if (Number.isFinite(n)) params.responsibleExternalId = n;
+        if (Number.isFinite(n)) {
+          params.responsibleExternalId = n;
+          hasExplicitResponsibleFilter = true;
+        }
         break;
       }
       case "deskName":
@@ -306,9 +326,16 @@ export function presetConfigToQueryParams(
       case "to":
         params.to = rule.value;
         break;
+      case "unassigned":
+        params.withoutResponsible = rule.value !== "false";
+        if (params.withoutResponsible) hasExplicitResponsibleFilter = true;
+        break;
       default:
         break;
     }
   }
+  // Mesma regra de applyPresetConfigToPageState: filtro explicito de
+  // responsavel nao pode ser anulado por um "Meus tickets" salvo no preset.
+  if (hasExplicitResponsibleFilter) params.mineOnly = false;
   return params;
 }

@@ -313,6 +313,7 @@ export function InventoryAssetModal({
             <div className="space-y-2">
               <Label>Lembrete</Label>
               <SearchableSelectField
+                clearable={false}
                 value={reminderDaysBefore}
                 onChange={setReminderDaysBefore}
                 disabled={!dueDate.trim()}

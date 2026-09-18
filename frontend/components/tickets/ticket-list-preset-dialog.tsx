@@ -356,6 +356,7 @@ export function TicketListPresetDialog({
                 <div key={`${rule.field}-${index}`} className="flex gap-2">
                   <div className="min-w-[140px] flex-1">
                     <SearchableSelectField
+                      clearable={false}
                       value={rule.field}
                       onChange={(field) =>
                         setRules((prev) =>
@@ -407,6 +408,7 @@ export function TicketListPresetDialog({
             <div className="space-y-2">
               <FieldLabel required>Agrupar por</FieldLabel>
               <SearchableSelectField
+                clearable={false}
                 value={groupBy}
                 onChange={(v) => setGroupBy(v as TicketListGroupBy)}
                 options={GROUP_OPTIONS}

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/layout/app-shell";
@@ -106,7 +107,7 @@ function getApprovalSummary(gmud: Gmud) {
   return { approved, rejected, pending, pendingLabel };
 }
 
-export default function GmudPage() {
+function GmudPageImpl() {
   const user = getStoredUser();
   const router = useRouter();
   const confirm = useConfirm();
@@ -387,6 +388,7 @@ export default function GmudPage() {
 
                     <div className="grid grid-cols-2 gap-3">
                       <SearchableSelectField
+                        clearable={false}
                         value={statusFilter}
                         onChange={(value) => setStatusFilter(value as StatusFilter)}
                         options={[
@@ -606,4 +608,10 @@ export default function GmudPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { GmudPageImpl as PortalPageComponent };
+
+export default function GmudPage() {
+  return <PortalTabSlot route="/gmud" Component={GmudPageImpl} />;
 }

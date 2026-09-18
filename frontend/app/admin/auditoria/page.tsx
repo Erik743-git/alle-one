@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -27,7 +28,7 @@ function prettyJson(value: unknown) {
   }
 }
 
-export default function AdminAuditoriaPage() {
+function AdminAuditoriaPageImpl() {
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<AuditLogItem[]>([]);
@@ -303,3 +304,8 @@ export default function AdminAuditoriaPage() {
   );
 }
 
+export { AdminAuditoriaPageImpl as PortalPageComponent };
+
+export default function AdminAuditoriaPage() {
+  return <PortalTabSlot route="/admin/auditoria" Component={AdminAuditoriaPageImpl} />;
+}

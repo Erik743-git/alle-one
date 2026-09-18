@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Filter, RefreshCw, Search, Ticket } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns3, Filter, RefreshCw, Search, Ticket } from "lucide-react";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -48,6 +49,7 @@ import { notifyError } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 import {
+  TICKET_LIST_STATE_ENDPOINT,
   ticketsService,
   type TicketFilterCatalogs,
   type TicketListItem,
@@ -64,6 +66,17 @@ import {
   type TicketListPageState,
   type TicketListPreset,
 } from "@/lib/tickets/list-presets";
+import {
+  TICKET_COLUMN_MAX_WIDTH,
+  TICKET_COLUMN_MIN_WIDTH,
+  useTicketTableLayout,
+} from "@/lib/tickets/table-layout";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { buildApiUrl } from "@/lib/env";
 import { useRouter } from "next/navigation";
 
 const TICKET_COLUMNS = TICKET_LIST_COLUMNS;
@@ -104,6 +117,8 @@ function cellText(ticket: TicketListItem, key: TicketColumnKey): string {
       return ticket.stageName?.trim() || "—";
     case "responsible":
       return ticket.responsibleName?.trim() || "—";
+    case "created":
+      return formatWhen(ticket.createdAt);
     case "updated":
       return formatWhen(ticket.updatedAt);
     default:
@@ -121,9 +136,10 @@ function compareTickets(
   if (key === "number") {
     return (a.ticketNumber - b.ticketNumber) * mul;
   }
-  if (key === "updated") {
-    const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-    const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+  if (key === "updated" || key === "created") {
+    const field = key === "updated" ? "updatedAt" : "createdAt";
+    const ta = a[field] ? new Date(a[field]).getTime() : 0;
+    const tb = b[field] ? new Date(b[field]).getTime() : 0;
     return (ta - tb) * mul;
   }
   return (
@@ -142,11 +158,12 @@ function emptyColumnFilters(): Record<TicketColumnKey, ExcelColumnFilterState> {
     gmud: emptyExcelFilter(),
     stage: emptyExcelFilter(),
     responsible: emptyExcelFilter(),
+    created: emptyExcelFilter(),
     updated: emptyExcelFilter(),
   };
 }
 
-export default function TicketsPage() {
+function TicketsPageImpl() {
   const router = useRouter();
   const { user } = useAuth();
   const canReassign = canChangeTicketStage();
@@ -169,9 +186,19 @@ export default function TicketsPage() {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
     () => new Set(),
   );
-  const [visibleColumns, setVisibleColumns] = useState<TicketColumnKey[]>(
-    TICKET_COLUMNS.map((col) => col.key),
-  );
+  // Colunas visíveis e larguras (salvas junto com o estado da tela).
+  const {
+    visibleColumns,
+    setVisibleColumns,
+    widths: columnWidths,
+    widthOf,
+    setColumnWidth,
+    resetLayout,
+    restoreLayout,
+  } = useTicketTableLayout();
+  // Estado da tela salvo no usuário: a lista só carrega depois de restaurar,
+  // para não buscar com os filtros padrão e logo em seguida com os salvos.
+  const [listStateReady, setListStateReady] = useState(false);
   const [presets, setPresets] = useState<TicketListPreset[]>([]);
   const [activePresetId, setActivePresetId] = useState<string | null>(null);
   const [presetDialogOpen, setPresetDialogOpen] = useState(false);
@@ -281,8 +308,9 @@ export default function TicketsPage() {
   }, [queryParams]);
 
   useEffect(() => {
+    if (!listStateReady) return;
     void load();
-  }, [load]);
+  }, [load, listStateReady]);
 
   const loadPresets = useCallback(async () => {
     try {
@@ -305,6 +333,7 @@ export default function TicketsPage() {
       from,
       to,
       responsibleExternalId,
+      withoutResponsible,
       clientExternalId,
       stageName,
       deskName,
@@ -324,6 +353,7 @@ export default function TicketsPage() {
       from,
       to,
       responsibleExternalId,
+      withoutResponsible,
       clientExternalId,
       stageName,
       deskName,
@@ -337,6 +367,158 @@ export default function TicketsPage() {
       sortDir,
     ],
   );
+
+  // ---- Estado da tela salvo no usuário ----
+  const savedStateJsonRef = useRef<string | null>(null);
+  const pendingStateJsonRef = useRef<string | null>(null);
+
+  const persistableState = useMemo(
+    () => ({
+      version: 1,
+      ...pageState,
+      columnWidths,
+      activePresetId,
+      collapsedGroups: [...collapsedGroups],
+      showAdvanced,
+    }),
+    [pageState, columnWidths, activePresetId, collapsedGroups, showAdvanced],
+  );
+
+  // Restaura uma vez ao abrir a tela.
+  useEffect(() => {
+    let cancelled = false;
+    void ticketsService
+      .getListState()
+      .then(({ state }) => {
+        if (cancelled || !state || state.version !== 1) return;
+        const str = (v: unknown) => (typeof v === "string" ? v : "");
+        const bool = (v: unknown, fallback: boolean) =>
+          typeof v === "boolean" ? v : fallback;
+        setIncludeAllResponsibles(
+          bool(state.includeAllResponsibles, isClientGestor()),
+        );
+        setIncludeDone(bool(state.includeDone, false));
+        setWithoutResponsible(bool(state.withoutResponsible, false));
+        setSearch(str(state.search));
+        setDebouncedSearch(str(state.search));
+        setFrom(str(state.from));
+        setTo(str(state.to));
+        setResponsibleExternalId(str(state.responsibleExternalId));
+        setClientExternalId(str(state.clientExternalId));
+        setStageName(str(state.stageName));
+        setDeskName(str(state.deskName));
+        setRequestorName(str(state.requestorName));
+        setTicketNumber(str(state.ticketNumber));
+        setExternalGmudRef(str(state.externalGmudRef));
+        if (
+          state.groupBy === "none" ||
+          state.groupBy === "stage" ||
+          state.groupBy === "client" ||
+          state.groupBy === "responsible"
+        ) {
+          setGroupBy(state.groupBy);
+        }
+        restoreLayout({
+          visibleColumns: state.visibleColumns,
+          widths: state.columnWidths,
+        });
+        if (state.columnFilters && typeof state.columnFilters === "object") {
+          setColumnFilters({
+            ...emptyColumnFilters(),
+            ...(state.columnFilters as Partial<
+              Record<TicketColumnKey, ExcelColumnFilterState>
+            >),
+          });
+        }
+        const keys = TICKET_COLUMNS.map((c) => c.key as string);
+        const sk = typeof state.sortKey === "string" ? state.sortKey : null;
+        const sd =
+          state.sortDir === "asc" || state.sortDir === "desc"
+            ? state.sortDir
+            : null;
+        setSortKey(sk && keys.includes(sk) ? (sk as TicketColumnKey) : null);
+        setSortDir(sk && keys.includes(sk) ? sd : null);
+        setActivePresetId(
+          typeof state.activePresetId === "string" ? state.activePresetId : null,
+        );
+        setCollapsedGroups(
+          new Set(
+            Array.isArray(state.collapsedGroups)
+              ? state.collapsedGroups.filter(
+                  (v): v is string => typeof v === "string",
+                )
+              : [],
+          ),
+        );
+        setShowAdvanced(bool(state.showAdvanced, false));
+      })
+      .catch(() => {
+        /* sem estado salvo: segue com o padrão */
+      })
+      .finally(() => {
+        if (!cancelled) setListStateReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Só na montagem.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Grava a cada mudança (com um pequeno intervalo para não gravar a cada tecla).
+  useEffect(() => {
+    if (!listStateReady) return;
+    const json = JSON.stringify(persistableState);
+    if (savedStateJsonRef.current === null) {
+      // Primeiro estado após restaurar: já é o que está salvo.
+      savedStateJsonRef.current = json;
+      return;
+    }
+    if (json === savedStateJsonRef.current) return;
+    pendingStateJsonRef.current = json;
+    const timer = window.setTimeout(() => {
+      void ticketsService
+        .saveListState(persistableState)
+        .then(() => {
+          savedStateJsonRef.current = json;
+          if (pendingStateJsonRef.current === json) {
+            pendingStateJsonRef.current = null;
+          }
+        })
+        .catch(() => {
+          /* tenta de novo na próxima mudança */
+        });
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [persistableState, listStateReady]);
+
+  // Fechou a aba/saiu da tela antes de gravar: envia o que faltou.
+  useEffect(() => {
+    const flush = () => {
+      const json = pendingStateJsonRef.current;
+      if (!json || json === savedStateJsonRef.current) return;
+      pendingStateJsonRef.current = null;
+      try {
+        void fetch(buildApiUrl(TICKET_LIST_STATE_ENDPOINT), {
+          method: "PUT",
+          keepalive: true,
+          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Alleone-Api": "1",
+          },
+          body: `{"state":${json}}`,
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
 
   function clearListFilters() {
     setIncludeAllResponsibles(isClientGestor());
@@ -375,6 +557,9 @@ export default function TicketsPage() {
     if (partial.responsibleExternalId !== undefined) {
       setResponsibleExternalId(partial.responsibleExternalId);
     }
+    if (partial.withoutResponsible !== undefined) {
+      setWithoutResponsible(partial.withoutResponsible);
+    }
     if (partial.clientExternalId !== undefined) {
       setClientExternalId(partial.clientExternalId);
     }
@@ -398,6 +583,10 @@ export default function TicketsPage() {
   const activeColumns = useMemo(
     () => TICKET_COLUMNS.filter((col) => visibleColumns.includes(col.key)),
     [visibleColumns],
+  );
+  const tableWidth = activeColumns.reduce(
+    (sum, col) => sum + widthOf(col.key),
+    0,
   );
 
   const stageOptions = useMemo(() => {
@@ -558,8 +747,19 @@ export default function TicketsPage() {
       bucket.push(ticket);
       map.set(label, bucket);
     }
+    // Por estágio: ordem do fluxo (Novo primeiro); demais, alfabética.
+    const stageRank = (label: string) => {
+      const idx = PORTAL_STAGES_ORDER.findIndex(
+        (stage) => stage.toLowerCase() === label.trim().toLowerCase(),
+      );
+      return idx === -1 ? PORTAL_STAGES_ORDER.length : idx;
+    };
     return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b, "pt-BR"))
+      .sort(([a], [b]) =>
+        groupBy === "stage"
+          ? stageRank(a) - stageRank(b) || a.localeCompare(b, "pt-BR")
+          : a.localeCompare(b, "pt-BR"),
+      )
       .map(([label, tickets]) => ({
         key: label,
         label,
@@ -572,12 +772,21 @@ export default function TicketsPage() {
       case "number":
         return (
           <td className="border-r border-border/30 px-3 py-2.5 text-right font-semibold tabular-nums text-primary">
-            #{ticket.ticketNumber}
+            <span className="inline-flex items-center justify-end gap-1.5">
+              {ticket.hasPendingWarning ? (
+                <span
+                  className="size-2 shrink-0 rounded-full bg-amber-400"
+                  title="Comunicação pendente de leitura"
+                  aria-label="Comunicação pendente de leitura"
+                />
+              ) : null}
+              #{ticket.ticketNumber}
+            </span>
           </td>
         );
       case "title":
         return (
-          <td className="max-w-[320px] border-r border-border/30 px-3 py-2.5">
+          <td className="border-r border-border/30 px-3 py-2.5">
             <span
               className="line-clamp-2 font-medium text-foreground"
               title={ticket.title ?? undefined}
@@ -630,10 +839,26 @@ export default function TicketsPage() {
             )}
           </td>
         );
+      case "created":
+        return (
+          <td className="whitespace-nowrap border-r border-border/30 px-3 py-2.5 text-xs tabular-nums text-muted-foreground">
+            {formatWhen(ticket.createdAt)}
+          </td>
+        );
       case "updated":
         return (
-          <td className="whitespace-nowrap px-3 py-2.5 text-xs tabular-nums text-muted-foreground">
-            {formatWhen(ticket.updatedAt)}
+          <td className="px-3 py-2.5 text-xs text-muted-foreground">
+            <div className="whitespace-nowrap tabular-nums">
+              {formatWhen(ticket.updatedAt)}
+            </div>
+            {ticket.updatedByName ? (
+              <div
+                className="truncate text-[11px] text-muted-foreground/80"
+                title={ticket.updatedByName}
+              >
+                por {ticket.updatedByName}
+              </div>
+            ) : null}
           </td>
         );
       default:
@@ -817,6 +1042,7 @@ export default function TicketsPage() {
                       Agrupar por
                     </Label>
                     <SearchableSelectField
+                      clearable={false}
                       value={groupBy}
                       onChange={(v) => setGroupBy(v as TicketListGroupBy)}
                       options={Object.entries(TICKET_LIST_GROUP_BY_LABELS).map(
@@ -1065,6 +1291,69 @@ export default function TicketsPage() {
             ) : (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                      >
+                        <Columns3 className="size-4" />
+                        Colunas
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-60 p-0 font-sans">
+                      <div className="border-b border-border/60 px-3 py-2.5">
+                        <p className="text-xs font-semibold text-foreground">
+                          Colunas da tabela
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Arraste a borda do cabeçalho para mudar a largura.
+                        </p>
+                      </div>
+                      <div className="space-y-0.5 p-1.5">
+                        {TICKET_COLUMNS.map((col) => {
+                          const checked = visibleColumns.includes(col.key);
+                          const isLast = checked && visibleColumns.length === 1;
+                          return (
+                            <label
+                              key={col.key}
+                              className={cn(
+                                "flex items-center gap-2 rounded px-2 py-1.5 text-xs text-foreground transition hover:bg-muted/50",
+                                isLast ? "cursor-not-allowed opacity-60" : "cursor-pointer",
+                              )}
+                              title={isLast ? "A tabela precisa de pelo menos uma coluna" : undefined}
+                            >
+                              <FlipCheckbox
+                                checked={checked}
+                                disabled={isLast}
+                                onChange={(e) =>
+                                  setVisibleColumns(
+                                    e.target.checked
+                                      ? [...visibleColumns, col.key]
+                                      : visibleColumns.filter((k) => k !== col.key),
+                                  )
+                                }
+                              />
+                              {col.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="border-t border-border/60 px-3 py-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-full text-xs"
+                          onClick={resetLayout}
+                        >
+                          Restaurar padrão
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <span>
                     {filteredTotal} ticket(s)
                     {filteredTotal !== serverTotal ? ` de ${serverTotal}` : ""}
@@ -1122,7 +1411,10 @@ export default function TicketsPage() {
                 <Card className="gap-0 overflow-hidden py-0">
                   <CardContent className="p-0">
                     <div className="relative isolate max-h-[min(72vh,780px)] overflow-auto">
-                      <table className="w-full min-w-[920px] border-collapse text-left text-sm">
+                      <table
+                        className="min-w-full table-fixed border-collapse text-left text-sm"
+                        style={{ width: tableWidth }}
+                      >
                         <thead className="sticky top-0 z-30 bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
                           <tr>
                             {activeColumns.map((col) => (
@@ -1144,6 +1436,10 @@ export default function TicketsPage() {
                                 align={
                                   col.key === "number" ? "right" : "left"
                                 }
+                                width={widthOf(col.key)}
+                                minWidth={TICKET_COLUMN_MIN_WIDTH}
+                                maxWidth={TICKET_COLUMN_MAX_WIDTH}
+                                onResize={(w) => setColumnWidth(col.key, w)}
                               />
                             ))}
                           </tr>
@@ -1223,9 +1519,9 @@ export default function TicketsPage() {
                                     }
                                   >
                                     {activeColumns.map((col) => (
-                                      <span key={col.key} className="contents">
+                                      <Fragment key={col.key}>
                                         {renderTicketCell(ticket, col.key)}
-                                      </span>
+                                      </Fragment>
                                     ))}
                                   </tr>
                                 ))}
@@ -1276,4 +1572,10 @@ export default function TicketsPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { TicketsPageImpl as PortalPageComponent };
+
+export default function TicketsPage() {
+  return <PortalTabSlot route="/tickets" Component={TicketsPageImpl} />;
 }

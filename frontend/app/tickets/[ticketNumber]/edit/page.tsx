@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FileText, Loader2, Pencil, Tags, UserRound } from "lucide-react";
@@ -50,7 +51,7 @@ function FormSkeleton() {
   );
 }
 
-export default function EditTicketPage() {
+function EditTicketPageImpl() {
   const params = useParams<{ ticketNumber: string }>();
   const router = useRouter();
   const ticketNumber = Number(params.ticketNumber);
@@ -145,7 +146,8 @@ export default function EditTicketPage() {
     () =>
       responsibles.map((r) => ({
         value: String(r.externalId),
-        label: r.email ? `${r.name} (${r.email})` : r.name,
+        label: r.name,
+        searchText: r.email ?? undefined,
       })),
     [responsibles],
   );
@@ -322,6 +324,7 @@ export default function EditTicketPage() {
                         Estágio
                       </Label>
                       <SearchableSelectField
+                        clearable={false}
                         value={stageId}
                         onChange={setStageId}
                         options={stageOptions}
@@ -398,4 +401,10 @@ export default function EditTicketPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { EditTicketPageImpl as PortalPageComponent };
+
+export default function EditTicketPage() {
+  return <PortalTabSlot route="/tickets/[ticketNumber]/edit" Component={EditTicketPageImpl} />;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -32,7 +33,7 @@ import {
   type ServiceDeskOption,
 } from "@/lib/services/classification.service";
 
-export default function AdminClassificacaoPage() {
+function AdminClassificacaoPageImpl() {
   const [desks, setDesks] = useState<ServiceDeskOption[]>([]);
   const [desksLoading, setDesksLoading] = useState(true);
   const [newDeskName, setNewDeskName] = useState("");
@@ -331,4 +332,10 @@ export default function AdminClassificacaoPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AdminClassificacaoPageImpl as PortalPageComponent };
+
+export default function AdminClassificacaoPage() {
+  return <PortalTabSlot route="/admin/classificacao" Component={AdminClassificacaoPageImpl} />;
 }

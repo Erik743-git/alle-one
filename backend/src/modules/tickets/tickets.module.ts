@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { TifluxModule } from '../tiflux/tiflux.module';
 import { ProjetosModule } from '../projetos/projetos.module';
@@ -16,6 +16,7 @@ import { TicketsQueryService } from './tickets-query.service';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { TicketsService } from './tickets.service';
 import { TicketListPresetsService } from './ticket-list-presets.service';
+import { TicketListStateService } from './ticket-list-state.service';
 import { TicketAutomationService } from './ticket-automation.service';
 import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
 
@@ -40,6 +41,7 @@ import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
     TicketsOutboxJob,
     TicketsReconcileService,
     TicketListPresetsService,
+    TicketListStateService,
     TicketAutomationService,
     TicketAutomationIdleJob,
   ],

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -53,7 +54,7 @@ function isOverdue(value: string | null) {
   return due.getTime() < today.getTime();
 }
 
-export default function InventarioTipoPage() {
+function InventarioTipoPageImpl() {
   const params = useParams<{ assetTypeId: string }>();
   const assetTypeId = params.assetTypeId;
   const clientUser = isClient();
@@ -241,4 +242,10 @@ export default function InventarioTipoPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { InventarioTipoPageImpl as PortalPageComponent };
+
+export default function InventarioTipoPage() {
+  return <PortalTabSlot route="/inventario/tipo/[assetTypeId]" Component={InventarioTipoPageImpl} />;
 }

@@ -136,6 +136,7 @@ export function UsuarioEditDialog({
                 Perfil
               </Label>
               <SearchableSelectField
+                clearable={false}
                 value={form.role}
                 onChange={(value) =>
                   onFormChange((prev) => ({
@@ -158,6 +159,7 @@ export function UsuarioEditDialog({
                 Status
               </Label>
               <SearchableSelectField
+                clearable={false}
                 value={form.status}
                 onChange={(value) =>
                   onFormChange((prev) => ({
@@ -177,6 +179,7 @@ export function UsuarioEditDialog({
                 Redefinir senha / primeiro acesso
               </Label>
               <SearchableSelectField
+                clearable={false}
                 value={form.firstAccess ? "true" : "false"}
                 onChange={(value) =>
                   onFormChange((prev) => ({

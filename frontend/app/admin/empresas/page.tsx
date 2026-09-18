@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent } from "@/components/ui/card";
@@ -548,7 +549,7 @@ function InativarEmpresaModal({
   );
 }
 
-export default function AdminEmpresasPage() {
+function AdminEmpresasPageImpl() {
   const [modalNovaEmpresa, setModalNovaEmpresa] = useState(false);
   const [modalContratos, setModalContratos] = useState(false);
   const [empresaSelecionada, setEmpresaSelecionada] = useState<{
@@ -1241,4 +1242,10 @@ export default function AdminEmpresasPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AdminEmpresasPageImpl as PortalPageComponent };
+
+export default function AdminEmpresasPage() {
+  return <PortalTabSlot route="/admin/empresas" Component={AdminEmpresasPageImpl} />;
 }

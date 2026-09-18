@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -64,7 +65,7 @@ function isOverdue(value: string | null) {
   return due.getTime() < today.getTime();
 }
 
-export default function InventarioEmpresaPage() {
+function InventarioEmpresaPageImpl() {
   const params = useParams<{ companyId: string }>();
   const companyId = params.companyId;
   const clientUser = isClient();
@@ -472,4 +473,10 @@ export default function InventarioEmpresaPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { InventarioEmpresaPageImpl as PortalPageComponent };
+
+export default function InventarioEmpresaPage() {
+  return <PortalTabSlot route="/inventario/[companyId]" Component={InventarioEmpresaPageImpl} />;
 }

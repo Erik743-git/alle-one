@@ -371,6 +371,14 @@ export const AppointmentDescriptionComposer = forwardRef<
   const [editorReady, setEditorReady] = useState(false);
 
   const inlineFilesRef = useRef<Map<string, File>>(new Map());
+  /**
+   * Imagens que já estavam salvas (vieram da descrição/anexos do ticket).
+   * No salvar vão só como referência (fileId) — sem isso cada edição
+   * reenviava a imagem e criava um anexo novo repetido.
+   */
+  const existingImagesRef = useRef<
+    Map<string, { fileId: string; dataUrl?: string }>
+  >(new Map());
   const previewUrlsRef = useRef<Map<string, string>>(new Map());
   const lastSelectionRef = useRef<Range | null>(null);
 
@@ -466,6 +474,7 @@ export const AppointmentDescriptionComposer = forwardRef<
       if (activeKeys.has(key)) continue;
 
       inlineFilesRef.current.delete(key);
+      existingImagesRef.current.delete(key);
 
       const previewUrl = previewUrlsRef.current.get(key);
       if (previewUrl) {
@@ -494,6 +503,7 @@ export const AppointmentDescriptionComposer = forwardRef<
       wrapper.remove();
 
       inlineFilesRef.current.delete(fileKey);
+      existingImagesRef.current.delete(fileKey);
 
       const previewUrl = previewUrlsRef.current.get(fileKey);
       if (previewUrl) {
@@ -598,6 +608,7 @@ export const AppointmentDescriptionComposer = forwardRef<
       if (!editor || cancelled) return;
       editor.replaceChildren();
       inlineFilesRef.current.clear();
+      existingImagesRef.current.clear();
       for (const url of previewUrlsRef.current.values()) {
         URL.revokeObjectURL(url);
       }
@@ -615,14 +626,20 @@ export const AppointmentDescriptionComposer = forwardRef<
         }
       };
 
-      const appendImageFile = (file: File) => {
-        const dedupeKey = `file:${file.type}:${file.size}:${file.name}`;
+      const appendImageFile = (
+        file: File,
+        existing?: { fileId: string; dataUrl?: string },
+      ) => {
+        const dedupeKey = existing
+          ? `existing:${existing.fileId}`
+          : `file:${file.type}:${file.size}:${file.name}`;
         if (seenImageKeys.has(dedupeKey)) return;
         seenImageKeys.add(dedupeKey);
 
         const fileKey = newId();
         const previewUrl = URL.createObjectURL(file);
         inlineFilesRef.current.set(fileKey, file);
+        if (existing) existingImagesRef.current.set(fileKey, existing);
         previewUrlsRef.current.set(fileKey, previewUrl);
         editor.appendChild(createImageElement(fileKey, file, previewUrl));
         const lineAfter = document.createElement("div");
@@ -634,6 +651,7 @@ export const AppointmentDescriptionComposer = forwardRef<
         src: string,
         fileName: string,
         mimeType?: string,
+        existing?: { fileId: string; dataUrl?: string },
       ) => {
         const trimmed = src.trim();
         if (!trimmed || trimmed.startsWith("cid:")) return;
@@ -651,7 +669,7 @@ export const AppointmentDescriptionComposer = forwardRef<
         );
         if (!file || cancelled) return;
         seenImageKeys.add(`src:${fingerprint}`);
-        appendImageFile(file);
+        appendImageFile(file, existing);
       };
 
       if (raw && isAppointmentDoc(raw)) {
@@ -684,10 +702,19 @@ export const AppointmentDescriptionComposer = forwardRef<
               "";
             if (!src) continue;
 
+            const existingFileId = block.fileId ?? attachment?.fileId;
             await appendImageFromSrc(
               src,
               attachment?.originalName || `imagem-${block.fileIndex + 1}.png`,
               attachment?.mimeType,
+              existingFileId
+                ? {
+                    fileId: existingFileId,
+                    ...(block.dataUrl?.trim()
+                      ? { dataUrl: block.dataUrl.trim() }
+                      : {}),
+                  }
+                : undefined,
             );
           }
         } else {
@@ -724,6 +751,7 @@ export const AppointmentDescriptionComposer = forwardRef<
           src,
           attachment.originalName || `imagem-${index + 1}.png`,
           attachment.mimeType,
+          { fileId: attachment.fileId },
         );
       }
     }
@@ -1134,6 +1162,25 @@ export const AppointmentDescriptionComposer = forwardRef<
 
             const file = inlineFilesRef.current.get(fileKey);
             if (!file) return;
+
+            const width = (() => {
+              const parsed = Number.parseInt(node.style.width, 10);
+              if (Number.isFinite(parsed) && parsed >= 96) return parsed;
+              const rect = node.getBoundingClientRect().width;
+              return Number.isFinite(rect) ? Math.round(rect) : undefined;
+            })();
+            const existing = existingImagesRef.current.get(fileKey);
+            if (existing) {
+              // fileIndex -1: não aponta para arquivo enviado agora.
+              storedBlocks.push({
+                type: "image",
+                fileIndex: -1,
+                fileId: existing.fileId,
+                ...(existing.dataUrl ? { dataUrl: existing.dataUrl } : {}),
+                ...(width != null ? { width } : {}),
+              });
+              return;
+            }
 
             storedBlocks.push({
               type: "image",

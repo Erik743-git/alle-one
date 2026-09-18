@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, FileText, Loader2, Plus, UserRound, X } from "lucide-react";
@@ -66,7 +67,7 @@ function FormSkeleton() {
   );
 }
 
-export default function NewTicketPage() {
+function NewTicketPageImpl() {
   const router = useRouter();
   const { user } = useAuth();
   const isClientUser = isClientPortalRole(user?.role);
@@ -171,10 +172,11 @@ export default function NewTicketPage() {
       a.name.localeCompare(b.name, "pt-BR"),
     );
     return pinCurrentUserFirst(sorted, user?.email).map((r) => {
-      const label = r.email ? `${r.name} (${r.email})` : r.name;
+      const label = r.name;
       return {
         value: String(r.id),
         label: emailsMatch(r.email, user?.email) ? `${label} — você` : label,
+        searchText: r.email ?? undefined,
       };
     });
   }, [catalogs, user?.email]);
@@ -194,10 +196,11 @@ export default function NewTicketPage() {
     }
     const sorted = pinCurrentUserFirst(base, user?.email);
     return sorted.map((r) => {
-      const label = r.email ? `${r.name} (${r.email})` : r.name;
+      const label = r.name;
       return {
         value: String(r.id),
         label: emailsMatch(r.email, user?.email) ? `${label} — você` : label,
+        searchText: r.email ?? undefined,
       };
     });
   }, [catalogs?.requestors, user?.email, user?.name]);
@@ -523,9 +526,7 @@ export default function NewTicketPage() {
                 key={person.email}
                 className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
               >
-                {person.name
-                  ? `${person.name} (${person.email})`
-                  : person.email}
+                <span title={person.email}>{person.name || person.email}</span>
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-foreground"
@@ -768,7 +769,7 @@ export default function NewTicketPage() {
                           }
                         />
                         {catalogBlocked ? (
-                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-100">
                             Este catálogo exige serviços, mas não há itens
                             cadastrados. Cadastre serviços no catálogo{" "}
                             <strong>{catalogs?.desk?.name ?? "selecionado"}</strong>{" "}
@@ -963,7 +964,7 @@ export default function NewTicketPage() {
                           alwaysShowSearch
                         />
                         {!loading && responsibleOptions.length === 0 ? (
-                          <p className="text-xs text-amber-300/90">
+                          <p className="text-xs text-amber-800 dark:text-amber-300">
                             Ninguém desta mesa está marcado como responsável. Marque
                             em Administração &rarr; Usuários, na opção &ldquo;Marcar
                             usuário como responsável&rdquo;.
@@ -982,7 +983,7 @@ export default function NewTicketPage() {
 
                 <div className="space-y-3">
                   {!canSubmit && !loading && !saving ? (
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-50/95">
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
                       {catalogBlocked ? (
                         <p>
                           Não é possível abrir o ticket: o catálogo exige serviços, mas
@@ -1045,4 +1046,10 @@ export default function NewTicketPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { NewTicketPageImpl as PortalPageComponent };
+
+export default function NewTicketPage() {
+  return <PortalTabSlot route="/tickets/new" Component={NewTicketPageImpl} />;
 }

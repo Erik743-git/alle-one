@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -132,7 +133,7 @@ function approverStatusLabel(status: "PENDING" | "APPROVED" | "REJECTED") {
   return "Pendente";
 }
 
-export default function GmudDetailPage() {
+function GmudDetailPageImpl() {
   const params = useParams<{ id: string }>();
   const search = useSearchParams();
   const router = useRouter();
@@ -291,7 +292,8 @@ export default function GmudDetailPage() {
                       .filter((a) => a.status === "PENDING")
                       .map((a) => ({
                         value: a.user.id,
-                        label: `${a.user.name} (${a.user.email})`,
+                        label: a.user.name,
+                        searchText: a.user.email,
                       }))}
                     emptyLabel="Selecione..."
                   />
@@ -717,3 +719,8 @@ export default function GmudDetailPage() {
   );
 }
 
+export { GmudDetailPageImpl as PortalPageComponent };
+
+export default function GmudDetailPage() {
+  return <PortalTabSlot route="/gmud/[id]" Component={GmudDetailPageImpl} />;
+}

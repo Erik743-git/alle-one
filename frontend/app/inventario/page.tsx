@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { ModuloDesabilitadoAviso } from "@/components/layout/modulo-desabilitado-aviso";
 import { MODULO_INVENTARIO, moduloDesabilitado } from "@/lib/modulos-desabilitados";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -314,9 +315,15 @@ function InventarioPageConteudo() {
 
 // Modulo desligado por ambiente: alem de sumir do menu, a rota precisa
 // responder, senao continua acessivel por URL digitada ou link antigo.
-export default function InventarioPage() {
+function InventarioPageImpl() {
   if (moduloDesabilitado(MODULO_INVENTARIO)) {
     return <ModuloDesabilitadoAviso nome="Inventário" />;
   }
   return <InventarioPageConteudo />;
+}
+
+export { InventarioPageImpl as PortalPageComponent };
+
+export default function InventarioPage() {
+  return <PortalTabSlot route="/inventario" Component={InventarioPageImpl} />;
 }

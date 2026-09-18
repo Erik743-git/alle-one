@@ -7,6 +7,8 @@ import Sidebar from "./sidebar";
 import { SidebarProvider, useSidebar } from "./sidebar-context";
 import { GlobalSearch } from "./global-search";
 import { PortalTabsBar } from "./portal-tabs-bar";
+import { PortalTabDock } from "./portal-tab-dock";
+import { useInsidePortalTabHost } from "./portal-tab-host-context";
 
 function AppShellMain({ children }: { children: React.ReactNode }) {
   const { setMobileOpen } = useSidebar();
@@ -40,7 +42,14 @@ function AppShellMain({ children }: { children: React.ReactNode }) {
       >
         <PortalTabsBar />
         <div className="w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-9 xl:px-10 2xl:px-12">
-          <div className="mx-auto w-full max-w-[1800px]">{children}</div>
+          <div className="mx-auto w-full max-w-[1800px]">
+            {/* Guia ativa: PortalTabHost portala o conteúdo mantido vivo para cá. */}
+            <PortalTabDock />
+          </div>
+        </div>
+        {/* Não é visível: garante que a guia se registre no cache mesmo se o host ainda não montou. */}
+        <div hidden aria-hidden>
+          {children}
         </div>
       </main>
     </>
@@ -52,6 +61,11 @@ export default function AppShell({
 }: {
   children: React.ReactNode;
 }) {
+  // Tela mantida viva numa guia: a moldura já foi desenhada pela página real.
+  const insideHost = useInsidePortalTabHost();
+  // Só pula o desenho do menu/topo — SidebarProvider continua presente,
+  // porque conteúdo da própria tela (ex.: gráficos) também lê useSidebar().
+  if (insideHost) return <SidebarProvider>{children}</SidebarProvider>;
   return (
     <SidebarProvider>
       <div className="font-sans relative min-h-screen overflow-x-hidden bg-background text-foreground">

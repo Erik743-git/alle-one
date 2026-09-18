@@ -14,14 +14,18 @@ import {
 import { useAuth } from "@/lib/use-auth";
 import { endSession } from "@/lib/session";
 
-/** Tempo máximo parado sem interação de UI. */
-export const SESSION_IDLE_MS = 60 * 60 * 1000;
+/** Tempo máximo parado sem interação de UI (somando todas as abas). */
+export const SESSION_IDLE_MS = 2 * 60 * 60 * 1000;
 /** Aviso antes do logout automático. */
 export const SESSION_IDLE_WARN_MS = 5 * 60 * 1000;
 
 const ACTIVITY_THROTTLE_MS = 1_000;
 const TICK_MS = 10_000;
-const STORAGE_KEY = "alleone.lastActivityAt";
+// localStorage (e não sessionStorage): a última atividade é compartilhada entre
+// abas. Antes cada aba contava sozinha e uma aba esquecida em segundo plano
+// derrubava a sessão de quem estava trabalhando em outra.
+export const LAST_ACTIVITY_STORAGE_KEY = "alleone.lastActivityAt";
+const STORAGE_KEY = LAST_ACTIVITY_STORAGE_KEY;
 
 const ACTIVITY_EVENTS = [
   "mousemove",
@@ -35,7 +39,7 @@ const ACTIVITY_EVENTS = [
 function readLastActivity(): number {
   if (typeof window === "undefined") return Date.now();
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(STORAGE_KEY);
     const n = raw ? Number(raw) : NaN;
     if (Number.isFinite(n) && n > 0) return n;
   } catch {
@@ -47,7 +51,7 @@ function readLastActivity(): number {
 function writeLastActivity(ts: number) {
   if (typeof window === "undefined") return;
   try {
-    window.sessionStorage.setItem(STORAGE_KEY, String(ts));
+    window.localStorage.setItem(STORAGE_KEY, String(ts));
   } catch {
     /* ignore */
   }
@@ -55,7 +59,7 @@ function writeLastActivity(ts: number) {
 
 /**
  * Monitora atividade real de UI (mouse, teclado, scroll…) e encerra a sessão
- * após 1h parado, com aviso 5 min antes.
+ * após 2h sem atividade em nenhuma aba, com aviso 5 min antes.
  */
 export function SessionIdleGuard() {
   const { authenticated } = useAuth();
@@ -116,8 +120,17 @@ export function SessionIdleGuard() {
       });
     }
 
+    // Outra aba pode ter registrado atividade mais recente.
+    const syncShared = () => {
+      const shared = readLastActivity();
+      if (shared > lastActivityRef.current) {
+        lastActivityRef.current = shared;
+      }
+    };
+
     const evaluate = () => {
       if (endingRef.current) return;
+      syncShared();
       const elapsed = Date.now() - lastActivityRef.current;
       if (elapsed >= SESSION_IDLE_MS) {
         logoutIdle();
@@ -141,7 +154,13 @@ export function SessionIdleGuard() {
     };
     document.addEventListener("visibilitychange", onVisibility);
 
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) evaluate();
+    };
+    window.addEventListener("storage", onStorage);
+
     return () => {
+      window.removeEventListener("storage", onStorage);
       window.clearInterval(tick);
       for (const evt of ACTIVITY_EVENTS) {
         window.removeEventListener(evt, onActivity, true);
@@ -155,6 +174,13 @@ export function SessionIdleGuard() {
     if (!warningOpen || !authenticated) return;
     const id = window.setInterval(() => {
       if (endingRef.current) return;
+      const shared = readLastActivity();
+      if (shared > lastActivityRef.current) {
+        // Houve atividade em outra aba: fecha o aviso aqui também.
+        lastActivityRef.current = shared;
+        setWarningOpen(false);
+        return;
+      }
       const remaining = SESSION_IDLE_MS - (Date.now() - lastActivityRef.current);
       if (remaining <= 0) {
         logoutIdle();

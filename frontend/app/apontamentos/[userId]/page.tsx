@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CalendarDays } from "lucide-react";
@@ -71,7 +72,7 @@ function minutesBetweenTimes(from: string, to: string): number {
   return minutesBetweenClockTimes(from, to);
 }
 
-export default function RendimentoAgendaPage() {
+function RendimentoAgendaPageImpl() {
   const params = useParams<{ userId: string }>();
   const router = useRouter();
   const { user: authUser } = useAuth();
@@ -609,4 +610,10 @@ export default function RendimentoAgendaPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { RendimentoAgendaPageImpl as PortalPageComponent };
+
+export default function RendimentoAgendaPage() {
+  return <PortalTabSlot route="/apontamentos/[userId]" Component={RendimentoAgendaPageImpl} />;
 }

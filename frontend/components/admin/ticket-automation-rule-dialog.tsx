@@ -397,6 +397,7 @@ export function TicketAutomationRuleDialog({
     if (action.field === "isClosed") {
       return (
         <SearchableSelectField
+          clearable={false}
           value={String(action.value)}
           onChange={(value) =>
             updateAction(index, {
@@ -415,6 +416,7 @@ export function TicketAutomationRuleDialog({
     if (action.field === "stageName") {
       return (
         <SearchableSelectField
+          clearable={false}
           value={String(action.value ?? "")}
           onChange={(value) => updateAction(index, { ...action, value })}
           options={stageOptions}
@@ -426,6 +428,7 @@ export function TicketAutomationRuleDialog({
     if (action.field === "clientId") {
       return (
         <SearchableSelectField
+          clearable={false}
           value={String(action.value ?? "")}
           onChange={(value) =>
             updateAction(index, { ...action, value: Number(value) })
@@ -442,6 +445,7 @@ export function TicketAutomationRuleDialog({
     if (action.field === "deskId") {
       return (
         <SearchableSelectField
+          clearable={false}
           value={String(action.value ?? "")}
           onChange={(value) =>
             updateAction(index, { ...action, value: Number(value) })
@@ -458,6 +462,7 @@ export function TicketAutomationRuleDialog({
     if (action.field === "responsibleId") {
       return (
         <SearchableSelectField
+          clearable={false}
           value={String(action.value ?? "")}
           onChange={(value) =>
             updateAction(index, { ...action, value: Number(value) })
@@ -526,6 +531,7 @@ export function TicketAutomationRuleDialog({
             <div className="rounded-xl border border-border/70 bg-muted/10 p-5">
               <FlowStep title="Quando isto acontecer">
                 <SearchableSelectField
+                  clearable={false}
                   value={trigger}
                   onChange={(value) =>
                     setTrigger(value as TicketAutomationTrigger)
@@ -696,6 +702,7 @@ export function TicketAutomationRuleDialog({
                         </Button>
                       </div>
                       <SearchableSelectField
+                        clearable={false}
                         value={action.type}
                         onChange={(value) =>
                           updateAction(
@@ -715,6 +722,7 @@ export function TicketAutomationRuleDialog({
 
                       {action.type === "SET_STAGE" ? (
                         <SearchableSelectField
+                          clearable={false}
                           value={action.stageName}
                           onChange={(value) =>
                             updateAction(index, {
@@ -729,6 +737,7 @@ export function TicketAutomationRuleDialog({
 
                       {action.type === "SET_RESPONSIBLE" ? (
                         <SearchableSelectField
+                          clearable={false}
                           value={
                             action.responsibleExternalId
                               ? String(action.responsibleExternalId)
@@ -783,6 +792,7 @@ export function TicketAutomationRuleDialog({
                       {action.type === "SET_FIELD" ? (
                         <div className="space-y-2">
                           <SearchableSelectField
+                            clearable={false}
                             value={action.field}
                             onChange={(value) =>
                               updateAction(index, {
@@ -803,6 +813,7 @@ export function TicketAutomationRuleDialog({
                       {action.type === "SEND_EMAIL" ? (
                         <div className="space-y-2">
                           <SearchableSelectField
+                            clearable={false}
                             value={action.recipient}
                             onChange={(value) =>
                               updateAction(index, {

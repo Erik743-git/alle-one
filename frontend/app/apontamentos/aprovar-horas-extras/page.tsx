@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -52,7 +53,7 @@ import {
   type RendimentoCollaborator,
 } from "@/lib/services/rendimento.service";
 
-export default function AprovarHorasExtrasPage() {
+function AprovarHorasExtrasPageImpl() {
   const router = useRouter();
   const authUser = getStoredUser();
   const isAdmin = authUser?.role === "ADMIN";
@@ -475,4 +476,10 @@ export default function AprovarHorasExtrasPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AprovarHorasExtrasPageImpl as PortalPageComponent };
+
+export default function AprovarHorasExtrasPage() {
+  return <PortalTabSlot route="/apontamentos/aprovar-horas-extras" Component={AprovarHorasExtrasPageImpl} />;
 }

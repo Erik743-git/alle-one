@@ -1,11 +1,12 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import AppShell from "@/components/layout/app-shell";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { GmudForm } from "../_components/gmud-form";
 
-export default function NewGmudPage() {
+function NewGmudPageImpl() {
   return (
     <ProtectedPage>
       <PermissionGate module="GMUD" flag="canCreate">
@@ -25,3 +26,8 @@ export default function NewGmudPage() {
   );
 }
 
+export { NewGmudPageImpl as PortalPageComponent };
+
+export default function NewGmudPage() {
+  return <PortalTabSlot route="/gmud/new" Component={NewGmudPageImpl} />;
+}

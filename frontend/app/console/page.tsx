@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import {
   useCallback,
   useEffect,
@@ -137,7 +138,7 @@ function PriorityStat({
   );
 }
 
-export default function ConsolePage() {
+function ConsolePageImpl() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [groups, setGroups] = useState<ConsoleGroupOption[]>([]);
@@ -409,6 +410,7 @@ export default function ConsolePage() {
                     {showGroupPicker ? (
                       <FilterField label="Visão de empresas prioritárias">
                         <SearchableSelectField
+                          clearable={false}
                           value={priorityOnly ? "yes" : "no"}
                           onChange={(value) => setPriorityOnly(value === "yes")}
                           options={[
@@ -442,6 +444,7 @@ export default function ConsolePage() {
 
                 <FilterField label="Reconhecimento">
                   <SearchableSelectField
+                    clearable={false}
                     value={ackFilter}
                     onChange={(v) => setAckFilter(v as "all" | "yes" | "no")}
                     options={ACK_FILTERS}
@@ -452,6 +455,7 @@ export default function ConsolePage() {
 
                 <FilterField label="Auto refresh">
                   <SearchableSelectField
+                    clearable={false}
                     value={String(refreshInterval)}
                     onChange={(v) => setRefreshInterval(Number(v))}
                     options={REFRESH_OPTIONS}
@@ -797,4 +801,10 @@ export default function ConsolePage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { ConsolePageImpl as PortalPageComponent };
+
+export default function ConsolePage() {
+  return <PortalTabSlot route="/console" Component={ConsolePageImpl} />;
 }

@@ -25,6 +25,10 @@ export type TicketListItem = {
   updatedAt: string | null;
   stageGroup: TicketStageGroupKey;
   externalGmudRef: string | null;
+  /** Comunicação de atenção ainda não confirmada por mim (regra do pop-up). */
+  hasPendingWarning?: boolean;
+  /** Quem fez a última alteração (histórico). */
+  updatedByName?: string | null;
 };
 
 export type TicketListGroup = {
@@ -452,9 +456,23 @@ export type TicketAppointmentWarningDetail = {
   attachments: TicketAppointment["attachments"];
 };
 
+/** Endpoint do estado da tela de tickets (salvo por usuário). */
+export const TICKET_LIST_STATE_ENDPOINT = "/tickets/list-state";
+
 export const ticketsService = {
   list(params: TicketsListParams = {}) {
     return apiRequest<TicketListResponse>(`/tickets${toQuery(params)}`);
+  },
+  getListState() {
+    return apiRequest<{ state: Record<string, unknown> | null }>(
+      TICKET_LIST_STATE_ENDPOINT,
+    );
+  },
+  saveListState(state: Record<string, unknown>) {
+    return apiRequest<{ ok: true }>(TICKET_LIST_STATE_ENDPOINT, {
+      method: "PUT",
+      body: { state },
+    });
   },
 
   /** Busca da paleta Ctrl+K. Vazio quando o termo tem menos de 2 letras. */

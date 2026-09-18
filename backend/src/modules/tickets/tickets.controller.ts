@@ -8,6 +8,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
   Patch,
+  Put,
   Post,
   Query,
   Res,
@@ -22,7 +23,10 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { ticketAppointmentUploadLimits } from '../../common/upload.config';
+import {
+  TICKET_APPOINTMENT_MAX_FILES,
+  ticketAppointmentUploadLimits,
+} from '../../common/upload.config';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
@@ -50,6 +54,7 @@ import { TicketsCatalogsService } from './tickets-catalogs.service';
 import { TicketsQueryService } from './tickets-query.service';
 import { TicketsService } from './tickets.service';
 import { TicketListPresetsService } from './ticket-list-presets.service';
+import { TicketListStateService } from './ticket-list-state.service';
 import {
   CreateTicketListPresetDto,
   UpdateTicketListPresetDto,
@@ -67,6 +72,7 @@ export class TicketsController {
     private readonly appointmentsService: TicketsAppointmentsService,
     private readonly reconcileService: TicketsReconcileService,
     private readonly listPresetsService: TicketListPresetsService,
+    private readonly listStateService: TicketListStateService,
   ) {}
 
   @Get()
@@ -84,6 +90,24 @@ export class TicketsController {
   @RequirePermission(PermissionModule.TICKETS, 'canView')
   filterCatalogs(@CurrentUser() actor: AuthenticatedRequestUser) {
     return this.catalogsService.getFilterCatalogs(actor);
+  }
+
+  /** Estado da tela de tickets do próprio usuário. */
+  @Get('list-state')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  getListState(@CurrentUser() actor: AuthenticatedRequestUser) {
+    return this.listStateService.get(actor.userId);
+  }
+
+  @Put('list-state')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
+  @RequirePermission(PermissionModule.TICKETS, 'canView')
+  saveListState(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Body('state') state: unknown,
+  ) {
+    return this.listStateService.save(actor.userId, state);
   }
 
   @Get('list-presets')
@@ -206,7 +230,13 @@ export class TicketsController {
   @Post()
   @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      TICKET_APPOINTMENT_MAX_FILES,
+      ticketAppointmentUploadLimits,
+    ),
+  )
   async create(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Body('payload') payloadRaw: string,
@@ -237,12 +267,14 @@ export class TicketsController {
   }
 
   @Get(':ticketNumber/catalogs/appointment')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente usa para registrar comunicação (escopo checado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   appointmentCatalogs(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
   ) {
-    return this.appointmentsService.getAppointmentCatalogs(ticketNumber);
+    return this.appointmentsService.getAppointmentCatalogs(ticketNumber, actor);
   }
 
   @Get(':ticketNumber/warnings/pending')
@@ -316,9 +348,17 @@ export class TicketsController {
   }
 
   @Patch(':ticketNumber')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente gestor: só responsável, solicitante, mesa e fechar/reabrir
+  // (regras em TicketsService.assertClientGestorTicketUpdate).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      TICKET_APPOINTMENT_MAX_FILES,
+      ticketAppointmentUploadLimits,
+    ),
+  )
   async updateTicket(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
@@ -439,7 +479,8 @@ export class TicketsController {
    * pela tela antes de salvar, para avisar sobre dupla contagem de hora.
    */
   @Get('appointments/overlaps')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Só os apontamentos do próprio usuário.
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   appointmentOverlaps(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -455,9 +496,16 @@ export class TicketsController {
   }
 
   @Post(':ticketNumber/appointments')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente aponta só em ticket da própria empresa (checado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      TICKET_APPOINTMENT_MAX_FILES,
+      ticketAppointmentUploadLimits,
+    ),
+  )
   async createAppointment(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
@@ -494,15 +542,17 @@ export class TicketsController {
   }
 
   @Get(':ticketNumber/appointments/:portalAppointmentId/edit-context')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   portalAppointmentEditContext(
+    @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
     @Param('portalAppointmentId', ParseUUIDPipe) portalAppointmentId: string,
   ) {
     return this.appointmentsService.getPortalAppointmentEditContext(
       ticketNumber,
       portalAppointmentId,
+      actor,
     );
   }
 
@@ -533,9 +583,15 @@ export class TicketsController {
   }
 
   @Patch(':ticketNumber/appointments/:portalAppointmentId')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      TICKET_APPOINTMENT_MAX_FILES,
+      ticketAppointmentUploadLimits,
+    ),
+  )
   async updatePortalAppointment(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('ticketNumber', ParseIntPipe) ticketNumber: number,
@@ -574,7 +630,7 @@ export class TicketsController {
   }
 
   @Delete(':ticketNumber/appointments/:portalAppointmentId')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   deletePortalAppointment(
     @CurrentUser() actor: AuthenticatedRequestUser,

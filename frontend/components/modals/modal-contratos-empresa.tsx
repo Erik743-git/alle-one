@@ -466,6 +466,7 @@ export default function ModalContratosEmpresa({
                       Status
                     </label>
                     <SearchableSelectField
+                      clearable={false}
                       value={form.status}
                       onChange={(value) =>
                         setForm((p) => ({

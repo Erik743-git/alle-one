@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { ModuloDesabilitadoAviso } from "@/components/layout/modulo-desabilitado-aviso";
 import { MODULO_FINANCEIRO, moduloDesabilitado } from "@/lib/modulos-desabilitados";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -837,9 +838,15 @@ function FinanceiroPageConteudo() {
 
 // Modulo desligado por ambiente: alem de sumir do menu, a rota precisa
 // responder, senao continua acessivel por URL digitada ou link antigo.
-export default function FinanceiroPage() {
+function FinanceiroPageImpl() {
   if (moduloDesabilitado(MODULO_FINANCEIRO)) {
     return <ModuloDesabilitadoAviso nome="Financeiro" />;
   }
   return <FinanceiroPageConteudo />;
+}
+
+export { FinanceiroPageImpl as PortalPageComponent };
+
+export default function FinanceiroPage() {
+  return <PortalTabSlot route="/financeiro" Component={FinanceiroPageImpl} />;
 }

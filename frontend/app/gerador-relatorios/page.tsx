@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,7 +69,7 @@ function formatReportGeneratedAt(value: string): string {
   return String(value).slice(0, 19).replace("T", " ");
 }
 
-export default function GeradorRelatoriosPage() {
+function GeradorRelatoriosPageImpl() {
   const { user } = useAuth();
   const [carregando, setCarregando] = useState(true);
   const [gerando, setGerando] = useState(false);
@@ -537,6 +538,7 @@ export default function GeradorRelatoriosPage() {
                       Período
                     </label>
                     <SearchableSelectField
+                      clearable={false}
                       value={periodMode}
                       onChange={(v) =>
                         setPeriodMode(v === "civil" ? "civil" : "folha")
@@ -809,6 +811,7 @@ export default function GeradorRelatoriosPage() {
                     Relatório
                   </label>
                   <SearchableSelectField
+                    clearable={false}
                     value={type}
                     onChange={setType}
                     options={typeOptions}
@@ -820,6 +823,7 @@ export default function GeradorRelatoriosPage() {
                     Formato
                   </label>
                   <SearchableSelectField
+                    clearable={false}
                     value={format}
                     onChange={(value) => setFormat(value as ReportFormatOption)}
                     options={formatSelectOptions}
@@ -1012,4 +1016,10 @@ export default function GeradorRelatoriosPage() {
     </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { GeradorRelatoriosPageImpl as PortalPageComponent };
+
+export default function GeradorRelatoriosPage() {
+  return <PortalTabSlot route="/gerador-relatorios" Component={GeradorRelatoriosPageImpl} />;
 }

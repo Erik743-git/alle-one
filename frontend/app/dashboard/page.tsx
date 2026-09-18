@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import dynamic from "next/dynamic";
 import {
   useCallback,
@@ -425,7 +426,7 @@ function TopTriggersTable({ rows }: { rows: DashboardTopTrigger[] }) {
   );
 }
 
-export default function DashboardPage() {
+function DashboardPageImpl() {
   const { user } = useAuth();
 
   const [dashboard, setDashboard] = useState<DashboardCompleteResponse | null>(null);
@@ -1554,4 +1555,10 @@ export default function DashboardPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { DashboardPageImpl as PortalPageComponent };
+
+export default function DashboardPage() {
+  return <PortalTabSlot route="/dashboard" Component={DashboardPageImpl} />;
 }

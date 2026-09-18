@@ -9,6 +9,7 @@ import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register"
 import { ToastHost } from "@/components/ui/toast-host";
 import { AuthProvider } from "@/lib/auth-context";
 import { PortalTabsProvider } from "@/components/layout/portal-tabs-provider";
+import { PortalTabHost } from "@/components/layout/portal-tab-host";
 
 const CHUNK_RELOAD_KEY = "alleone_chunk_reload_once";
 
@@ -25,8 +26,11 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
     <ErrorBoundary>
       <AuthProvider>
         <ConfirmProvider>
+          <PortalTabsProvider>
+            {children}
+            <PortalTabHost />
+          </PortalTabsProvider>
           <SessionIdleGuard />
-          <PortalTabsProvider>{children}</PortalTabsProvider>
           <ToastHost />
           <ServiceWorkerRegister />
           <PwaInstallHint />

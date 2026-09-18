@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,8 @@ type SelectOption = {
   value: string;
   label: string;
   description?: string;
+  /** Texto extra usado só na busca (ex.: e-mail), sem aparecer na tela. */
+  searchText?: string;
 };
 
 type SearchableSelectFieldProps = {
@@ -35,6 +37,12 @@ type SearchableSelectFieldProps = {
   /** Lado preferido do painel (ex.: `left` na coluna direita do ticket). */
   side?: "top" | "right" | "bottom" | "left";
   align?: "start" | "center" | "end";
+  /**
+   * Mostra o "x" (e aceita Delete/Backspace) para limpar a seleção.
+   * Padrão: ligado. Desligue só em listas fixas onde "vazio" não existe
+   * (tipo, formato, papel, status...).
+   */
+  clearable?: boolean;
 };
 
 export function SearchableSelectField({
@@ -53,6 +61,7 @@ export function SearchableSelectField({
   popoverMinWidth,
   side = "bottom",
   align = "start",
+  clearable = true,
 }: SearchableSelectFieldProps) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -79,6 +88,7 @@ export function SearchableSelectField({
       (item) =>
         item.label.toLowerCase().includes(normalizedQuery) ||
         item.description?.toLowerCase().includes(normalizedQuery) ||
+        item.searchText?.toLowerCase().includes(normalizedQuery) ||
         item.value.toLowerCase().includes(normalizedQuery),
     );
   }, [query, sortedOptions]);
@@ -144,8 +154,24 @@ export function SearchableSelectField({
     [listOptions.length],
   );
 
+  const canClear = clearable && value !== "" && !disabled && !loading;
+
+  const clearSelection = () => {
+    onChange("");
+    setOpen(false);
+  };
+
   const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (disabled || loading) return;
+    if (
+      canClear &&
+      !open &&
+      (event.key === "Delete" || event.key === "Backspace")
+    ) {
+      event.preventDefault();
+      clearSelection();
+      return;
+    }
     if (
       event.key === "ArrowDown" ||
       event.key === "ArrowUp" ||
@@ -259,7 +285,29 @@ export function SearchableSelectField({
           onKeyDown={handleTriggerKeyDown}
         >
           <span className="min-w-0 flex-1 truncate text-left">{displayLabel}</span>
-          <ChevronDown className="ml-2 size-4 shrink-0 opacity-60" />
+          {canClear ? (
+            // span (não button): botão dentro de botão é HTML inválido.
+            <span
+              role="button"
+              tabIndex={-1}
+              aria-label="Limpar seleção"
+              title="Limpar"
+              className="ml-2 inline-flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              onPointerDown={(event) => {
+                // Não deixa o gatilho abrir a lista.
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                clearSelection();
+              }}
+            >
+              <X className="size-3.5" />
+            </span>
+          ) : null}
+          <ChevronDown className="ml-1 size-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -40,7 +41,7 @@ function formatWhen(iso: string) {
   });
 }
 
-export default function CorreioPage() {
+function CorreioPageImpl() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<MailboxNotification[]>([]);
@@ -340,4 +341,10 @@ export default function CorreioPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { CorreioPageImpl as PortalPageComponent };
+
+export default function CorreioPage() {
+  return <PortalTabSlot route="/correio" Component={CorreioPageImpl} />;
 }

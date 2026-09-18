@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ProtectedPage from "@/components/auth/protected-page";
@@ -34,7 +35,7 @@ function formatWhen(iso: string) {
   });
 }
 
-export default function PreTicketsPage() {
+function PreTicketsPageImpl() {
   const router = useRouter();
   const [items, setItems] = useState<PreTicketListItem[]>([]);
   const [q, setQ] = useState("");
@@ -498,4 +499,10 @@ export default function PreTicketsPage() {
       </AppShell>
     </ProtectedPage>
   );
+}
+
+export { PreTicketsPageImpl as PortalPageComponent };
+
+export default function PreTicketsPage() {
+  return <PortalTabSlot route="/tickets/pre-tickets" Component={PreTicketsPageImpl} />;
 }

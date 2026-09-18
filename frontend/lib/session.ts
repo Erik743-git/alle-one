@@ -109,6 +109,7 @@ export function clearSessionSync() {
   window.localStorage.removeItem(USER_KEY);
   window.localStorage.removeItem(TOKEN_KEY);
   try {
+    window.localStorage.removeItem("alleone.lastActivityAt");
     window.sessionStorage.removeItem("alleone.lastActivityAt");
   } catch {
     /* ignore */

@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { ModuloDesabilitadoAviso } from "@/components/layout/modulo-desabilitado-aviso";
 import { MODULO_PROJETOS, moduloDesabilitado } from "@/lib/modulos-desabilitados";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -173,9 +174,15 @@ function ProjetosPageConteudo() {
 
 // Modulo desligado por ambiente: alem de sumir do menu, a rota precisa
 // responder, senao continua acessivel por URL digitada ou link antigo.
-export default function ProjetosPage() {
+function ProjetosPageImpl() {
   if (moduloDesabilitado(MODULO_PROJETOS)) {
     return <ModuloDesabilitadoAviso nome="Projetos" />;
   }
   return <ProjetosPageConteudo />;
+}
+
+export { ProjetosPageImpl as PortalPageComponent };
+
+export default function ProjetosPage() {
+  return <PortalTabSlot route="/projetos" Component={ProjetosPageImpl} />;
 }

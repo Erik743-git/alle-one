@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -113,7 +114,7 @@ function ruleMatchesFilters(
   return true;
 }
 
-export default function AdminTicketPage() {
+function AdminTicketPageImpl() {
   const confirm = useConfirm();
   const [tab, setTab] = useState<AdminTicketTab>("stages");
 
@@ -974,4 +975,10 @@ export default function AdminTicketPage() {
       </PermissionGate>
     </ProtectedPage>
   );
+}
+
+export { AdminTicketPageImpl as PortalPageComponent };
+
+export default function AdminTicketPage() {
+  return <PortalTabSlot route="/admin/ticket" Component={AdminTicketPageImpl} />;
 }

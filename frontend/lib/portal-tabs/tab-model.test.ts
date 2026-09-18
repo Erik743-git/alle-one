@@ -188,6 +188,19 @@ describe("persistência", () => {
     expect(lido.tabs.every((tab) => tab.entryKey === null)).toBe(true);
   });
 
+  it("depois de recarregar as guias voltam adormecidas e acordam ao ativar", () => {
+    let s = go(EMPTY_TABS, "/a", "k1").state;
+    s = go(s, "/b", "k2").state;
+    expect(s.tabs.every((tab) => tab.live)).toBe(true);
+    const lido = parseTabs(serializeTabs(s));
+    expect(lido.tabs.some((tab) => tab.live)).toBe(false);
+    const ativa = activateTab(lido, lido.tabs[0].id, 9);
+    expect(ativa.tabs.map((tab) => Boolean(tab.live))).toEqual([true, false]);
+    // voltar para a URL de uma guia adormecida também acorda
+    const acordou = go(lido, "/b", "k3").state;
+    expect(acordou.tabs.find((tab) => tab.href === "/b")?.live).toBe(true);
+  });
+
   it("descarta lixo e endereços externos", () => {
     expect(parseTabs("não é json")).toEqual(EMPTY_TABS);
     expect(parseTabs(JSON.stringify({ v: 2, tabs: [] }))).toEqual(EMPTY_TABS);

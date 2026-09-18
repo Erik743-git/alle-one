@@ -18,7 +18,10 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import { PermissionModule } from '@prisma/client';
-import { ticketAppointmentUploadLimits } from '../../common/upload.config';
+import {
+  TICKET_APPOINTMENT_MAX_FILES,
+  ticketAppointmentUploadLimits,
+} from '../../common/upload.config';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -287,7 +290,13 @@ export class AdminController {
     entity: 'TicketAutoOpenRule',
     action: 'CREATE',
   })
-  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      TICKET_APPOINTMENT_MAX_FILES,
+      ticketAppointmentUploadLimits,
+    ),
+  )
   async createTicketAutoOpenRule(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Body('payload') payloadRaw: string | undefined,
@@ -308,7 +317,13 @@ export class AdminController {
     entity: 'TicketAutoOpenRule',
     action: 'UPDATE',
   })
-  @UseInterceptors(FilesInterceptor('files', 10, ticketAppointmentUploadLimits))
+  @UseInterceptors(
+    FilesInterceptor(
+      'files',
+      TICKET_APPOINTMENT_MAX_FILES,
+      ticketAppointmentUploadLimits,
+    ),
+  )
   async updateTicketAutoOpenRule(
     @CurrentUser() actor: AuthenticatedRequestUser,
     @Param('id') id: string,

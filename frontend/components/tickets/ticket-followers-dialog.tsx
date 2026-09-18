@@ -265,16 +265,14 @@ function TicketFollowersPanel({
                         : "hover:bg-muted/60",
                     )}
                   >
-                    <span className="text-sm font-medium text-foreground">
+                    <span
+                      className="text-sm font-medium text-foreground"
+                      title={person.email}
+                    >
                       {isTypedEmail
                         ? `Adicionar ${person.email}`
                         : person.name || person.email}
                     </span>
-                    {!isTypedEmail && person.name ? (
-                      <span className="text-xs text-muted-foreground">
-                        {person.email}
-                      </span>
-                    ) : null}
                   </button>
                 </li>
               );

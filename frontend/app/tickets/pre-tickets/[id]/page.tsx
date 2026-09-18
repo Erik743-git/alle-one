@@ -1,5 +1,6 @@
 "use client";
 
+import { PortalTabSlot } from "@/components/layout/portal-tab-slot";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,7 +16,7 @@ import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
 import { Download, Trash2 } from "lucide-react";
 import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
-export default function PreTicketDetailPage() {
+function PreTicketDetailPageImpl() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [item, setItem] = useState<PreTicketDetail | null>(null);
@@ -210,4 +211,10 @@ export default function PreTicketDetailPage() {
       </AppShell>
     </ProtectedPage>
   );
+}
+
+export { PreTicketDetailPageImpl as PortalPageComponent };
+
+export default function PreTicketDetailPage() {
+  return <PortalTabSlot route="/tickets/pre-tickets/[id]" Component={PreTicketDetailPageImpl} />;
 }
