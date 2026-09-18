@@ -262,7 +262,10 @@ export class EmailInboundIngestService {
     });
 
     const route = await this.matchRoute(fromEmail);
-    const companyId = route?.companyId ?? requestor?.companyId ?? null;
+    const companyId =
+      route?.companyId ??
+      requestor?.companyId ??
+      (await this.matchCompanyByDomain(fromEmail));
     const specialtyId = route?.specialtyId ?? null;
     const priorityName = route?.priorityName ?? null;
 
@@ -840,6 +843,35 @@ export class EmailInboundIngestService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Empresa pelo domínio do remetente, quando não há rota nem usuário
+   * cadastrado com aquele e-mail. Sem isso o chamado nasce sem cliente e
+   * alguém precisa completar na mão depois.
+   *
+   * Só vale quando o domínio é de um cliente só: domínio compartilhado
+   * (gmail, outlook e afins têm gente de várias empresas) não decide nada,
+   * e chutar a empresa errada é pior do que deixar em branco.
+   */
+  private async matchCompanyByDomain(fromEmail: string): Promise<string | null> {
+    const domain = fromEmail.includes('@')
+      ? fromEmail.split('@')[1]?.trim().toLowerCase()
+      : null;
+    if (!domain) return null;
+
+    const rows = await this.prisma.user.findMany({
+      where: {
+        email: { endsWith: `@${domain}`, mode: 'insensitive' },
+        companyId: { not: null },
+        deletedAt: null,
+      },
+      select: { companyId: true },
+      distinct: ['companyId'],
+      take: 2,
+    });
+    if (rows.length !== 1) return null;
+    return rows[0].companyId;
   }
 
   private async matchRoute(fromEmail: string) {
