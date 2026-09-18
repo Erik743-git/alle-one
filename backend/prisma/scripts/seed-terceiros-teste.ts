@@ -51,7 +51,7 @@ const PLANOS: Plano[] = [
     email: 'terceiro.sistema@teste.alletecnologia.com',
     nome: 'Terceiro Sistema (teste)',
     empresas: ['Ghelplus'],
-    mesa: 'Sistema',
+    mesa: 'Sistemas',
     ticketsPorEmpresa: 2,
   },
 ];
