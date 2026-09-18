@@ -165,8 +165,10 @@ export function TicketResponsibleSelect({
         preserveOrder
         alwaysShowSearch
         modal
-        side={compact ? "bottom" : "left"}
-        align={compact ? "start" : "center"}
+        // Sempre para baixo: abrindo à esquerda, em janela estreita não cabia
+        // e o painel virava para a direita, fora da área visível.
+        side="bottom"
+        align="start"
         popoverMinWidth="min(24rem, calc(100vw - 2rem))"
         emptyLabel={compact || !allowEmpty ? undefined : "Sem responsável"}
         clearable={allowEmpty}
