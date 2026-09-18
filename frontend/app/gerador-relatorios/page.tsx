@@ -1,5 +1,6 @@
 "use client";
 
+import { todayYmdLocal } from "@/lib/today-local";
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -96,7 +97,7 @@ export default function GeradorRelatoriosPage() {
     d.setDate(d.getDate() - 6);
     return d.toISOString().slice(0, 10);
   });
-  const [end, setEnd] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [end, setEnd] = useState<string>(() => todayYmdLocal());
   // Rendimento: "folha" ajusta o período ao ciclo 26→25 do mês escolhido (bate
   // com a tela de Rendimento); "civil" usa as datas exatas selecionadas.
   const [periodMode, setPeriodMode] = useState<"folha" | "civil">("folha");

@@ -1,5 +1,6 @@
 "use client";
 
+import { todayYmdLocal } from "@/lib/today-local";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -231,7 +232,7 @@ export function TicketAutoOpenRuleDialog({
       setName("");
       setActive(true);
       setPeriodicity("DAILY");
-      setNextScheduledDate(new Date().toISOString().slice(0, 10));
+      setNextScheduledDate(todayYmdLocal());
       setScheduleTime("08:00");
       setDeskId("");
       setClientId("");

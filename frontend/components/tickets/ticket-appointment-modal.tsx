@@ -1,5 +1,6 @@
 "use client";
 
+import { todayYmdLocal } from "@/lib/today-local";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, User2 } from "lucide-react";
 
@@ -133,7 +134,7 @@ export function TicketAppointmentModal({
   const [notStartedDialogOpen, setNotStartedDialogOpen] = useState(false);
   const [stageChangeBusy, setStageChangeBusy] = useState(false);
 
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayYmdLocal());
   const [initTime, setInitTime] = useState(nowTime);
   const [endTime, setEndTime] = useState(() => addMinutesToTime(nowTime(), 15));
   const [overnight, setOvernight] = useState(false);
@@ -186,7 +187,7 @@ export function TicketAppointmentModal({
       if (isCommunication) {
         const clickedAt = nowTime();
         communicationOpenedAtRef.current = clickedAt;
-        setDate(new Date().toISOString().slice(0, 10));
+        setDate(todayYmdLocal());
         setInitTime(clickedAt);
         setEndTime(clickedAt);
         setOvernight(false);
@@ -397,7 +398,7 @@ export function TicketAppointmentModal({
 
     const alertTime = communicationOpenedAtRef.current ?? nowTime();
     const payload: CreateAppointmentPayload = {
-      date: isCommunication ? new Date().toISOString().slice(0, 10) : date,
+      date: isCommunication ? todayYmdLocal() : date,
       initTime: isCommunication ? alertTime : initTime,
       endTime: isCommunication ? alertTime : endTime,
       ...(overnight && !isCommunication ? { endDate } : {}),
