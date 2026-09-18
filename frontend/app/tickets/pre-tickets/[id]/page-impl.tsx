@@ -12,6 +12,7 @@ import {
   type PreTicketDetail,
 } from "@/lib/services/email-inbound.service";
 import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
+import { PreTicketCompanyDialog } from "@/components/tickets/pre-ticket-company-dialog";
 import { Download, Trash2 } from "lucide-react";
 import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
@@ -41,17 +42,33 @@ function PreTicketDetailPageImpl() {
     };
   }, [params.id]);
 
-  async function openTicket() {
+  // Sem empresa reconhecida, pergunta antes de abrir (ver a lista de
+  // pré-tickets: o chamado nascia sem cliente).
+  const [askCompany, setAskCompany] = useState(false);
+
+  async function openTicket(companyId?: string) {
     if (!item) return;
     setBusy(true);
     try {
-      const r = await emailInboundService.openPreTicket(item.id);
+      const r = await emailInboundService.openPreTicket(
+        item.id,
+        companyId ? { companyId } : undefined,
+      );
+      setAskCompany(false);
       router.push(`/tickets/${r.ticketNumber}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao abrir");
     } finally {
       setBusy(false);
     }
+  }
+
+  function startOpenTicket() {
+    if (item?.company?.name?.trim()) {
+      void openTicket();
+      return;
+    }
+    setAskCompany(true);
   }
 
   async function remove() {
@@ -200,13 +217,20 @@ function PreTicketDetailPageImpl() {
                   <Trash2 className="mr-2 size-4" />
                   Remover
                 </Button>
-                <Button disabled={busy} onClick={() => void openTicket()}>
+                <Button disabled={busy} onClick={startOpenTicket}>
                   Abrir ticket
                 </Button>
               </div>
             </>
           )}
         </div>
+
+        <PreTicketCompanyDialog
+          open={askCompany}
+          onOpenChange={setAskCompany}
+          onConfirm={(companyId) => void openTicket(companyId)}
+          busy={busy}
+        />
       </AppShell>
     </ProtectedPage>
   );

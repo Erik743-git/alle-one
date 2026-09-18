@@ -18,6 +18,7 @@ import {
   emailInboundService,
   type PreTicketListItem,
 } from "@/lib/services/email-inbound.service";
+import { PreTicketCompanyDialog } from "@/components/tickets/pre-ticket-company-dialog";
 import { Check, Lock, Trash2 } from "lucide-react";
 import { getStoredUser } from "@/lib/session";
 import { useRouter } from "next/navigation";
@@ -166,16 +167,32 @@ function PreTicketsPageImpl() {
     }
   }
 
-  async function openTicket(id: string) {
+  // Pré-ticket sem empresa reconhecida: pergunta antes de abrir, senão o
+  // chamado nasce sem cliente e alguém tem que completar na edição.
+  const [companyAskId, setCompanyAskId] = useState<string | null>(null);
+
+  async function openTicket(id: string, companyId?: string) {
     setBusy(true);
     try {
-      const r = await emailInboundService.openPreTicket(id);
+      const r = await emailInboundService.openPreTicket(
+        id,
+        companyId ? { companyId } : undefined,
+      );
+      setCompanyAskId(null);
       router.push(`/tickets/${r.ticketNumber}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao abrir ticket");
     } finally {
       setBusy(false);
     }
+  }
+
+  function startOpenTicket(row: PreTicketListItem) {
+    if (row.company?.name?.trim()) {
+      void openTicket(row.id);
+      return;
+    }
+    setCompanyAskId(row.id);
   }
 
   return (
@@ -462,7 +479,7 @@ function PreTicketsPageImpl() {
                             disabled={busy}
                             title="Abrir ticket"
                             aria-label={`Abrir ticket: ${row.title}`}
-                            onClick={() => void openTicket(row.id)}
+                            onClick={() => startOpenTicket(row)}
                           >
                             <Check className="size-4" />
                           </Button>
@@ -495,6 +512,17 @@ function PreTicketsPageImpl() {
               </tbody>            </table>
           </div>
         </div>
+
+        <PreTicketCompanyDialog
+          open={companyAskId != null}
+          onOpenChange={(open) => {
+            if (!open) setCompanyAskId(null);
+          }}
+          onConfirm={(companyId) => {
+            if (companyAskId) void openTicket(companyAskId, companyId);
+          }}
+          busy={busy}
+        />
       </AppShell>
     </ProtectedPage>
   );
