@@ -870,9 +870,13 @@ export class TicketsService {
     let nextClientName = portal?.clientName ?? null;
     let nextDeskExternalId = portal?.deskExternalId ?? null;
     let nextDeskName = portal?.deskName ?? null;
+    // Chamado que nasceu sem cliente (pré-ticket de e-mail cujo remetente não
+    // casou com nenhuma empresa) está sendo *preenchido*, não trocado: o
+    // solicitante continua o mesmo e não faz sentido exigir outro.
     const isClientChanging =
       dto.clientId != null &&
-      dto.clientId !== (portal?.clientExternalId ?? null);
+      portal?.clientExternalId != null &&
+      dto.clientId !== portal.clientExternalId;
     let previousGmudRef: string | null = null;
     if (dto.clientId != null) {
       if (!this.actorCanChangeTicketClient(actor)) {
