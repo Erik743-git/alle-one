@@ -1197,6 +1197,10 @@ export class TicketsService {
       } else if (nextIsClosed && !portal?.isClosed) {
         eventType = 'TICKET_CLOSED';
         summary = `Chamado fechado · estágio "${resolvedStageName ?? PORTAL_STAGE.ENCERRADO}"`;
+        await this.appointments.notifyRoutineTicketClosed(
+          ticketNumber,
+          resolvedStageName ?? PORTAL_STAGE.ENCERRADO,
+        );
       } else if (
         resolvedStageName === PORTAL_STAGE.CANCELADO ||
         statusName === PORTAL_STAGE.CANCELADO

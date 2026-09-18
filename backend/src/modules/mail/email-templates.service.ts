@@ -6,6 +6,7 @@ export const EMAIL_TEMPLATE_KEYS = {
   TICKET_REGISTERED: 'TICKET_REGISTERED',
   GMUD_NOTIFY: 'GMUD_NOTIFY',
   APPOINTMENT_CLIENT_NOTIFY: 'APPOINTMENT_CLIENT_NOTIFY',
+  ROUTINE_TICKET_CLOSED: 'ROUTINE_TICKET_CLOSED',
 } as const;
 
 export type EmailTemplateKey =
@@ -45,6 +46,15 @@ const DEFAULTS: Array<{
       '<p>Olá.</p><p>Há um apontamento de comunicação no chamado <strong>#{{ticketNumber}} — {{ticketTitle}}</strong>.</p><p><strong>Quem apontou:</strong> {{authorName}}<br/><strong>Quando:</strong> {{appointmentDate}} {{appointmentTime}}</p><p><strong>Descrição do apontamento</strong></p><div>{{appointmentDescriptionHtml}}</div><p><strong>Descrição do chamado</strong></p><div>{{ticketDescriptionHtml}}</div>{{attachmentsNote}}<p>Atenciosamente.<br/>Alle Tecnologia.</p>',
     bodyText:
       'Olá.\n\nHá um apontamento de comunicação no chamado #{{ticketNumber}} — {{ticketTitle}}.\n\nQuem apontou: {{authorName}}\nQuando: {{appointmentDate}} {{appointmentTime}}\n\nDescrição do apontamento:\n{{appointmentDescriptionText}}\n\nDescrição do chamado:\n{{ticketDescriptionText}}\n\nAtenciosamente.\nAlle Tecnologia.\n',
+  },
+  {
+    key: EMAIL_TEMPLATE_KEYS.ROUTINE_TICKET_CLOSED,
+    name: 'Chamado de rotina concluído',
+    subject: 'Chamado #{{ticketNumber}} concluído — {{title}}',
+    bodyHtml:
+      '<p>Olá {{requestorName}}.</p><p>O chamado de rotina <strong>#{{ticketNumber}} — {{title}}</strong> foi concluído em {{closedAt}}.</p><p>Situação: <strong>{{stageName}}</strong></p><p>Atenciosamente.<br/>Alle Tecnologia.</p>',
+    bodyText:
+      'Olá {{requestorName}}.\n\nO chamado de rotina #{{ticketNumber}} — {{title}} foi concluído em {{closedAt}}.\n\nSituação: {{stageName}}\n\nAtenciosamente.\nAlle Tecnologia.\n',
   },
 ];
 
@@ -168,6 +178,48 @@ export class EmailTemplatesService {
     } catch (err) {
       this.logger.warn(
         `Falha ao enviar TICKET_REGISTERED #${params.ticketNumber}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return false;
+    }
+  }
+
+  /** Chamado de rotina: único e-mail, só para o solicitante, no fechamento. */
+  async sendRoutineTicketClosed(params: {
+    to: string;
+    ticketNumber: number;
+    title: string;
+    requestorName: string | null;
+    stageName: string;
+    closedAt: Date;
+  }) {
+    const to = params.to.trim();
+    if (!to) return false;
+
+    const rendered = await this.getRendered(
+      EMAIL_TEMPLATE_KEYS.ROUTINE_TICKET_CLOSED,
+      {
+        ticketNumber: params.ticketNumber,
+        title: params.title,
+        requestorName: params.requestorName?.trim() || 'cliente',
+        stageName: params.stageName,
+        closedAt: params.closedAt.toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo',
+        }),
+      },
+    );
+
+    try {
+      return await this.mail.sendMail({
+        to,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enviar ROUTINE_TICKET_CLOSED #${params.ticketNumber}: ${
           err instanceof Error ? err.message : err
         }`,
       );

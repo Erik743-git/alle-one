@@ -2195,6 +2195,10 @@ export class TicketsQueryService {
         await this.portalStore.patchStage(ticketNumber, targetStage.name, {
           isClosed: true,
         });
+        await this.appointments.notifyRoutineTicketClosed(
+          ticketNumber,
+          targetStage.name,
+        );
         try {
           await this.prisma.ticketHistory.create({
             data: {
@@ -2284,6 +2288,12 @@ export class TicketsQueryService {
     await this.portalStore.patchStage(ticketNumber, stageName, {
       isClosed: Boolean(targetStage.lastStage),
     });
+    if (targetStage.lastStage && !ticket.is_closed) {
+      await this.appointments.notifyRoutineTicketClosed(
+        ticketNumber,
+        stageName,
+      );
+    }
 
     try {
       const closing = Boolean(targetStage.lastStage) && !ticket.is_closed;

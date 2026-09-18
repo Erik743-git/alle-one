@@ -73,6 +73,7 @@ import { isDonePortalStage } from './portal-ticket-stages';
 import { resolveTicketStageGroup } from './tickets-stage-groups';
 import { parseClockToMinutes } from '../rendimento/rendimento-worked-minutes.helper';
 import { assertPjAccessToTicketNumber } from './tickets-pj-scope';
+import { isRoutineTicket } from './routine-ticket.helper';
 
 type AppointmentRow = {
   external_id: number;
@@ -1750,6 +1751,39 @@ export class TicketsAppointmentsService {
     };
   }
 
+  /**
+   * Chamado de rotina fechado: único aviso ao cliente, só para o solicitante.
+   * Nunca lança — falha de e-mail não pode desfazer o fechamento.
+   */
+  async notifyRoutineTicketClosed(
+    ticketNumber: number,
+    stageName: string,
+  ): Promise<void> {
+    try {
+      if (!(await isRoutineTicket(this.prisma, ticketNumber))) return;
+      const ticket = await this.prisma.portalTicket.findUnique({
+        where: { ticketNumber },
+        select: { title: true, requestorEmail: true, requestorName: true },
+      });
+      const to = ticket?.requestorEmail?.trim();
+      if (!ticket || !to) return;
+      await this.emailTemplates.sendRoutineTicketClosed({
+        to,
+        ticketNumber,
+        title: ticket.title ?? '',
+        requestorName: ticket.requestorName,
+        stageName,
+        closedAt: new Date(),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao avisar fechamento da rotina #${ticketNumber}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
   private async maybeSendClientCommunication(params: {
     ticketNumber: number;
     portalAppointmentId: string;
@@ -1763,6 +1797,9 @@ export class TicketsAppointmentsService {
     notifyClient: boolean;
   }): Promise<string> {
     if (!params.notifyClient) return '';
+    if (await isRoutineTicket(this.prisma, params.ticketNumber)) {
+      return ' Chamado de rotina: o solicitante só recebe e-mail quando o chamado for fechado.';
+    }
 
     try {
       const sent = await this.sendClientCommunicationEmail(params);
