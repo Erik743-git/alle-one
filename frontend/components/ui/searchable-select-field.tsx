@@ -321,7 +321,10 @@ export function SearchableSelectField({
         // visível, sem nunca "colidir".
         collisionPadding={16}
         className={cn(
-          "p-2",
+          // A altura acompanha o espaço que sobra abaixo do campo. Sem isso,
+          // uma lista alta não cabia embaixo nem em cima e o Radix jogava
+          // tudo para o lado, fora da área visível em janela estreita.
+          "flex max-h-[var(--radix-popover-content-available-height)] flex-col p-2",
           popoverMinWidth ??
             "w-[min(100vw-2rem,var(--radix-popover-trigger-width))]",
         )}
@@ -344,7 +347,7 @@ export function SearchableSelectField({
         <ul
           ref={listRef}
           tabIndex={showSearch ? -1 : 0}
-          className="max-h-64 overflow-y-auto overscroll-contain rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          className="max-h-64 min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-md border border-border outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
           role="listbox"
           onWheelCapture={handleListWheel}
           onKeyDown={handleListKeyDown}
