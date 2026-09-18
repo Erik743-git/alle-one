@@ -257,6 +257,30 @@ export function useAdminUsuarios() {
     [buscarUsuarios, confirm, empresas, formEdicao.companyId, formEdicao.role],
   );
 
+  /** Empresas atendidas pelo terceiro: acerta os vínculos que mudaram. */
+  const salvarEmpresasDoTerceiro = useCallback(
+    async (form: FormEdicao) => {
+      const atuais = await usersService
+        .listCompanyMemberships(form.id)
+        .catch(() => [] as Array<{ companyId: string }>);
+      const antes = new Set(atuais.map((m) => m.companyId));
+      const agora = new Set(form.servedCompanyIds);
+
+      for (const companyId of agora) {
+        if (antes.has(companyId)) continue;
+        await usersService.upsertCompanyMembership(form.id, {
+          companyId,
+          clientRole: "CLIENT_MEMBER",
+        });
+      }
+      for (const companyId of antes) {
+        if (agora.has(companyId)) continue;
+        await usersService.removeCompanyMembership(form.id, companyId);
+      }
+    },
+    [],
+  );
+
   const salvarEdicao = useCallback(async () => {
     if (!formEdicao.id) return;
 
@@ -320,6 +344,9 @@ export function useAdminUsuarios() {
       }
 
       await usersService.update(formEdicao.id, payload);
+      if (formEdicao.role === "PJ") {
+        await salvarEmpresasDoTerceiro(formEdicao);
+      }
       setModalEditarUsuario(false);
       await buscarUsuarios();
     } catch (err) {

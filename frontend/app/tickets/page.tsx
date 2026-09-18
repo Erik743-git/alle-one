@@ -541,8 +541,11 @@ function TicketsPageImpl() {
     setActivePresetId(null);
   }
 
-  function applyPreset(preset: TicketListPreset) {
-    if (activePresetId === preset.id) {
+  function applyPreset(
+    preset: TicketListPreset,
+    options: { toggle?: boolean } = {},
+  ) {
+    if (options.toggle && activePresetId === preset.id) {
       clearListFilters();
       return;
     }
@@ -841,8 +844,18 @@ function TicketsPageImpl() {
         );
       case "created":
         return (
-          <td className="whitespace-nowrap border-r border-border/30 px-3 py-2.5 text-xs tabular-nums text-muted-foreground">
-            {formatWhen(ticket.createdAt)}
+          <td className="border-r border-border/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <div className="whitespace-nowrap tabular-nums">
+              {formatWhen(ticket.createdAt)}
+            </div>
+            {ticket.createdByName ? (
+              <div
+                className="truncate text-[11px] text-muted-foreground/80"
+                title={ticket.createdByName}
+              >
+                por {ticket.createdByName}
+              </div>
+            ) : null}
           </td>
         );
       case "updated":
@@ -1028,6 +1041,7 @@ function TicketsPageImpl() {
                     activePresetId={activePresetId}
                     onRefresh={() => void loadPresets()}
                     onApply={applyPreset}
+                    onClear={clearListFilters}
                     onCreate={() => {
                       setEditingPreset(null);
                       setPresetDialogOpen(true);
@@ -1566,7 +1580,11 @@ function TicketsPageImpl() {
             pageState={pageState}
             catalogs={catalogs}
             editing={editingPreset}
-            onSaved={() => void loadPresets()}
+            onSaved={(saved) => {
+              void loadPresets();
+              // Editou o filtro que está aplicado: a tela passa a refletir a versão nova.
+              if (saved && saved.id === activePresetId) applyPreset(saved);
+            }}
           />
         </AppShell>
       </PermissionGate>

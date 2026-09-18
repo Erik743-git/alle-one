@@ -38,6 +38,7 @@ import {
 } from './tickets-portal.config';
 import { applyClientTitlePrefix } from './ticket-title.util';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
+import { assertPjAccessToTicketNumber } from './tickets-pj-scope';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
@@ -75,9 +76,13 @@ export class TicketsService {
   ) {}
 
   /** Autocomplete de usuários do portal para pessoas em cópia (seguidores). */
-  async searchUsersForCc(q?: string) {
+  async searchUsersForCc(q?: string, actor?: AuthenticatedRequestUser) {
     const term = q?.trim() ?? '';
     if (term.length < 2) return [];
+
+    const isClient = Boolean(actor && isClientPortalRole(actor.role));
+    const clientCompanyId = isClient ? actor?.companyId : null;
+    if (isClient && !clientCompanyId) return [];
 
     return this.prisma.user.findMany({
       where: {
@@ -87,6 +92,22 @@ export class TicketsService {
           { name: { contains: term, mode: 'insensitive' } },
           { email: { contains: term, mode: 'insensitive' } },
         ],
+        ...(clientCompanyId
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { companyId: clientCompanyId },
+                    {
+                      companyMemberships: {
+                        some: { companyId: clientCompanyId },
+                      },
+                    },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -113,7 +134,8 @@ export class TicketsService {
    * Cliente gestor pode, nos tickets da própria empresa: trocar responsável
    * (equipe Alle ou gente da empresa marcada como responsável da mesa),
    * trocar solicitante (usuário da empresa), transferir para mesa liberada
-   * à empresa, fechar (Resolvido/Encerrado) e reabrir. Nada além disso.
+   * à empresa, mudar o estágio, fechar (Resolvido/Encerrado) e reabrir.
+   * Nada além disso.
    * Cliente funcionário não edita o ticket.
    * Normaliza o dto (nome/e-mail do solicitante vêm do cadastro).
    */
@@ -138,6 +160,7 @@ export class TicketsService {
       },
     });
     if (!portal) throw new NotFoundException('Ticket não encontrado.');
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     await assertTicketClientScope(
       this.tenantScope,
       actor,
@@ -149,9 +172,7 @@ export class TicketsService {
       dto.title != null ||
       dto.description != null ||
       dto.clientId != null ||
-      dto.externalGmudRef !== undefined ||
-      (dto.stageName != null && dto.isClosed === undefined) ||
-      (dto.statusName != null && dto.isClosed === undefined);
+      dto.externalGmudRef !== undefined;
     if (forbidden) {
       throw new ForbiddenException(
         'O gestor pode alterar responsável, solicitante, mesa e fechar ou reabrir o chamado.',
@@ -849,9 +870,13 @@ export class TicketsService {
     let nextClientName = portal?.clientName ?? null;
     let nextDeskExternalId = portal?.deskExternalId ?? null;
     let nextDeskName = portal?.deskName ?? null;
+    // Chamado que nasceu sem cliente (pré-ticket de e-mail cujo remetente não
+    // casou com nenhuma empresa) está sendo *preenchido*, não trocado: o
+    // solicitante continua o mesmo e não faz sentido exigir outro.
     const isClientChanging =
       dto.clientId != null &&
-      dto.clientId !== (portal?.clientExternalId ?? null);
+      portal?.clientExternalId != null &&
+      dto.clientId !== portal.clientExternalId;
     let previousGmudRef: string | null = null;
     if (dto.clientId != null) {
       if (!this.actorCanChangeTicketClient(actor)) {
@@ -1176,6 +1201,10 @@ export class TicketsService {
       } else if (nextIsClosed && !portal?.isClosed) {
         eventType = 'TICKET_CLOSED';
         summary = `Chamado fechado · estágio "${resolvedStageName ?? PORTAL_STAGE.ENCERRADO}"`;
+        await this.appointments.notifyRoutineTicketClosed(
+          ticketNumber,
+          resolvedStageName ?? PORTAL_STAGE.ENCERRADO,
+        );
       } else if (
         resolvedStageName === PORTAL_STAGE.CANCELADO ||
         statusName === PORTAL_STAGE.CANCELADO
@@ -1748,6 +1777,7 @@ export class TicketsService {
     if (!portal) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     await assertTicketClientScope(
       this.tenantScope,
       actor,
@@ -1758,12 +1788,11 @@ export class TicketsService {
       },
     );
 
-    await this.prisma.portalTicketWatcher.create({
-      data: {
-        ticketNumber,
-        email: normalized,
-        createdBy: actor.userId,
-      },
+    // Já seguidor: não é erro.
+    await this.prisma.portalTicketWatcher.upsert({
+      where: { ticketNumber_email: { ticketNumber, email: normalized } },
+      create: { ticketNumber, email: normalized, createdBy: actor.userId },
+      update: {},
     });
 
     return {
@@ -1786,6 +1815,7 @@ export class TicketsService {
     if (!portal) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
     await assertTicketClientScope(
       this.tenantScope,
       actor,

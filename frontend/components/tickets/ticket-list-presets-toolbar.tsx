@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
+  Check,
   ExternalLink,
   Filter,
   MoreVertical,
@@ -11,6 +12,7 @@ import {
   Plus,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -32,7 +34,8 @@ type Props = {
   presets: TicketListPreset[];
   activePresetId: string | null;
   onRefresh: () => void;
-  onApply: (preset: TicketListPreset) => void;
+  onApply: (preset: TicketListPreset, options?: { toggle?: boolean }) => void;
+  onClear: () => void;
   onCreate: () => void;
   onEdit: (preset: TicketListPreset) => void;
 };
@@ -120,6 +123,7 @@ export function TicketListPresetsToolbar({
   activePresetId,
   onRefresh,
   onApply,
+  onClear,
   onCreate,
   onEdit,
 }: Props) {
@@ -214,13 +218,16 @@ export function TicketListPresetsToolbar({
               created.map((preset) => (
                 <div
                   key={preset.id}
-                  className="flex items-center gap-1 rounded-md px-1 py-1 hover:bg-muted/50"
+                  className={cn(
+                    "flex items-center gap-1 rounded-md px-1 py-1 hover:bg-muted/50",
+                    activePresetId === preset.id && "bg-primary/10",
+                  )}
                 >
                   <button
                     type="button"
                     className="min-w-0 flex-1 truncate text-left text-sm font-medium"
                     onClick={() => {
-                      onApply(preset);
+                      onApply(preset, { toggle: true });
                       setOpen(false);
                     }}
                   >
@@ -229,6 +236,9 @@ export function TicketListPresetsToolbar({
                       style={{ backgroundColor: preset.color }}
                     />
                     {preset.name}
+                    {activePresetId === preset.id ? (
+                      <Check className="ml-1 inline size-3.5 text-primary" />
+                    ) : null}
                     {preset.isPublic ? (
                       <span className="ml-1 text-[10px] text-muted-foreground">
                         (público)
@@ -280,6 +290,20 @@ export function TicketListPresetsToolbar({
               ))
             )}
           </div>
+          {activePresetId ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 w-full gap-2"
+              onClick={() => {
+                onClear();
+                setOpen(false);
+              }}
+            >
+              <X className="size-4" />
+              Limpar filtro
+            </Button>
+          ) : null}
           <Button
             type="button"
             className="h-10 w-full gap-2 bg-teal-600 text-white hover:bg-teal-500"
@@ -299,7 +323,7 @@ export function TicketListPresetsToolbar({
           key={preset.id}
           preset={preset}
           active={activePresetId === preset.id}
-          onClick={() => onApply(preset)}
+          onClick={() => onApply(preset, { toggle: true })}
           onEdit={() => onEdit(preset)}
           onTogglePin={() => void togglePin(preset)}
           onRemove={() => void removePreset(preset)}

@@ -78,7 +78,7 @@ export class CreateTicketAutoOpenRuleDto {
   title!: string;
 
   @IsString()
-  @MaxLength(8000)
+  @MaxLength(50_000)
   description!: string;
 
   @IsString()

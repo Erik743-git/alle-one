@@ -1,5 +1,6 @@
 "use client";
 
+import { todayYmdLocal } from "@/lib/today-local";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, User2 } from "lucide-react";
 
@@ -35,6 +36,7 @@ import {
   type PortalAppointmentEditContext,
 } from "@/lib/services/tickets.service";
 import { useAuth } from "@/lib/use-auth";
+import { isClientPortalRole } from "@/lib/app-roles";
 import { cn } from "@/lib/utils";
 import { TicketAppointmentNotStartedDialog } from "@/components/tickets/ticket-appointment-not-started-dialog";
 import { TICKET_APPOINTMENT_WARNING_HINT } from "@/lib/module-copy";
@@ -122,6 +124,8 @@ export function TicketAppointmentModal({
   const isCommunication = variant === "communication";
   const isEdit = Boolean(editingAppointment?.portalAppointmentId) && !isCommunication;
   const { user } = useAuth();
+  // Cliente sempre aponta em hora normal (o servidor também força).
+  const clientActor = isClientPortalRole(user?.role);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ticketMeta, setTicketMeta] = useState<AppointmentCatalogs["ticket"] | null>(null);
@@ -130,7 +134,7 @@ export function TicketAppointmentModal({
   const [notStartedDialogOpen, setNotStartedDialogOpen] = useState(false);
   const [stageChangeBusy, setStageChangeBusy] = useState(false);
 
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => todayYmdLocal());
   const [initTime, setInitTime] = useState(nowTime);
   const [endTime, setEndTime] = useState(() => addMinutesToTime(nowTime(), 15));
   const [overnight, setOvernight] = useState(false);
@@ -183,7 +187,7 @@ export function TicketAppointmentModal({
       if (isCommunication) {
         const clickedAt = nowTime();
         communicationOpenedAtRef.current = clickedAt;
-        setDate(new Date().toISOString().slice(0, 10));
+        setDate(todayYmdLocal());
         setInitTime(clickedAt);
         setEndTime(clickedAt);
         setOvernight(false);
@@ -360,7 +364,7 @@ export function TicketAppointmentModal({
     const mode = saveModeRef.current;
     saveModeRef.current = "save";
 
-    if (!isCommunication && !serviceName.trim()) {
+    if (!isCommunication && !clientActor && !serviceName.trim()) {
       notifyError("Selecione o tipo de atendimento.");
       return;
     }
@@ -394,12 +398,13 @@ export function TicketAppointmentModal({
 
     const alertTime = communicationOpenedAtRef.current ?? nowTime();
     const payload: CreateAppointmentPayload = {
-      date: isCommunication ? new Date().toISOString().slice(0, 10) : date,
+      date: isCommunication ? todayYmdLocal() : date,
       initTime: isCommunication ? alertTime : initTime,
       endTime: isCommunication ? alertTime : endTime,
       ...(overnight && !isCommunication ? { endDate } : {}),
       description: exported.description,
-      serviceName: isCommunication ? "HORA NORMAL" : serviceName.trim(),
+      serviceName:
+        isCommunication || clientActor ? "HORA NORMAL" : serviceName.trim(),
       attendance: DEFAULT_ATTENDANCE,
       notifyClient: isCommunication ? true : notifyClient,
       isWarning: isCommunication ? true : isWarning,
@@ -629,7 +634,7 @@ export function TicketAppointmentModal({
               </div>
             ) : null}
 
-            {!isCommunication ? (
+            {!isCommunication && !clientActor ? (
             <div className="space-y-2">
               <FieldLabel required className="font-sans text-sm font-semibold text-foreground">
                 Tipo de atendimento

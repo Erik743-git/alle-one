@@ -645,9 +645,12 @@ export class UsersService {
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Usuário não encontrado');
-    if (!isClientPortalRole(user.role)) {
+    // Terceiro (PJ) usa o mesmo vínculo para dizer quais empresas ele atende;
+    // o papel de cliente gravado junto não vale para ele.
+    const isTerceiro = user.role === UserRole.PJ;
+    if (!isClientPortalRole(user.role) && !isTerceiro) {
       throw new BadRequestException(
-        'Somente usuários CLIENT_* podem ter memberships multi-empresa.',
+        'Somente usuários CLIENT_* ou Terceiro podem ter várias empresas.',
       );
     }
     const company = await this.prisma.company.findUnique({

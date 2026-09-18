@@ -174,10 +174,31 @@ export async function senderCanReopenTicket(
     };
   },
 ): Promise<boolean> {
-  const email = params.fromEmail.trim().toLowerCase();
-  if (!email) return false;
   // Equipe interna responde e-mail, mas não reabre chamado por isso.
   if (params.sender?.role && isStaffRole(params.sender.role)) return false;
+  return senderBelongsToTicket(prisma, params);
+}
+
+/**
+ * Resposta por e-mail em chamado ABERTO só entra direto se o remetente tem
+ * ligação com ele: equipe interna, solicitante, seguidor ou alguém da empresa
+ * do chamado. Sem isso, qualquer pessoa que escrevesse "#número" no assunto
+ * colocaria mensagem no chamado de outra empresa.
+ */
+export async function senderCanReplyToTicket(
+  prisma: PrismaClient,
+  params: Parameters<typeof senderCanReopenTicket>[1],
+): Promise<boolean> {
+  if (params.sender?.role && isStaffRole(params.sender.role)) return true;
+  return senderBelongsToTicket(prisma, params);
+}
+
+async function senderBelongsToTicket(
+  prisma: PrismaClient,
+  params: Parameters<typeof senderCanReopenTicket>[1],
+): Promise<boolean> {
+  const email = params.fromEmail.trim().toLowerCase();
+  if (!email) return false;
 
   if (params.ticket.requestorEmail?.trim().toLowerCase() === email) return true;
 

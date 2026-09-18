@@ -136,6 +136,19 @@ export const usersService = {
     });
   },
 
+  async listCompanyMemberships(userId: string) {
+    return apiRequest<UserCompanyMembership[]>(
+      `/users/${userId}/memberships`,
+    );
+  },
+
+  async removeCompanyMembership(userId: string, companyId: string) {
+    return apiRequest<{ ok: boolean }>(
+      `/users/${userId}/memberships/${companyId}`,
+      { method: "DELETE" },
+    );
+  },
+
   async listSpecialties() {
     return apiRequest<Specialty[]>("/users/specialties");
   },

@@ -199,5 +199,15 @@ export async function apiRequest<T>(
     return null as T;
   }
 
+  // 200 com HTML (página de manutenção/erro do proxy) não é resposta da API.
+  if (
+    data === null &&
+    (response.headers.get("content-type") ?? "").includes("text/html")
+  ) {
+    throw new Error(
+      "Servidor indisponível no momento. Aguarde alguns segundos e tente novamente.",
+    );
+  }
+
   return data as T;
 }

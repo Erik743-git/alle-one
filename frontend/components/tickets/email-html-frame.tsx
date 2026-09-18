@@ -36,11 +36,13 @@ function wrapSrcDoc(html: string, dark: boolean): string {
    documento, não de um elemento. */
 html{color-scheme:${dark ? "dark" : "light"};background:transparent!important;}
 body{margin:12px;background:transparent!important;color:${texto};font-family:system-ui,sans-serif;font-size:14px;line-height:1.5;}
-a{color:${link};}
 img{max-width:100%;height:auto;}
 table{max-width:100%;}
 * { background-color: transparent !important; }
-td, th, div, p, span, table { color: inherit; }
+/* O fundo do e-mail é sempre removido, então cor fixa de texto (ex.: Outlook
+   com <font color="#000000">) some num dos temas: o texto segue o tema. */
+body * { color: inherit !important; }
+a, a * { color: ${link} !important; }
 </style></head><body>${cleaned}</body></html>`;
 }
 

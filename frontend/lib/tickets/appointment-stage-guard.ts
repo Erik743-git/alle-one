@@ -1,3 +1,4 @@
+import { isClientPortalRole } from "@/lib/app-roles";
 import type { AuthUser } from "@/lib/session";
 import type { TicketStageGroupKey, TicketStageOption } from "@/lib/services/tickets.service";
 
@@ -72,9 +73,13 @@ export function isNocSpecialtyUser(
 
 export function canAppointmentOnTicketStage(params: {
   stageName: string | null | undefined;
-  user: Pick<AuthUser, "specialtyName"> | null | undefined;
+  user: Pick<AuthUser, "specialtyName" | "role"> | null | undefined;
 }): boolean {
   if (!isTicketNotStartedStage(params.stageName)) {
+    return true;
+  }
+  // Cliente aponta em "Novo"; o servidor passa o chamado para atendimento.
+  if (isClientPortalRole(params.user?.role)) {
     return true;
   }
   return isNocSpecialtyUser(params.user);

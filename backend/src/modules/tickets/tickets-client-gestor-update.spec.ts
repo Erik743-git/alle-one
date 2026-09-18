@@ -94,11 +94,11 @@ describe('TicketsService — edição pelo cliente gestor', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('não muda estágio sem fechar/reabrir', async () => {
+  it('muda o estágio do chamado da própria empresa', async () => {
     const { check } = build({});
     await expect(
       check(gestor, { stageName: 'Em Atendimento' } as UpdateTicketDto),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).resolves.toBeUndefined();
   });
 
   it('fecha como Resolvido ou Encerrado, não como Cancelado', async () => {

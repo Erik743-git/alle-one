@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -8,7 +9,10 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
-import { isClientPortalRole } from '../../common/security/client-portal-role';
+import {
+  isClientGestorRole,
+  isClientPortalRole,
+} from '../../common/security/client-portal-role';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { AuditService } from '../audit/audit.service';
@@ -27,6 +31,7 @@ import {
   TICKET_STAGE_GROUPS,
   type TicketStageGroupKey,
 } from './tickets-stage-groups';
+import { appointmentDescriptionHasMedia } from './appointment-doc.util';
 import { normalizeDeskName } from './tiflux-portal-desk.config';
 import {
   TicketsAppointmentsService,
@@ -38,6 +43,11 @@ import {
   resolveClientListFilter,
 } from './tickets-client-scope';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
+import {
+  assertPjAccessToTicketNumber,
+  loadPjTicketScope,
+  pjTicketListWhere,
+} from './tickets-pj-scope';
 import {
   isTicketsPortalCanonical,
   isTicketsTifluxWriteEnabled,
@@ -97,6 +107,7 @@ export type TicketListItemDto = {
   hasPendingWarning?: boolean;
   /** Quem fez a última alteração registrada no histórico. */
   updatedByName?: string | null;
+  createdByName?: string | null;
 };
 
 export type TicketHistoryDto = {
@@ -401,6 +412,25 @@ export class TicketsQueryService {
         watcherTicketNumbers,
       });
       andParts.push({ OR: mineOr });
+    }
+    // Terceiro: só as empresas e mesas dele, mais os chamados em que está.
+    const pjScope = await loadPjTicketScope(this.prisma, actor);
+    if (pjScope) {
+      const [mine, pjWatchers] = await Promise.all([
+        this.resolveTifluxExternalIdForUser(actor.email),
+        this.prisma.portalTicketWatcher.findMany({
+          where: { email: actorEmail },
+          select: { ticketNumber: true },
+        }),
+      ]);
+      andParts.push(
+        pjTicketListWhere({
+          scope: pjScope,
+          actor,
+          responsibleExternalId: mine?.externalId ?? null,
+          watcherTicketNumbers: pjWatchers.map((w) => w.ticketNumber),
+        }),
+      );
     }
     if (search) {
       andParts.push({
@@ -733,7 +763,11 @@ export class TicketsQueryService {
       createdBy?: string | null;
       requestorEmail?: string | null;
     },
+    ticketNumber?: number,
   ) {
+    if (ticketNumber != null) {
+      await assertPjAccessToTicketNumber(this.prisma, actor, ticketNumber);
+    }
     return assertTicketClientScope(
       this.tenantScope,
       actor,
@@ -837,7 +871,7 @@ export class TicketsQueryService {
   }
 
   /**
-   * Nome de quem fez a última alteração (último evento do histórico).
+   * Nome de quem criou e de quem fez a última alteração (histórico).
    * Alguns eventos gravam o e-mail do autor: troca pelo nome do usuário.
    */
   private async markLastUpdatedBy(
@@ -848,20 +882,48 @@ export class TicketsQueryService {
     );
     if (ticketNumbers.length === 0) return;
     try {
-      const rows = await this.prisma.$queryRaw<
-        Array<{ ticket_number: number; actor_name: string }>
-      >`
-        SELECT DISTINCT ON (h.ticket_number) h.ticket_number, h.actor_name
-        FROM ticket_history h
-        WHERE h.ticket_number = ANY(${ticketNumbers}::int[])
-          AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
-        ORDER BY h.ticket_number, h.occurred_at DESC
-      `;
+      const [updatedRows, createdRows] = await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{ ticket_number: number; actor_name: string }>
+        >`
+          SELECT DISTINCT ON (h.ticket_number) h.ticket_number, h.actor_name
+          FROM ticket_history h
+          WHERE h.ticket_number = ANY(${ticketNumbers}::int[])
+            AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
+          ORDER BY h.ticket_number, h.occurred_at DESC
+        `,
+        // Criador: usuário do portal; senão o evento de criação; senão a origem.
+        this.prisma.$queryRaw<
+          Array<{ ticket_number: number; actor_name: string | null }>
+        >`
+          SELECT pt.ticket_number,
+            COALESCE(
+              NULLIF(TRIM(u.name), ''),
+              (
+                SELECT h.actor_name
+                FROM ticket_history h
+                WHERE h.ticket_number = pt.ticket_number
+                  AND h.event_type IN ('TICKET_CREATED', 'PRE_TICKET_CREATED')
+                  AND NULLIF(TRIM(h.actor_name), '') IS NOT NULL
+                ORDER BY h.occurred_at ASC
+                LIMIT 1
+              ),
+              NULLIF(TRIM(pt.created_by_way_of), '')
+            ) AS actor_name
+          FROM portal_tickets pt
+          LEFT JOIN users u ON u.id = pt.created_by
+          WHERE pt.ticket_number = ANY(${ticketNumbers}::int[])
+        `,
+      ]);
 
+      const actors = [
+        ...updatedRows.map((r) => r.actor_name),
+        ...createdRows.map((r) => r.actor_name ?? ''),
+      ];
       const emails = [
         ...new Set(
-          rows
-            .map((r) => r.actor_name.trim().toLowerCase())
+          actors
+            .map((v) => v.trim().toLowerCase())
             .filter((v) => /^[^\s@]+@[^\s@]+$/.test(v)),
         ),
       ];
@@ -874,20 +936,27 @@ export class TicketsQueryService {
       const nameByEmail = new Map(
         users.map((u) => [u.email.trim().toLowerCase(), u.name]),
       );
-
-      const byTicket = new Map<number, string>();
-      for (const row of rows) {
-        const raw = row.actor_name.trim();
+      const displayName = (value: string) => {
+        const raw = value.trim();
         // "Nome (email@x)" (resposta por e-mail) → só o nome.
         const withoutEmail = raw.replace(/\s*\([^()\s]+@[^()\s]+\)$/, '');
-        byTicket.set(
-          Number(row.ticket_number),
-          nameByEmail.get(raw.toLowerCase()) ?? withoutEmail,
-        );
+        return nameByEmail.get(raw.toLowerCase()) ?? withoutEmail;
+      };
+
+      const updatedBy = new Map<number, string>();
+      for (const row of updatedRows) {
+        updatedBy.set(Number(row.ticket_number), displayName(row.actor_name));
+      }
+      const createdBy = new Map<number, string>();
+      for (const row of createdRows) {
+        if (row.actor_name?.trim()) {
+          createdBy.set(Number(row.ticket_number), displayName(row.actor_name));
+        }
       }
       for (const group of groups) {
         for (const ticket of group.tickets) {
-          ticket.updatedByName = byTicket.get(ticket.ticketNumber) ?? null;
+          ticket.updatedByName = updatedBy.get(ticket.ticketNumber) ?? null;
+          ticket.createdByName = createdBy.get(ticket.ticketNumber) ?? null;
         }
       }
     } catch (err) {
@@ -1223,10 +1292,12 @@ export class TicketsQueryService {
       where: { ticketNumber },
     });
     if (portal) {
-      await this.assertTicketClientScope(actor, portal.clientExternalId, {
-        createdBy: portal.createdBy,
-        requestorEmail: portal.requestorEmail,
-      });
+      await this.assertTicketClientScope(
+        actor,
+        portal.clientExternalId,
+        { createdBy: portal.createdBy, requestorEmail: portal.requestorEmail },
+        ticketNumber,
+      );
       const [
         appointments,
         externalGmudRef,
@@ -1342,9 +1413,12 @@ export class TicketsQueryService {
       return this.getDetailFromTifluxApi(actor, ticketNumber);
     }
 
-    await this.assertTicketClientScope(actor, row.client_external_id, {
-      requestorEmail: row.requestor_email ?? null,
-    });
+    await this.assertTicketClientScope(
+      actor,
+      row.client_external_id,
+      { requestorEmail: row.requestor_email ?? null },
+      ticketNumber,
+    );
 
     const [appointments, externalGmudRef, portalDescription, grouping] =
       await Promise.all([
@@ -1382,10 +1456,12 @@ export class TicketsQueryService {
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
-    await this.assertTicketClientScope(actor, ticket.client_external_id, {
-      createdBy: ticket.created_by,
-      requestorEmail: ticket.requestor_email,
-    });
+    await this.assertTicketClientScope(
+      actor,
+      ticket.client_external_id,
+      { createdBy: ticket.created_by, requestorEmail: ticket.requestor_email },
+      ticketNumber,
+    );
 
     if (!isTifluxDisconnected()) {
       await this.syncTifluxTicketHistory(ticketNumber).catch((err) => {
@@ -2049,10 +2125,12 @@ export class TicketsQueryService {
       throw new NotFoundException('Ticket não encontrado.');
     }
 
-    await this.assertTicketClientScope(actor, ticket.client_external_id, {
-      createdBy: ticket.created_by,
-      requestorEmail: ticket.requestor_email,
-    });
+    await this.assertTicketClientScope(
+      actor,
+      ticket.client_external_id,
+      { createdBy: ticket.created_by, requestorEmail: ticket.requestor_email },
+      ticketNumber,
+    );
 
     const deskExternalId = Number(ticket.desk_external_id);
     const deskOk =
@@ -2081,11 +2159,23 @@ export class TicketsQueryService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
     stageId: number,
-    options?: { skipAutomations?: boolean },
+    options?: { skipAutomations?: boolean; systemTransition?: boolean },
   ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
+    }
+
+    if (isClientPortalRole(actor.role)) {
+      // O escopo da empresa vale sempre; a exigência de ser gestor só vale
+      // para a troca feita na tela. Transições do próprio portal (o chamado
+      // entra em atendimento quando o cliente aponta) não passam por ela.
+      if (!options?.systemTransition && !isClientGestorRole(actor.role)) {
+        throw new ForbiddenException(
+          'Somente o gestor da empresa pode alterar o estágio do chamado.',
+        );
+      }
+      await this.assertTicketClientScope(actor, ticket.client_external_id);
     }
 
     if (ticket.is_closed) {
@@ -2108,6 +2198,10 @@ export class TicketsQueryService {
         await this.portalStore.patchStage(ticketNumber, targetStage.name, {
           isClosed: true,
         });
+        await this.appointments.notifyRoutineTicketClosed(
+          ticketNumber,
+          targetStage.name,
+        );
         try {
           await this.prisma.ticketHistory.create({
             data: {
@@ -2197,6 +2291,12 @@ export class TicketsQueryService {
     await this.portalStore.patchStage(ticketNumber, stageName, {
       isClosed: Boolean(targetStage.lastStage),
     });
+    if (targetStage.lastStage && !ticket.is_closed) {
+      await this.appointments.notifyRoutineTicketClosed(
+        ticketNumber,
+        stageName,
+      );
+    }
 
     try {
       const closing = Boolean(targetStage.lastStage) && !ticket.is_closed;
@@ -2320,13 +2420,26 @@ export class TicketsQueryService {
         },
       });
 
+      // Descrição criada pela carga e nunca aberta para edição tem os dois
+      // carimbos praticamente iguais; depois que alguém salva pela tela, o
+      // updatedAt se afasta. Só a primeira pode ser trocada pelo HTML do
+      // e-mail — na segunda, trocar apagaria da tela o que o usuário acabou
+      // de salvar, que é o que fazia a edição "não pegar".
+      const editadaNoPortal = row
+        ? row.updatedAt.getTime() - row.createdAt.getTime() > 2000
+        : false;
+
       if (!description) {
         const preHtml = pre?.descriptionHtml?.trim() ?? '';
         if (preHtml) {
           description = preHtml;
         }
-      } else {
+      } else if (!editadaNoPortal) {
+        // A descrição no formato do portal guarda a imagem como referência
+        // (fileId), sem <img> nem base64. Sem esta checagem o fallback acha
+        // que "não tem imagem" e devolve o HTML antigo do e-mail.
         const hasImage =
+          appointmentDescriptionHasMedia(description) ||
           /<img[\s\S]*src\s*=/i.test(description) ||
           description.includes('data:image/');
         if (!hasImage) {

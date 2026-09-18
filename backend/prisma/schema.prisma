@@ -169,6 +169,7 @@ model User {
   rendimentoGapJustifications  RendimentoGapJustification[]   @relation("RendimentoGapJustifications")
   rendimentoOvertimeBalance    RendimentoOvertimeBalance?     @relation("RendimentoOvertimeBalances")
   rendimentoListPrefsAsCollaborator RendimentoCollaboratorListPref[] @relation("RendimentoListPrefCollaborator")
+  rendimentoListPrefsAsOwner        RendimentoCollaboratorListPref[] @relation("RendimentoListPrefOwner")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
   projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
@@ -1304,13 +1305,19 @@ model RendimentoOvertimeBalance {
 
 /// Visibilidade de colaboradores na lista de Apontamentos (global para todos os admins).
 model RendimentoCollaboratorListPref {
-  collaboratorUserId String   @id @map("collaborator_user_id")
+  id String @id @default(uuid())
+  /** Admin dono da preferência; nulo = configuração antiga, valia para todos. */
+  ownerUserId        String?  @map("owner_user_id")
+  collaboratorUserId String   @map("collaborator_user_id")
   listed             Boolean  @default(true)
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
 
-  collaborator User @relation("RendimentoListPrefCollaborator", fields: [collaboratorUserId], references: [id], onDelete: Cascade)
+  owner        User? @relation("RendimentoListPrefOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  collaborator User  @relation("RendimentoListPrefCollaborator", fields: [collaboratorUserId], references: [id], onDelete: Cascade)
 
+  @@unique([ownerUserId, collaboratorUserId])
+  @@index([collaboratorUserId])
   @@map("rendimento_collaborator_list_prefs")
 }
 

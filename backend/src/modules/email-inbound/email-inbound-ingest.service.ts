@@ -10,6 +10,7 @@ import {
   isReopenableStage,
   reopenTicketFromEmail,
   senderCanReopenTicket,
+  senderCanReplyToTicket,
 } from './email-reply-communication';
 import {
   MicrosoftGraphMailClient,
@@ -261,7 +262,10 @@ export class EmailInboundIngestService {
     });
 
     const route = await this.matchRoute(fromEmail);
-    const companyId = route?.companyId ?? requestor?.companyId ?? null;
+    const companyId =
+      route?.companyId ??
+      requestor?.companyId ??
+      (await this.matchCompanyByDomain(fromEmail));
     const specialtyId = route?.specialtyId ?? null;
     const priorityName = route?.priorityName ?? null;
 
@@ -303,21 +307,32 @@ export class EmailInboundIngestService {
           clientExternalId: true,
         },
       });
-      if (ticket && !ticket.isClosed) {
+      const senderInfo = requestor
+        ? {
+            userId: requestor.id,
+            role: requestor.role,
+            companyId: requestor.companyId,
+          }
+        : null;
+      if (
+        ticket &&
+        !ticket.isClosed &&
+        (await senderCanReplyToTicket(this.prisma, {
+          fromEmail,
+          sender: senderInfo,
+          routeCompanyId: route?.companyId ?? null,
+          ticket,
+        }))
+      ) {
         appliedToTicket = true;
         status = PreTicketStatus.OPENED;
       } else if (
         ticket &&
+        ticket.isClosed &&
         isReopenableStage(ticket.stageName) &&
         (await senderCanReopenTicket(this.prisma, {
           fromEmail,
-          sender: requestor
-            ? {
-                userId: requestor.id,
-                role: requestor.role,
-                companyId: requestor.companyId,
-              }
-            : null,
+          sender: senderInfo,
           routeCompanyId: route?.companyId ?? null,
           ticket,
         }))
@@ -828,6 +843,35 @@ export class EmailInboundIngestService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Empresa pelo domínio do remetente, quando não há rota nem usuário
+   * cadastrado com aquele e-mail. Sem isso o chamado nasce sem cliente e
+   * alguém precisa completar na mão depois.
+   *
+   * Só vale quando o domínio é de um cliente só: domínio compartilhado
+   * (gmail, outlook e afins têm gente de várias empresas) não decide nada,
+   * e chutar a empresa errada é pior do que deixar em branco.
+   */
+  private async matchCompanyByDomain(fromEmail: string): Promise<string | null> {
+    const domain = fromEmail.includes('@')
+      ? fromEmail.split('@')[1]?.trim().toLowerCase()
+      : null;
+    if (!domain) return null;
+
+    const rows = await this.prisma.user.findMany({
+      where: {
+        email: { endsWith: `@${domain}`, mode: 'insensitive' },
+        companyId: { not: null },
+        deletedAt: null,
+      },
+      select: { companyId: true },
+      distinct: ['companyId'],
+      take: 2,
+    });
+    if (rows.length !== 1) return null;
+    return rows[0].companyId;
   }
 
   private async matchRoute(fromEmail: string) {

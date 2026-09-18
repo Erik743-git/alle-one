@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Logger,
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
@@ -23,6 +24,7 @@ import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import type { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { isClientPortalRole } from '../../common/security/client-portal-role';
 import {
   TICKET_APPOINTMENT_MAX_FILES,
   ticketAppointmentUploadLimits,
@@ -53,6 +55,7 @@ import { TicketsReconcileService } from './tickets-reconcile.service';
 import { TicketsCatalogsService } from './tickets-catalogs.service';
 import { TicketsQueryService } from './tickets-query.service';
 import { TicketsService } from './tickets.service';
+import { resolveTicketStageGroup } from './tickets-stage-groups';
 import { TicketListPresetsService } from './ticket-list-presets.service';
 import { TicketListStateService } from './ticket-list-state.service';
 import {
@@ -60,11 +63,16 @@ import {
   UpdateTicketListPresetDto,
 } from './ticket-list-presets.dto';
 
+/** Cliente sempre aponta em hora normal. */
+const CLIENT_APPOINTMENT_SERVICE_NAME = 'HORA NORMAL';
+
 @ApiTags('Tickets')
 @ApiBearerAuth()
 @Controller('tickets')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class TicketsController {
+  private readonly logger = new Logger(TicketsController.name);
+
   constructor(
     private readonly ticketsService: TicketsService,
     private readonly ticketsQueryService: TicketsQueryService,
@@ -172,10 +180,14 @@ export class TicketsController {
   }
 
   @Get('users/search')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente só encontra pessoas da própria empresa (filtrado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
-  searchUsers(@Query() query: SearchTicketUsersQueryDto) {
-    return this.ticketsService.searchUsersForCc(query.q);
+  searchUsers(
+    @CurrentUser() actor: AuthenticatedRequestUser,
+    @Query() query: SearchTicketUsersQueryDto,
+  ) {
+    return this.ticketsService.searchUsersForCc(query.q, actor);
   }
 
   /**
@@ -333,7 +345,9 @@ export class TicketsController {
   }
 
   @Patch(':ticketNumber/stage')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente gestor troca o estágio dos chamados da própria empresa
+  // (escopo checado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   updateStage(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -405,7 +419,8 @@ export class TicketsController {
   }
 
   @Post(':ticketNumber/watchers')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  // Cliente só no ticket da própria empresa (checado no serviço).
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   addWatcher(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -420,7 +435,7 @@ export class TicketsController {
   }
 
   @Delete(':ticketNumber/watchers/:email')
-  @Roles('ADMIN', 'COLLABORATOR', 'PJ')
+  @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')
   @RequirePermission(PermissionModule.TICKETS, 'canCreate')
   removeWatcher(
     @CurrentUser() actor: AuthenticatedRequestUser,
@@ -524,6 +539,8 @@ export class TicketsController {
     }
 
     const dto = plainToInstance(CreateTicketAppointmentDto, parsed);
+    const isClient = isClientPortalRole(actor.role);
+    if (isClient) dto.serviceName = CLIENT_APPOINTMENT_SERVICE_NAME;
     const errors = await validate(dto);
     if (errors.length > 0) {
       const first = errors[0];
@@ -533,12 +550,51 @@ export class TicketsController {
       throw new BadRequestException(msg);
     }
 
-    return this.appointmentsService.createAppointment(
+    const result = await this.appointmentsService.createAppointment(
       actor,
       ticketNumber,
       dto,
       files ?? [],
     );
+    if (isClient)
+      await this.startTicketAfterClientAppointment(actor, ticketNumber);
+    return result;
+  }
+
+  /** Cliente apontou em chamado "Novo": passa para atendimento (ele não troca estágio pela tela). */
+  private async startTicketAfterClientAppointment(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+  ) {
+    try {
+      const info = await this.ticketsQueryService.listTicketStages(
+        actor,
+        ticketNumber,
+      );
+      if (
+        info.isClosed ||
+        resolveTicketStageGroup(info.currentStageName) !== 'novo'
+      ) {
+        return;
+      }
+      const target = info.stages.find(
+        (stage) => resolveTicketStageGroup(stage.name) === 'atendimento',
+      );
+      if (!target) return;
+      await this.ticketsQueryService.updateTicketStage(
+        actor,
+        ticketNumber,
+        target.id,
+        { systemTransition: true },
+      );
+    } catch (error) {
+      // O apontamento já foi salvo; falhar aqui não pode desfazer isso.
+      this.logger.warn(
+        `Ticket #${ticketNumber}: não passou para atendimento após apontamento do cliente: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   @Get(':ticketNumber/appointments/:portalAppointmentId/edit-context')
@@ -611,6 +667,9 @@ export class TicketsController {
     }
 
     const dto = plainToInstance(UpdateTicketAppointmentDto, parsed);
+    if (isClientPortalRole(actor.role)) {
+      dto.serviceName = CLIENT_APPOINTMENT_SERVICE_NAME;
+    }
     const errors = await validate(dto);
     if (errors.length > 0) {
       const first = errors[0];

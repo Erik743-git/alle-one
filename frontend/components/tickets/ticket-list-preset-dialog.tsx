@@ -40,7 +40,7 @@ type Props = {
   pageState: TicketListPageState;
   catalogs: TicketFilterCatalogs | null;
   editing?: TicketListPreset | null;
-  onSaved: () => void;
+  onSaved: (saved: TicketListPreset | null) => void;
 };
 
 const FILTER_FIELD_OPTIONS = (
@@ -267,22 +267,23 @@ export function TicketListPresetDialog({
 
     try {
       setSaving(true);
+      let saved: TicketListPreset | null;
       if (editing) {
-        await ticketListPresetsService.update(editing.id, {
+        saved = await ticketListPresetsService.update(editing.id, {
           name: name.trim(),
           color,
           isPublic,
           config,
         });
       } else {
-        await ticketListPresetsService.create({
+        saved = await ticketListPresetsService.create({
           name: name.trim(),
           color,
           isPublic,
           config,
         });
       }
-      onSaved();
+      onSaved(saved);
       onOpenChange(false);
     } catch (err) {
       notifyError(

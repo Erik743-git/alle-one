@@ -10,6 +10,7 @@ import {
   Req,
   Res,
   Post,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -158,18 +159,22 @@ export class RendimentoController {
   @Get('collaborators/list-preferences')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   @Roles('ADMIN')
-  listCollaboratorListPreferences() {
-    return this.rendimentoService.listCollaboratorListPreferences();
+  listCollaboratorListPreferences(@Req() req: AuthenticatedRequest) {
+    return this.rendimentoService.listCollaboratorListPreferences(
+      req.user.userId,
+    );
   }
 
   @Patch('collaborators/list-preferences/:collaboratorUserId')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   @Roles('ADMIN')
   setCollaboratorListPreference(
+    @Req() req: AuthenticatedRequest,
     @Param('collaboratorUserId', ParseUUIDPipe) collaboratorUserId: string,
     @Body() body: UpdateCollaboratorListPreferenceDto,
   ) {
     return this.rendimentoService.setCollaboratorListPreference({
+      ownerUserId: req.user.userId,
       collaboratorUserId,
       listed: body.listed,
     });
@@ -214,7 +219,9 @@ export class RendimentoController {
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(filename)}"`,
     );
-    return buffer;
+    // StreamableFile, e não o Buffer cru: devolvido direto, o Nest serializa
+    // como JSON ({"type":"Buffer","data":[...]}) e a planilha não abre.
+    return new StreamableFile(buffer);
   }
 
   @Post('users/:userId/justifications')

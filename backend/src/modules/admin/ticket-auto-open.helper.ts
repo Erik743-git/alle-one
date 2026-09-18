@@ -138,42 +138,35 @@ export const TICKET_AUTO_OPEN_PERIODICITY_LABELS: Record<
   YEARLY: 'A cada um ano',
 };
 
+/** Rotina sem responsável escolhido (ou "automático" legado) abre sem ninguém. */
+function isNoResponsible(value: number | null | undefined): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    value === TICKET_AUTO_OPEN_PRE_TICKET ||
+    value === TICKET_AUTO_OPEN_AUTO_RESPONSIBLE
+  );
+}
+
 export function resolveAutoOpenResponsibleId(
   responsibleExternalId: number | null,
-): number | null | undefined {
-  if (responsibleExternalId === TICKET_AUTO_OPEN_AUTO_RESPONSIBLE) {
-    return undefined;
-  }
-  if (
-    responsibleExternalId === TICKET_AUTO_OPEN_PRE_TICKET ||
-    responsibleExternalId === null
-  ) {
-    return null;
-  }
-  return responsibleExternalId;
+): number | null {
+  return isNoResponsible(responsibleExternalId) ? null : responsibleExternalId;
 }
 
 export function normalizeAutoOpenResponsibleStorage(
   responsibleId: number | null | undefined,
 ): number {
-  if (responsibleId === TICKET_AUTO_OPEN_PRE_TICKET) {
-    return TICKET_AUTO_OPEN_PRE_TICKET;
-  }
-  if (responsibleId === null) {
-    return TICKET_AUTO_OPEN_PRE_TICKET;
-  }
-  if (responsibleId === undefined) {
-    return TICKET_AUTO_OPEN_AUTO_RESPONSIBLE;
-  }
-  return responsibleId;
+  return isNoResponsible(responsibleId)
+    ? TICKET_AUTO_OPEN_PRE_TICKET
+    : (responsibleId as number);
 }
 
-/** Lê valor do banco (nullable) e normaliza para o contrato da API (-1 = pré-ticket). */
+/** Lê valor do banco (nullable) e normaliza para o contrato da API (-1 = ninguém). */
 export function normalizeAutoOpenResponsibleFromDb(
   responsibleExternalId: number | null,
 ): number {
-  if (responsibleExternalId === null) {
-    return TICKET_AUTO_OPEN_PRE_TICKET;
-  }
-  return responsibleExternalId;
+  return isNoResponsible(responsibleExternalId)
+    ? TICKET_AUTO_OPEN_PRE_TICKET
+    : (responsibleExternalId as number);
 }
