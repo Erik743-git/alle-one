@@ -174,6 +174,10 @@ async function main() {
       where: { email: plano.email },
       update: {
         name: plano.nome,
+        // A senha entra também no update: sem isso, rodar o script de novo
+        // deixava o usuário existente com a senha antiga.
+        passwordHash: senhaHash,
+        firstAccess: false,
         role: 'PJ',
         status: 'ACTIVE',
         responsible: true,
