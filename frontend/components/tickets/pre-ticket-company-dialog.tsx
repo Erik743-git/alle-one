@@ -47,7 +47,9 @@ export function PreTicketCompanyDialog({
     let cancelled = false;
     setLoading(true);
     companiesService
-      .list()
+      // Lista da sessão: quem atende pré-ticket é equipe interna e nem sempre
+      // tem o módulo Empresas, que o /companies exige.
+      .listAccessible()
       .then((rows) => {
         if (cancelled) return;
         setCompanies(
