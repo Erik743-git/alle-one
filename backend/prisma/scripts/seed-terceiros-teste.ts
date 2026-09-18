@@ -31,26 +31,28 @@ const TAG = '[SEED-TERCEIRO]';
 type Plano = {
   email: string;
   nome: string;
-  empresa: string;
+  /** Empresas que o terceiro atende; a primeira é a empresa principal. */
+  empresas: string[];
   mesa: string;
-  /** Quantos chamados criar para este terceiro. */
-  tickets: number;
+  /** Chamados por empresa. */
+  ticketsPorEmpresa: number;
 };
 
 const PLANOS: Plano[] = [
   {
+    // Atende mais de uma empresa: cobre o seletor do dashboard e da lista.
     email: 'terceiro.infra@teste.alletecnologia.com',
     nome: 'Terceiro Infra (teste)',
-    empresa: 'Fluidra',
+    empresas: ['Fluidra', 'ComFloresta'],
     mesa: 'Infraestrutura',
-    tickets: 3,
+    ticketsPorEmpresa: 2,
   },
   {
     email: 'terceiro.sistema@teste.alletecnologia.com',
     nome: 'Terceiro Sistema (teste)',
-    empresa: 'ComFloresta',
+    empresas: ['Ghelplus'],
     mesa: 'Sistema',
-    tickets: 2,
+    ticketsPorEmpresa: 2,
   },
 ];
 
@@ -126,35 +128,47 @@ async function main() {
   const resumo: string[] = [];
 
   for (const plano of PLANOS) {
-    const empresa = await prisma.company.findFirst({
-      where: { name: plano.empresa, deletedAt: null },
+    const empresas = await prisma.company.findMany({
+      where: { name: { in: plano.empresas }, deletedAt: null },
       select: { id: true, name: true, tifluxClientId: true },
     });
     const mesa = await prisma.specialty.findFirst({
       where: { name: plano.mesa, deletedAt: null },
       select: { id: true, name: true },
     });
-    if (!empresa || !mesa) {
-      const dica = !empresa
-        ? `empresa "${plano.empresa}"`
-        : `mesa "${plano.mesa}" (rode com --mesas para ver os nomes)`;
-      console.error(`PULADO ${plano.email}: ${dica} não encontrada.`);
+    if (!mesa) {
+      console.error(
+        `PULADO ${plano.email}: mesa "${plano.mesa}" não encontrada (rode com --mesas para ver os nomes).`,
+      );
       continue;
     }
-    if (empresa.tifluxClientId == null) {
+    const faltando = plano.empresas.filter(
+      (nome) => !empresas.some((e) => e.name === nome),
+    );
+    if (faltando.length > 0) {
       console.error(
-        `PULADO ${plano.email}: empresa "${empresa.name}" sem id de cliente — o escopo do terceiro não fecha.`,
+        `PULADO ${plano.email}: empresa(s) não encontrada(s): ${faltando.join(', ')}.`,
+      );
+      continue;
+    }
+    // Sem id de cliente o par empresa+mesa não fecha e o terceiro não veria nada.
+    const semId = empresas.filter((e) => e.tifluxClientId == null);
+    if (semId.length > 0) {
+      console.error(
+        `PULADO ${plano.email}: sem id de cliente em ${semId.map((e) => e.name).join(', ')}.`,
       );
       continue;
     }
 
+    const totalTickets = empresas.length * plano.ticketsPorEmpresa;
     if (!aplicar) {
       resumo.push(
-        `[simulação] ${plano.email} → ${empresa.name} / ${mesa.name}, ${plano.tickets} chamado(s) a partir de #${proximoNumero}`,
+        `[simulação] ${plano.email} → ${empresas.map((e) => e.name).join(' + ')} / ${mesa.name}, ${totalTickets} chamado(s) a partir de #${proximoNumero}`,
       );
-      proximoNumero += plano.tickets;
+      proximoNumero += totalTickets;
       continue;
     }
+    const principal = empresas.find((e) => e.name === plano.empresas[0])!;
 
     const user = await prisma.user.upsert({
       where: { email: plano.email },
@@ -164,7 +178,7 @@ async function main() {
         status: 'ACTIVE',
         responsible: true,
         specialtyId: mesa.id,
-        companyId: empresa.id,
+        companyId: principal.id,
         deletedAt: null,
       },
       create: {
@@ -176,20 +190,22 @@ async function main() {
         firstAccess: false,
         responsible: true,
         specialtyId: mesa.id,
-        companyId: empresa.id,
+        companyId: principal.id,
       },
       select: { id: true },
     });
 
-    await prisma.userCompany.upsert({
-      where: { userId_companyId: { userId: user.id, companyId: empresa.id } },
-      update: { clientRole: 'CLIENT_MEMBER' },
-      create: {
-        userId: user.id,
-        companyId: empresa.id,
-        clientRole: 'CLIENT_MEMBER',
-      },
-    });
+    for (const empresa of empresas) {
+      await prisma.userCompany.upsert({
+        where: { userId_companyId: { userId: user.id, companyId: empresa.id } },
+        update: { clientRole: 'CLIENT_MEMBER' },
+        create: {
+          userId: user.id,
+          companyId: empresa.id,
+          clientRole: 'CLIENT_MEMBER',
+        },
+      });
+    }
     await prisma.userSpecialty.upsert({
       where: {
         userId_specialtyId: { userId: user.id, specialtyId: mesa.id },
@@ -200,62 +216,65 @@ async function main() {
 
     const respId = responsibleSyntheticId(user.id);
     const data = hoje();
+    let hora = 8;
 
-    for (let i = 0; i < plano.tickets; i += 1) {
-      const ticketNumber = proximoNumero;
-      proximoNumero += 1;
+    for (const empresa of empresas) {
+      for (let i = 0; i < plano.ticketsPorEmpresa; i += 1) {
+        const ticketNumber = proximoNumero;
+        proximoNumero += 1;
 
-      await prisma.portalTicket.upsert({
-        where: { ticketNumber },
-        update: {},
-        create: {
-          ticketNumber,
-          title: `${TAG} ${plano.mesa} ${i + 1} — ${empresa.name}`,
-          clientName: empresa.name,
-          clientExternalId: empresa.tifluxClientId,
-          priorityName: 'Normal',
-          statusName: 'Novo',
-          stageName: 'Em Atendimento',
-          responsibleExternalId: respId,
-          responsibleName: plano.nome,
-          deskName: mesa.name,
-          specialtyId: mesa.id,
-          requestorName: plano.nome,
-          requestorEmail: plano.email,
-          isClosed: false,
-          origin: PortalTicketOrigin.PORTAL,
-          createdAtSource: data,
-          updatedAtSource: data,
-          createdBy: user.id,
-        },
-      });
+        await prisma.portalTicket.upsert({
+          where: { ticketNumber },
+          update: {},
+          create: {
+            ticketNumber,
+            title: `${TAG} ${plano.mesa} ${i + 1} — ${empresa.name}`,
+            clientName: empresa.name,
+            clientExternalId: empresa.tifluxClientId,
+            priorityName: 'Normal',
+            statusName: 'Novo',
+            stageName: 'Em Atendimento',
+            responsibleExternalId: respId,
+            responsibleName: plano.nome,
+            deskName: mesa.name,
+            specialtyId: mesa.id,
+            requestorName: plano.nome,
+            requestorEmail: plano.email,
+            isClosed: false,
+            origin: PortalTicketOrigin.PORTAL,
+            createdAtSource: data,
+            updatedAtSource: data,
+            createdBy: user.id,
+          },
+        });
 
-      // Um apontamento por chamado, uma hora cada, sem sobrepor a agenda.
-      // Rodar o script de novo não duplica: cada chamado fica com o seu.
-      const hora = 8 + i;
-      const jaTem = await prisma.portalTicketAppointment.findFirst({
-        where: { ticketNumber },
-        select: { id: true },
-      });
-      if (jaTem) continue;
-      await prisma.portalTicketAppointment.create({
-        data: {
-          ticketNumber,
-          appointmentDate: data,
-          initTime: `${String(hora).padStart(2, '0')}:00`,
-          endTime: `${String(hora + 1).padStart(2, '0')}:00`,
-          description: `${TAG} Atendimento de teste ${i + 1} feito pelo terceiro.`,
-          serviceName: mesa.name,
-          attendance: 'HORA NORMAL',
-          notifyClient: false,
-          syncStatus: PortalTicketAppointmentSyncStatus.PORTAL_ONLY,
-          createdBy: user.id,
-        },
-      });
+        // Um apontamento por chamado, uma hora cada, sem sobrepor a agenda.
+        // Rodar o script de novo não duplica: cada chamado fica com o seu.
+        const jaTem = await prisma.portalTicketAppointment.findFirst({
+          where: { ticketNumber },
+          select: { id: true },
+        });
+        hora += 1;
+        if (jaTem) continue;
+        await prisma.portalTicketAppointment.create({
+          data: {
+            ticketNumber,
+            appointmentDate: data,
+            initTime: `${String(hora).padStart(2, '0')}:00`,
+            endTime: `${String(hora + 1).padStart(2, '0')}:00`,
+            description: `${TAG} Atendimento de teste ${i + 1} feito pelo terceiro.`,
+            serviceName: mesa.name,
+            attendance: 'HORA NORMAL',
+            notifyClient: false,
+            syncStatus: PortalTicketAppointmentSyncStatus.PORTAL_ONLY,
+            createdBy: user.id,
+          },
+        });
+      }
     }
 
     resumo.push(
-      `${plano.email} (senha ${SENHA}) → ${empresa.name} / ${mesa.name}, chamados #${proximoNumero - plano.tickets}..#${proximoNumero - 1}`,
+      `${plano.email} (senha ${SENHA}) → ${empresas.map((e) => e.name).join(' + ')} / ${mesa.name}, chamados #${proximoNumero - totalTickets}..#${proximoNumero - 1}`,
     );
   }
 
