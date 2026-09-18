@@ -597,6 +597,19 @@ export class TicketsCatalogsService {
     }
   }
 
+  /** Estágios cadastrados, na ordem da tela; lista fixa se a tabela estiver vazia. */
+  private async listStageNames(): Promise<string[]> {
+    const rows = await this.prisma.ticketStage.findMany({
+      where: { deletedAt: null, active: true },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+      select: { name: true },
+    });
+    const names = rows
+      .map((row) => row.name.trim())
+      .filter((name) => name.length > 0);
+    return names.length > 0 ? names : [...PORTAL_STAGES_ORDER];
+  }
+
   async getFilterCatalogs(actor: AuthenticatedRequestUser) {
     const clientScope = await resolveClientListFilter(
       this.tenantScope,
@@ -717,8 +730,11 @@ export class TicketsCatalogsService {
       this.listResponsiblesForCatalogs(),
     ]);
 
-    // Catálogo canônico: inclui Resolvido / Encerrado / Cancelado mesmo sem tickets abertos.
-    const stages = [...PORTAL_STAGES_ORDER];
+    // Os estágios vêm da tabela, que é onde eles são cadastrados: a lista
+    // fixa do código tem só os seis originais e deixava de fora os criados
+    // depois (Aguardando fornecedor, Plantão e afins), que apareciam no
+    // chamado mas não no filtro. A lista fixa fica como reserva.
+    const stages = await this.listStageNames();
 
     const clientMap = new Map<number, string>();
     for (const t of tickets) {
