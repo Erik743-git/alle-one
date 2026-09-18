@@ -91,13 +91,13 @@ export function pjTicketListWhere(params: {
     or.push({ responsibleExternalId: params.responsibleExternalId });
   }
   const { clientExternalIds, specialtyIds } = params.scope;
-  if (clientExternalIds.length > 0 && specialtyIds.length > 0) {
-    or.push({
-      AND: [
-        { clientExternalId: { in: clientExternalIds } },
-        { specialtyId: { in: specialtyIds } },
-      ],
-    });
+  // A mesa manda: quem tem mesa vê a fila dela inteira, de qualquer empresa.
+  // A empresa só define o alcance de quem não tem mesa nenhuma. Sem os dois,
+  // sobra o envolvimento (criou, é solicitante, responsável ou seguidor).
+  if (specialtyIds.length > 0) {
+    or.push({ specialtyId: { in: specialtyIds } });
+  } else if (clientExternalIds.length > 0) {
+    or.push({ clientExternalId: { in: clientExternalIds } });
   }
   return { OR: or };
 }
@@ -174,13 +174,25 @@ export function assertPjTicketScope(params: {
   ) {
     return;
   }
-  const empresaOk =
+  // Mesmo critério da listagem: a mesa manda; a empresa só vale para quem
+  // não tem mesa nenhuma.
+  if (scope.specialtyIds.length > 0) {
+    if (
+      ticket.specialtyId &&
+      scope.specialtyIds.includes(String(ticket.specialtyId))
+    ) {
+      return;
+    }
+    throw new ForbiddenException('Chamado fora das mesas que você atende.');
+  }
+
+  if (
+    scope.clientExternalIds.length > 0 &&
     ticket.clientExternalId != null &&
-    scope.clientExternalIds.includes(Number(ticket.clientExternalId));
-  const mesaOk =
-    Boolean(ticket.specialtyId) &&
-    scope.specialtyIds.includes(String(ticket.specialtyId));
-  if (empresaOk && mesaOk) return;
+    scope.clientExternalIds.includes(Number(ticket.clientExternalId))
+  ) {
+    return;
+  }
 
   throw new ForbiddenException(
     'Chamado fora das empresas e mesas que você atende.',
