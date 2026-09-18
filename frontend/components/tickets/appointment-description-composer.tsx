@@ -707,14 +707,7 @@ export const AppointmentDescriptionComposer = forwardRef<
               src,
               attachment?.originalName || `imagem-${block.fileIndex + 1}.png`,
               attachment?.mimeType,
-              existingFileId
-                ? {
-                    fileId: existingFileId,
-                    ...(block.dataUrl?.trim()
-                      ? { dataUrl: block.dataUrl.trim() }
-                      : {}),
-                  }
-                : undefined,
+              existingFileId ? { fileId: existingFileId } : undefined,
             );
           }
         } else {
@@ -1176,7 +1169,8 @@ export const AppointmentDescriptionComposer = forwardRef<
                 type: "image",
                 fileIndex: -1,
                 fileId: existing.fileId,
-                ...(existing.dataUrl ? { dataUrl: existing.dataUrl } : {}),
+                // Sem dataUrl: a imagem vem do anexo (fileId). Guardar a base64
+                // aqui estourava o limite da descricao e inchava o banco.
                 ...(width != null ? { width } : {}),
               });
               return;

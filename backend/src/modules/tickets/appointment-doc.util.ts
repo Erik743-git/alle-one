@@ -64,7 +64,14 @@ export type SavedAppointmentImage = {
   base64: string;
 };
 
-/** Embute dataUrl nos blocos de imagem para exibição sem depender de download HTTP. */
+/**
+ * Liga cada bloco de imagem ao arquivo salvo (fileId).
+ *
+ * Antes também embutia a imagem inteira em base64 na descrição: um print de
+ * 200 KB virava ~270 mil caracteres e estourava o limite do campo já na
+ * primeira edição, além de inchar banco e backup. A tela resolve a imagem
+ * pelo anexo e o e-mail usa hydrateAppointmentDescriptionImages.
+ */
 export function enrichAppointmentDescriptionWithImages(
   description: string,
   savedImages: SavedAppointmentImage[],
@@ -81,7 +88,6 @@ export function enrichAppointmentDescriptionWithImages(
       type: 'image' as const,
       fileIndex: block.fileIndex,
       fileId: saved.fileId,
-      dataUrl: `data:${saved.mimeType};base64,${saved.base64}`,
       ...(typeof block.width === 'number' ? { width: block.width } : {}),
     };
   });

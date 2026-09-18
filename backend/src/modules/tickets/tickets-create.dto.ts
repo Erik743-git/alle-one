@@ -27,7 +27,7 @@ export class CreateTicketDto {
 
   @IsString()
   @MinLength(2)
-  @MaxLength(50_000)
+  @MaxLength(50_000, { message: 'A descrição passou do limite de 50 mil caracteres. Imagens coladas contam nesse total — anexe as maiores como arquivo.' })
   description!: string;
 
   @IsInt()
@@ -119,7 +119,7 @@ export class CreateTicketAppointmentDto {
 
   @IsString()
   @MinLength(2)
-  @MaxLength(50_000)
+  @MaxLength(50_000, { message: 'A descrição passou do limite de 50 mil caracteres. Imagens coladas contam nesse total — anexe as maiores como arquivo.' })
   description!: string;
 
   /** Tipo de atendimento: HORA NORMAL, HORA EXTRA ou PLANTÃO. */
@@ -165,7 +165,7 @@ export class UpdateTicketDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
-  @MaxLength(50_000)
+  @MaxLength(50_000, { message: 'A descrição passou do limite de 50 mil caracteres. Imagens coladas contam nesse total — anexe as maiores como arquivo.' })
   description?: string;
 
   @IsOptional()
