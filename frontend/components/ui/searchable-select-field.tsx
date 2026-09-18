@@ -315,10 +315,11 @@ export function SearchableSelectField({
         side={side}
         align={align}
         sideOffset={8}
+        // Sem collisionBoundary: o padrão é a janela. Limitando ao
+        // documentElement, uma página mais larga que a janela (tabela de
+        // tickets com rolagem lateral) fazia a lista abrir fora da área
+        // visível, sem nunca "colidir".
         collisionPadding={16}
-        collisionBoundary={
-          typeof document !== "undefined" ? [document.documentElement] : undefined
-        }
         className={cn(
           "p-2",
           popoverMinWidth ??
