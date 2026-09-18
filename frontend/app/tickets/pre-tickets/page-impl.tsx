@@ -1,0 +1,503 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import ProtectedPage from "@/components/auth/protected-page";
+import AppShell from "@/components/layout/app-shell";
+import {
+  PreTicketsBadge,
+  refreshPreTicketsBadge,
+} from "@/components/layout/pre-tickets-badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { useConfirm } from "@/components/providers/confirm-provider";
+import { notifyError, notifySuccess } from "@/lib/notify";
+import {
+  emailInboundService,
+  type PreTicketListItem,
+} from "@/lib/services/email-inbound.service";
+import { Check, Lock, Trash2 } from "lucide-react";
+import { getStoredUser } from "@/lib/session";
+import { useRouter } from "next/navigation";
+
+function formatWhen(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function PreTicketsPageImpl() {
+  const router = useRouter();
+  const [items, setItems] = useState<PreTicketListItem[]>([]);
+  const [q, setQ] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const currentUserId = getStoredUser()?.id ?? null;
+  const confirm = useConfirm();
+
+  // Chamado do portal entra na fila só por estar sem responsável: ele já é
+  // um ticket de verdade e não pode ser excluído daqui.
+  const excluiveis = useMemo(
+    () => items.filter((row) => !row.portalPreTicket),
+    [items],
+  );
+  const selecionados = useMemo(
+    () => excluiveis.filter((row) => selected.has(row.id)),
+    [excluiveis, selected],
+  );
+  const todosMarcados =
+    excluiveis.length > 0 && selecionados.length === excluiveis.length;
+
+  const load = useCallback(async () => {
+    try {
+      const rows = await emailInboundService.listPreTickets(q);
+      setItems(rows);
+      setSelected((atual) => {
+        const vivos = new Set(rows.map((row) => row.id));
+        const mantidos = [...atual].filter((id) => vivos.has(id));
+        return mantidos.length === atual.size ? atual : new Set(mantidos);
+      });
+      setError(null);
+      refreshPreTicketsBadge();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao listar");
+    } finally {
+      setLoading(false);
+    }
+  }, [q]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function remove(id: string) {
+    setBusy(true);
+    try {
+      await emailInboundService.deletePreTicket(id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao remover");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function alternar(id: string) {
+    setSelected((atual) => {
+      const proximo = new Set(atual);
+      if (proximo.has(id)) proximo.delete(id);
+      else proximo.add(id);
+      return proximo;
+    });
+  }
+
+  function alternarTodos() {
+    setSelected((atual) =>
+      atual.size >= excluiveis.length
+        ? new Set()
+        : new Set(excluiveis.map((row) => row.id)),
+    );
+  }
+
+  async function removerEmLote(alvos: PreTicketListItem[], tudo: boolean) {
+    if (alvos.length === 0) return;
+    const ok = await confirm({
+      title: tudo ? "Excluir todos os pré-tickets" : "Excluir selecionados",
+      description:
+        alvos.length === 1
+          ? `Excluir o pré-ticket "${alvos[0].title}"? Ele sai da fila de e-mail.`
+          : `Excluir ${alvos.length} pré-tickets? Eles saem da fila de e-mail.`,
+      confirmText: "Excluir",
+      variant: "error",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await emailInboundService.deletePreTickets(
+        alvos.map((row) => row.id),
+      );
+      setSelected(new Set());
+      setError(null);
+      notifySuccess(
+        r.excluidos === 1
+          ? "1 pré-ticket excluído."
+          : `${r.excluidos} pré-tickets excluídos.`,
+      );
+      await load();
+    } catch (e) {
+      notifyError(e instanceof Error ? e.message : "Falha ao excluir");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function claim(id: string) {
+    setBusy(true);
+    try {
+      await emailInboundService.claimPreTicket(id);
+      setError(null);
+      await load();
+    } catch (e) {
+      // Quem já reservou aparece na mensagem do backend.
+      setError(e instanceof Error ? e.message : "Falha ao assumir");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releaseClaim(id: string) {
+    setBusy(true);
+    try {
+      await emailInboundService.releasePreTicket(id);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao liberar");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openTicket(id: string) {
+    setBusy(true);
+    try {
+      const r = await emailInboundService.openPreTicket(id);
+      router.push(`/tickets/${r.ticketNumber}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Falha ao abrir ticket");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <ProtectedPage>
+      <AppShell>
+        <div className="mx-auto w-full max-w-5xl space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="flex items-center text-2xl font-semibold">
+                Pré-tickets
+                <PreTicketsBadge />
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Caixa geral ({items.length})
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                className="w-48"
+                placeholder="Buscar"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+              <Button variant="outline" asChild>
+                <Link href="/tickets">Voltar aos tickets</Link>
+              </Button>
+            </div>
+          </div>
+
+          {error ? (
+            <p className="text-sm text-amber-600 dark:text-amber-400">{error}</p>
+          ) : null}
+          {excluiveis.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+              <span className="text-sm text-muted-foreground">
+                {selecionados.length > 0
+                  ? `${selecionados.length} de ${excluiveis.length} selecionado${selecionados.length > 1 ? "s" : ""}`
+                  : `${excluiveis.length} pré-ticket${excluiveis.length > 1 ? "s" : ""} de e-mail na fila`}
+              </span>
+              <div className="ml-auto flex flex-nowrap items-center gap-2">
+                {selecionados.length > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 shrink-0 whitespace-nowrap"
+                    disabled={busy}
+                    onClick={() => setSelected(new Set())}
+                  >
+                    Limpar seleção
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-8 shrink-0 whitespace-nowrap"
+                  disabled={busy || selecionados.length === 0}
+                  onClick={() => void removerEmLote(selecionados, false)}
+                >
+                  <Trash2 className="mr-1.5 size-4" />
+                  Excluir selecionados
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 shrink-0 whitespace-nowrap border-destructive/50 text-destructive hover:bg-destructive/10"
+                  disabled={busy}
+                  onClick={() => void removerEmLote(excluiveis, true)}
+                >
+                  Excluir todos
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full table-fixed text-sm">
+              <colgroup>
+                <col className="w-10" />
+                <col className="w-[30%]" />
+                <col className="w-[24%]" />
+                <col className="w-[16%]" />
+                <col className="w-[14%]" />
+                <col className="w-12" />
+                <col className="w-[184px]" />
+              </colgroup>
+              <thead>
+                <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                  <th className="px-2 py-2">
+                    <FlipCheckbox
+                      className="h-4 w-4"
+                      checked={todosMarcados}
+                      disabled={busy || excluiveis.length === 0}
+                      onChange={alternarTodos}
+                      aria-label="Selecionar todos os pré-tickets de e-mail"
+                      title="Selecionar todos os pré-tickets de e-mail"
+                    />
+                  </th>
+                  <th className="px-3 py-2 font-medium">Título</th>
+                  <th className="px-3 py-2 font-medium">Solicitante</th>
+                  <th className="px-3 py-2 font-medium">Cliente</th>
+                  <th className="px-3 py-2 font-medium">Criado</th>
+                  <th className="px-2 py-2 text-center font-medium">Arq.</th>
+                  <th className="px-2 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`sk-${i}`} className="border-b">
+                      <td className="px-2 py-3">
+                        <Skeleton className="h-4 w-4" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-4/5" />
+                        <Skeleton className="mt-2 h-3 w-1/2" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-3/4" />
+                        <Skeleton className="mt-2 h-3 w-full" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-2/3" />
+                      </td>
+                      <td className="px-3 py-3">
+                        <Skeleton className="h-4 w-20" />
+                      </td>
+                      <td className="px-2 py-3">
+                        <Skeleton className="mx-auto h-4 w-6" />
+                      </td>
+                      <td className="px-2 py-3">
+                        <Skeleton className="ml-auto h-8 w-16" />
+                      </td>
+                    </tr>
+                  ))
+                ) : null}
+                {!loading
+                  ? items.map((row) => (
+                  <tr
+                    key={row.id}
+                    className="cursor-pointer border-b align-top hover:bg-muted/25"
+                    onClick={() =>
+                      row.portalPreTicket && row.ticketNumber
+                        ? router.push(`/tickets/${row.ticketNumber}`)
+                        : router.push(`/tickets/pre-tickets/${row.id}`)
+                    }
+                  >
+                    <td
+                      className="px-2 py-2.5 align-top"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {row.portalPreTicket ? (
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center text-muted-foreground/60"
+                          title="Chamado sem responsável: atribua um responsável em vez de excluir"
+                        >
+                          <Lock className="size-3.5" />
+                        </span>
+                      ) : (
+                        <FlipCheckbox
+                          className="h-4 w-4"
+                          checked={selected.has(row.id)}
+                          disabled={busy}
+                          onChange={() => alternar(row.id)}
+                          aria-label={`Selecionar pré-ticket: ${row.title}`}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className="line-clamp-2 font-medium text-teal-600 dark:text-teal-400"
+                        title={row.title}
+                      >
+                        {row.title}
+                      </span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {row.portalPreTicket && row.ticketNumber ? (
+                          <span className="rounded bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium text-teal-800 dark:text-teal-200">
+                            Ticket #{row.ticketNumber} · aguardando responsável
+                          </span>
+                        ) : null}
+                        {row.linkedTicketNumber ? (
+                          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-200">
+                            Resposta a #{row.linkedTicketNumber}
+                          </span>
+                        ) : null}
+                        {row.possibleDuplicateSubject ? (
+                          <span className="rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-medium text-orange-800 dark:text-orange-200">
+                            Possível duplicata de assunto
+                          </span>
+                        ) : null}
+                        {row.claimedBy ? (
+                          <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-800 dark:text-violet-200">
+                            🔒 {row.claimedBy.name} está atendendo
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                        {row.channel}
+                        {row.mailboxAddress ? ` · ${row.mailboxAddress}` : ""}
+                      </p>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="truncate" title={row.fromName ?? undefined}>
+                        {row.fromName ?? "—"}
+                      </div>
+                      <div
+                        className="truncate text-[11px] text-muted-foreground"
+                        title={row.fromEmail}
+                      >
+                        {row.fromEmail}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className="line-clamp-2"
+                        title={row.company?.name ?? undefined}
+                      >
+                        {row.company?.name ?? "—"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
+                      {formatWhen(row.receivedAt)}
+                    </td>
+                    <td className="px-2 py-2 pr-4 text-center tabular-nums text-muted-foreground">
+                      {row.attachmentCount}
+                    </td>
+                    <td
+                      className="py-2 pl-3 pr-2"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="flex flex-nowrap items-center justify-end gap-1.5">
+                        {!row.portalPreTicket ? (
+                          row.claimedBy?.id === currentUserId ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 shrink-0 whitespace-nowrap"
+                              disabled={busy}
+                              title="Devolver para a fila"
+                              onClick={() => void releaseClaim(row.id)}
+                            >
+                              Liberar
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className={
+                                row.claimedBy
+                                  ? "h-8 shrink-0 whitespace-nowrap border-amber-500/60 text-amber-600 dark:text-amber-400"
+                                  : "h-8 shrink-0 whitespace-nowrap"
+                              }
+                              disabled={busy}
+                              title={
+                                row.claimedBy
+                                  ? `${row.claimedBy.name} está atendendo — assumir mesmo assim`
+                                  : "Reservar para você enquanto atende"
+                              }
+                              onClick={() => void claim(row.id)}
+                            >
+                              Assumir
+                            </Button>
+                          )
+                        ) : null}
+                        {row.portalPreTicket && row.ticketNumber ? (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 shrink-0"
+                            disabled={busy}
+                            title="Atribuir responsável"
+                            aria-label={`Atribuir responsável: ${row.title}`}
+                            onClick={() =>
+                              router.push(`/tickets/${row.ticketNumber}`)
+                            }
+                          >
+                            <Check className="size-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 shrink-0"
+                            disabled={busy}
+                            title="Abrir ticket"
+                            aria-label={`Abrir ticket: ${row.title}`}
+                            onClick={() => void openTicket(row.id)}
+                          >
+                            <Check className="size-4" />
+                          </Button>
+                        )}
+                        {!row.portalPreTicket ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8 shrink-0"
+                          disabled={busy}
+                          title="Remover"
+                          aria-label={`Remover pré-ticket: ${row.title}`}
+                          onClick={() => void remove(row.id)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+                  : null}
+                {!loading && items.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-muted-foreground">
+                      Nenhum pré-ticket pendente.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>            </table>
+          </div>
+        </div>
+      </AppShell>
+    </ProtectedPage>
+  );
+}
+
+export { PreTicketsPageImpl as PortalPageComponent };
