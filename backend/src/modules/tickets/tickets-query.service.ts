@@ -31,6 +31,7 @@ import {
   TICKET_STAGE_GROUPS,
   type TicketStageGroupKey,
 } from './tickets-stage-groups';
+import { appointmentDescriptionHasMedia } from './appointment-doc.util';
 import { normalizeDeskName } from './tiflux-portal-desk.config';
 import {
   TicketsAppointmentsService,
@@ -2423,7 +2424,12 @@ export class TicketsQueryService {
           description = preHtml;
         }
       } else {
+        // A descrição salva no formato do portal guarda a imagem como
+        // referência (fileId), sem <img> nem base64. Sem esta checagem o
+        // fallback achava que "não tem imagem" e devolvia o HTML antigo do
+        // e-mail, descartando o que o usuário acabou de salvar.
         const hasImage =
+          appointmentDescriptionHasMedia(description) ||
           /<img[\s\S]*src\s*=/i.test(description) ||
           description.includes('data:image/');
         if (!hasImage) {
