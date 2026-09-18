@@ -2420,16 +2420,24 @@ export class TicketsQueryService {
         },
       });
 
+      // Descrição criada pela carga e nunca aberta para edição tem os dois
+      // carimbos praticamente iguais; depois que alguém salva pela tela, o
+      // updatedAt se afasta. Só a primeira pode ser trocada pelo HTML do
+      // e-mail — na segunda, trocar apagaria da tela o que o usuário acabou
+      // de salvar, que é o que fazia a edição "não pegar".
+      const editadaNoPortal = row
+        ? row.updatedAt.getTime() - row.createdAt.getTime() > 2000
+        : false;
+
       if (!description) {
         const preHtml = pre?.descriptionHtml?.trim() ?? '';
         if (preHtml) {
           description = preHtml;
         }
-      } else {
-        // A descrição salva no formato do portal guarda a imagem como
-        // referência (fileId), sem <img> nem base64. Sem esta checagem o
-        // fallback achava que "não tem imagem" e devolvia o HTML antigo do
-        // e-mail, descartando o que o usuário acabou de salvar.
+      } else if (!editadaNoPortal) {
+        // A descrição no formato do portal guarda a imagem como referência
+        // (fileId), sem <img> nem base64. Sem esta checagem o fallback acha
+        // que "não tem imagem" e devolve o HTML antigo do e-mail.
         const hasImage =
           appointmentDescriptionHasMedia(description) ||
           /<img[\s\S]*src\s*=/i.test(description) ||
