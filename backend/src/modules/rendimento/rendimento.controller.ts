@@ -10,6 +10,7 @@ import {
   Req,
   Res,
   Post,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
@@ -218,7 +219,9 @@ export class RendimentoController {
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(filename)}"`,
     );
-    return buffer;
+    // StreamableFile, e não o Buffer cru: devolvido direto, o Nest serializa
+    // como JSON ({"type":"Buffer","data":[...]}) e a planilha não abre.
+    return new StreamableFile(buffer);
   }
 
   @Post('users/:userId/justifications')
