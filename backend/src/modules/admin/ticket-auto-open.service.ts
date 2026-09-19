@@ -781,6 +781,7 @@ export class TicketAutoOpenService {
         );
 
         await this.registerRuleFailure(rule, message, now);
+        await this.abrirPreTicketDeFalha(rule, message, now);
       }
     }
 
@@ -844,6 +845,87 @@ export class TicketAutoOpenService {
       // Não pode derrubar o processamento das demais regras.
       this.logger.error(
         `Falha ao registrar erro da regra "${rule.name}": ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Põe a falha na fila de pré-tickets, para virar chamado e ter dono.
+   *
+   * Um por rotina e por ocorrência: o messageId carrega a regra e o dia, e
+   * ele é único no banco — as tentativas seguintes da mesma ocorrência
+   * esbarram nesse limite em vez de encher a fila de avisos iguais.
+   */
+  private async abrirPreTicketDeFalha(
+    rule: {
+      id: string;
+      name: string;
+      nextScheduledDate: Date;
+      scheduleTime: string;
+      clientExternalId: number;
+      deskExternalId: number;
+    },
+    message: string,
+    now: Date,
+  ) {
+    const dia = formatYmdUtc(rule.nextScheduledDate);
+    const messageId = `rotina-falha-${rule.id}-${dia}`;
+
+    try {
+      const existe = await this.prisma.preTicket.findUnique({
+        where: { messageId },
+        select: { id: true },
+      });
+      if (existe) return;
+
+      const [empresa, mesa] = await Promise.all([
+        this.prisma.company.findFirst({
+          where: { tifluxClientId: rule.clientExternalId, deletedAt: null },
+          select: { id: true },
+        }),
+        this.prisma.specialty.findFirst({
+          where: { externalId: rule.deskExternalId, deletedAt: null },
+          select: { id: true },
+        }),
+      ]);
+
+      const remetente =
+        process.env.MAIL_FROM?.trim() || 'no-reply@alleone.local';
+      const texto = [
+        `A rotina "${rule.name}" falhou ao abrir o chamado de ${dia} ${rule.scheduleTime}.`,
+        '',
+        `Motivo: ${message}`,
+        '',
+        'O portal segue tentando a mesma ocorrência; depois de cinco',
+        'tentativas a rotina é desativada e o chamado do dia não nasce.',
+      ].join('\n');
+
+      await this.prisma.preTicket.create({
+        data: {
+          status: 'PENDING',
+          title: `[Rotina] Falha em "${rule.name}"`,
+          descriptionText: texto,
+          descriptionHtml: `<p>${texto.replace(/\n/g, '<br>')}</p>`,
+          fromName: 'Alle One',
+          fromEmail: remetente,
+          toEmails: [remetente],
+          channel: 'Rotina',
+          mailboxAddress: remetente,
+          messageId,
+          companyId: empresa?.id ?? null,
+          specialtyId: mesa?.id ?? null,
+          receivedAt: now,
+        },
+      });
+      this.logger.log(
+        `Falha da rotina "${rule.name}" (${dia}) entrou na fila de pré-tickets.`,
+      );
+    } catch (err) {
+      // Avisar é importante, mas não pode atrapalhar as demais regras.
+      this.logger.warn(
+        `Falha ao abrir pré-ticket de aviso da regra "${rule.name}": ${
           err instanceof Error ? err.message : err
         }`,
       );

@@ -42,9 +42,13 @@ describe('TicketAutoOpenService — falha não pula a ocorrência', () => {
     };
   }
 
-  function criarServico(rules: ReturnType<typeof regra>[]) {
+  function criarServico(
+    rules: ReturnType<typeof regra>[],
+    preTicketExistente: { id: string } | null = null,
+  ) {
     const update = jest.fn().mockResolvedValue({});
     const sendMail = jest.fn().mockResolvedValue(true);
+    const preTicketCreate = jest.fn().mockResolvedValue({});
     const prisma = {
       ticketAutoOpenRule: {
         findMany: jest.fn().mockResolvedValue(rules),
@@ -52,6 +56,12 @@ describe('TicketAutoOpenService — falha não pula a ocorrência', () => {
         findUnique: jest.fn().mockResolvedValue({ creator: null }),
       },
       user: { findMany: jest.fn().mockResolvedValue([{ email: 'admin@alle.com' }]) },
+      preTicket: {
+        findUnique: jest.fn().mockResolvedValue(preTicketExistente),
+        create: preTicketCreate,
+      },
+      company: { findFirst: jest.fn().mockResolvedValue({ id: 'empresa-1' }) },
+      specialty: { findFirst: jest.fn().mockResolvedValue({ id: 'mesa-1' }) },
     };
     const service = new TicketAutoOpenService(
       prisma as never,
@@ -61,7 +71,7 @@ describe('TicketAutoOpenService — falha não pula a ocorrência', () => {
       {} as never,
       { sendMail } as never,
     );
-    return { service, update, sendMail };
+    return { service, update, sendMail, preTicketCreate };
   }
 
   it('primeira falha mantém a data e agenda nova tentativa', async () => {
@@ -76,6 +86,31 @@ describe('TicketAutoOpenService — falha não pula a ocorrência', () => {
     expect(data.retryAt).toBeInstanceOf(Date);
     expect(data.consecutiveFailures).toBe(1);
     expect(data.active).toBeUndefined();
+  });
+
+  it('a falha entra na fila de pré-tickets, com empresa e mesa da regra', async () => {
+    const { service, preTicketCreate } = criarServico([regra()]);
+
+    await service.processDueRules(10);
+
+    expect(preTicketCreate).toHaveBeenCalledTimes(1);
+    const data = preTicketCreate.mock.calls[0][0].data;
+    expect(data.title).toContain('Validação Backup');
+    expect(data.companyId).toBe('empresa-1');
+    expect(data.specialtyId).toBe('mesa-1');
+    // O id carrega regra + dia: a segunda tentativa não abre outro aviso.
+    expect(data.messageId).toBe('rotina-falha-r1-2026-09-18');
+  });
+
+  it('não abre um segundo aviso para a mesma ocorrência', async () => {
+    const { service, preTicketCreate } = criarServico(
+      [regra({ consecutiveFailures: 1 })],
+      { id: 'pre-1' },
+    );
+
+    await service.processDueRules(10);
+
+    expect(preTicketCreate).not.toHaveBeenCalled();
   });
 
   it('regra em espera não é tentada de novo antes da hora', async () => {
