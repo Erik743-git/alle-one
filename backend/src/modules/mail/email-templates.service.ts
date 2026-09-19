@@ -7,6 +7,7 @@ export const EMAIL_TEMPLATE_KEYS = {
   GMUD_NOTIFY: 'GMUD_NOTIFY',
   APPOINTMENT_CLIENT_NOTIFY: 'APPOINTMENT_CLIENT_NOTIFY',
   ROUTINE_TICKET_CLOSED: 'ROUTINE_TICKET_CLOSED',
+  TICKET_CLOSED: 'TICKET_CLOSED',
 } as const;
 
 export type EmailTemplateKey =
@@ -55,6 +56,17 @@ const DEFAULTS: Array<{
       '<p>Olá {{requestorName}}.</p><p>O chamado de rotina <strong>#{{ticketNumber}} — {{title}}</strong> foi concluído em {{closedAt}}.</p><p>Situação: <strong>{{stageName}}</strong></p><p>Atenciosamente.<br/>Alle Tecnologia.</p>',
     bodyText:
       'Olá {{requestorName}}.\n\nO chamado de rotina #{{ticketNumber}} — {{title}} foi concluído em {{closedAt}}.\n\nSituação: {{stageName}}\n\nAtenciosamente.\nAlle Tecnologia.\n',
+  },
+  {
+    // O número no assunto é o que liga a resposta do cliente de volta ao
+    // chamado: responder este e-mail vira comunicação e reabre o chamado.
+    key: EMAIL_TEMPLATE_KEYS.TICKET_CLOSED,
+    name: 'Chamado concluído',
+    subject: 'Chamado #{{ticketNumber}} concluído — {{title}}',
+    bodyHtml:
+      '<p>Olá {{requestorName}}.</p><p>O chamado <strong>#{{ticketNumber}} — {{title}}</strong> foi concluído em {{closedAt}}.</p><p>Situação: <strong>{{stageName}}</strong><br/>Atendimento: {{responsibleName}}</p><p>Se ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.</p><p>Atenciosamente.<br/>Alle Tecnologia.</p>',
+    bodyText:
+      'Olá {{requestorName}}.\n\nO chamado #{{ticketNumber}} — {{title}} foi concluído em {{closedAt}}.\n\nSituação: {{stageName}}\nAtendimento: {{responsibleName}}\n\nSe ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.\n\nAtenciosamente.\nAlle Tecnologia.\n',
   },
 ];
 
@@ -220,6 +232,46 @@ export class EmailTemplatesService {
     } catch (err) {
       this.logger.warn(
         `Falha ao enviar ROUTINE_TICKET_CLOSED #${params.ticketNumber}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return false;
+    }
+  }
+
+  async sendTicketClosed(params: {
+    to: string;
+    ticketNumber: number;
+    title: string;
+    requestorName: string | null;
+    stageName: string;
+    responsibleName: string | null;
+    closedAt: Date;
+  }) {
+    const to = params.to.trim();
+    if (!to) return false;
+
+    const rendered = await this.getRendered(EMAIL_TEMPLATE_KEYS.TICKET_CLOSED, {
+      ticketNumber: params.ticketNumber,
+      title: params.title,
+      requestorName: params.requestorName?.trim() || 'cliente',
+      stageName: params.stageName,
+      responsibleName: params.responsibleName?.trim() || 'equipe Alle',
+      closedAt: params.closedAt.toLocaleString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+      }),
+    });
+
+    try {
+      return await this.mail.sendMail({
+        to,
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enviar TICKET_CLOSED #${params.ticketNumber}: ${
           err instanceof Error ? err.message : err
         }`,
       );
