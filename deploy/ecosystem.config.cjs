@@ -24,6 +24,8 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "3002",
+        // A API nao sobe se o DATABASE_URL apontar para outro banco.
+        ALLEONE_EXPECTED_DB: "portal",
       },
     },
     {
