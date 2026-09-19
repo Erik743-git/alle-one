@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { Loader2, Star } from "lucide-react";
+import { Check, Loader2, Star } from "lucide-react";
 
+import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { API_URL } from "@/lib/env";
+import { cn } from "@/lib/utils";
 
 type Pesquisa = {
   ticketNumber: number;
@@ -21,19 +22,32 @@ type Pesquisa = {
   answeredAt: string | null;
 };
 
-const LEGENDA = [
-  "",
-  "Muito ruim",
-  "Ruim",
-  "Regular",
-  "Bom",
-  "Excelente",
-] as const;
+const LEGENDA: Record<number, { texto: string; cor: string }> = {
+  1: { texto: "Muito ruim", cor: "text-rose-300" },
+  2: { texto: "Ruim", cor: "text-orange-300" },
+  3: { texto: "Regular", cor: "text-amber-300" },
+  4: { texto: "Bom", cor: "text-lime-300" },
+  5: { texto: "Excelente", cor: "text-emerald-300" },
+};
+
+/** Cartão escuro sobre o fundo da marca, como as telas de acesso. */
+function Painel({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthShell contentClassName="items-center justify-center">
+      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-6 py-6">
+        <AlleBrandLogoOnDark className="h-9 w-auto drop-shadow" />
+        <div className="w-full rounded-2xl border border-white/10 bg-slate-950/85 p-6 shadow-2xl backdrop-blur-sm sm:p-8">
+          {children}
+        </div>
+      </div>
+    </AuthShell>
+  );
+}
 
 /**
  * Tela que o cliente abre pelo e-mail de fechamento. Sem login: o token do
  * link já diz qual chamado é. Se ele clicou numa estrela no e-mail, a nota
- * vem pela query e é gravada na hora — aqui ele só confirma ou comenta.
+ * vem pela query e já chega gravada — aqui ele confirma ou comenta.
  */
 export function PesquisaSatisfacao() {
   const params = useParams<{ token: string }>();
@@ -54,6 +68,7 @@ export function PesquisaSatisfacao() {
     async (valor: number, texto: string) => {
       if (valor < 1 || valor > 5) return;
       setEnviando(true);
+      setErro(null);
       try {
         const res = await fetch(`${API_URL}/satisfacao/${token}`, {
           method: "POST",
@@ -89,20 +104,13 @@ export function PesquisaSatisfacao() {
         const dados: Pesquisa = await res.json();
         if (cancelado) return;
         setPesquisa(dados);
-        const inicial =
-          Number.isInteger(notaDoLink) && notaDoLink >= 1 && notaDoLink <= 5
-            ? notaDoLink
-            : (dados.rating ?? 0);
-        setNota(inicial);
+        const daLink =
+          Number.isInteger(notaDoLink) && notaDoLink >= 1 && notaDoLink <= 5;
+        setNota(daLink ? notaDoLink : (dados.rating ?? 0));
         setComentario(dados.comment ?? "");
-        // Clicou a estrela no e-mail: já grava, para a nota não se perder se
-        // a pessoa fechar a aba sem comentar.
-        if (
-          Number.isInteger(notaDoLink) &&
-          notaDoLink >= 1 &&
-          notaDoLink <= 5 &&
-          !dados.answeredAt
-        ) {
+        // Veio de uma estrela do e-mail: grava na hora, para a nota não se
+        // perder se a pessoa fechar a aba sem comentar.
+        if (daLink && !dados.answeredAt) {
           void enviar(notaDoLink, "");
           setEnviado(false);
         }
@@ -123,125 +131,151 @@ export function PesquisaSatisfacao() {
 
   if (carregando) {
     return (
-      <AuthShell>
-        <Card className="w-full max-w-lg">
-          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" />
-            Carregando…
-          </CardContent>
-        </Card>
-      </AuthShell>
+      <Painel>
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-slate-300">
+          <Loader2 className="size-4 animate-spin" />
+          Carregando…
+        </div>
+      </Painel>
     );
   }
 
   if (erro && !pesquisa) {
     return (
-      <AuthShell>
-        <Card className="w-full max-w-lg">
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            {erro}
-          </CardContent>
-        </Card>
-      </AuthShell>
+      <Painel>
+        <p className="py-8 text-center text-sm text-slate-300">{erro}</p>
+      </Painel>
     );
   }
 
   if (enviado) {
     return (
-      <AuthShell>
-        <Card className="w-full max-w-lg">
-          <CardContent className="space-y-3 py-10 text-center">
-            <p className="text-2xl font-semibold">Obrigado!</p>
-            <p className="text-sm text-muted-foreground">
+      <Painel>
+        <div className="space-y-4 text-center">
+          <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30">
+            <Check className="size-7 text-emerald-300" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-2xl font-semibold text-white">Obrigado!</p>
+            <p className="text-sm text-slate-300">
               Sua avaliação do chamado #{pesquisa?.ticketNumber} foi registrada.
             </p>
-          </CardContent>
-        </Card>
-      </AuthShell>
+          </div>
+          <div className="flex items-center justify-center gap-1 pt-1">
+            {[1, 2, 3, 4, 5].map((v) => (
+              <Star
+                key={v}
+                className={cn(
+                  "size-6",
+                  v <= nota
+                    ? "fill-amber-400 text-amber-400"
+                    : "text-slate-700",
+                )}
+              />
+            ))}
+          </div>
+          {nota <= 2 ? (
+            <p className="text-sm text-slate-300">
+              Sentimos muito. Alguém da nossa equipe vai entrar em contato.
+            </p>
+          ) : null}
+        </div>
+      </Painel>
     );
   }
 
   const exibida = hover || nota;
+  const legenda = LEGENDA[exibida];
 
   return (
-    <AuthShell>
-      <Card className="w-full max-w-lg">
-        <CardHeader className="space-y-1">
-          <p className="text-sm text-muted-foreground">
+    <Painel>
+      <div className="space-y-6">
+        <div className="space-y-2 text-center">
+          <span className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-slate-200">
             Chamado #{pesquisa?.ticketNumber}
-          </p>
-          <h1 className="text-xl font-semibold">{pesquisa?.title ?? "—"}</h1>
+          </span>
+          <h1 className="text-balance text-xl font-semibold leading-snug text-white">
+            {pesquisa?.title ?? "—"}
+          </h1>
           {pesquisa?.responsibleName ? (
-            <p className="text-sm text-muted-foreground">
-              Atendimento: {pesquisa.responsibleName}
+            <p className="text-sm text-slate-400">
+              Atendido por {pesquisa.responsibleName}
             </p>
           ) : null}
-        </CardHeader>
+        </div>
 
-        <CardContent className="space-y-5">
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Como foi o nosso atendimento?</p>
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((valor) => (
-                <button
-                  key={valor}
-                  type="button"
-                  onClick={() => setNota(valor)}
-                  onMouseEnter={() => setHover(valor)}
-                  onMouseLeave={() => setHover(0)}
-                  aria-label={`${valor} de 5`}
-                  className="rounded p-1 transition-transform hover:scale-110"
-                >
-                  <Star
-                    className={
-                      valor <= exibida
-                        ? "size-9 fill-amber-400 text-amber-400"
-                        : "size-9 text-muted-foreground/40"
-                    }
-                  />
-                </button>
-              ))}
-            </div>
-            <p className="h-5 text-sm text-muted-foreground">
-              {exibida ? LEGENDA[exibida] : ""}
-            </p>
+        <div className="space-y-3 rounded-xl bg-white/5 p-5 text-center">
+          <p className="text-base font-medium text-white">
+            Como foi o nosso atendimento?
+          </p>
+          <div className="flex items-center justify-center gap-1.5">
+            {[1, 2, 3, 4, 5].map((valor) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setNota(valor)}
+                onMouseEnter={() => setHover(valor)}
+                onMouseLeave={() => setHover(0)}
+                aria-label={`${valor} de 5`}
+                className="rounded-lg p-1 transition-transform duration-150 hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+              >
+                <Star
+                  className={cn(
+                    "size-10 transition-colors",
+                    valor <= exibida
+                      ? "fill-amber-400 text-amber-400"
+                      : "text-slate-600",
+                  )}
+                />
+              </button>
+            ))}
           </div>
-
-          <div className="space-y-2">
-            <label htmlFor="comentario" className="text-sm font-medium">
-              Quer contar o que achou?{" "}
-              <span className="font-normal text-muted-foreground">
-                (opcional)
-              </span>
-            </label>
-            <Textarea
-              id="comentario"
-              value={comentario}
-              onChange={(e) => setComentario(e.target.value)}
-              rows={4}
-              placeholder={
-                nota > 0 && nota <= 2
-                  ? "O que deu errado? Isso chega direto para quem pode resolver."
-                  : "Escreva aqui, se quiser."
-              }
-            />
-          </div>
-
-          {erro ? <p className="text-sm text-destructive">{erro}</p> : null}
-
-          <Button
-            type="button"
-            className="w-full"
-            disabled={nota < 1 || enviando}
-            onClick={() => void enviar(nota, comentario)}
+          <p
+            className={cn(
+              "h-5 text-sm font-medium",
+              legenda?.cor ?? "text-transparent",
+            )}
           >
-            {enviando ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
-            ) : null}
-            Enviar avaliação
-          </Button>
-        </CardContent>
-      </Card>
-    </AuthShell>
+            {legenda?.texto ?? "Toque em uma estrela"}
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="comentario" className="text-sm text-slate-300">
+            Quer contar o que achou?{" "}
+            <span className="text-slate-500">(opcional)</span>
+          </label>
+          <Textarea
+            id="comentario"
+            value={comentario}
+            onChange={(e) => setComentario(e.target.value)}
+            rows={3}
+            className="resize-none border-white/10 bg-white/5 text-white placeholder:text-slate-500"
+            placeholder={
+              nota > 0 && nota <= 2
+                ? "O que deu errado? Isso chega direto para quem pode resolver."
+                : "Escreva aqui, se quiser."
+            }
+          />
+        </div>
+
+        {erro ? <p className="text-sm text-rose-300">{erro}</p> : null}
+
+        <Button
+          type="button"
+          size="lg"
+          className="w-full"
+          disabled={nota < 1 || enviando}
+          onClick={() => void enviar(nota, comentario)}
+        >
+          {enviando ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+          Enviar avaliação
+        </Button>
+
+        <p className="text-center text-xs text-slate-500">
+          Leva um segundo e ajuda muito a melhorar o nosso atendimento.
+        </p>
+      </div>
+    </Painel>
   );
 }
