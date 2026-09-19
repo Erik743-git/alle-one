@@ -13,6 +13,7 @@ import {
   FileText,
   LayoutDashboard,
   FolderTree,
+  Star,
   Ticket,
 } from "lucide-react";
 import Link from "next/link";
@@ -84,6 +85,13 @@ function AdminPageImpl() {
         "Caixa Microsoft Graph, direcionamentos e abertura de pré-tickets por e-mail.",
       icon: FileText,
       href: "/admin/email",
+    },
+    {
+      name: "Satisfação",
+      description:
+        "Pesquisa dos chamados fechados: NPS, nota por mesa e empresa, ranking e comentários.",
+      icon: Star,
+      href: "/admin/satisfacao",
     },
     {
       name: "Auditoria",
