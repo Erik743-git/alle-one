@@ -59,15 +59,15 @@ export class TicketSatisfactionAdminController {
   constructor(private readonly report: TicketSatisfactionReportService) {}
 
   @Get('resumo')
-  @Roles('ADMIN', 'COLLABORATOR')
-  @RequirePermission(PermissionModule.REPORTS, 'canView')
+  @Roles('ADMIN')
+  @RequirePermission(PermissionModule.ADMIN, 'canView')
   resumo(@Query('de') de?: string, @Query('ate') ate?: string) {
     return this.report.resumo({ de, ate });
   }
 
   @Get('respostas')
-  @Roles('ADMIN', 'COLLABORATOR')
-  @RequirePermission(PermissionModule.REPORTS, 'canView')
+  @Roles('ADMIN')
+  @RequirePermission(PermissionModule.ADMIN, 'canView')
   respostas(
     @Query('de') de?: string,
     @Query('ate') ate?: string,
