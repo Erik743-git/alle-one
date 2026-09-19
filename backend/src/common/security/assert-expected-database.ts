@@ -32,11 +32,15 @@ export function assertExpectedDatabase(
     return;
   }
 
-  logger.error(
+  const mensagem =
     `Banco errado: a configuração deste ambiente espera "${esperado}" e a ` +
-      `conexão aponta para "${atual ?? 'desconhecido'}". A API não vai subir. ` +
-      'Verifique se alguém exportou DATABASE_URL no shell antes do start.',
-  );
+    `conexão aponta para "${atual ?? 'desconhecido'}". A API não vai subir. ` +
+    'Verifique se alguém exportou DATABASE_URL no shell antes do start.';
+  logger.error(mensagem);
+  // Também no stderr cru: o logger do Nest ainda não drenou quando o
+  // processo morre, e sem isso a mensagem some no meio do ciclo de
+  // reinício do PM2 — que foi o que dificultou entender o problema.
+  process.stderr.write(`\n[ALLE-ONE] ${mensagem}\n\n`);
   process.exit(1);
 }
 

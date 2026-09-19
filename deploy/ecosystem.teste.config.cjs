@@ -21,6 +21,11 @@ module.exports = {
       instances: 2,
       exec_mode: "cluster",
       autorestart: true,
+      // Erro de configuração (banco errado, por exemplo) derruba o processo
+      // na hora: sem este limite o PM2 fica reerguendo para sempre e a
+      // mensagem some no meio do ciclo.
+      min_uptime: 20000,
+      max_restarts: 5,
       kill_timeout: 20000,
       max_memory_restart: "1500M",
       env: {
