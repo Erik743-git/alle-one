@@ -4,7 +4,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Check, Loader2, Star } from "lucide-react";
 
-import { AlleBrandLogoOnDark } from "@/components/brand/alle-brand-logo";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,9 +35,8 @@ const LEGENDA: Record<number, { texto: string; cor: string }> = {
 function Painel({ children }: { children: React.ReactNode }) {
   return (
     <AuthShell contentClassName="items-center justify-center">
-      <div className="mx-auto flex w-full max-w-md flex-col items-center gap-6 py-6">
-        <AlleBrandLogoOnDark className="h-9 w-auto drop-shadow" />
-        <div className="w-full rounded-2xl border border-white/10 bg-slate-950/85 p-6 shadow-2xl backdrop-blur-sm sm:p-8">
+      <div className="mx-auto w-full max-w-sm py-4">
+        <div className="w-full rounded-2xl border border-white/10 bg-slate-950/85 p-5 shadow-2xl backdrop-blur-sm">
           {children}
         </div>
       </div>
@@ -191,9 +189,9 @@ export function PesquisaSatisfacao() {
   if (enviado) {
     return (
       <Painel>
-        <div className="space-y-4 text-center">
-          <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30">
-            <Check className="size-7 text-emerald-300" />
+        <div className="space-y-3 text-center">
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30">
+            <Check className="size-6 text-emerald-300" />
           </div>
           <div className="space-y-1">
             <p className="text-2xl font-semibold text-white">Obrigado!</p>
@@ -229,12 +227,12 @@ export function PesquisaSatisfacao() {
 
   return (
     <Painel>
-      <div className="space-y-6">
-        <div className="space-y-2 text-center">
+      <div className="space-y-4">
+        <div className="space-y-1 text-center">
           <span className="inline-flex items-center rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-slate-200">
             Chamado #{pesquisa?.ticketNumber}
           </span>
-          <h1 className="text-balance text-xl font-semibold leading-snug text-white">
+          <h1 className="text-balance text-base font-semibold leading-snug text-white">
             {pesquisa?.title ?? "—"}
           </h1>
           {pesquisa?.responsibleName ? (
@@ -244,8 +242,8 @@ export function PesquisaSatisfacao() {
           ) : null}
         </div>
 
-        <div className="space-y-3 rounded-xl bg-white/5 p-5 text-center">
-          <p className="text-base font-medium text-white">
+        <div className="space-y-2 rounded-xl bg-white/5 p-4 text-center">
+          <p className="text-sm font-medium text-white">
             Como foi o nosso atendimento?
           </p>
           <div className="flex items-center justify-center gap-1.5">
@@ -261,7 +259,7 @@ export function PesquisaSatisfacao() {
               >
                 <Star
                   className={cn(
-                    "size-10 transition-colors",
+                    "size-8 transition-colors",
                     valor <= exibida
                       ? "fill-amber-400 text-amber-400"
                       : "text-slate-600",
@@ -280,7 +278,7 @@ export function PesquisaSatisfacao() {
           </p>
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <label htmlFor="comentario" className="text-sm text-slate-300">
             Quer contar o que achou?{" "}
             <span className="text-slate-500">(opcional)</span>
@@ -289,7 +287,7 @@ export function PesquisaSatisfacao() {
             id="comentario"
             value={comentario}
             onChange={(e) => setComentario(e.target.value)}
-            rows={3}
+            rows={2}
             className="resize-none border-white/10 bg-white/5 text-white placeholder:text-slate-500"
             placeholder={
               nota > 0 && nota <= 2
@@ -303,7 +301,6 @@ export function PesquisaSatisfacao() {
 
         <Button
           type="button"
-          size="lg"
           className="w-full"
           disabled={nota < 1 || enviando}
           onClick={() => void enviar(nota, comentario)}
@@ -313,7 +310,7 @@ export function PesquisaSatisfacao() {
         </Button>
 
         <p className="text-center text-xs text-slate-500">
-          Leva um segundo e ajuda muito a melhorar o nosso atendimento.
+          Leva um segundo e ajuda a melhorar o nosso atendimento.
         </p>
       </div>
     </Painel>
