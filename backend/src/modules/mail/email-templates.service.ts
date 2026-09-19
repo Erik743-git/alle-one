@@ -64,9 +64,9 @@ const DEFAULTS: Array<{
     name: 'Chamado concluído',
     subject: 'Chamado #{{ticketNumber}} concluído — {{title}}',
     bodyHtml:
-      '<p>Olá {{requestorName}}.</p><p>O chamado <strong>#{{ticketNumber}} — {{title}}</strong> foi concluído em {{closedAt}}.</p><p>Situação: <strong>{{stageName}}</strong><br/>Atendimento: {{responsibleName}}</p><p>Se ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.</p><p>Atenciosamente.<br/>Alle Tecnologia.</p>',
+      '<p>Olá {{requestorName}}.</p><p>O chamado <strong>#{{ticketNumber}} — {{title}}</strong> foi concluído em {{closedAt}}.</p><p>Situação: <strong>{{stageName}}</strong><br/>Atendimento: {{responsibleName}}</p>{{pesquisaHtml}}<p>Se ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.</p><p>Atenciosamente.<br/>Alle Tecnologia.</p>',
     bodyText:
-      'Olá {{requestorName}}.\n\nO chamado #{{ticketNumber}} — {{title}} foi concluído em {{closedAt}}.\n\nSituação: {{stageName}}\nAtendimento: {{responsibleName}}\n\nSe ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.\n\nAtenciosamente.\nAlle Tecnologia.\n',
+      'Olá {{requestorName}}.\n\nO chamado #{{ticketNumber}} — {{title}} foi concluído em {{closedAt}}.\n\nSituação: {{stageName}}\nAtendimento: {{responsibleName}}\n\n{{pesquisaTexto}}\n\nSe ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.\n\nAtenciosamente.\nAlle Tecnologia.\n',
   },
 ];
 
@@ -247,9 +247,32 @@ export class EmailTemplatesService {
     stageName: string;
     responsibleName: string | null;
     closedAt: Date;
+    /** Token da pesquisa; sem ele o e-mail sai sem as estrelas. */
+    surveyToken?: string | null;
   }) {
     const to = params.to.trim();
     if (!to) return false;
+
+    // As estrelas são links: um clique já grava a nota, e a tela só pede o
+    // comentário. É o que separa 5% de resposta de 30%.
+    const portalUrl = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
+    const pesquisaLink = params.surveyToken
+      ? `${portalUrl}/satisfacao/${params.surveyToken}`
+      : '';
+    const estrelas = params.surveyToken
+      ? [1, 2, 3, 4, 5]
+          .map(
+            (nota) =>
+              `<a href="${pesquisaLink}?nota=${nota}" style="text-decoration:none;font-size:28px;margin:0 4px;" title="${nota} de 5">&#9733;</a>`,
+          )
+          .join('')
+      : '';
+    const pesquisaHtml = params.surveyToken
+      ? `<p>Como foi o nosso atendimento?</p><p style="margin:8px 0 4px">${estrelas}</p><p style="font-size:12px;color:#64748b">Clique em uma estrela — leva um segundo e ajuda muito.</p>`
+      : '';
+    const pesquisaTexto = params.surveyToken
+      ? `Como foi o nosso atendimento? Avalie em ${pesquisaLink}`
+      : '';
 
     const rendered = await this.getRendered(EMAIL_TEMPLATE_KEYS.TICKET_CLOSED, {
       ticketNumber: params.ticketNumber,
@@ -260,6 +283,8 @@ export class EmailTemplatesService {
       closedAt: params.closedAt.toLocaleString('pt-BR', {
         timeZone: 'America/Sao_Paulo',
       }),
+      pesquisaHtml,
+      pesquisaTexto,
     });
 
     try {
