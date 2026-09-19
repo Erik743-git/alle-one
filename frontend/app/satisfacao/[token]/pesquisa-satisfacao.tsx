@@ -20,6 +20,8 @@ type Pesquisa = {
   rating: number | null;
   comment: string | null;
   answeredAt: string | null;
+  /** Falso quando o prazo para trocar a nota já passou. */
+  editavel?: boolean;
 };
 
 const LEGENDA: Record<number, { texto: string; cor: string }> = {
@@ -148,6 +150,40 @@ export function PesquisaSatisfacao() {
     return (
       <Painel>
         <p className="py-8 text-center text-sm text-slate-300">{erro}</p>
+      </Painel>
+    );
+  }
+
+  // Já respondeu e o prazo de troca passou: mostra o que ficou registrado.
+  if (!enviado && pesquisa?.answeredAt && pesquisa.editavel === false) {
+    return (
+      <Painel>
+        <div className="space-y-4 text-center">
+          <p className="text-lg font-semibold text-white">
+            Chamado #{pesquisa.ticketNumber}
+          </p>
+          <p className="text-sm text-slate-300">
+            Você já avaliou este atendimento. Obrigado!
+          </p>
+          <div className="flex items-center justify-center gap-1">
+            {[1, 2, 3, 4, 5].map((v) => (
+              <Star
+                key={v}
+                className={cn(
+                  "size-6",
+                  v <= (pesquisa.rating ?? 0)
+                    ? "fill-amber-400 text-amber-400"
+                    : "text-slate-700",
+                )}
+              />
+            ))}
+          </div>
+          {pesquisa.comment ? (
+            <p className="text-sm italic text-slate-400">
+              “{pesquisa.comment}”
+            </p>
+          ) : null}
+        </div>
       </Painel>
     );
   }

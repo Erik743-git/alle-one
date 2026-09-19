@@ -7,10 +7,24 @@ import {
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 
+function podeTrocarNota(answeredAt: Date | null): boolean {
+  if (!answeredAt) return true;
+  const horas = (Date.now() - answeredAt.getTime()) / 3_600_000;
+  return horas < HORAS_PARA_TROCAR_NOTA;
+}
+
 /** Nota que dispara o alerta para alguém ligar para o cliente. */
 export const NOTA_ALERTA_MAXIMA = 2;
 /** Comentário gravado quando a pessoa elogia sem escrever nada. */
 export const COMENTARIO_PADRAO_ELOGIO = 'Bom atendimento!';
+/**
+ * Por quanto tempo a pessoa ainda pode mudar a nota depois de responder.
+ *
+ * A estrela do e-mail grava na hora — é o que garante a resposta de quem não
+ * quer escrever nada. Quem abre a tela em seguida troca a nota e comenta à
+ * vontade; passado esse prazo, a avaliação vira histórico e não muda mais.
+ */
+export const HORAS_PARA_TROCAR_NOTA = 24;
 
 export type RespostaPesquisa = {
   rating: number;
@@ -93,6 +107,11 @@ export class TicketSatisfactionService {
     return { token: criada.token, jaExistia: false };
   }
 
+  /** Ainda dentro do prazo para trocar a nota. */
+  static podeTrocar(answeredAt: Date | null): boolean {
+    return podeTrocarNota(answeredAt);
+  }
+
   /** Dados da tela pública, pelo token do e-mail. */
   async obterPorToken(token: string) {
     const pesquisa = await this.prisma.ticketSatisfactionSurvey.findUnique({
@@ -125,6 +144,8 @@ export class TicketSatisfactionService {
       rating: pesquisa.rating,
       comment: pesquisa.comment,
       answeredAt: pesquisa.answeredAt?.toISOString() ?? null,
+      // A tela usa isto para decidir entre pedir a nota e só mostrar.
+      editavel: podeTrocarNota(pesquisa.answeredAt),
     };
   }
 
@@ -144,10 +165,15 @@ export class TicketSatisfactionService {
 
     const pesquisa = await this.prisma.ticketSatisfactionSurvey.findUnique({
       where: { token },
-      select: { id: true, ticketNumber: true, rating: true },
+      select: { id: true, ticketNumber: true, rating: true, answeredAt: true },
     });
     if (!pesquisa) {
       throw new NotFoundException('Pesquisa não encontrada ou já expirada.');
+    }
+    if (pesquisa.answeredAt && !podeTrocarNota(pesquisa.answeredAt)) {
+      throw new BadRequestException(
+        'Esta avaliação já foi registrada e não pode mais ser alterada.',
+      );
     }
 
     const comentario = resposta.comment?.trim() || '';
