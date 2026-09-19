@@ -2207,7 +2207,7 @@ export class TicketsQueryService {
         await this.portalStore.patchStage(ticketNumber, targetStage.name, {
           isClosed: true,
         });
-        await this.appointments.notifyRoutineTicketClosed(
+        await this.appointments.notifyTicketClosed(
           ticketNumber,
           targetStage.name,
         );
@@ -2301,7 +2301,7 @@ export class TicketsQueryService {
       isClosed: Boolean(targetStage.lastStage),
     });
     if (targetStage.lastStage && !ticket.is_closed) {
-      await this.appointments.notifyRoutineTicketClosed(
+      await this.appointments.notifyTicketClosed(
         ticketNumber,
         stageName,
       );
