@@ -38,6 +38,7 @@ import {
   hydrateAppointmentDescriptionImages,
   type SavedAppointmentImage,
 } from './appointment-doc.util';
+import { TicketSatisfactionService } from './ticket-satisfaction.service';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import type { SendMailAttachment } from '../mail/mail.service';
 import {
@@ -159,6 +160,7 @@ export class TicketsAppointmentsService {
     private readonly projetos: ProjetosService,
     private readonly tenantScope: TenantScopeService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly satisfaction: TicketSatisfactionService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -1787,6 +1789,12 @@ export class TicketsAppointmentsService {
         return;
       }
 
+      // A pesquisa nasce junto com o aviso: as estrelas do e-mail são o
+      // link dela. Rotina não entra (o cliente não acompanhou o atendimento).
+      const pesquisa = await this.satisfaction
+        .criarParaTicketFechado({ ticketNumber, stageName })
+        .catch(() => null);
+
       await this.emailTemplates.sendTicketClosed({
         to,
         ticketNumber,
@@ -1795,6 +1803,7 @@ export class TicketsAppointmentsService {
         stageName,
         responsibleName: ticket.responsibleName,
         closedAt: new Date(),
+        surveyToken: pesquisa?.token ?? null,
       });
     } catch (err) {
       this.logger.warn(
