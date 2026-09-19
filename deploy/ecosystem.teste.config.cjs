@@ -26,6 +26,9 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: "3004",
+        // A API não sobe se o DATABASE_URL apontar para outro banco — já
+        // aconteceu de o teste subir ligado à produção por herança do shell.
+        ALLEONE_EXPECTED_DB: "portal_teste",
         // Espelho TiFlux → portal (igual produção): leitura portal_*, nada volta ao TiFlux.
         TICKETS_PORTAL_CANONICAL: "true",
         TICKETS_TIFLUX_WRITE: "false",
