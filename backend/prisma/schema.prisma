@@ -783,6 +783,9 @@ model TicketAutoOpenRule {
   lastErrorAt            DateTime?                 @map("last_error_at")
   /// Falhas seguidas; zera no primeiro sucesso. Desativa a regra ao estourar.
   consecutiveFailures    Int                       @default(0) @map("consecutive_failures")
+  /// Enquanto no futuro, o job não tenta esta regra de novo — é o intervalo
+  /// entre as tentativas da mesma ocorrência.
+  retryAt                DateTime?                 @map("retry_at")
   createdBy              String                    @map("created_by")
   createdAt              DateTime                  @default(now()) @map("created_at")
   updatedAt              DateTime                  @updatedAt @map("updated_at")

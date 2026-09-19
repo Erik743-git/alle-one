@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import {
   assertAllowedUpload,
@@ -45,6 +46,12 @@ const AUTO_OPEN_MAX_ATTACHMENTS = 10;
  * estrutural não pode ficar tentando para sempre.
  */
 const MAX_FALHAS_SEGUIDAS = 5;
+/**
+ * Espera (em minutos) antes de tentar de novo a MESMA ocorrência, por número
+ * de falhas seguidas. Sem essa pausa a regra vencida refalharia a cada tick do
+ * cron, de minuto em minuto.
+ */
+const ESPERA_ENTRE_TENTATIVAS_MIN = [5, 15, 30, 60];
 const AUTO_OPEN_PREVIEW_MAX_BYTES = 1024 * 1024;
 
 export type TicketAutoOpenRuleAttachmentDto = {
@@ -101,6 +108,7 @@ export class TicketAutoOpenService {
     private readonly permissionsService: PermissionsService,
     private readonly catalogs: TicketsCatalogsService,
     private readonly fileStorage: FileStorageService,
+    private readonly mail: MailService,
   ) {}
 
   private map(
@@ -657,6 +665,8 @@ export class TicketAutoOpenService {
         scheduleTime: rule.scheduleTime,
       });
       if (dueAt.getTime() > now.getTime()) continue;
+      // Aguardando a próxima tentativa desta mesma ocorrência.
+      if (rule.retryAt && rule.retryAt.getTime() > now.getTime()) continue;
 
       try {
         const descriptionPlain = appointmentDescriptionToPlainText(
@@ -702,6 +712,7 @@ export class TicketAutoOpenService {
           consecutiveFailures: number;
           lastError: string | null;
           lastErrorAt: Date | null;
+          retryAt: Date | null;
         } = {
           lastRunAt: now,
           lastTicketNumber: result.ticketNumber,
@@ -709,6 +720,7 @@ export class TicketAutoOpenService {
           consecutiveFailures: 0,
           lastError: null,
           lastErrorAt: null,
+          retryAt: null,
         };
 
         if (rule.periodicity === TicketAutoOpenPeriodicity.ONCE) {
@@ -768,12 +780,6 @@ export class TicketAutoOpenService {
           err instanceof Error ? err.stack : undefined,
         );
 
-        // Sem avançar a data, a regra continua vencida e refalha em TODO tick
-        // do cron, para sempre — foi o que encheu o log de staging com a
-        // mesma regra de dias atrás. Avança para a próxima ocorrência e
-        // registra a falha; assim o erro fica visível na tela em vez de só
-        // no log, e a regra tem chance de voltar sozinha quando o motivo
-        // for corrigido.
         await this.registerRuleFailure(rule, message, now);
       }
     }
@@ -782,12 +788,17 @@ export class TicketAutoOpenService {
   }
 
   /**
-   * Reagenda a regra que falhou e guarda o motivo.
+   * Guarda o motivo da falha e marca quando tentar de novo.
    *
-   * Depois de MAX_FALHAS_SEGUIDAS tentativas seguidas sem sucesso a regra é
-   * desativada: se a causa é estrutural — classificação que deixou de ser o
-   * nível mais específico, usuário criador removido — insistir a cada tick só
-   * gera ruído. O motivo fica gravado para o admin ver e reativar.
+   * A data da ocorrência NÃO avança: antes ela avançava, e o chamado daquele
+   * dia simplesmente não existia — ninguém percebia, porque a regra voltava a
+   * funcionar no dia seguinte. Agora a mesma ocorrência é tentada de novo,
+   * com intervalo crescente para não refalhar a cada minuto.
+   *
+   * Depois de MAX_FALHAS_SEGUIDAS a regra é desativada e o criador recebe um
+   * aviso: erro estrutural — classificação que deixou de ser o nível mais
+   * específico, usuário criador removido — não se resolve tentando. A data
+   * continua parada na ocorrência que falhou, então reativar retoma dali.
    */
   private async registerRuleFailure(
     rule: {
@@ -802,6 +813,10 @@ export class TicketAutoOpenService {
   ) {
     const falhas = (rule.consecutiveFailures ?? 0) + 1;
     const desativar = falhas >= MAX_FALHAS_SEGUIDAS;
+    const esperaMin =
+      ESPERA_ENTRE_TENTATIVAS_MIN[
+        Math.min(falhas - 1, ESPERA_ENTRE_TENTATIVAS_MIN.length - 1)
+      ];
 
     try {
       await this.prisma.ticketAutoOpenRule.update({
@@ -811,24 +826,82 @@ export class TicketAutoOpenService {
           lastErrorAt: now,
           consecutiveFailures: falhas,
           ...(desativar
-            ? { active: false }
-            : {
-                nextScheduledDate: advanceScheduledDate(
-                  rule.nextScheduledDate,
-                  rule.periodicity,
-                ),
-              }),
+            ? { active: false, retryAt: null }
+            : { retryAt: new Date(now.getTime() + esperaMin * 60_000) }),
         },
       });
       if (desativar) {
         this.logger.error(
           `Regra "${rule.name}" desativada após ${falhas} falhas seguidas. Último motivo: ${message}`,
         );
+        await this.avisarRegraDesativada(rule, message, falhas);
+      } else {
+        this.logger.warn(
+          `Regra "${rule.name}": falha ${falhas}/${MAX_FALHAS_SEGUIDAS}, nova tentativa em ${esperaMin} min.`,
+        );
       }
     } catch (err) {
       // Não pode derrubar o processamento das demais regras.
       this.logger.error(
         `Falha ao registrar erro da regra "${rule.name}": ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Avisa quem criou a regra que ela parou. Sem isso a rotina ficava
+   * desligada em silêncio e o cliente é que percebia, pela falta do chamado.
+   */
+  private async avisarRegraDesativada(
+    rule: { id: string; name: string; nextScheduledDate: Date },
+    message: string,
+    falhas: number,
+  ) {
+    try {
+      // Vai para todos os administradores, não só para quem criou a regra:
+      // quem criou pode estar de férias ou nem trabalhar mais aqui, e a
+      // rotina parada é problema do time.
+      const admins = await this.prisma.user.findMany({
+        where: { role: 'ADMIN', status: 'ACTIVE', deletedAt: null },
+        select: { email: true },
+      });
+      const to = [
+        ...new Set(
+          admins
+            .map((row) => row.email?.trim().toLowerCase())
+            .filter((email): email is string => Boolean(email)),
+        ),
+      ];
+      if (to.length === 0) {
+        this.logger.warn(
+          `Regra "${rule.name}" desativada, mas não há administrador ativo para avisar.`,
+        );
+        return;
+      }
+
+      const dia = formatYmdUtc(rule.nextScheduledDate);
+      const assunto = `[Alle One] Rotina desativada: ${rule.name}`;
+      const texto = [
+        `A rotina "${rule.name}" foi desativada depois de ${falhas} tentativas seguidas sem sucesso.`,
+        '',
+        `Ocorrência parada em: ${dia}`,
+        `Último erro: ${message}`,
+        '',
+        'O chamado desse dia NÃO foi aberto. Corrija o motivo e reative a',
+        'regra em Admin → Ticket; ela retoma a partir dessa mesma data.',
+      ].join('\n');
+
+      await this.mail.sendMail({
+        to,
+        subject: assunto,
+        text: texto,
+        html: `<p>${texto.replace(/\n/g, '<br>')}</p>`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao avisar sobre a regra "${rule.name}": ${
           err instanceof Error ? err.message : err
         }`,
       );
