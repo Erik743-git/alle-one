@@ -65,9 +65,9 @@ export function PesquisaSatisfacao() {
   const [enviado, setEnviado] = useState(false);
 
   const enviar = useCallback(
-    async (valor: number, texto: string) => {
+    async (valor: number, texto: string, silencioso = false) => {
       if (valor < 1 || valor > 5) return;
-      setEnviando(true);
+      if (!silencioso) setEnviando(true);
       setErro(null);
       try {
         const res = await fetch(`${API_URL}/satisfacao/${token}`, {
@@ -83,13 +83,18 @@ export function PesquisaSatisfacao() {
           const corpo = await res.json().catch(() => null);
           throw new Error(corpo?.message ?? "Não foi possível registrar.");
         }
-        setEnviado(true);
+        // Quando a nota veio de um clique no e-mail, a pessoa segue na tela
+        // para escrever o comentário: trocar para o "Obrigado" aqui tirava
+        // essa chance dela.
+        if (!silencioso) setEnviado(true);
       } catch (err) {
-        setErro(
-          err instanceof Error ? err.message : "Não foi possível registrar.",
-        );
+        if (!silencioso) {
+          setErro(
+            err instanceof Error ? err.message : "Não foi possível registrar.",
+          );
+        }
       } finally {
-        setEnviando(false);
+        if (!silencioso) setEnviando(false);
       }
     },
     [token],
@@ -111,8 +116,7 @@ export function PesquisaSatisfacao() {
         // Veio de uma estrela do e-mail: grava na hora, para a nota não se
         // perder se a pessoa fechar a aba sem comentar.
         if (daLink && !dados.answeredAt) {
-          void enviar(notaDoLink, "");
-          setEnviado(false);
+          void enviar(notaDoLink, "", true);
         }
       } catch (err) {
         if (!cancelado) {
