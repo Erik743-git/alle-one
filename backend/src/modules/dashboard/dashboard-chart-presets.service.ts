@@ -83,9 +83,13 @@ export class DashboardChartPresetsService {
     const key = this.normalizeChartKey(body.chartKey);
     const resolvedCompanyId = this.resolveCompanyId(user, body.companyId);
     const chartType = this.normalizeChartType(body.chartType, key);
+    // CHAMADOS e HORAS quebram por mesa; ALERTAS vem do Zabbix e não tem.
+    const aceitaMesas = key === 'CHAMADOS' || key === 'HORAS';
     const deskNames =
-      key === 'CHAMADOS' && Array.isArray(body.deskNames)
-        ? body.deskNames.map((d) => String(d).trim()).filter(Boolean)
+      aceitaMesas && Array.isArray(body.deskNames)
+        ? Array.from(
+            new Set(body.deskNames.map((d) => String(d).trim()).filter(Boolean)),
+          )
         : [];
     const periodDays = this.normalizePeriodDays(body.periodDays);
 

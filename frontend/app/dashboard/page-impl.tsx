@@ -38,6 +38,11 @@ import {
   type Company,
 } from "@/lib/services/companies.service";
 import { isMonitoringPeriodWeekly } from "@/lib/monitoring-period";
+import {
+  deskNamesFromRows,
+  deskValue,
+  resolveVisibleDesks,
+} from "@/lib/dashboard-desks";
 import { cn } from "@/lib/utils";
 import {
   getCompleteDashboard,
@@ -224,16 +229,9 @@ function buildEmptyHoursRows(
       year: "numeric",
     });
 
-    rows.push({
-      monthKey,
-      monthLabel,
-      Infraestrutura: 0,
-      Sistema: 0,
-      NOC: 0,
-      Rotinas: 0,
-      Consult: 0,
-      Total: 0,
-    });
+    // Sem mesa nenhuma: são os meses vazios que seguram o eixo do gráfico
+    // enquanto as horas não chegam.
+    rows.push({ monthKey, monthLabel, Total: 0 });
 
     cursor.setMonth(cursor.getMonth() + 1);
   }
@@ -447,7 +445,12 @@ function DashboardPageImpl() {
     HORAS: "bar",
     ALERTAS: "line",
   });
-  const [deskNamesFilter, setDeskNamesFilter] = useState<string[]>([]);
+  // Mesas que cada gráfico desenha. Vazio = as mais movimentadas do
+  // período (ver resolveVisibleDesks). É só visual: não filtra a consulta,
+  // senão os cartões de total mudariam junto com a escolha do gráfico.
+  const [deskNamesByChart, setDeskNamesByChart] = useState<
+    Record<"CHAMADOS" | "HORAS", string[]>
+  >({ CHAMADOS: [], HORAS: [] });
   const [editChartKey, setEditChartKey] = useState<DashboardChartKey | null>(
     null,
   );
@@ -504,16 +507,22 @@ function DashboardPageImpl() {
           HORAS: "bar",
           ALERTAS: "line",
         };
+        const nextDesks: Record<"CHAMADOS" | "HORAS", string[]> = {
+          CHAMADOS: [],
+          HORAS: [],
+        };
         for (let i = 0; i < keys.length; i++) {
           const preset = presets[i];
           const chartKey = keys[i];
           if (!preset) continue;
+          if (chartKey === "CHAMADOS" || chartKey === "HORAS") {
+            nextDesks[chartKey] = preset.deskNames ?? [];
+          }
           if (chartKey === "CHAMADOS") {
             nextTypes.CHAMADOS =
               preset.chartType === "line" || preset.chartType === "pie"
                 ? preset.chartType
                 : "bar";
-            setDeskNamesFilter(preset.deskNames ?? []);
             setPresetPeriodDays(preset.periodDays ?? 30);
             const end = new Date();
             const start = new Date();
@@ -528,6 +537,7 @@ function DashboardPageImpl() {
           }
         }
         setChartTypes(nextTypes);
+        setDeskNamesByChart(nextDesks);
       } catch {
         /* preset opcional */
       }
@@ -678,7 +688,8 @@ function DashboardPageImpl() {
           start: toRangeDateString(startDate, false),
           end: toRangeDateString(endDate, true),
           companyId: effectiveCompanyId,
-          deskNames: deskNamesFilter,
+          // A escolha de mesas não entra aqui: ela decide o que o gráfico
+          // desenha, e os cartões de total continuam contando tudo.
           ...(isClientUser ? { viewMode: clientViewMode } : {}),
         };
 
@@ -810,7 +821,7 @@ function DashboardPageImpl() {
         }
       }
     },
-    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, selectedCompanyId, startDate, user?.companyId, user?.role, isClientUser, clientViewMode, deskNamesFilter],
+    [companies, companiesLoading, endDate, getEffectiveCompanyId, canSelectCompany, refreshCooldownUntil, selectedCompanyId, startDate, user?.companyId, user?.role, isClientUser, clientViewMode],
   );
 
   useEffect(() => {
@@ -846,6 +857,25 @@ function DashboardPageImpl() {
   const horasChartData = useMemo<DashboardHorasMes[]>(() => {
     return dashboard?.horasPorMes ?? [];
   }, [dashboard]);
+
+  const chamadosDesks = useMemo(
+    () => resolveVisibleDesks(chamadosChartData, deskNamesByChart.CHAMADOS),
+    [chamadosChartData, deskNamesByChart.CHAMADOS],
+  );
+
+  const horasDesks = useMemo(
+    () => resolveVisibleDesks(horasChartData, deskNamesByChart.HORAS),
+    [horasChartData, deskNamesByChart.HORAS],
+  );
+
+  /** Mesas oferecidas no "Editar gráfico" de cada um dos dois. */
+  const mesasDisponiveis = useMemo(
+    () => ({
+      CHAMADOS: deskNamesFromRows(chamadosChartData),
+      HORAS: deskNamesFromRows(horasChartData),
+    }),
+    [chamadosChartData, horasChartData],
+  );
 
   const alertasChartData = useMemo<DashboardAlertasMes[]>(() => {
     return dashboard?.alertasPorMes ?? [];
@@ -1191,11 +1221,11 @@ function DashboardPageImpl() {
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
-                      <th className="px-4 py-3">Infraestrutura</th>
-                      <th className="px-4 py-3">Sistema</th>
-                      <th className="px-4 py-3">NOC</th>
-                      <th className="px-4 py-3">Rotinas</th>
-                      <th className="px-4 py-3">Consult</th>
+                      {chamadosDesks.map((mesa) => (
+                        <th key={mesa} className="px-4 py-3">
+                          {mesa}
+                        </th>
+                      ))}
                       <th className="px-4 py-3">Total</th>
                     </tr>
                   </thead>
@@ -1203,11 +1233,11 @@ function DashboardPageImpl() {
                     {chamadosChartData.map((row) => (
                       <tr key={row.monthKey} className="border-t border-border/60">
                         <td className="px-4 py-3">{row.monthLabel}</td>
-                        <td className="px-4 py-3">{row.Infraestrutura}</td>
-                        <td className="px-4 py-3">{row.Sistema}</td>
-                        <td className="px-4 py-3">{row.NOC}</td>
-                        <td className="px-4 py-3">{row.Rotinas}</td>
-                        <td className="px-4 py-3">{row.Consult ?? 0}</td>
+                        {chamadosDesks.map((mesa) => (
+                          <td key={mesa} className="px-4 py-3">
+                            {deskValue(row, mesa)}
+                          </td>
+                        ))}
                         <td className="px-4 py-3 font-bold text-primary">
                           {row.Total}
                         </td>
@@ -1222,6 +1252,7 @@ function DashboardPageImpl() {
                 data={chamadosChartData}
                 chartType={chartTypes.CHAMADOS}
                 deskData={dashboard?.chamadosPorMesa ?? []}
+                deskNames={chamadosDesks}
               />
 
               {dashboard?.resumoHorasTrabalhadas ? (
@@ -1322,11 +1353,11 @@ function DashboardPageImpl() {
                   <thead className="bg-primary/15 text-foreground">
                     <tr>
                       <th className="px-4 py-3">Mês</th>
-                      <th className="px-4 py-3">Infraestrutura</th>
-                      <th className="px-4 py-3">Sistema</th>
-                      <th className="px-4 py-3">NOC</th>
-                      <th className="px-4 py-3">Rotinas</th>
-                      <th className="px-4 py-3">Consult</th>
+                      {horasDesks.map((mesa) => (
+                        <th key={mesa} className="px-4 py-3">
+                          {mesa}
+                        </th>
+                      ))}
                       <th className="px-4 py-3">Total</th>
                     </tr>
                   </thead>
@@ -1334,11 +1365,11 @@ function DashboardPageImpl() {
                     {horasChartData.map((row) => (
                       <tr key={row.monthKey} className="border-t border-border/60">
                         <td className="px-4 py-3">{row.monthLabel}</td>
-                        <td className="px-4 py-3">{row.Infraestrutura}</td>
-                        <td className="px-4 py-3">{row.Sistema}</td>
-                        <td className="px-4 py-3">{row.NOC}</td>
-                        <td className="px-4 py-3">{row.Rotinas}</td>
-                        <td className="px-4 py-3">{row.Consult ?? 0}</td>
+                        {horasDesks.map((mesa) => (
+                          <td key={mesa} className="px-4 py-3">
+                            {deskValue(row, mesa)}
+                          </td>
+                        ))}
                         <td className="px-4 py-3 font-bold text-primary">
                           {row.Total}
                         </td>
@@ -1354,6 +1385,7 @@ function DashboardPageImpl() {
                 chartType={
                   chartTypes.HORAS === "line" ? "line" : "bar"
                 }
+                deskNames={horasDesks}
               />
             </CardContent>
           </Card>
@@ -1525,19 +1557,30 @@ function DashboardPageImpl() {
             }
             viewMode={presetViewMode}
             companyId={presetCompanyId}
-            availableDesks={(dashboard?.chamadosPorMesa ?? []).map(
-              (d) => d.deskName,
-            )}
+            availableDesks={
+              editChartKey === "CHAMADOS" || editChartKey === "HORAS"
+                ? mesasDisponiveis[editChartKey]
+                : []
+            }
             initialChartType={chartTypes[editChartKey]}
-            initialDeskNames={deskNamesFilter}
+            initialDeskNames={
+              editChartKey === "CHAMADOS" || editChartKey === "HORAS"
+                ? deskNamesByChart[editChartKey]
+                : []
+            }
             initialPeriodDays={presetPeriodDays}
             onSaved={(next) => {
               setChartTypes((prev) => ({
                 ...prev,
                 [next.chartKey]: next.chartType,
               }));
+              if (next.chartKey === "CHAMADOS" || next.chartKey === "HORAS") {
+                setDeskNamesByChart((prev) => ({
+                  ...prev,
+                  [next.chartKey as "CHAMADOS" | "HORAS"]: next.deskNames,
+                }));
+              }
               if (next.chartKey === "CHAMADOS") {
-                setDeskNamesFilter(next.deskNames);
                 setPresetPeriodDays(next.periodDays);
                 const end = new Date();
                 const start = new Date();

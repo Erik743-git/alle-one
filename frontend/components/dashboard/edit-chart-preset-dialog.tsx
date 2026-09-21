@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { MESAS_PADRAO_NO_GRAFICO } from "@/lib/dashboard-desks";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -125,7 +126,8 @@ export function EditChartPresetDialog({
   const [selectedDesks, setSelectedDesks] = useState<string[]>(initialDeskNames);
   const [saving, setSaving] = useState(false);
 
-  const showDesks = chartKey === "CHAMADOS";
+  // CHAMADOS e HORAS quebram por mesa; ALERTAS vem do Zabbix e não tem.
+  const showDesks = chartKey === "CHAMADOS" || chartKey === "HORAS";
   const chartOptions =
     chartKey === "CHAMADOS" ? CHART_OPTIONS_FULL : CHART_OPTIONS_BASIC;
 
@@ -205,13 +207,24 @@ export function EditChartPresetDialog({
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                     Mesas
                   </p>
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => setSelectedDesks([])}
-                  >
-                    Todas
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={() =>
+                        setSelectedDesks(deskOptions.map((d) => d.value))
+                      }
+                    >
+                      Todas
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:underline"
+                      onClick={() => setSelectedDesks([])}
+                    >
+                      Padrão
+                    </button>
+                  </div>
                 </div>
                 <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
                   {deskOptions.length === 0 ? (
@@ -249,10 +262,9 @@ export function EditChartPresetDialog({
                   )}
                 </div>
                 <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  Vazio = todas as mesas.{" "}
                   {selectedDesks.length > 0
-                    ? `${selectedDesks.length} selecionada(s).`
-                    : null}
+                    ? `${selectedDesks.length} mesa(s) no gráfico.`
+                    : `Nenhuma marcada: o gráfico mostra as ${MESAS_PADRAO_NO_GRAFICO} mesas com mais movimento no período.`}
                 </p>
               </div>
             ) : null}

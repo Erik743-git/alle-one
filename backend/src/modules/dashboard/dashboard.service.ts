@@ -6,11 +6,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import { ZabbixService } from '../zabbix/zabbix.service';
 import {
-  categorizeTicketByDesk,
-  DESK_CATEGORY_KEYS,
-  emptyDeskCategoryCounts,
-  sqlDeskCategoryCase,
-  type DeskCategory,
+  addToDesk,
+  deskNamesFromRows,
+  fillMissingDesks,
+  getDeskNameFromTicket,
+  normalizeDeskName,
+  sqlDeskNameExpression,
 } from './desk-categories';
 import {
   buildMonthMap,
@@ -245,23 +246,13 @@ export class DashboardService {
       ([monthKey, monthLabel]) => ({
         monthKey,
         monthLabel,
-        ...emptyDeskCategoryCounts(),
         Total: 0,
       }),
     );
   }
 
-  private categorizeTicket(ticket: Record<string, unknown>): DeskCategory {
-    return categorizeTicketByDesk(ticket);
-  }
-
   private getDeskNameFromTicket(ticket: Record<string, unknown>): string {
-    const desk =
-      typeof ticket.desk === 'object' && ticket.desk && 'name' in ticket.desk
-        ? String((ticket.desk as { name?: unknown }).name ?? '')
-        : '';
-    const normalized = desk.trim();
-    return normalized || 'Sem mesa';
+    return getDeskNameFromTicket(ticket);
   }
 
   private buildDeskSummaryFromTickets(
@@ -306,12 +297,12 @@ export class DashboardService {
         continue;
       }
 
-      const category = this.categorizeTicket(ticket);
-      row[category] += 1;
-      row.Total += 1;
+      addToDesk(row, this.getDeskNameFromTicket(ticket), 1);
     }
 
-    return Array.from(rows.values());
+    const todas = Array.from(rows.values());
+    fillMissingDesks(todas, deskNamesFromRows(todas));
+    return todas;
   }
 
   private mergeTicketAggregationRows(
@@ -326,12 +317,11 @@ export class DashboardService {
     for (const item of aggRows) {
       const row = rows.get(item.month_key);
       if (!row) continue;
-      const category = item.category as DeskCategory;
-      if (!DESK_CATEGORY_KEYS.includes(category)) continue;
-      row[category] += item.cnt;
-      row.Total += item.cnt;
+      addToDesk(row, normalizeDeskName(item.category), item.cnt);
     }
-    return Array.from(rows.values());
+    const todas = Array.from(rows.values());
+    fillMissingDesks(todas, deskNamesFromRows(todas));
+    return todas;
   }
 
   /**
@@ -415,7 +405,9 @@ export class DashboardService {
     const totalTickets = countRows[0]?.total_all ?? 0;
     const totalOpenTickets = countRows[0]?.total_open ?? 0;
 
-    const categorySql = sqlDeskCategoryCase('t');
+    // A série do gráfico é a mesa do chamado, não mais uma das 5
+    // categorias adivinhadas por palavra-chave.
+    const categorySql = sqlDeskNameExpression('t');
     const { startDate, endDate } = getRange(params.startISO, params.endISO);
 
     const monthAggRows =
