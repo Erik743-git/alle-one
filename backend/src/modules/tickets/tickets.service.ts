@@ -731,7 +731,18 @@ export class TicketsService {
         })
         .catch(() => undefined);
 
-      const actorName = await actorDisplayName(this.prisma, actor);
+      // Chamado de rotina roda em nome de quem criou a regra, mas quem abriu
+      // foi a automação: sem isso o histórico dizia "Fulano abriu o chamado"
+      // para alguém que estava dormindo na hora.
+      const actorName =
+        ticketCreatedBy !== actor.userId
+          ? ((
+              await this.prisma.user.findUnique({
+                where: { id: ticketCreatedBy },
+                select: { name: true },
+              })
+            )?.name ?? 'Automação')
+          : await actorDisplayName(this.prisma, actor);
       await recordPortalTicketHistory(this.prisma, {
         ticketNumber,
         eventType: 'TICKET_CREATED',
