@@ -105,3 +105,60 @@ describe('o que a tela pergunta antes de abrir', () => {
     ).toBe(true);
   });
 });
+
+/**
+ * Empresa e solicitante ao abrir.
+ *
+ * O pré-ticket PODE chegar sem empresa — é o caso de e-mail de remetente
+ * não cadastrado. O que não pode é o chamado nascer assim: quem atende
+ * informa na hora de abrir.
+ */
+function resolverEmpresa(params: {
+  dtoCompanyId?: string;
+  rowCompanyId?: string | null;
+}): string | null {
+  return params.dtoCompanyId?.trim() || params.rowCompanyId || null;
+}
+
+/** O nome do remetente é opcional no e-mail; o endereço sempre existe. */
+function resolverSolicitante(row: {
+  fromName?: string | null;
+  fromEmail: string;
+}): string {
+  return row.fromName?.trim() || row.fromEmail;
+}
+
+describe('empresa ao abrir pré-ticket', () => {
+  it('usa a empresa escolhida na tela', () => {
+    expect(resolverEmpresa({ dtoCompanyId: 'empresa-1' })).toBe('empresa-1');
+  });
+
+  it('usa a empresa que o e-mail já tinha reconhecido', () => {
+    expect(resolverEmpresa({ rowCompanyId: 'empresa-2' })).toBe('empresa-2');
+  });
+
+  it('não abre chamado sem empresa nenhuma', () => {
+    expect(resolverEmpresa({ rowCompanyId: null })).toBeNull();
+  });
+});
+
+describe('solicitante do chamado vindo de e-mail', () => {
+  it('usa o nome do remetente quando veio', () => {
+    expect(
+      resolverSolicitante({ fromName: 'Jucemar Melo', fromEmail: 'j@x.com' }),
+    ).toBe('Jucemar Melo');
+  });
+
+  it('cai no endereço quando o e-mail não trouxe nome', () => {
+    expect(resolverSolicitante({ fromEmail: 'j@x.com' })).toBe('j@x.com');
+    expect(
+      resolverSolicitante({ fromName: '   ', fromEmail: 'j@x.com' }),
+    ).toBe('j@x.com');
+  });
+
+  it('nunca devolve vazio', () => {
+    expect(
+      resolverSolicitante({ fromName: null, fromEmail: 'a@b.com' }).length,
+    ).toBeGreaterThan(0);
+  });
+});

@@ -458,6 +458,14 @@ export class PreTicketsService {
         })
       : null;
 
+    // Pré-ticket pode chegar sem empresa (remetente não reconhecido), mas o
+    // chamado não pode nascer sem: quem atende informa na hora de abrir.
+    if (!company) {
+      throw new BadRequestException(
+        'Escolha a empresa antes de abrir o chamado: o remetente deste e-mail não foi reconhecido.',
+      );
+    }
+
     const specialtyId =
       dto.specialtyId?.trim() || dto.deskId?.trim() || row.specialtyId;
     const desk = specialtyId
@@ -578,7 +586,10 @@ export class PreTicketsService {
       deskName: desk?.name ?? null,
       responsibleExternalId: resolvedResponsibleExternalId,
       responsibleName,
-      requestorName: row.fromName,
+      // O nome do remetente é opcional no e-mail; o endereço sempre existe.
+      // Sem esse fallback o chamado nascia sem solicitante e sumia dos
+      // filtros e relatórios que se guiam por ele.
+      requestorName: row.fromName?.trim() || row.fromEmail,
       requestorEmail: row.fromEmail,
       requestorTelephone: null,
       statusName: PORTAL_STAGE.NOVO,

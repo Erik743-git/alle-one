@@ -74,6 +74,7 @@ import {
 } from "@/lib/module-copy";
 import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { formatDateTime } from "@/lib/date-utils";
 import {
   canAppointmentOnTicketStage,
   findExecutionStageOption,
@@ -1136,6 +1137,11 @@ function TicketDetailPageImpl() {
                     <h2 className="text-sm font-semibold text-foreground">
                       Descrição
                     </h2>
+                    {ticket?.createdAt ? (
+                      <span className="text-xs text-muted-foreground">
+                        Aberto em {formatDateTime(ticket.createdAt)}
+                      </span>
+                    ) : null}
                   </div>
                   <div className="px-4 py-3">
                     <AppointmentDescriptionView
