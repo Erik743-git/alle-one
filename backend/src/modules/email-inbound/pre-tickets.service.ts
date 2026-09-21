@@ -465,6 +465,15 @@ export class PreTicketsService {
           where: { id: specialtyId, deletedAt: null },
         })
       : null;
+    // Abrir chamado pela tela exige mesa; abrir a partir do e-mail não
+    // exigia, e o chamado nascia sem nenhuma quando o remetente não casava
+    // com uma regra de direcionamento. Sem mesa ele fica fora da fila da
+    // equipe e da distribuição por mesa dos relatórios.
+    if (!desk) {
+      throw new BadRequestException(
+        'Escolha a mesa antes de abrir o chamado: este e-mail não casou com nenhuma regra de direcionamento.',
+      );
+    }
 
     const title = (dto.title?.trim() || row.title).slice(0, 500);
     // Mantém HTML quando há imagem embutida; senão usa texto limpo.

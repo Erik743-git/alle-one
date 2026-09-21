@@ -18,7 +18,10 @@ import {
   emailInboundService,
   type PreTicketListItem,
 } from "@/lib/services/email-inbound.service";
-import { PreTicketCompanyDialog } from "@/components/tickets/pre-ticket-company-dialog";
+import {
+  PreTicketCompanyDialog,
+  type PreTicketOpenChoice,
+} from "@/components/tickets/pre-ticket-company-dialog";
 import { Check, Lock, Trash2 } from "lucide-react";
 import { getStoredUser } from "@/lib/session";
 import { useRouter } from "next/navigation";
@@ -170,13 +173,15 @@ function PreTicketsPageImpl() {
   // Pré-ticket sem empresa reconhecida: pergunta antes de abrir, senão o
   // chamado nasce sem cliente e alguém tem que completar na edição.
   const [companyAskId, setCompanyAskId] = useState<string | null>(null);
+  const [askCompany, setAskCompany] = useState(false);
+  const [askDesk, setAskDesk] = useState(false);
 
-  async function openTicket(id: string, companyId?: string) {
+  async function openTicket(id: string, choice?: PreTicketOpenChoice) {
     setBusy(true);
     try {
       const r = await emailInboundService.openPreTicket(
         id,
-        companyId ? { companyId } : undefined,
+        choice && (choice.companyId || choice.specialtyId) ? choice : undefined,
       );
       setCompanyAskId(null);
       router.push(`/tickets/${r.ticketNumber}`);
@@ -188,10 +193,18 @@ function PreTicketsPageImpl() {
   }
 
   function startOpenTicket(row: PreTicketListItem) {
-    if (row.company?.name?.trim()) {
+    const temEmpresa = Boolean(row.company?.name?.trim());
+    // A mesa vem da regra de direcionamento do e-mail; sem ela o chamado
+    // nasceria fora da fila de qualquer equipe.
+    const temMesa = Boolean(
+      row.specialty?.id?.trim() || row.desk?.id?.trim(),
+    );
+    if (temEmpresa && temMesa) {
       void openTicket(row.id);
       return;
     }
+    setAskCompany(!temEmpresa);
+    setAskDesk(!temMesa);
     setCompanyAskId(row.id);
   }
 
@@ -515,11 +528,13 @@ function PreTicketsPageImpl() {
 
         <PreTicketCompanyDialog
           open={companyAskId != null}
+          askCompany={askCompany}
+          askDesk={askDesk}
           onOpenChange={(open) => {
             if (!open) setCompanyAskId(null);
           }}
-          onConfirm={(companyId) => {
-            if (companyAskId) void openTicket(companyAskId, companyId);
+          onConfirm={(choice) => {
+            if (companyAskId) void openTicket(companyAskId, choice);
           }}
           busy={busy}
         />

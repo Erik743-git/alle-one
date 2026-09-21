@@ -12,7 +12,10 @@ import {
   type PreTicketDetail,
 } from "@/lib/services/email-inbound.service";
 import { EmailHtmlFrame } from "@/components/tickets/email-html-frame";
-import { PreTicketCompanyDialog } from "@/components/tickets/pre-ticket-company-dialog";
+import {
+  PreTicketCompanyDialog,
+  type PreTicketOpenChoice,
+} from "@/components/tickets/pre-ticket-company-dialog";
 import { Download, Trash2 } from "lucide-react";
 import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
 
@@ -44,17 +47,19 @@ function PreTicketDetailPageImpl() {
 
   // Sem empresa reconhecida, pergunta antes de abrir (ver a lista de
   // pré-tickets: o chamado nascia sem cliente).
+  const [askDialog, setAskDialog] = useState(false);
   const [askCompany, setAskCompany] = useState(false);
+  const [askDesk, setAskDesk] = useState(false);
 
-  async function openTicket(companyId?: string) {
+  async function openTicket(choice?: PreTicketOpenChoice) {
     if (!item) return;
     setBusy(true);
     try {
       const r = await emailInboundService.openPreTicket(
         item.id,
-        companyId ? { companyId } : undefined,
+        choice && (choice.companyId || choice.specialtyId) ? choice : undefined,
       );
-      setAskCompany(false);
+      setAskDialog(false);
       router.push(`/tickets/${r.ticketNumber}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao abrir");
@@ -64,11 +69,19 @@ function PreTicketDetailPageImpl() {
   }
 
   function startOpenTicket() {
-    if (item?.company?.name?.trim()) {
+    const temEmpresa = Boolean(item?.company?.name?.trim());
+    // Sem mesa o chamado nasce fora da fila de qualquer equipe e some da
+    // distribuição por mesa dos relatórios.
+    const temMesa = Boolean(
+      item?.specialty?.id?.trim() || item?.desk?.id?.trim(),
+    );
+    if (temEmpresa && temMesa) {
       void openTicket();
       return;
     }
-    setAskCompany(true);
+    setAskCompany(!temEmpresa);
+    setAskDesk(!temMesa);
+    setAskDialog(true);
   }
 
   async function remove() {
@@ -226,9 +239,11 @@ function PreTicketDetailPageImpl() {
         </div>
 
         <PreTicketCompanyDialog
-          open={askCompany}
-          onOpenChange={setAskCompany}
-          onConfirm={(companyId) => void openTicket(companyId)}
+          open={askDialog}
+          askCompany={askCompany}
+          askDesk={askDesk}
+          onOpenChange={setAskDialog}
+          onConfirm={(choice) => void openTicket(choice)}
           busy={busy}
         />
       </AppShell>
