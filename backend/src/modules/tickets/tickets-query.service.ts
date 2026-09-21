@@ -433,9 +433,18 @@ export class TicketsQueryService {
       );
     }
     if (search) {
+      // Cada palavra é procurada por conta própria, em qualquer ordem: o
+      // título de rotina é "[ROTINAS] [Tuper] Movimentação de fitas", e
+      // procurar a frase inteira não achava nada por causa dos colchetes.
+      const palavras = search.split(/s+/).filter(Boolean);
+      const porTitulo: Prisma.PortalTicketWhereInput = {
+        AND: palavras.map((palavra) => ({
+          title: { contains: palavra, mode: 'insensitive' as const },
+        })),
+      };
       andParts.push({
         OR: [
-          { title: { contains: search, mode: 'insensitive' } },
+          porTitulo,
           ...(Number.isFinite(Number(search))
             ? [{ ticketNumber: Number(search) }]
             : []),

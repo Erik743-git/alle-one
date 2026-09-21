@@ -22,6 +22,7 @@ describe('TicketAutoOpenService — classificação que deixou de ser folha', ()
       {} as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     return { service, prisma };
   }
