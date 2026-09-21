@@ -20,6 +20,7 @@ import {
   FolderKanban,
   Ticket,
   MonitorDot,
+  Activity,
   Plus,
 } from "lucide-react";
 import {
@@ -95,6 +96,12 @@ function buildMenuItems(): MenuItem[] {
       name: "Console",
       href: "/console",
       icon: MonitorDot,
+      visible: canAccessConsole(),
+    },
+    {
+      name: "Monitoramento",
+      href: "/monitoramento",
+      icon: Activity,
       visible: canAccessConsole(),
     },
     {
