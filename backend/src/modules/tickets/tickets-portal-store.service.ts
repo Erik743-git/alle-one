@@ -250,6 +250,14 @@ export class TicketsPortalStoreService {
     };
   }
 
+  /**
+   * Troca o estágio do chamado.
+   *
+   * O status anda junto com o estágio: eles são a mesma informação em dois
+   * campos, e o portal mostra os dois lado a lado no cabeçalho. Enquanto só
+   * o estágio era gravado, um chamado fechado ficava "Novo · Encerrado" na
+   * tela — o "Novo" era o status parado desde a criação (caso do #81649).
+   */
   async patchStage(
     ticketNumber: number,
     stageName: string,
@@ -259,6 +267,7 @@ export class TicketsPortalStoreService {
       where: { ticketNumber },
       data: {
         stageName,
+        statusName: stageName,
         ...(opts?.isClosed !== undefined ? { isClosed: opts.isClosed } : {}),
         updatedAtSource: new Date(),
       },

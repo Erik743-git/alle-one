@@ -1129,16 +1129,26 @@ export class TicketsService {
     }
 
     const reopening = portal?.isClosed && dto.isClosed === false;
+    const fechandoSemEstagio = dto.isClosed === true && !stageName;
+    // Fechar sem dizer o estágio move o estágio junto. Antes só o status ia
+    // para "Encerrado" e o estágio ficava no valor antigo ("Novo"), de onde
+    // saíam chamados fechados exibidos como abertos na coluna Estágio e
+    // agrupados no lugar errado ao incluir os resolvidos na lista.
     const resolvedStageName =
       stageName ??
-      (reopening ? PORTAL_STAGE.NOVO : (portal?.stageName ?? null));
+      (reopening
+        ? PORTAL_STAGE.NOVO
+        : fechandoSemEstagio
+          ? PORTAL_STAGE.ENCERRADO
+          : (portal?.stageName ?? null));
+    // Estágio e status andam juntos; o cabeçalho do chamado mostra os dois.
     const resolvedStatusName =
       statusName ??
       (reopening
         ? PORTAL_STAGE.NOVO
-        : dto.isClosed === true && !statusName
+        : dto.isClosed === true
           ? PORTAL_STAGE.ENCERRADO
-          : (portal?.statusName ?? null));
+          : (resolvedStageName ?? portal?.statusName ?? null));
 
     await this.portalStore.upsertByTicketNumber({
       ticketNumber,
