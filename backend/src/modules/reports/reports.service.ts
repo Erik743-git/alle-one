@@ -187,6 +187,31 @@ function normalizeNameKey(value: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, '');
 }
 
+/**
+ * Sufixos que n\u00e3o ajudam a casar nome do apontamento (vindo do Tiflux) com
+ * o nome cadastrado no portal \u2014 um lado pode ter "Junior"/"Filho" e o
+ * outro n\u00e3o.
+ */
+const SUFIXOS_NOME = new Set(['junior', 'jr', 'filho', 'neto', 'sobrinho']);
+
+/**
+ * Chave "primeiro nome + \u00faltimo sobrenome" para casar nomes que batem na
+ * ess\u00eancia mas divergem em nomes do meio ou sufixo \u2014 ex.: o apontamento
+ * chega como "Andressa Cota" e o cadastro do portal \u00e9 "Andressa Morona
+ * Dias Cota"; ou "Wilson Batini Junior" x "Wilson Batini".
+ */
+function coreNameKey(value: string | null | undefined): string | null {
+  const palavras = normalizeNameKey(value)
+    .replace(/[^a-z\s]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((p) => !SUFIXOS_NOME.has(p));
+  if (palavras.length === 0) return null;
+  const primeiro = palavras[0];
+  const ultimo = palavras[palavras.length - 1];
+  return `${primeiro}|${ultimo}`;
+}
+
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
@@ -2134,12 +2159,25 @@ export class ReportsService {
       },
     });
     const teamByUserName = new Map<string, string>();
+    // Nome-núcleo (primeiro nome + último sobrenome) só entra quando é
+    // único entre os colaboradores — se duas pessoas caem na mesma chave
+    // (ex.: dois "João Silva"), não arriscamos casar errado e mantemos só
+    // o casamento por nome completo para elas.
+    const teamByCoreName = new Map<string, string | null>();
     for (const u of users) {
-      const key = normalizeNameKey(u.name);
-      if (!key) continue;
       const specialtyName = u.specialty?.name?.trim();
       if (!specialtyName) continue;
-      teamByUserName.set(key, specialtyName);
+
+      const key = normalizeNameKey(u.name);
+      if (key) teamByUserName.set(key, specialtyName);
+
+      const coreKey = coreNameKey(u.name);
+      if (coreKey) {
+        teamByCoreName.set(
+          coreKey,
+          teamByCoreName.has(coreKey) ? null : specialtyName,
+        );
+      }
     }
 
     return rows.map((r) => {
@@ -2153,8 +2191,15 @@ export class ReportsService {
         init_time: r.init_time || undefined,
         end_time: r.end_time || undefined,
       });
+      // O nome vem do apontamento (Tiflux) e nem sempre é igual ao do
+      // cadastro: "Andressa Cota" x "Andressa Morona Dias Cota",
+      // "Wilson Batini Junior" x "Wilson Batini". Sem o segundo passo a
+      // pessoa caía em "Sem equipe" e a mesa dela sumia da distribuição.
+      const coreKey = coreNameKey(attendant);
       const equipe =
-        teamByUserName.get(normalizeNameKey(attendant)) || 'Sem equipe';
+        teamByUserName.get(normalizeNameKey(attendant)) ??
+        (coreKey ? (teamByCoreName.get(coreKey) ?? null) : null) ??
+        'Sem equipe';
       const overtimeKind = overtimeKindFromValorization(r.valorization_raw);
       const durationHHMM = this.formatMinutesHHMM(durationMinutes);
 

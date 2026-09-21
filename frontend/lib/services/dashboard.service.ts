@@ -17,27 +17,22 @@ export type DashboardSummary = {
   hostsInativos: number;
 };
 
-export type DashboardChamadosMes = {
+/**
+ * Linha do gráfico por mês. Além dos campos fixos, tem uma chave por mesa
+ * ("Projetos", "NOC", "Protheus/BI - Fluidra"...) com o valor do mês.
+ * Antes eram 5 mesas cravadas no código e toda mesa fora da lista era
+ * somada dentro de "Sistema".
+ */
+export type DashboardMesRow = {
   monthKey: string;
   monthLabel: string;
-  Infraestrutura: number;
-  Sistema: number;
-  NOC: number;
-  Rotinas: number;
-  Consult: number;
   Total: number;
+  [deskName: string]: string | number;
 };
 
-export type DashboardHorasMes = {
-  monthKey: string;
-  monthLabel: string;
-  Infraestrutura: number;
-  Sistema: number;
-  NOC: number;
-  Rotinas: number;
-  Consult: number;
-  Total: number;
-};
+export type DashboardChamadosMes = DashboardMesRow;
+
+export type DashboardHorasMes = DashboardMesRow;
 
 export type WorkHoursTifluxLine = {
   data: string;

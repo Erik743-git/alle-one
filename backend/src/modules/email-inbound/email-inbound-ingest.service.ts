@@ -284,7 +284,6 @@ export class EmailInboundIngestService {
 
     const matchedTicketNumber = await this.resolveLinkedTicketNumber({
       subject: title,
-      bodyText: descriptionText,
       conversationId,
       inReplyTo,
       referencesHeader,
@@ -541,14 +540,16 @@ export class EmailInboundIngestService {
 
   private async resolveLinkedTicketNumber(params: {
     subject: string;
-    bodyText: string;
     conversationId: string | null;
     inReplyTo: string | null;
     referencesHeader: string | null;
   }): Promise<number | null> {
-    const fromHash = extractTicketNumberFromText(
-      `${params.subject}\n${params.bodyText}`,
-    );
+    // Só o ASSUNTO identifica resposta de um chamado (é lá que o portal
+    // grava "Chamado #NNNNN" nos e-mails de notificação, e é isso que
+    // volta no "Re:"). Nunca o corpo: um e-mail novo pode citar um chamado
+    // antigo em prosa ("aplicamos a mesma solução do #56117...") e isso
+    // não pode reabrir o chamado citado em vez de abrir um novo.
+    const fromHash = extractTicketNumberFromText(params.subject);
     if (fromHash != null) {
       const exists = await this.prisma.portalTicket.findUnique({
         where: { ticketNumber: fromHash },

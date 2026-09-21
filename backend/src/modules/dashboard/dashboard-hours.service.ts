@@ -3,9 +3,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/redis/redis.service';
 import { TifluxService } from '../tiflux/tiflux.service';
 import {
-  categorizeTicketByDesk,
-  emptyDeskCategoryCounts,
-  type DeskCategory,
+  addToDesk,
+  deskNamesFromRows,
+  fillMissingDesks,
+  getDeskNameFromTicket,
+  normalizeDeskName,
 } from './desk-categories';
 import {
   buildMonthMap,
@@ -196,17 +198,8 @@ export class DashboardHoursService {
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private categorizeTicket(ticket: Record<string, unknown>): DeskCategory {
-    return categorizeTicketByDesk(ticket);
-  }
-
   private getDeskNameFromTicket(ticket: Record<string, unknown>): string {
-    const desk =
-      typeof ticket.desk === 'object' && ticket.desk && 'name' in ticket.desk
-        ? String((ticket.desk as { name?: unknown }).name ?? '')
-        : '';
-    const normalized = desk.trim();
-    return normalized || 'Sem mesa';
+    return getDeskNameFromTicket(ticket);
   }
 
   /** Não registra nada em produção (evita vazamento de dados e ruído). */
@@ -383,7 +376,6 @@ export class DashboardHoursService {
       ([monthKey, monthLabel]) => ({
         monthKey,
         monthLabel,
-        ...emptyDeskCategoryCounts(),
         Total: 0,
       }),
     );
@@ -1649,21 +1641,29 @@ export class DashboardHoursService {
     },
   ): MonthlyHoursRow[] {
     const rows = new Map<string, MonthlyHoursRow>();
-    const totalMinutesByMonth = new Map<
-      string,
-      Record<DeskCategory, number> & { Total: number }
-    >();
+    // Soma em minutos por mesa e só no fim vira hora, para o arredondamento
+    // acontecer uma vez por mês/mesa e não a cada apontamento.
+    const totalMinutesByMonth = new Map<string, Map<string, number>>();
+    const somarMinutos = (
+      monthKey: string,
+      mesa: string,
+      minutes: number,
+    ): boolean => {
+      const doMes = totalMinutesByMonth.get(monthKey);
+      if (!doMes) return false;
+      doMes.set(mesa, (doMes.get(mesa) ?? 0) + minutes);
+      return true;
+    };
 
     for (const row of this.buildEmptyHoursRows(startDate, endDate)) {
       rows.set(row.monthKey, row);
-      totalMinutesByMonth.set(row.monthKey, {
-        ...emptyDeskCategoryCounts(),
-        Total: 0,
-      });
+      totalMinutesByMonth.set(row.monthKey, new Map<string, number>());
     }
 
     for (const item of appointmentsByTicket) {
-      const category = this.categorizeTicket(item.ticket);
+      const category = normalizeDeskName(
+        this.getDeskNameFromTicket(item.ticket),
+      );
 
       for (const appointment of item.appointments) {
         if (options.rawAggregation) {
@@ -1672,13 +1672,11 @@ export class DashboardHoursService {
             continue;
           }
           const monthKey = getMonthKey(bucketDate);
-          const minutesRow = totalMinutesByMonth.get(monthKey);
-          if (!minutesRow) {
-            continue;
-          }
-          const minutes = this.getAppointmentMinutes(appointment);
-          minutesRow[category] += minutes;
-          minutesRow.Total += minutes;
+          somarMinutos(
+            monthKey,
+            category,
+            this.getAppointmentMinutes(appointment),
+          );
           continue;
         }
 
@@ -1704,37 +1702,35 @@ export class DashboardHoursService {
         }
 
         const monthKey = getMonthKey(effective.date);
-        const minutesRow = totalMinutesByMonth.get(monthKey);
-
-        if (!minutesRow) {
-          continue;
-        }
-
-        const minutes = this.getAppointmentMinutes(appointment);
-
-        minutesRow[category] += minutes;
-        minutesRow.Total += minutes;
+        somarMinutos(
+          monthKey,
+          category,
+          this.getAppointmentMinutes(appointment),
+        );
       }
     }
 
-    for (const [monthKey, minutesRow] of totalMinutesByMonth.entries()) {
+    for (const [monthKey, minutosPorMesa] of totalMinutesByMonth.entries()) {
       const row = rows.get(monthKey);
 
       if (!row) {
         continue;
       }
 
-      row.Infraestrutura = Number((minutesRow.Infraestrutura / 60).toFixed(2));
-      row.Sistema = Number((minutesRow.Sistema / 60).toFixed(2));
-      row.NOC = Number((minutesRow.NOC / 60).toFixed(2));
-      row.Rotinas = Number((minutesRow.Rotinas / 60).toFixed(2));
-      row.Consult = Number((minutesRow.Consult / 60).toFixed(2));
-      row.Total = Number((minutesRow.Total / 60).toFixed(2));
+      let totalMinutos = 0;
+      for (const [mesa, minutos] of minutosPorMesa.entries()) {
+        row[mesa] = Number((minutos / 60).toFixed(2));
+        totalMinutos += minutos;
+      }
+      row.Total = Number((totalMinutos / 60).toFixed(2));
     }
 
-    this.devDebug('buildHoursRows resultado:', Array.from(rows.values()));
+    const todas = Array.from(rows.values());
+    fillMissingDesks(todas, deskNamesFromRows(todas));
 
-    return Array.from(rows.values());
+    this.devDebug('buildHoursRows resultado:', todas);
+
+    return todas;
   }
 
   async loadOrReuseDashboardHours(

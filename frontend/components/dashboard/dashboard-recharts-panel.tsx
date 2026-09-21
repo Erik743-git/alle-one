@@ -16,15 +16,12 @@ import {
   YAxis,
 } from "recharts";
 
+/** Campos fixos mais uma chave por mesa ("Projetos", "NOC"...). */
 export type DashboardBarRow = {
   monthKey: string;
   monthLabel: string;
-  Infraestrutura: number;
-  Sistema: number;
-  NOC: number;
-  Rotinas: number;
-  Consult?: number;
   Total: number;
+  [deskName: string]: string | number;
 };
 
 export type DashboardAlertRow = {
@@ -46,11 +43,14 @@ type Props =
       data: DashboardBarRow[];
       chartType?: "bar" | "line" | "pie";
       deskData?: DashboardDeskRow[];
+      /** Mesas a desenhar, na ordem. Sem isso, nenhuma série aparece. */
+      deskNames: string[];
     }
   | {
       kind: "horas";
       data: DashboardBarRow[];
       chartType?: "bar" | "line";
+      deskNames: string[];
     }
   | {
       kind: "alertas";
@@ -58,13 +58,68 @@ type Props =
       chartType?: "bar" | "line";
     };
 
-const BAR_SERIES = [
-  { key: "Infraestrutura", fill: "#4f8bd6" },
-  { key: "Sistema", fill: "#d85c57" },
-  { key: "NOC", fill: "#8c6fd1" },
-  { key: "Rotinas", fill: "#9bc45b" },
-  { key: "Consult", fill: "#ed7d31" },
+/**
+ * Cores das mesas. As cinco primeiras são as que o dashboard já usava,
+ * então quem está acostumado com Infraestrutura azul continua vendo azul.
+ */
+const DESK_PALETTE = [
+  "#4f8bd6",
+  "#d85c57",
+  "#8c6fd1",
+  "#9bc45b",
+  "#ed7d31",
+  // Nada de #57c1d9 aqui: é a cor da barra "Total" no gráfico de barras.
+  "#e0699a",
+  "#c9a227",
+  "#4bb894",
+  "#a0522d",
+  "#7b8794",
 ] as const;
+
+/** Cores herdadas, para a mesa não mudar de cor ao lado de outra nova. */
+const CORES_FIXAS: Record<string, string> = {
+  Infraestrutura: "#4f8bd6",
+  Sistema: "#d85c57",
+  Sistemas: "#d85c57",
+  NOC: "#8c6fd1",
+  Rotinas: "#9bc45b",
+  Consult: "#ed7d31",
+};
+
+/**
+ * Cor de cada mesa exibida. A mesa conhecida mantém a cor de sempre; a
+ * nova pega a próxima cor livre da paleta, sem repetir no mesmo gráfico.
+ */
+function buildDeskSeries(
+  deskNames: string[],
+): Array<{ key: string; fill: string }> {
+  const usadas = new Set<string>();
+  const series = deskNames.map((key) => {
+    const fixa = CORES_FIXAS[key];
+    if (fixa && !usadas.has(fixa)) {
+      usadas.add(fixa);
+      return { key, fill: fixa };
+    }
+    return { key, fill: "" };
+  });
+
+  let proxima = 0;
+  for (const item of series) {
+    if (item.fill) continue;
+    while (
+      proxima < DESK_PALETTE.length &&
+      usadas.has(DESK_PALETTE[proxima])
+    ) {
+      proxima += 1;
+    }
+    const cor = DESK_PALETTE[proxima % DESK_PALETTE.length];
+    usadas.add(cor);
+    proxima += 1;
+    item.fill = cor;
+  }
+
+  return series;
+}
 
 const PIE_COLORS = [
   "#4f8bd6",
@@ -108,6 +163,9 @@ export function DashboardLazyChart(props: Props) {
   const margins = chartMargins(compact);
   const legend = legendProps(compact, chartTheme.tick);
   const chartHeight = compact ? "min-h-[380px] h-[380px]" : "h-[360px]";
+  const deskSeries = buildDeskSeries(
+    props.kind === "alertas" ? [] : props.deskNames,
+  );
 
   if (props.kind === "alertas") {
     const data = props.data;
@@ -238,11 +296,11 @@ export function DashboardLazyChart(props: Props) {
             />
             <Tooltip {...TOOLTIP_PROPS} />
             <Legend {...legend} />
-            {BAR_SERIES.map((series) => (
+            {deskSeries.map((series) => (
               <Line
                 key={series.key}
                 type="monotone"
-                dataKey={series.key}
+                dataKey={series.key}
                 stroke={series.fill}
                 strokeWidth={compact ? 1.5 : 2}
                 dot={{ r: compact ? 2 : 3 }}
@@ -290,10 +348,10 @@ export function DashboardLazyChart(props: Props) {
           <Tooltip {...TOOLTIP_PROPS} />
           <Legend {...legend} />
           {compact ? (
-            BAR_SERIES.map((series) => (
+            deskSeries.map((series) => (
               <Bar
                 key={series.key}
-                dataKey={series.key}
+                dataKey={series.key}
                 stackId="mes"
                 fill={series.fill}
                 maxBarSize={32}
@@ -301,10 +359,10 @@ export function DashboardLazyChart(props: Props) {
             ))
           ) : (
             <>
-              {BAR_SERIES.map((series) => (
+              {deskSeries.map((series) => (
                 <Bar
                   key={series.key}
-                  dataKey={series.key}
+                  dataKey={series.key}
                   fill={series.fill}
                   radius={[4, 4, 0, 0]}
                   maxBarSize={48}
