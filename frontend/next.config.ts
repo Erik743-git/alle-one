@@ -8,12 +8,21 @@ const isProd = process.env.NODE_ENV === "production";
 /** Evita Turbopack usar a raiz do monorepo (package-lock da raiz) e falhar ao resolver tailwindcss. */
 const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Origem do Grafana liberada para os quadros da tela de Monitoramento.
+ * Sem isso o navegador recusa o iframe, mesmo com tudo certo no Grafana.
+ * Ex.: NEXT_PUBLIC_GRAFANA_ORIGIN="https://grafana.alletecnologia.com"
+ */
+const grafanaOrigin = (process.env.NEXT_PUBLIC_GRAFANA_ORIGIN ?? "").trim();
+const frameSrc = ["'self'", grafanaOrigin].filter(Boolean).join(" ");
+
 /** Alinhar com deploy/nginx-alleone-csp-html.snippet.conf */
 const htmlContentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
+  `frame-src ${frameSrc}`,
   "form-action 'self'",
   "img-src 'self' data: blob:",
   "font-src 'self' data: https://fonts.gstatic.com",

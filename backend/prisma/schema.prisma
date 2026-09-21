@@ -212,6 +212,13 @@ model Company {
 
   zabbixGroupName      String?                   @map("zabbix_group_name")
   monitoringPriority   Boolean                   @default(false) @map("monitoring_priority")
+  /// Token de serviço da organização desta empresa no Grafana (cifrado).
+  /// Só o servidor usa: serve para listar os dashboards publicados dela.
+  grafanaTokenEncrypted String?                  @map("grafana_token_encrypted") @db.Text
+  /// Últimos dígitos do token, para conferência na tela de cadastro.
+  grafanaTokenHint     String?                   @map("grafana_token_hint") @db.VarChar(20)
+  /// Nome da organização no Grafana, guardado ao validar o token.
+  grafanaOrgName       String?                   @map("grafana_org_name")
   tifluxClientId       Int?                      @map("tiflux_client_id")
   tifluxClientName String?                       @map("tiflux_client_name")
 
