@@ -708,24 +708,45 @@ export class TicketsCatalogsService {
     actor: AuthenticatedRequestUser,
     clientFilter: number | null,
   ) {
-    const whereTickets = {
-      ...(clientFilter != null ? { clientExternalId: clientFilter } : {}),
-    } as const;
+    // Cada lista sai de uma consulta de valores distintos, não de uma
+    // amostra de chamados: com `take: 2000` sobre mais de 80 mil chamados,
+    // cliente cujos chamados caíssem fora da fatia sumia do filtro — foi o
+    // caso da Zanotti S/A, com 103 chamados e invisível na busca avançada.
+    const escopo = clientFilter ?? null;
 
-    const [tickets, responsibles] = await Promise.all([
-      this.prisma.portalTicket.findMany({
-        where: whereTickets,
-        select: {
-          clientExternalId: true,
-          clientName: true,
-          deskName: true,
-          requestorName: true,
-          requestorEmail: true,
-        },
-        take: 2000,
-      }),
-      this.listResponsiblesForCatalogs(),
-    ]);
+    const [clientRows, deskRows, requestorRows, responsibles] =
+      await Promise.all([
+        this.prisma.$queryRaw<
+          Array<{ client_external_id: number; client_name: string }>
+        >`
+        SELECT DISTINCT ON (t.client_external_id)
+          t.client_external_id, trim(t.client_name) AS client_name
+        FROM portal_tickets t
+        WHERE t.client_external_id IS NOT NULL
+          AND t.client_name IS NOT NULL AND trim(t.client_name) <> ''
+          AND (${escopo}::int IS NULL OR t.client_external_id = ${escopo}::int)
+        -- Um nome por cliente: o mesmo código aparece com grafias
+        -- diferentes em chamados antigos e o filtro mostraria repetido.
+        -- Vale o nome do chamado mais recente.
+        ORDER BY t.client_external_id, t.created_at_source DESC NULLS LAST
+      `,
+        this.prisma.$queryRaw<Array<{ desk_name: string }>>`
+        SELECT DISTINCT trim(t.desk_name) AS desk_name
+        FROM portal_tickets t
+        WHERE t.desk_name IS NOT NULL AND trim(t.desk_name) <> ''
+          AND (${escopo}::int IS NULL OR t.client_external_id = ${escopo}::int)
+      `,
+        this.prisma.$queryRaw<Array<{ requestor: string }>>`
+        SELECT DISTINCT
+          trim(coalesce(nullif(trim(t.requestor_name), ''), t.requestor_email))
+            AS requestor
+        FROM portal_tickets t
+        WHERE coalesce(nullif(trim(t.requestor_name), ''), t.requestor_email)
+          IS NOT NULL
+          AND (${escopo}::int IS NULL OR t.client_external_id = ${escopo}::int)
+      `,
+        this.listResponsiblesForCatalogs(),
+      ]);
 
     // Os estágios vêm da tabela, que é onde eles são cadastrados: a lista
     // fixa do código tem só os seis originais e deixava de fora os criados
@@ -734,15 +755,17 @@ export class TicketsCatalogsService {
     const stages = await this.listStageNames();
 
     const clientMap = new Map<number, string>();
-    for (const t of tickets) {
-      if (t.clientExternalId == null || !t.clientName?.trim()) continue;
-      clientMap.set(t.clientExternalId, t.clientName.trim());
+    for (const row of clientRows) {
+      const id = Number(row.client_external_id);
+      const nome = row.client_name?.trim();
+      if (!Number.isFinite(id) || !nome) continue;
+      clientMap.set(id, nome);
     }
 
     const desks = [
       ...new Set(
-        tickets
-          .map((t) => t.deskName?.trim())
+        deskRows
+          .map((row) => row.desk_name?.trim())
           .filter((v): v is string => Boolean(v)),
       ),
     ].sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -761,8 +784,8 @@ export class TicketsCatalogsService {
 
     const requestors = [
       ...new Set(
-        tickets
-          .map((t) => t.requestorName?.trim() || t.requestorEmail?.trim() || '')
+        requestorRows
+          .map((row) => row.requestor?.trim() ?? '')
           .filter(Boolean),
       ),
     ]
