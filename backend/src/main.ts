@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { assertExpectedDatabase } from './common/security/assert-expected-database';
 import { initSentry } from './common/sentry/sentry';
 
 async function listenWithFallback(
@@ -35,6 +36,8 @@ async function listenWithFallback(
 }
 
 async function bootstrap() {
+  // Antes de qualquer coisa: conferir que é o banco deste ambiente.
+  assertExpectedDatabase();
   initSentry();
   const app = await NestFactory.create(AppModule);
   const isProd = process.env.NODE_ENV === 'production';

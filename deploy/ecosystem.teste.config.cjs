@@ -21,11 +21,19 @@ module.exports = {
       instances: 2,
       exec_mode: "cluster",
       autorestart: true,
+      // Erro de configuração (banco errado, por exemplo) derruba o processo
+      // na hora: sem este limite o PM2 fica reerguendo para sempre e a
+      // mensagem some no meio do ciclo.
+      min_uptime: 20000,
+      max_restarts: 5,
       kill_timeout: 20000,
       max_memory_restart: "1500M",
       env: {
         NODE_ENV: "production",
         PORT: "3004",
+        // A API não sobe se o DATABASE_URL apontar para outro banco — já
+        // aconteceu de o teste subir ligado à produção por herança do shell.
+        ALLEONE_EXPECTED_DB: "portal_teste",
         // Espelho TiFlux → portal (igual produção): leitura portal_*, nada volta ao TiFlux.
         TICKETS_PORTAL_CANONICAL: "true",
         TICKETS_TIFLUX_WRITE: "false",

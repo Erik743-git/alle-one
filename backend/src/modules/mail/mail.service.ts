@@ -151,16 +151,54 @@ export class MailService {
     });
   }
 
-  async sendMail(payload: SendMailPayload): Promise<boolean> {
-    const to = this.removeSelf(payload.to) ?? [];
-    const cc = this.removeSelf(payload.cc);
+  /**
+   * Em ambiente de teste, manda tudo para um endereço só.
+   *
+   * A base de teste é cópia da de produção: sem isso, qualquer e-mail
+   * disparado num teste — fechamento, comunicação, pesquisa, GMUD — vai para
+   * o cliente de verdade. Com `MAIL_REDIRECT_TO` preenchido, o destinatário
+   * real fica no assunto e nada sai para fora.
+   */
+  private applyTestRedirect(payload: SendMailPayload): SendMailPayload {
+    const redirect = envTrim(process.env.MAIL_REDIRECT_TO);
+    if (!redirect) return payload;
+
+    const listar = (valor: string[] | string | undefined) =>
+      valor == null ? [] : Array.isArray(valor) ? valor : [valor];
+    const originais = [...listar(payload.to), ...listar(payload.cc)];
+
+    this.logger.warn(
+      `MAIL_REDIRECT_TO ativo: "${payload.subject}" iria para ${
+        originais.join(', ') || '(ninguém)'
+      } e foi para ${redirect}.`,
+    );
+
+    return {
+      ...payload,
+      to: redirect,
+      cc: undefined,
+      subject: `[TESTE → ${originais.join(', ') || 'sem destinatário'}] ${payload.subject}`,
+    };
+  }
+
+  async sendMail(entrada: SendMailPayload): Promise<boolean> {
+    // A própria caixa sai ANTES do redirecionamento de teste: se fosse
+    // depois, o destinatário já seria o endereço de teste e o e-mail que só
+    // ia para a própria caixa acabaria enviado — reabrindo o laço em
+    // homologação, justamente onde a gente testa.
+    const to = this.removeSelf(entrada.to) ?? [];
+    const cc = this.removeSelf(entrada.cc);
     if (to.length === 0 && (cc?.length ?? 0) === 0) {
       this.logger.log(
-        `E-mail não enviado: só a própria caixa como destinatário (assunto=${payload.subject}).`,
+        `E-mail não enviado: só a própria caixa como destinatário (assunto=${entrada.subject}).`,
       );
       return false;
     }
-    payload = { ...payload, to, ...(cc ? { cc } : {}) };
+    const payload = this.applyTestRedirect({
+      ...entrada,
+      to,
+      ...(cc ? { cc } : {}),
+    });
 
     if (this.usingGraph()) {
       return this.sendViaGraph(payload);

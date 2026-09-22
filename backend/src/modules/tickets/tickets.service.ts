@@ -483,6 +483,14 @@ export class TicketsService {
     const tifluxDeskName = deskMeta.name;
     const requiresCatalog = deskMeta.requireServiceCatalog;
 
+    // A mesa também entra pelo id, não só pelo nome: quem filtra por mesa
+    // (o escopo do terceiro, a pesquisa de satisfação, os relatórios) usa o
+    // specialty_id, e o chamado nascia sem ele.
+    const mesa = await this.prisma.specialty.findFirst({
+      where: { externalId: dto.deskId, deletedAt: null },
+      select: { id: true },
+    });
+
     await this.catalogs.assertValidClassificationForDesk(
       dto.deskId,
       dto.classificationId,
@@ -656,6 +664,7 @@ export class TicketsService {
         clientExternalId: dto.clientId,
         deskExternalId: dto.deskId,
         deskName: tifluxDeskName || null,
+        specialtyId: mesa?.id ?? null,
         responsibleExternalId: responsibleId,
         responsibleName,
         requestorName,
