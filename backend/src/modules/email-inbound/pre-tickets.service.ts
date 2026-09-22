@@ -15,6 +15,7 @@ import { TicketsPortalStoreService } from '../tickets/tickets-portal-store.servi
 import { PORTAL_STAGE } from '../tickets/portal-ticket-stages';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
+import { htmlParaTexto } from './html-para-texto';
 import {
   ArrayMaxSize,
   IsArray,
@@ -509,7 +510,7 @@ export class PreTicketsService {
     const description = hasInlineImage
       ? html
       : row.descriptionText?.trim() ||
-        stripHtmlForTicket(row.descriptionHtml) ||
+        htmlParaTexto(row.descriptionHtml) ||
         '(sem descrição)';
 
     const opener = await this.prisma.user.findFirst({
@@ -731,19 +732,3 @@ export class PreTicketsService {
   }
 }
 
-function stripHtmlForTicket(html: string | null | undefined): string {
-  if (!html?.trim()) return '';
-  return html
-    .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 20_000);
-}

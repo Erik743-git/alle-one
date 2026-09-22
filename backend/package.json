@@ -31,7 +31,9 @@
     "appointments:seed-aug25-31": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts",
     "appointments:seed-aug25-31:dry": "ts-node prisma/scripts/seed-portal-appointments-aug25-31.ts --dry-run",
     "ticket-auto-open:export": "ts-node prisma/scripts/sync-ticket-auto-open-rules.ts export",
-    "ticket-auto-open:import": "ts-node prisma/scripts/sync-ticket-auto-open-rules.ts import"
+    "ticket-auto-open:import": "ts-node prisma/scripts/sync-ticket-auto-open-rules.ts import",
+    "descricoes:recuperar": "ts-node prisma/scripts/recuperar-descricoes-cortadas.ts",
+    "descricoes:recuperar:apply": "ts-node prisma/scripts/recuperar-descricoes-cortadas.ts --apply"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

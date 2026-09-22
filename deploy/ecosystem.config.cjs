@@ -20,10 +20,17 @@ module.exports = {
       exec_mode: "cluster",
       autorestart: true,
       max_memory_restart: "1500M",
+      // Erro de configuração (banco errado, por exemplo) derruba o processo
+      // na hora: sem este limite o PM2 fica reerguendo para sempre e a
+      // mensagem some no meio do ciclo.
+      min_uptime: 20000,
+      max_restarts: 5,
       kill_timeout: 20000,
       env: {
         NODE_ENV: "production",
         PORT: "3002",
+        // A API nao sobe se o DATABASE_URL apontar para outro banco.
+        ALLEONE_EXPECTED_DB: "portal",
       },
     },
     {
