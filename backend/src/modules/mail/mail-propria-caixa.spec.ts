@@ -13,7 +13,7 @@ import { MailService } from './mail.service';
 describe('MailService: não manda e-mail para a própria caixa', () => {
   const envOriginal = { ...process.env };
   let service: MailService;
-  let graph: { sendMail: jest.Mock };
+  let graph: { sendMail: jest.Mock; isConfigured: jest.Mock };
 
   beforeEach(() => {
     process.env = { ...envOriginal };
