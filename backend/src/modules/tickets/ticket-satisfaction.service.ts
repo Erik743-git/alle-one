@@ -47,12 +47,26 @@ export class TicketSatisfactionService {
         requestorName: true,
         clientExternalId: true,
         specialtyId: true,
+        deskName: true,
         responsibleName: true,
         responsibleExternalId: true,
       },
     });
     const email = ticket?.requestorEmail?.trim();
     if (!email) return null;
+
+    // Chamado antigo pode ter só o nome da mesa; sem isso a nota ficaria de
+    // fora do "por mesa" no painel.
+    const mesaId =
+      ticket?.specialtyId ??
+      (ticket?.deskName?.trim()
+        ? (
+            await this.prisma.specialty.findFirst({
+              where: { name: ticket.deskName.trim(), deletedAt: null },
+              select: { id: true },
+            })
+          )?.id ?? null
+        : null);
 
     const empresa =
       ticket?.clientExternalId != null
@@ -69,7 +83,7 @@ export class TicketSatisfactionService {
         requestorEmail: email,
         requestorName: ticket?.requestorName ?? null,
         companyId: empresa?.id ?? null,
-        specialtyId: ticket?.specialtyId ?? null,
+        specialtyId: mesaId,
         responsibleName: ticket?.responsibleName ?? null,
         responsibleExternalId: ticket?.responsibleExternalId ?? null,
         stageName: params.stageName,
