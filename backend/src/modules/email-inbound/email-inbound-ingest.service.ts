@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import { QueueService } from '../../common/redis/queue.service';
 import { TicketAutomationService } from '../tickets/ticket-automation.service';
+import { htmlParaTexto } from './html-para-texto';
 import {
   createEmailReplyCommunication,
   isReopenableStage,
@@ -210,10 +211,13 @@ export class EmailInboundIngestService {
     const contentType = params.message.body?.contentType?.toLowerCase();
     const bodyContent = params.message.body?.content ?? '';
     const descriptionHtml = contentType === 'html' ? bodyContent : null;
+    // O corpo manda; a prévia é último recurso. O `bodyPreview` do Graph tem
+    // no máximo 255 caracteres, então usá-lo primeiro cortava a descrição de
+    // todo e-mail em HTML no meio da frase — foi o que aconteceu no #81743.
     const descriptionText =
       contentType === 'text'
         ? bodyContent
-        : (params.message.bodyPreview ?? stripHtml(bodyContent));
+        : htmlParaTexto(bodyContent) || (params.message.bodyPreview ?? '');
 
     const headers = params.message.internetMessageHeaders ?? [];
 
@@ -910,16 +914,6 @@ export function emailInboundIgnoreBefore(
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 20_000);
 }
 
 /** Um por linha (ou vírgula): email@x.com, *@dominio.com, @dominio.com */
