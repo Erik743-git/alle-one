@@ -162,3 +162,30 @@ describe('solicitante do chamado vindo de e-mail', () => {
     ).toBeGreaterThan(0);
   });
 });
+
+/**
+ * A mesa pode chegar no formato interno ou como código numérico.
+ *
+ * A tela de pré-ticket usa o catálogo de criação de chamado, que devolve o
+ * código numérico — é a fonte que colaborador enxerga. A lista do cadastro
+ * de usuários exige o módulo Usuários, que nem todo atendente tem: com ela,
+ * o seletor de mesa viria vazio e, como a mesa virou obrigatória, o
+ * colaborador não conseguiria abrir pré-ticket nenhum.
+ */
+function comoBuscarMesa(valor: string): 'externalId' | 'id' {
+  return /^\d+$/.test(valor) ? 'externalId' : 'id';
+}
+
+describe('formato do identificador da mesa', () => {
+  it('código numérico busca pelo id externo', () => {
+    expect(comoBuscarMesa('42')).toBe('externalId');
+  });
+
+  it('identificador interno busca pelo id', () => {
+    expect(comoBuscarMesa('3f2a1b4c-5d6e-7f80-9012-3456789abcde')).toBe('id');
+  });
+
+  it('identificador com dígitos e letras não é tratado como número', () => {
+    expect(comoBuscarMesa('12ab34')).toBe('id');
+  });
+});

@@ -468,9 +468,18 @@ export class PreTicketsService {
 
     const specialtyId =
       dto.specialtyId?.trim() || dto.deskId?.trim() || row.specialtyId;
+    // Aceita o identificador interno ou o código numérico da mesa: a tela
+    // de pré-ticket usa o catálogo de criação de chamado, que é o que
+    // colaborador enxerga — a lista de mesas do cadastro de usuários exige
+    // o módulo Usuários, que nem todo atendente tem.
     const desk = specialtyId
       ? await this.prisma.specialty.findFirst({
-          where: { id: specialtyId, deletedAt: null },
+          where: {
+            deletedAt: null,
+            ...(/^\d+$/.test(specialtyId)
+              ? { externalId: Number(specialtyId) }
+              : { id: specialtyId }),
+          },
         })
       : null;
     // Abrir chamado pela tela exige mesa; abrir a partir do e-mail não
