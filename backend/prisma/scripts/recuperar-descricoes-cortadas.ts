@@ -36,9 +36,33 @@ type Linha = {
   html: string | null;
 };
 
-/** Compara ignorando espaço, que o conversor antigo colapsava de outro jeito. */
-function normalizar(texto: string): string {
-  return texto.replace(/\s+/g, ' ').trim().toLowerCase();
+/**
+ * Reduz o texto a letras e dígitos para comparar.
+ *
+ * A prévia do Outlook e o HTML convertido escrevem a mesma frase com
+ * pontuação e espaçamento diferentes — espaço rígido, tabulação no lugar do
+ * espaço, marcador de lista trocado. Nada disso muda o conteúdo, e comparar
+ * caractere a caractere reprovava e-mail legítimo.
+ */
+function somenteAlfanumerico(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/** Onde os dois textos deixam de coincidir, para conferência à mão. */
+function pontoDeDivergencia(a: string, b: string): string {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i >= a.length) return 'o texto atual termina antes de divergir';
+  const janela = 30;
+  return (
+    `divergem na posição ${i} (comparando só letras e dígitos)\n` +
+    `        atual: …${a.slice(Math.max(0, i - janela), i + janela)}…\n` +
+    `       e-mail: …${b.slice(Math.max(0, i - janela), i + janela)}…`
+  );
 }
 
 async function main() {
@@ -89,13 +113,16 @@ async function main() {
     //
     // Continua servindo de proteção: descrição editada à mão não aparece
     // palavra por palavra dentro do e-mail original.
-    if (!normalizar(novo).includes(normalizar(linha.atual))) {
+    const atualChave = somenteAlfanumerico(linha.atual);
+    const novoChave = somenteAlfanumerico(novo);
+    if (!novoChave.includes(atualChave)) {
       pulados.push(
         `#${linha.ticket_number}: o texto atual não aparece no e-mail original (editada à mão?)`,
       );
       console.log(`#${linha.ticket_number} PULADO — confira à mão:`);
-      console.log(`   atual (${linha.atual.length}): ${linha.atual.slice(0, 120)}…`);
-      console.log(`   e-mail (${novo.length}): ${novo.slice(0, 120)}…\n`);
+      console.log(`   atual (${linha.atual.length}): ${linha.atual.slice(0, 110)}…`);
+      console.log(`   e-mail (${novo.length}): ${novo.slice(0, 110)}…`);
+      console.log(`   ${pontoDeDivergencia(atualChave, novoChave)}\n`);
       continue;
     }
 
