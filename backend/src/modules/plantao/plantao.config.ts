@@ -1,7 +1,7 @@
 /**
  * Escalas de plantão lidas do Outlook.
  *
- * Os três calendários (NOC, Tec, Infra) vivem numa caixa só — a da pessoa que
+ * Os três calendários (NOC, Sistemas, Infra) vivem numa caixa só — a da pessoa que
  * mantém as escalas — e estão compartilhados com a equipe. O portal lê da
  * caixa **dona**: o mesmo calendário aparece na lista de outras 23 pessoas,
  * mas com um id diferente em cada uma, e essa cópia some se a pessoa remover o
@@ -9,13 +9,13 @@
  *
  * A configuração vem do ambiente para o id não virar constante de código:
  *
- *   PLANTAO_CALENDARIOS=NOC|caixa@empresa.com|AAMk...;Tec|caixa@empresa.com|AAMk...
+ *   PLANTAO_CALENDARIOS=NOC|caixa@empresa.com|AAMk...;Sistemas|caixa@empresa.com|AAMk...
  *
  * Cada entrada é `rótulo|caixa|id`, separadas por `;`. Caixas diferentes por
  * entrada são aceitas — hoje são iguais, mas nada no código depende disso.
  */
 export type CalendarioPlantao = {
-  /** Como aparece na tela: NOC, Tec, Infra. */
+  /** Como aparece na tela: NOC, Sistemas, Infra. */
   rotulo: string;
   /** Caixa dona do calendário. */
   caixa: string;

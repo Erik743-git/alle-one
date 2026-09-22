@@ -113,7 +113,7 @@ export class PlantaoService {
           titulo: ev.subject?.trim() || '(sem título)',
           inicio: ev.start!.dateTime!,
           fim: ev.end!.dateTime!,
-          // Turnos têm formatos diferentes — Infra começa sexta 18h, Tec cobre
+          // Turnos têm formatos diferentes — Infra começa sexta 18h, Sistemas cobre
           // sábado 06h a domingo 22h. Por isso compara com o intervalo, sem
           // supor duração nem dia de início.
           agora: inicio <= agora && agora < fim,

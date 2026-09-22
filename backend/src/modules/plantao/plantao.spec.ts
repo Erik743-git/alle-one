@@ -2,7 +2,7 @@ import { PlantaoService } from './plantao.service';
 
 /**
  * As duas escalas reais têm formatos diferentes: Infra começa sexta 18:00 e
- * Tec cobre sábado 06:00 até domingo 22:00. Por isso "de plantão agora" tem
+ * Sistemas cobre sábado 06:00 até domingo 22:00. Por isso "de plantão agora" tem
  * de sair da comparação com o intervalo, sem supor duração nem dia de início.
  */
 describe('PlantaoService', () => {
@@ -32,7 +32,7 @@ describe('PlantaoService', () => {
     process.env.PLANTAO_CACHE_MS = '0';
     process.env.PLANTAO_CALENDARIOS = [
       'Infra|escala@alle.com|ID-INFRA',
-      'Tec|escala@alle.com|ID-TEC',
+      'Sistemas|escala@alle.com|ID-SIS',
     ].join(';');
     jest.useFakeTimers().setSystemTime(new Date('2026-09-19T20:00:00'));
   });
@@ -58,7 +58,7 @@ describe('PlantaoService', () => {
           },
         ],
       },
-      'ID-TEC': {
+      'ID-SIS': {
         value: [
           {
             subject: 'Plantão Rian',
@@ -71,18 +71,18 @@ describe('PlantaoService', () => {
 
     const r = await service.escalas();
     const infra = r.escalas.find((e) => e.rotulo === 'Infra')!;
-    const tec = r.escalas.find((e) => e.rotulo === 'Tec')!;
+    const sistemas = r.escalas.find((e) => e.rotulo === 'Sistemas')!;
 
     expect(infra.turnos.map((t) => [t.titulo, t.agora])).toEqual([
       ['Plantão Jonatan', false],
       ['Plantão Alisson', true],
     ]);
-    // O turno do Tec só começa amanhã: ninguém de plantão agora.
-    expect(tec.turnos.every((t) => !t.agora)).toBe(true);
+    // O turno do Sistemas só começa amanhã: ninguém de plantão agora.
+    expect(sistemas.turnos.every((t) => !t.agora)).toBe(true);
   });
 
   it('pede os horários no fuso de São Paulo', async () => {
-    const { service, getJson } = build({ 'ID-INFRA': { value: [] }, 'ID-TEC': { value: [] } });
+    const { service, getJson } = build({ 'ID-INFRA': { value: [] }, 'ID-SIS': { value: [] } });
     await service.escalas();
     const opcoes = getJson.mock.calls[0]?.[1];
     expect(opcoes?.headers?.Prefer).toBe(
@@ -91,7 +91,7 @@ describe('PlantaoService', () => {
   });
 
   it('usa calendarView, que expande a recorrência', async () => {
-    const { service, getJson } = build({ 'ID-INFRA': { value: [] }, 'ID-TEC': { value: [] } });
+    const { service, getJson } = build({ 'ID-INFRA': { value: [] }, 'ID-SIS': { value: [] } });
     await service.escalas();
     expect(getJson.mock.calls[0][0]).toContain('/calendarView?');
   });
@@ -99,7 +99,7 @@ describe('PlantaoService', () => {
   it('uma escala que falha não derruba as outras, e diz que falhou', async () => {
     const { service } = build({
       'ID-INFRA': new Error('Graph GET — 403: sem acesso'),
-      'ID-TEC': {
+      'ID-SIS': {
         value: [
           {
             subject: 'Plantão Rian',
@@ -112,14 +112,14 @@ describe('PlantaoService', () => {
 
     const r = await service.escalas();
     const infra = r.escalas.find((e) => e.rotulo === 'Infra')!;
-    const tec = r.escalas.find((e) => e.rotulo === 'Tec')!;
+    const sistemas = r.escalas.find((e) => e.rotulo === 'Sistemas')!;
 
     // Falha vira aviso na tela, não cache calado: plantonista errado de
     // madrugada é pior do que bloco vazio.
     expect(infra.erro).toBeTruthy();
     expect(infra.turnos).toEqual([]);
-    expect(tec.turnos).toHaveLength(1);
-    expect(tec.erro).toBeNull();
+    expect(sistemas.turnos).toHaveLength(1);
+    expect(sistemas.erro).toBeNull();
   });
 
   it('sem configuração, responde que não está configurado', async () => {
