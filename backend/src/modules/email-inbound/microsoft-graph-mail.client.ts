@@ -139,6 +139,23 @@ export class MicrosoftGraphMailClient {
     });
   }
 
+  /**
+   * GET genérico no Graph, para quem precisa de algo além de e-mail — hoje a
+   * escala de plantão, que lê calendário. Fica aqui para reaproveitar o cache
+   * de token em vez de cada módulo pedir o seu.
+   */
+  async getJson<T>(
+    path: string,
+    options?: { headers?: Record<string, string> },
+  ): Promise<T> {
+    const res = await this.graphFetch(path, { headers: options?.headers });
+    if (!res.ok) {
+      const texto = await res.text().catch(() => '');
+      throw new Error(`Graph GET ${path} — ${res.status}: ${texto.slice(0, 300)}`);
+    }
+    return (await res.json()) as T;
+  }
+
   async listRecentMessages(params: {
     mailbox: string;
     top?: number;

@@ -19,6 +19,7 @@ import {
   Package,
   FolderKanban,
   Ticket,
+  CalendarClock,
   MonitorDot,
   Plus,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import {
   canAccessAdmin,
   canAccessAplicativos,
   canAccessConsole,
+  canAccessPlantao,
   canAccessInventario,
   canAccessProjetos,
   canAccessDashboard,
@@ -96,6 +98,12 @@ function buildMenuItems(): MenuItem[] {
       href: "/console",
       icon: MonitorDot,
       visible: canAccessConsole(),
+    },
+    {
+      name: "Plantão",
+      href: "/plantao",
+      icon: CalendarClock,
+      visible: canAccessPlantao(),
     },
     {
       name: "Financeiro",
