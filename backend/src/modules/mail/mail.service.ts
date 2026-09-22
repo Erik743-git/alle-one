@@ -119,7 +119,49 @@ export class MailService {
     return envTrim(process.env.MAIL_TRANSPORT)?.toLowerCase() === 'graph';
   }
 
+  /** Endereço da caixa de onde o portal envia — e que ele também lê. */
+  private senderMailbox(): string | null {
+    const raw =
+      envTrim(process.env.MAIL_GRAPH_SENDER) ??
+      parseMailAddress(envTrim(process.env.MAIL_FROM) ?? '')?.address ??
+      envTrim(process.env.SMTP_USER) ??
+      null;
+    return raw ? raw.trim().toLowerCase() : null;
+  }
+
+  /**
+   * Tira a própria caixa da lista de destinatários.
+   *
+   * O portal lê e envia pelo mesmo endereço. Quando um chamado tem essa
+   * caixa como solicitante — são 5.755 em produção, a maioria de rotina —,
+   * o aviso de fechamento voltava para cá, era lido como resposta do
+   * solicitante e reabria o chamado. O #81667 foi fechado e reaberto três
+   * vezes por isso. Mandar e-mail para a própria caixa nunca teve uso.
+   */
+  private removeSelf(
+    list: SendMailPayload['to'] | undefined,
+  ): string[] | undefined {
+    if (list == null) return undefined;
+    const caixa = this.senderMailbox();
+    if (!caixa) return Array.isArray(list) ? list : [list];
+    const itens = Array.isArray(list) ? list : [list];
+    return itens.filter((item) => {
+      const endereco = parseMailAddress(item)?.address?.trim().toLowerCase();
+      return endereco !== caixa;
+    });
+  }
+
   async sendMail(payload: SendMailPayload): Promise<boolean> {
+    const to = this.removeSelf(payload.to) ?? [];
+    const cc = this.removeSelf(payload.cc);
+    if (to.length === 0 && (cc?.length ?? 0) === 0) {
+      this.logger.log(
+        `E-mail não enviado: só a própria caixa como destinatário (assunto=${payload.subject}).`,
+      );
+      return false;
+    }
+    payload = { ...payload, to, ...(cc ? { cc } : {}) };
+
     if (this.usingGraph()) {
       return this.sendViaGraph(payload);
     }

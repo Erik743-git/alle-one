@@ -14,6 +14,7 @@ import {
 } from './email-reply-communication';
 import {
   MicrosoftGraphMailClient,
+  PORTAL_SENT_HEADER,
   type GraphMailMessage,
 } from './microsoft-graph-mail.client';
 
@@ -951,13 +952,18 @@ export function isSenderBlocked(
   return false;
 }
 
-export type AutomatedMessageKind = 'NAO_ENTREGUE' | 'RESPOSTA_AUTOMATICA';
+export type AutomatedMessageKind =
+  | 'NAO_ENTREGUE'
+  | 'RESPOSTA_AUTOMATICA'
+  | 'ENVIADO_PELO_PORTAL';
 
 const AUTOMATED_MESSAGE_REASON: Record<AutomatedMessageKind, string> = {
   NAO_ENTREGUE:
     'Aviso de não entrega do servidor de e-mail — não vira pré-ticket nem entra em chamado.',
   RESPOSTA_AUTOMATICA:
     'Resposta automática (ausência) — não vira pré-ticket nem entra em chamado.',
+  ENVIADO_PELO_PORTAL:
+    'Aviso enviado pelo próprio portal que voltou para a caixa — não vira pré-ticket nem entra em chamado.',
 };
 
 /** Remetentes que só mandam aviso de entrega (o do Exchange tem um hash fixo por tenant). */
@@ -987,6 +993,13 @@ export function detectAutomatedMessage(params: {
       .toLowerCase() ?? null;
   const local = params.fromEmail.trim().split('@')[0] ?? '';
   const subject = params.subject.trim();
+
+  // Aviso do próprio portal que voltou para a caixa. Reconhecido pela marca
+  // que o envio coloca, não pelo remetente: e-mail encaminhado à mão de
+  // suporte@ para a caixa não tem a marca e continua virando chamado.
+  if (header(PORTAL_SENT_HEADER) !== null) {
+    return 'ENVIADO_PELO_PORTAL';
+  }
 
   if (
     BOUNCE_SENDER_LOCAL.test(local) ||

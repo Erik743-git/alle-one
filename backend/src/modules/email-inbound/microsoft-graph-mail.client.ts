@@ -3,6 +3,15 @@ import type { MailAddress } from '../mail/mail-address.util';
 
 type TokenCache = { accessToken: string; expiresAt: number };
 
+/**
+ * Cabeçalho que marca e-mail enviado pelo próprio portal.
+ *
+ * O portal lê e envia pela mesma caixa: sem essa marca, o aviso que ele
+ * manda volta e é tratado como resposta de gente. O nome precisa começar
+ * com "x-" para o Graph aceitar cabeçalho personalizado.
+ */
+export const PORTAL_SENT_HEADER = 'x-alleone-portal';
+
 export type GraphMailMessage = {
   id: string;
   internetMessageId?: string;
@@ -417,6 +426,13 @@ export class MicrosoftGraphMailClient {
         : { address: r.address },
     });
     return {
+      // Marca do portal: o que ele envia e volta para a caixa é ignorado na
+      // leitura, em vez de virar comunicação ou reabrir chamado. Por vir no
+      // cabeçalho, e-mail encaminhado à mão de suporte@ não é confundido
+      // com envio automático — aquele não carrega a marca.
+      internetMessageHeaders: [
+        { name: PORTAL_SENT_HEADER, value: '1' },
+      ],
       subject: mail.subject,
       body: mail.html
         ? { contentType: 'HTML', content: mail.html }
