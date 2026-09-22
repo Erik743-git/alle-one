@@ -137,6 +137,12 @@ export const emailInboundService = {
     const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
     return apiRequest<PreTicketListItem[]>(`/pre-tickets${qs}`);
   },
+  /** Mesas para escolher ao abrir: mesma permissão das outras rotas daqui. */
+  listPreTicketDesks() {
+    return apiRequest<Array<{ id: string; name: string }>>(
+      "/pre-tickets/desks",
+    );
+  },
   getPreTicket(id: string) {
     return apiRequest<PreTicketDetail>(`/pre-tickets/${id}`);
   },

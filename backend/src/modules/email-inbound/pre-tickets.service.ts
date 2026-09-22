@@ -92,6 +92,16 @@ export class PreTicketsService {
     }
   }
 
+  /** Mesas ativas, para escolher ao abrir o pré-ticket. */
+  async listDesks(): Promise<Array<{ id: string; name: string }>> {
+    const mesas = await this.prisma.specialty.findMany({
+      where: { deletedAt: null, active: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+    return mesas;
+  }
+
   async countPending(actor: AuthenticatedRequestUser) {
     this.assertOperator(actor);
     const [emailCount, portalCount] = await Promise.all([

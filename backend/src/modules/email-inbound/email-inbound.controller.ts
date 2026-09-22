@@ -137,6 +137,20 @@ export class EmailInboundController {
     return this.preTickets.list(actor, q);
   }
 
+  /**
+   * Mesas para escolher ao abrir o pré-ticket.
+   *
+   * Fica aqui, com a mesma permissão das outras rotas de pré-ticket: quem
+   * pode abrir precisa conseguir listar. As outras listas de mesa do portal
+   * exigem módulo (Usuários ou criar ticket) que nem todo atendente tem —
+   * e, como a mesa virou obrigatória, sem a lista ele ficaria travado.
+   */
+  @Get('pre-tickets/desks')
+  @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
+  desks() {
+    return this.preTickets.listDesks();
+  }
+
   @Get('pre-tickets/:id')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   getOne(

@@ -14,7 +14,7 @@ import {
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { notifyError } from "@/lib/notify";
 import { companiesService } from "@/lib/services/companies.service";
-import { ticketsService } from "@/lib/services/tickets.service";
+import { emailInboundService } from "@/lib/services/email-inbound.service";
 
 export type PreTicketOpenChoice = {
   companyId?: string;
@@ -69,9 +69,11 @@ export function PreTicketCompanyDialog({
       // Lista da sessão: quem atende pré-ticket é equipe interna e nem sempre
       // tem o módulo Empresas, que o /companies exige.
       askCompany ? companiesService.listAccessible() : Promise.resolve([]),
-      askDesk
-        ? ticketsService.createCatalogs().then((c) => c.desks)
-        : Promise.resolve([]),
+      // Mesas pela rota de pré-ticket, que exige só o papel (ADMIN ou
+      // COLLABORATOR). As outras listas de mesa do portal exigem módulo
+      // — Usuários ou criar ticket — que nem todo atendente tem, e sem a
+      // lista ele ficaria travado, já que a mesa virou obrigatória.
+      askDesk ? emailInboundService.listPreTicketDesks() : Promise.resolve([]),
     ])
       .then(([rows, specialties]) => {
         if (cancelled) return;
@@ -80,12 +82,7 @@ export function PreTicketCompanyDialog({
             .filter((row) => row.tifluxClientId != null)
             .map((row) => ({ id: row.id, name: row.name })),
         );
-        // O catálogo de criação devolve o código numérico da mesa; o
-        // backend aceita os dois formatos. Esta fonte é a que colaborador
-        // enxerga: a lista do cadastro de usuários exige o módulo Usuários.
-        setDesks(
-          specialties.map((s) => ({ id: String(s.id), name: s.name })),
-        );
+        setDesks(specialties.map((s) => ({ id: s.id, name: s.name })));
       })
       .catch((err) => {
         if (cancelled) return;
