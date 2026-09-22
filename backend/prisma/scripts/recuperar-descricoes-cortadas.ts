@@ -81,12 +81,21 @@ async function main() {
       );
       continue;
     }
-    // O texto atual precisa ser o começo do que o e-mail geraria. Se não for,
-    // alguém editou a descrição à mão e sobrescrever apagaria esse trabalho.
-    if (!normalizar(novo).startsWith(normalizar(linha.atual))) {
+    // O texto atual precisa APARECER no que o e-mail geraria — não ser o
+    // começo dele. O `bodyPreview` do Outlook pula logotipo e cabeçalho de
+    // tabela, então em e-mail com qualquer coisa antes do texto o trecho
+    // guardado começa no meio do corpo. Exigir prefixo pulava esses casos,
+    // inclusive o #81743.
+    //
+    // Continua servindo de proteção: descrição editada à mão não aparece
+    // palavra por palavra dentro do e-mail original.
+    if (!normalizar(novo).includes(normalizar(linha.atual))) {
       pulados.push(
-        `#${linha.ticket_number}: descrição atual não bate com o e-mail (editada à mão?)`,
+        `#${linha.ticket_number}: o texto atual não aparece no e-mail original (editada à mão?)`,
       );
+      console.log(`#${linha.ticket_number} PULADO — confira à mão:`);
+      console.log(`   atual (${linha.atual.length}): ${linha.atual.slice(0, 120)}…`);
+      console.log(`   e-mail (${novo.length}): ${novo.slice(0, 120)}…\n`);
       continue;
     }
 
