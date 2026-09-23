@@ -99,6 +99,18 @@ export class ReportsController {
     });
   }
 
+  /**
+   * A tela só mostra o botão de visualizar quando o servidor converte.
+   *
+   * Fica ANTES das rotas com `:id` — rota estática depois de dinâmica corre o
+   * risco de ser lida como um id.
+   */
+  @Get('preview/disponivel')
+  @RequirePermission(PermissionModule.REPORTS, 'canView')
+  async previewDisponivel() {
+    return { disponivel: await this.reports.previewDisponivel() };
+  }
+
   @Get(':id/download')
   @RequirePermission(PermissionModule.REPORTS, 'canView')
   async download(
@@ -111,6 +123,26 @@ export class ReportsController {
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(meta.originalName)}"`,
+    );
+    return file;
+  }
+
+  /**
+   * Mesmo relatório em PDF, para ver na tela sem baixar. `inline` faz o
+   * navegador abrir no visualizador em vez de salvar no disco.
+   */
+  @Get(':id/preview')
+  @RequirePermission(PermissionModule.REPORTS, 'canView')
+  async preview(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Param('id') reportId: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { file, meta } = await this.reports.previewReportPdf(user, reportId);
+    res.setHeader('Content-Type', meta.mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(meta.originalName)}"`,
     );
     return file;
   }

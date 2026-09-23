@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, Download, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, Download, Eye, Loader2, RefreshCw } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
 import { DatePickerField } from "@/components/ui/date-picker-field";
@@ -110,6 +116,15 @@ function GeradorRelatoriosPageImpl() {
 
   const [lastReport, setLastReport] = useState<ReportRow | null>(null);
   const [reports, setReports] = useState<ReportRow[]>([]);
+
+  // Visualizacao em PDF. `null` enquanto a gente ainda nao sabe se o
+  // servidor converte - ate saber, o botao nem aparece.
+  const [previewDisponivel, setPreviewDisponivel] = useState<boolean | null>(
+    null,
+  );
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [previewTitulo, setPreviewTitulo] = useState<string>("");
 
   const formatOptions = useMemo(
     () => getFormatsForReportType(type),
@@ -273,6 +288,22 @@ function GeradorRelatoriosPageImpl() {
       cancelled = true;
     };
   }, [isCobranca]);
+
+  useEffect(() => {
+    let cancelado = false;
+    void reportsService
+      .previewDisponivel()
+      .then((r) => {
+        if (!cancelado) setPreviewDisponivel(Boolean(r?.disponivel));
+      })
+      // Nao sabemos: trata como indisponivel. Baixar continua ali.
+      .catch(() => {
+        if (!cancelado) setPreviewDisponivel(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
 
   useEffect(() => {
     const allowed = getFormatsForReportType(type);
@@ -496,6 +527,33 @@ function GeradorRelatoriosPageImpl() {
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao baixar relatório.");
     }
+  }
+
+  async function handleVisualizar(report: ReportRow) {
+    setErro("");
+    fecharPreview();
+    setPreviewId(report.id);
+    setPreviewTitulo(
+      `${getReportTypeLabel(report.type)} - ${getReportCompanyLabel(report)}`,
+    );
+    try {
+      const { url } = await reportsService.preview(report.id);
+      setPreviewUrl(url);
+    } catch (e) {
+      setPreviewId(null);
+      setErro(
+        e instanceof Error ? e.message : "Falha ao preparar a visualização.",
+      );
+    }
+  }
+
+  function fecharPreview() {
+    // A URL de objeto segura o PDF inteiro na memoria da aba ate ser revogada.
+    setPreviewUrl((atual) => {
+      if (atual) window.URL.revokeObjectURL(atual);
+      return "";
+    });
+    setPreviewId(null);
   }
 
   return (
@@ -943,6 +1001,22 @@ function GeradorRelatoriosPageImpl() {
                         <Download className="mr-2 h-4 w-4" />
                         Baixar
                       </Button>
+                      {previewDisponivel ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => void handleVisualizar(lastReport)}
+                          disabled={previewId === lastReport.id && !previewUrl}
+                          className="h-10"
+                        >
+                          {previewId === lastReport.id && !previewUrl ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Eye className="mr-2 h-4 w-4" />
+                          )}
+                          Visualizar
+                        </Button>
+                      ) : null}
                     </div>
                   </div>
                 )}
@@ -999,14 +1073,33 @@ function GeradorRelatoriosPageImpl() {
                               </div>
                             </td>
                             <td className="px-2 py-3 text-right">
-                              <Button
-                                variant="outline"
-                                onClick={() => void handleDownload(r.id)}
-                                className="h-9"
-                              >
-                                <Download className="mr-2 h-4 w-4" />
-                                Baixar
-                              </Button>
+                              <div className="flex justify-end gap-2">
+                                {previewDisponivel ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    title="Visualizar sem baixar"
+                                    aria-label="Visualizar sem baixar"
+                                    onClick={() => void handleVisualizar(r)}
+                                    disabled={previewId === r.id && !previewUrl}
+                                    className="h-9 px-3"
+                                  >
+                                    {previewId === r.id && !previewUrl ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  variant="outline"
+                                  onClick={() => void handleDownload(r.id)}
+                                  className="h-9"
+                                >
+                                  <Download className="mr-2 h-4 w-4" />
+                                  Baixar
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))}
@@ -1017,6 +1110,29 @@ function GeradorRelatoriosPageImpl() {
               </CardContent>
             </Card>
           </div>
+
+          <Dialog
+            open={Boolean(previewUrl)}
+            onOpenChange={(aberto) => {
+              if (!aberto) fecharPreview();
+            }}
+          >
+            {/* Quase a tela toda: relatorio em folha estreita nao se le. */}
+            <DialogContent className="flex h-[92vh] w-[96vw] max-w-[96vw] flex-col gap-3 p-4 sm:max-w-[96vw]">
+              <DialogHeader>
+                <DialogTitle className="truncate text-base">
+                  {previewTitulo}
+                </DialogTitle>
+              </DialogHeader>
+              {previewUrl ? (
+                <iframe
+                  src={previewUrl}
+                  title={previewTitulo || "Visualização do relatório"}
+                  className="min-h-0 w-full flex-1 rounded-lg border border-border bg-muted"
+                />
+              ) : null}
+            </DialogContent>
+          </Dialog>
       </div>
     </AppShell>
     </PermissionGate>

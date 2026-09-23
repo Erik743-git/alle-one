@@ -102,6 +102,45 @@ export const reportsService = {
     });
   },
 
+  /**
+   * A visualização depende de um conversor instalado no servidor. Quando não
+   * tem, a tela esconde o botão em vez de oferecer algo que vai falhar.
+   */
+  async previewDisponivel() {
+    return apiRequest<{ disponivel: boolean }>("/reports/preview/disponivel");
+  },
+
+  /**
+   * Mesmo relatório em PDF, para abrir na tela sem salvar no disco.
+   * Devolve uma URL de objeto: quem chamou precisa revogar ao fechar.
+   */
+  async preview(reportId: string) {
+    const res = await authFetch(`${API_URL}/reports/${reportId}/preview`, {
+      method: "GET",
+    });
+
+    if (res.status === 401) {
+      throw new Error("Sessão expirada. Faça login novamente.");
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      // O backend responde 503 com a mensagem em JSON quando o conversor não
+      // está instalado; sem isto a tela mostraria o JSON cru.
+      let mensagem = `Falha ao preparar a visualização (${res.status}).`;
+      try {
+        const corpo = JSON.parse(text) as { message?: string };
+        if (corpo?.message) mensagem = corpo.message;
+      } catch {
+        if (text) mensagem = text;
+      }
+      throw new Error(mensagem);
+    }
+
+    const blob = await res.blob();
+    return { url: window.URL.createObjectURL(blob) };
+  },
+
   async download(reportId: string) {
     const res = await authFetch(`${API_URL}/reports/${reportId}/download`, {
       method: "GET",

@@ -6,10 +6,15 @@ import { RendimentoModule } from '../rendimento/rendimento.module';
 import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 import { ReportsInventarioService } from './reports-inventario.service';
+import { ReportPdfPreviewService } from './report-pdf-preview.service';
 
 @Module({
   imports: [PrismaModule, TifluxModule, DashboardModule, RendimentoModule],
   controllers: [ReportsController],
-  providers: [ReportsService, ReportsInventarioService],
+  providers: [
+    ReportsService,
+    ReportsInventarioService,
+    ReportPdfPreviewService,
+  ],
 })
 export class ReportsModule {}

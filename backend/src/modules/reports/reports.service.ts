@@ -43,6 +43,7 @@ import {
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 import { isReservedRowField } from '../dashboard/desk-categories';
+import { ReportPdfPreviewService } from './report-pdf-preview.service';
 
 /**
  * Tira do relatório de rendimento quem aponta pelo lado do cliente.
@@ -244,6 +245,7 @@ export class ReportsService {
     private readonly dashboard: DashboardService,
     private readonly rendimento: RendimentoService,
     private readonly inventario: ReportsInventarioService,
+    private readonly pdfPreview: ReportPdfPreviewService,
   ) {}
 
   private async attachGeneratedByUsers<T extends { generatedBy: string }>(
@@ -3885,6 +3887,29 @@ export class ReportsService {
         originalName: downloadName,
         mimeType: report.file.mimeType || 'application/octet-stream',
       },
+      sourcePath: report.file.path,
     };
+  }
+
+  /**
+   * Mesmo relatório em PDF, para abrir na tela sem baixar.
+   *
+   * Reaproveita `downloadReport` de propósito: escopo de empresa, existência
+   * do arquivo e nome saem exatamente iguais aos do download. Quem não pode
+   * baixar não consegue visualizar.
+   */
+  async previewReportPdf(user: AuthenticatedRequestUser, reportId: string) {
+    const { meta, sourcePath } = await this.downloadReport(user, reportId);
+    const pdfPath = await this.pdfPreview.caminhoDoPdf(sourcePath);
+    const nomePdf = meta.originalName.replace(/\.(xlsx|csv)$/i, '.pdf');
+    return {
+      file: new StreamableFile(createReadStream(pdfPath)),
+      meta: { originalName: nomePdf, mimeType: 'application/pdf' },
+    };
+  }
+
+  /** A tela esconde o botão quando o servidor não converte. */
+  async previewDisponivel(): Promise<boolean> {
+    return this.pdfPreview.estaDisponivel();
   }
 }
