@@ -21,6 +21,7 @@ import {
   type RendimentoDaySchedule,
   type RendimentoGapDto,
 } from './rendimento-day-insights';
+import { isComunicacaoSemHoras } from './rendimento-comunicacao.helper';
 import { getEffectiveRendimentoSchedule } from '../users/user-rendimento-schedule.helper';
 import {
   buildDayEventSourceKey,
@@ -1564,8 +1565,16 @@ export class RendimentoService {
     };
   }
 
+  /**
+   * Comunicação com o cliente fica de fora da tela de Apontamentos: não soma
+   * hora e o gestor acompanha a conversa pelo chamado. Ver o helper para a
+   * regra e o porquê de manter visível a linha sem horário.
+   */
   private mapEntries(rows: AppointmentRow[]): RendimentoEntryDto[] {
-    return rows.map((row) => {
+    const comHoras = rows.filter(
+      (row) => !isComunicacaoSemHoras(row.init_time, row.end_time),
+    );
+    return comHoras.map((row) => {
       const rawDescription = row.description?.trim() || null;
       const plain = rawDescription
         ? appointmentDescriptionToPlainText(rawDescription).trim() || null
