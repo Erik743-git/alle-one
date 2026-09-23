@@ -21,6 +21,7 @@ import {
   Ticket,
   CalendarClock,
   MonitorDot,
+  Activity,
   Plus,
 } from "lucide-react";
 import {
@@ -104,6 +105,12 @@ function buildMenuItems(): MenuItem[] {
       href: "/plantao",
       icon: CalendarClock,
       visible: canAccessPlantao(),
+    },
+    {
+      name: "Monitoramento",
+      href: "/monitoramento",
+      icon: Activity,
+      visible: canAccessConsole(),
     },
     {
       name: "Financeiro",

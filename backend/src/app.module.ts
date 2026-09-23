@@ -18,6 +18,7 @@ import { CompaniesModule } from './modules/companies/companies.module';
 import { ZabbixModule } from './modules/zabbix/zabbix.module';
 import { TifluxModule } from './modules/tiflux/tiflux.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { GrafanaModule } from './modules/grafana/grafana.module';
 import { GmudModule } from './modules/gmud/gmud.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { FinancialModule } from './modules/financial/financial.module';
@@ -59,6 +60,7 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     ZabbixModule,
     TifluxModule,
     DashboardModule,
+    GrafanaModule,
     GmudModule,
     ContractsModule,
     FinancialModule,
