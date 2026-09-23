@@ -14,7 +14,11 @@ const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
  * Ex.: NEXT_PUBLIC_GRAFANA_ORIGIN="https://grafana.alletecnologia.com"
  */
 const grafanaOrigin = (process.env.NEXT_PUBLIC_GRAFANA_ORIGIN ?? "").trim();
-const frameSrc = ["'self'", grafanaOrigin].filter(Boolean).join(" ");
+// blob: e o visualizador de relatorio, que abre o PDF convertido numa URL de
+// objeto. Sem isso o quadro vem com ERR_BLOCKED_BY_CSP.
+const frameSrc = ["'self'", "blob:", grafanaOrigin]
+  .filter(Boolean)
+  .join(" ");
 
 /** Alinhar com deploy/nginx-alleone-csp-html.snippet.conf */
 const htmlContentSecurityPolicy = [
