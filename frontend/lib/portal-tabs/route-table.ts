@@ -8,6 +8,7 @@ export const PORTAL_TAB_ROUTES = [
   "/dashboard",
   "/console",
   "/correio",
+  "/mural",
   "/financeiro",
   "/gerador-relatorios",
   "/tickets",

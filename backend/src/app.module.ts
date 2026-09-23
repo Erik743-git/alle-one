@@ -26,6 +26,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { UsageAlertsModule } from './modules/usage-alerts/usage-alerts.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RendimentoModule } from './modules/rendimento/rendimento.module';
+import { MuralModule } from './modules/mural/mural.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { ProjetosModule } from './modules/projetos/projetos.module';
@@ -66,6 +67,7 @@ import { EmailInboundModule } from './modules/email-inbound/email-inbound.module
     UsageAlertsModule,
     ReportsModule,
     RendimentoModule,
+    MuralModule,
     MailboxModule,
     InventarioModule,
     ProjetosModule,

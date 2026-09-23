@@ -317,6 +317,11 @@ export function canAccessConsole() {
   return canViewModule("MONITORING");
 }
 
+/** Mural de reconhecimento: so equipe interna. */
+export function canAccessMural() {
+  return isAdmin() || isCollaborator();
+}
+
 export function canAcknowledgeConsoleAlerts() {
   return hasPermission("MONITORING", "canEdit");
 }

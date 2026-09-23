@@ -170,6 +170,8 @@ model User {
   rendimentoOvertimeBalance    RendimentoOvertimeBalance?     @relation("RendimentoOvertimeBalances")
   rendimentoListPrefsAsCollaborator RendimentoCollaboratorListPref[] @relation("RendimentoListPrefCollaborator")
   rendimentoListPrefsAsOwner        RendimentoCollaboratorListPref[] @relation("RendimentoListPrefOwner")
+  muralNotesWritten                 MuralNote[]                      @relation("MuralNoteAuthor")
+  muralNotesReceived                MuralNote[]                      @relation("MuralNoteRecipient")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
   projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
@@ -1624,4 +1626,41 @@ model EmailInboundSettings {
   updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("email_inbound_settings")
+}
+
+/// Mural de reconhecimento: bilhete que um colaborador prega para outro.
+model MuralNote {
+  id String @id @default(uuid())
+
+  /// Sempre gravado, mesmo em bilhete anônimo: é o rastro para apurar abuso.
+  /// A API nunca devolve este campo quando `anonymous` é true.
+  authorUserId String  @map("author_user_id")
+  anonymous    Boolean @default(false)
+
+  /// Para quem é o bilhete. Nulo = recado para o mural inteiro.
+  toUserId String? @map("to_user_id")
+
+  message String @db.VarChar(600)
+  /// Cor do papel, escolhida na tela (amarelo, rosa, verde...).
+  color String @default("amarelo") @db.VarChar(20)
+
+  /// Posição na parede, em fração da largura/altura (0 a 1), para o mural
+  /// ficar igual em qualquer tamanho de tela.
+  x Float @default(0.5)
+  y Float @default(0.5)
+  /// Inclinação do papel em graus; bilhete pregado torto parece de verdade.
+  rotation Float @default(0)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  /// Bilhete tirado do mural continua no banco (autor ou admin removeu).
+  deletedAt DateTime? @map("deleted_at")
+
+  author    User  @relation("MuralNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  recipient User? @relation("MuralNoteRecipient", fields: [toUserId], references: [id], onDelete: SetNull)
+
+  @@index([deletedAt])
+  @@index([toUserId])
+  @@index([authorUserId])
+  @@map("mural_notes")
 }
