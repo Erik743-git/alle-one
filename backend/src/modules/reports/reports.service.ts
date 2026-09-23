@@ -3246,7 +3246,139 @@ export class ReportsService {
     noteRow.height = 46;
     summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 11);
 
+    this.addHorasPorEspecialidadeSheet(workbook, rows);
+
     return workbook.xlsx.writeBuffer();
+  }
+
+  /**
+   * Aba com as horas cruzando especialidade x cliente, no modelo da
+   * estatística geral: uma linha por cliente, uma coluna por especialidade.
+   *
+   * Sai das MESMAS linhas da aba "Relatório" — nenhuma consulta nova —, então
+   * o total daqui fecha com o total de lá e o filtro de colaborador e o de
+   * usuário de cliente já vêm aplicados.
+   *
+   * A especialidade é a do colaborador que apontou (a mesma coluna "Equipe"
+   * da aba detalhada), não a mesa do chamado.
+   */
+  private addHorasPorEspecialidadeSheet(
+    workbook: ExcelJS.Workbook,
+    rows: Array<{ client: string; equipe: string; durationMinutes: number }>,
+  ) {
+    const sheet = workbook.addWorksheet('Horas por Especialidade', {
+      views: [{ state: 'frozen', xSplit: 1, ySplit: 3 }],
+    });
+
+    // cliente -> especialidade -> minutos
+    const porCliente = new Map<string, Map<string, number>>();
+    const totalPorEspecialidade = new Map<string, number>();
+    for (const r of rows) {
+      const cliente = r.client?.trim() || 'Sem cliente';
+      const especialidade = r.equipe?.trim() || 'Sem equipe';
+      const minutos = Number(r.durationMinutes) || 0;
+      if (minutos <= 0) continue;
+
+      const linha = porCliente.get(cliente) ?? new Map<string, number>();
+      linha.set(especialidade, (linha.get(especialidade) ?? 0) + minutos);
+      porCliente.set(cliente, linha);
+      totalPorEspecialidade.set(
+        especialidade,
+        (totalPorEspecialidade.get(especialidade) ?? 0) + minutos,
+      );
+    }
+
+    sheet.mergeCells('A1:B1');
+    sheet.getCell('A1').value = 'Horas por Especialidade e Cliente';
+    sheet.getCell('A1').font = { bold: true, size: 14 };
+
+    if (totalPorEspecialidade.size === 0) {
+      sheet.getColumn(1).width = 60;
+      sheet.getCell('A3').value =
+        'Sem apontamentos no período para os filtros selecionados.';
+      sheet.getCell('A3').font = { italic: true, color: { argb: 'FF6B7280' } };
+      return;
+    }
+
+    // Coluna só existe se teve hora: especialidade parada não vira coluna
+    // vazia, e a maior fica à esquerda.
+    const especialidades = [...totalPorEspecialidade.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'))
+      .map(([nome]) => nome);
+
+    const clientes = [...porCliente.entries()]
+      .map(([nome, linha]) => ({
+        nome,
+        linha,
+        total: [...linha.values()].reduce((acc, v) => acc + v, 0),
+      }))
+      .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+    const colCount = especialidades.length + 2;
+    sheet.getColumn(1).width = 36;
+    especialidades.forEach((nome, i) => {
+      sheet.getColumn(i + 2).width = Math.max(12, nome.length + 3);
+    });
+    sheet.getColumn(colCount).width = 12;
+
+    const headerRow = sheet.getRow(3);
+    headerRow.values = ['Cliente', ...especialidades, 'Total'];
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF0A2540' },
+    };
+    headerRow.alignment = { vertical: 'middle' };
+    headerRow.height = 20;
+
+    let rowIndex = 4;
+    for (const cliente of clientes) {
+      const row = sheet.getRow(rowIndex);
+      row.values = [
+        cliente.nome,
+        // Sem hora naquela especialidade a célula fica vazia (toExcelDuration
+        // devolve null), e não um 0:00 que pareceria lançamento.
+        ...especialidades.map((esp) =>
+          toExcelDuration(cliente.linha.get(esp) ?? 0),
+        ),
+        toExcelDuration(cliente.total),
+      ];
+      for (let c = 2; c <= colCount; c += 1) {
+        row.getCell(c).numFmt = EXCEL_DURATION_FMT;
+      }
+      rowIndex += 1;
+    }
+
+    const ultimaLinha = rowIndex - 1;
+    sheet.autoFilter = {
+      from: { row: 3, column: 1 },
+      to: { row: ultimaLinha, column: colCount },
+    };
+
+    const totalRow = sheet.getRow(rowIndex);
+    totalRow.getCell(1).value = 'Total';
+    for (let c = 2; c <= colCount; c += 1) {
+      // `letter` em vez de somar no código do caractere: passando de 26
+      // colunas, a conta manual sai de AA e gera fórmula quebrada.
+      const letra = sheet.getColumn(c).letter;
+      totalRow.getCell(c).value = {
+        formula: `SUBTOTAL(109,${letra}4:${letra}${ultimaLinha})`,
+      };
+      totalRow.getCell(c).numFmt = EXCEL_DURATION_FMT;
+    }
+    totalRow.font = { bold: true };
+    for (let c = 1; c <= colCount; c += 1) {
+      totalRow.getCell(c).border = { top: { style: 'thin' } };
+    }
+
+    const nota = sheet.getRow(rowIndex + 2);
+    nota.getCell(1).value =
+      'Horas apontadas como foram lançadas, sem descontar sobreposição — o mesmo critério da aba "Relatório". A especialidade é a do colaborador que apontou.';
+    nota.getCell(1).font = { italic: true, size: 9 };
+    nota.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+    nota.height = 30;
+    sheet.mergeCells(rowIndex + 2, 1, rowIndex + 2, colCount);
   }
 
   async listReports(
