@@ -32,9 +32,15 @@ if [[ "$ROOT" == *"/producao"* ]]; then
 fi
 
 cd "$ROOT"
-echo "==> git pull ($ROOT)"
+# A branch da teste muda conforme o que se quer experimentar. Fica em
+# variavel para nao precisar editar o script (e esquecer editado) a cada
+# troca; o padrao e o de sempre. O checkout explicito evita o que acontecia
+# antes: o pull mesclava a branch fixa DENTRO da que estivesse em uso.
+BRANCH="${ALLEONE_BRANCH:-feat/cutover-tiflux-hardening-20260727}"
+echo "==> git pull ($ROOT, branch $BRANCH)"
 git fetch origin
-git pull origin feat/cutover-tiflux-hardening-20260727
+git checkout "$BRANCH"
+git pull --ff-only origin "$BRANCH"
 
 cd "$BACKEND"
 echo "==> backend: npm ci (inclui devDependencies para nest build)"
