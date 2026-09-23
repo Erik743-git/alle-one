@@ -9,6 +9,7 @@ import {
   closeTab,
   defaultTabTitle,
   duplicateTab,
+  moveTab,
   parseTabs,
   serializeTabs,
   setTabTitle,
@@ -218,5 +219,45 @@ describe("persistência", () => {
     expect(hrefs(lido)).toEqual(["/tickets"]);
     expect(lido.tabs[0].title).toBe("Tickets");
     expect(lido.activeId).toBe("3");
+  });
+});
+
+describe("moveTab", () => {
+  function tresGuias() {
+    let state = go(EMPTY_TABS, "/a", null).state;
+    state = go(state, "/b", null).state;
+    state = go(state, "/c", null).state;
+    return state;
+  }
+
+  it("leva a primeira guia para o fim", () => {
+    const state = tresGuias();
+    const id = state.tabs[0].id;
+    expect(hrefs(moveTab(state, id, 2))).toEqual(["/b", "/c", "/a"]);
+  });
+
+  it("leva a ultima guia para o comeco", () => {
+    const state = tresGuias();
+    const id = state.tabs[2].id;
+    expect(hrefs(moveTab(state, id, 0))).toEqual(["/c", "/a", "/b"]);
+  });
+
+  it("prende o indice nas pontas em vez de ignorar", () => {
+    const state = tresGuias();
+    const id = state.tabs[0].id;
+    expect(hrefs(moveTab(state, id, 99))).toEqual(["/b", "/c", "/a"]);
+    expect(hrefs(moveTab(state, id, -5))).toEqual(["/a", "/b", "/c"]);
+  });
+
+  it("nao muda a guia ativa nem inventa guia", () => {
+    const state = tresGuias();
+    const movida = moveTab(state, state.tabs[0].id, 2);
+    expect(movida.activeId).toBe(state.activeId);
+    expect(movida.tabs).toHaveLength(3);
+  });
+
+  it("ignora id que nao existe", () => {
+    const state = tresGuias();
+    expect(moveTab(state, "nao-existe", 0)).toBe(state);
   });
 });

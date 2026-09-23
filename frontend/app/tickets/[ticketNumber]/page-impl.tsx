@@ -104,7 +104,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
-import { usePortalTabTitle } from "@/components/layout/portal-tabs-provider";
+import {
+  TAB_AUTO_CLOSE_SECONDS,
+  usePortalTabTitle,
+  usePortalTabs,
+} from "@/components/layout/portal-tabs-provider";
 
 function formatMinutes(minutes: number) {
   const h = Math.floor(minutes / 60);
@@ -425,6 +429,7 @@ function TicketDetailPageImpl() {
       ? `#${ticketNumber}${ticket.title ? ` - ${ticket.title}` : ""}`
       : null,
   );
+  const { scheduleCloseActiveTab } = usePortalTabs();
   const externalGmudRef = data?.externalGmudRef;
   const canAddAppointment =
     Boolean(ticket) &&
@@ -446,6 +451,14 @@ function TicketDetailPageImpl() {
     }));
 
   async function applyOptionsChange(patch?: TicketOptionsChange) {
+    if (patch?.isClosed) {
+      // Chamado fechado: a guia se fecha sozinha para agilizar quem fecha
+      // varios seguidos. A contagem aparece na guia e o clique nela cancela.
+      scheduleCloseActiveTab();
+      notifySuccess(
+        `Chamado fechado. Esta guia fecha em ${TAB_AUTO_CLOSE_SECONDS}s — clique nela para manter aberta.`,
+      );
+    }
     if (patch) {
       setData((prev) =>
         prev?.ticket

@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -23,6 +24,9 @@ import {
   closeOtherTabs as closeOtherTabsState,
   closeTab as closeTabState,
   duplicateTab as duplicateTabState,
+  moveTab as moveTabState,
+  cancelTabClose as cancelTabCloseState,
+  scheduleTabClose as scheduleTabCloseState,
   parseTabs,
   pathOf,
   portalTabsStorageKey,
@@ -40,6 +44,12 @@ type PortalTabsApi = {
   closeOtherTabs: (id: string) => void;
   closeAllTabs: () => void;
   duplicateTab: (id: string) => void;
+  /** Arrastar a guia para outra posicao na barra. */
+  moveTab: (id: string, toIndex: number) => void;
+  /** Fecha a guia atual sozinha depois de alguns segundos. */
+  scheduleCloseActiveTab: (seconds?: number) => void;
+  /** Desiste do fechamento automatico da guia. */
+  cancelScheduledClose: (id: string) => void;
   copyTabLink: (id: string) => void;
   /** Usado pela barra a cada troca de endereço. */
   syncRoute: (href: string) => void;
@@ -130,6 +140,24 @@ function currentHref(): string {
   return `${window.location.pathname}${window.location.search}`;
 }
 
+/**
+ * Quanto tempo a guia fica aberta depois que o chamado dela e fechado.
+ * Curto o bastante para agilizar quem fecha varios seguidos, longo o
+ * bastante para dar tempo de cancelar clicando na guia.
+ */
+export const TAB_AUTO_CLOSE_SECONDS = 10;
+
+/** Timers de fechamento automatico, por guia. */
+const closeTimers = new Map<string, number>();
+
+function clearCloseTimer(id: string) {
+  const timer = closeTimers.get(id);
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    closeTimers.delete(id);
+  }
+}
+
 function warnEvicted(evicted: PortalTab[]) {
   for (const tab of evicted) {
     notify(
@@ -211,6 +239,7 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
 
   const closeTab = useCallback(
     (id: string) => {
+      clearCloseTimer(id);
       const before = current();
       const next = closeTabState(before, id, Date.now());
       commit(next);
@@ -218,6 +247,12 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
     },
     [goTo],
   );
+
+  // O timeout precisa da versao mais recente de closeTab sem virar dependencia.
+  const closeTabRef = useRef(closeTab);
+  useEffect(() => {
+    closeTabRef.current = closeTab;
+  }, [closeTab]);
 
   const closeOtherTabs = useCallback(
     (id: string) => {
@@ -249,6 +284,35 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
       warnEvicted(result.evicted);
     },
     [goTo],
+  );
+
+  const moveTab = useCallback((id: string, toIndex: number) => {
+    commit(moveTabState(current(), id, toIndex));
+  }, []);
+
+  const cancelScheduledClose = useCallback((id: string) => {
+    clearCloseTimer(id);
+    commit(cancelTabCloseState(current(), id));
+  }, []);
+
+  const scheduleCloseActiveTab = useCallback(
+    (seconds: number = TAB_AUTO_CLOSE_SECONDS) => {
+      const active = activeOf(current());
+      if (!active) return;
+      const id = active.id;
+      clearCloseTimer(id);
+      const ms = Math.max(1, seconds) * 1000;
+      commit(scheduleTabCloseState(current(), id, Date.now() + ms));
+      closeTimers.set(
+        id,
+        window.setTimeout(() => {
+          closeTimers.delete(id);
+          // A guia pode ter sido fechada na mao nesse meio tempo.
+          if (current().tabs.some((tab) => tab.id === id)) closeTabRef.current(id);
+        }, ms),
+      );
+    },
+    [],
   );
 
   const copyTabLink = useCallback((id: string) => {
@@ -284,6 +348,9 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
       closeOtherTabs,
       closeAllTabs,
       duplicateTab,
+      moveTab,
+      scheduleCloseActiveTab,
+      cancelScheduledClose,
       copyTabLink,
       syncRoute,
       setActiveTitle,
@@ -296,6 +363,9 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
       closeOtherTabs,
       closeAllTabs,
       duplicateTab,
+      moveTab,
+      scheduleCloseActiveTab,
+      cancelScheduledClose,
       copyTabLink,
       syncRoute,
       setActiveTitle,

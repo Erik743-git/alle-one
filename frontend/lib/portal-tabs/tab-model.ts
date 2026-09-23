@@ -26,6 +26,12 @@ export type PortalTab = {
    * montam quando alguém clica nelas.
    */
   live?: boolean;
+  /**
+   * Instante em que a guia se fecha sozinha (ex.: o chamado dela foi
+   * fechado). Some ao recarregar a página: não é serializado de propósito,
+   * porque uma contagem regressiva não deve sobreviver a um F5.
+   */
+  closingAt?: number;
 };
 
 export type PortalTabsState = {
@@ -208,6 +214,50 @@ export function closeTab(
   const next = tabs[index] ?? tabs[index - 1] ?? null;
   if (!next) return { tabs, activeId: null };
   return activateTab({ tabs, activeId: null }, next.id, now);
+}
+
+/** Marca a guia para se fechar sozinha em `at`. */
+export function scheduleTabClose(
+  state: PortalTabsState,
+  id: string,
+  at: number,
+): PortalTabsState {
+  if (!state.tabs.some((tab) => tab.id === id)) return state;
+  return withTab(state, id, { closingAt: at });
+}
+
+/** Desiste do fechamento automático (a pessoa voltou a usar a guia). */
+export function cancelTabClose(
+  state: PortalTabsState,
+  id: string,
+): PortalTabsState {
+  const tab = state.tabs.find((item) => item.id === id);
+  if (!tab?.closingAt) return state;
+  return withTab(state, id, { closingAt: undefined });
+}
+
+/**
+ * Muda a guia de lugar, arrastando com o mouse.
+ *
+ * `toIndex` é a posição de destino na lista já sem a guia arrastada — é o que
+ * o navegador informa naturalmente ao soltar sobre outra guia. Índice fora da
+ * lista é preso nas pontas, então soltar no fim da barra manda para o fim em
+ * vez de não fazer nada. Não mexe em qual guia está ativa nem no
+ * `lastActiveAt`: arrastar é organizar, não visitar.
+ */
+export function moveTab(
+  state: PortalTabsState,
+  id: string,
+  toIndex: number,
+): PortalTabsState {
+  const from = state.tabs.findIndex((tab) => tab.id === id);
+  if (from < 0) return state;
+  const rest = state.tabs.filter((tab) => tab.id !== id);
+  const target = Math.max(0, Math.min(toIndex, rest.length));
+  if (target === from) return state;
+  const tabs = [...rest];
+  tabs.splice(target, 0, state.tabs[from]);
+  return { ...state, tabs };
 }
 
 export function closeOtherTabs(
