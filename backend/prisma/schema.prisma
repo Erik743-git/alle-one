@@ -175,6 +175,8 @@ model User {
   muralNotesReceived                MuralNote[]                      @relation("MuralNoteRecipient")
   muralReactions                    MuralNoteReaction[]
   muralVisit                        MuralVisit?
+  escalaRegras                      EscalaRegra[]                    @relation("EscalaRegraPessoa")
+  escalaSubstituicoes               EscalaExcecao[]                  @relation("EscalaExcecaoSubstituto")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
   projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
@@ -425,6 +427,7 @@ model Specialty {
   preTickets          PreTicket[]
   portalTickets       PortalTicket[]
   companyTicketSpecialties CompanyTicketSpecialty[]
+  escalaRegras             EscalaRegra[]
 
   @@map("specialties")
 }
@@ -1737,4 +1740,69 @@ model MuralVisit {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("mural_visits")
+}
+
+/// Exceção a uma regra de escala num dia: ninguém no turno, ou outra pessoa.
+enum EscalaExcecaoTipo {
+  FOLGA
+  TROCA
+}
+
+/// Regra de escala: quem atende, em que horário e em que dias da semana.
+/// Uma regra cobre um turno que se repete; o que muda num dia só é exceção.
+model EscalaRegra {
+  id          String @id @default(uuid())
+  userId      String @map("user_id")
+  /// Uma especialidade só por regra.
+  specialtyId String @map("specialty_id")
+
+  /// "HH:MM". Fim menor ou igual ao início = turno cruza a meia-noite e
+  /// pertence ao dia em que começa.
+  startTime String @map("start_time") @db.VarChar(5)
+  endTime   String @map("end_time") @db.VarChar(5)
+  /// Dias da semana em que a regra vale: 0 = domingo ... 6 = sábado.
+  daysOfWeek Int[] @map("days_of_week")
+
+  validFrom DateTime  @map("valid_from") @db.Date
+  /// Nulo = sem data de fim.
+  validTo   DateTime? @map("valid_to") @db.Date
+
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  /// Regra encerrada sai da escala mas fica no banco, com o histórico.
+  deletedAt DateTime? @map("deleted_at")
+
+  user       User            @relation("EscalaRegraPessoa", fields: [userId], references: [id], onDelete: Cascade)
+  specialty  Specialty       @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+  excecoes   EscalaExcecao[]
+
+  @@index([deletedAt])
+  @@index([userId])
+  @@map("escala_regras")
+}
+
+/// Exceção num dia específico: folga ou troca, sem mexer na regra.
+model EscalaExcecao {
+  id      String            @id @default(uuid())
+  regraId String            @map("regra_id")
+  /// Dia em que o turno começa (o de 22h às 6h pertence ao dia das 22h).
+  date    DateTime          @db.Date
+  tipo    EscalaExcecaoTipo
+  /// Quem assume, na troca.
+  substituteUserId String? @map("substitute_user_id")
+  /// Recorte opcional do turno ("HH:MM"). Nulo = turno inteiro.
+  startTime String? @map("start_time") @db.VarChar(5)
+  endTime   String? @map("end_time") @db.VarChar(5)
+  motivo    String? @db.VarChar(300)
+
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  regra      EscalaRegra @relation(fields: [regraId], references: [id], onDelete: Cascade)
+  substituto User?       @relation("EscalaExcecaoSubstituto", fields: [substituteUserId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([regraId])
+  @@map("escala_excecoes")
 }
