@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trophy, Trash2 } from "lucide-react";
 
 import ProtectedPage from "@/components/auth/protected-page";
 import AppShell from "@/components/layout/app-shell";
@@ -21,10 +21,12 @@ import { useConfirm } from "@/lib/confirm";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import {
   MURAL_CORES,
+  MURAL_REACOES,
   muralService,
   type MuralNote,
 } from "@/lib/services/mural.service";
 import { cn } from "@/lib/utils";
+import { isAdmin } from "@/lib/access-control";
 
 const LIMITE_CARACTERES = 600;
 
@@ -66,6 +68,11 @@ function MuralPageImpl() {
   const [novoAberto, setNovoAberto] = useState(false);
   const [rascunho, setRascunho] = useState<Rascunho>(RASCUNHO_VAZIO);
 
+  const [doMes, setDoMes] = useState<{
+    ranking: Array<{ name: string; total: number }>;
+    total: number;
+  } | null>(null);
+
   const [aberto, setAberto] = useState<MuralNote | null>(null);
   const [editando, setEditando] = useState(false);
   const [textoEditado, setTextoEditado] = useState("");
@@ -88,6 +95,15 @@ function MuralPageImpl() {
       ]);
       setNotes(lista);
       setColegas(pessoas);
+      // Só a diretoria vê o ranking; para os demais a rota nem é chamada.
+      if (isAdmin()) {
+        try {
+          setDoMes(await muralService.doMes());
+        } catch {
+          // Ranking é extra: se falhar, o mural abre do mesmo jeito.
+          setDoMes(null);
+        }
+      }
     } catch (err) {
       notifyError(
         err instanceof Error ? err.message : "Não foi possível abrir o mural.",
@@ -180,6 +196,20 @@ function MuralPageImpl() {
       moveu: false,
     };
     setArrastandoId(note.id);
+  }
+
+  async function reagir(id: string, emoji: string) {
+    try {
+      const salvo = await muralService.reagir(id, emoji);
+      setNotes((prev) =>
+        prev.map((note) => (note.id === salvo.id ? salvo : note)),
+      );
+      setAberto((prev) => (prev && prev.id === salvo.id ? salvo : prev));
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível reagir.",
+      );
+    }
   }
 
   // --- criar, editar, remover ----------------------------------------------
@@ -325,6 +355,7 @@ function MuralPageImpl() {
                     note={note}
                     arrastando={arrastandoId === note.id}
                     onPointerDown={(event) => comecarArrasto(event, note)}
+                    onReagir={(emoji) => void reagir(note.id, emoji)}
                     onClick={() => {
                       // Soltar depois de arrastar não conta como clique.
                       if (arrasto.current?.moveu) return;
@@ -338,6 +369,35 @@ function MuralPageImpl() {
               ))
             )}
           </div>
+          {doMes && doMes.total > 0 ? (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Trophy className="size-4 text-amber-500" />
+                <h2 className="text-sm font-semibold text-foreground">
+                  Mural do mês — quem o time mais lembrou
+                </h2>
+              </div>
+              <ol className="space-y-1 text-sm">
+                {doMes.ranking.slice(0, 5).map((linha, indice) => (
+                  <li
+                    key={linha.name}
+                    className="flex items-center justify-between gap-3"
+                  >
+                    <span className="min-w-0 truncate text-foreground">
+                      {indice + 1}. {linha.name}
+                    </span>
+                    <span className="shrink-0 text-muted-foreground">
+                      {linha.total} {linha.total === 1 ? "bilhete" : "bilhetes"}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Conta bilhetes recebidos no mês. Bilhete anônimo conta igual:
+                o anonimato protege quem escreveu, não quem recebeu.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {/* --- novo bilhete --- */}
@@ -493,8 +553,39 @@ function MuralPageImpl() {
                     onChange={(event) => setTextoEditado(event.target.value)}
                   />
                 ) : (
-                  <div className="flex justify-center">
-                    <MuralNoteCard note={aberto} aberto />
+                  <div className="flex flex-col items-center gap-5">
+                    <MuralNoteCard
+                      note={aberto}
+                      aberto
+                      onReagir={(emoji) => void reagir(aberto.id, emoji)}
+                    />
+                    {/* Barra com todas as reações: as do papel só mostram as
+                        que já têm gente, e sem isto não haveria por onde dar
+                        a primeira. */}
+                    <div className="flex items-center gap-2">
+                      {MURAL_REACOES.map((emoji) => {
+                        const minha = aberto.reactions.some(
+                          (r) => r.emoji === emoji && r.mine,
+                        );
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            aria-pressed={minha}
+                            onClick={() => void reagir(aberto.id, emoji)}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 text-lg leading-none transition",
+                              "hover:-translate-y-0.5 hover:bg-muted",
+                              minha
+                                ? "border-primary bg-primary/10"
+                                : "border-border",
+                            )}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

@@ -10,7 +10,7 @@ import {
   Min,
 } from 'class-validator';
 
-import { MURAL_CORES } from './mural.service';
+import { MURAL_CORES, MURAL_REACOES } from './mural.service';
 
 export class CreateMuralNoteDto {
   @IsString()
@@ -85,4 +85,9 @@ export class UpdateMuralNoteDto {
   @Min(-10)
   @Max(10)
   rotation?: number;
+}
+
+export class ReagirMuralNoteDto {
+  @IsIn(MURAL_REACOES as unknown as string[])
+  emoji!: string;
 }

@@ -11,6 +11,9 @@ export const MURAL_CORES = [
 ] as const;
 export type MuralCor = (typeof MURAL_CORES)[number];
 
+/** Reações oferecidas; o servidor recusa qualquer outra. */
+export const MURAL_REACOES = ["👏", "❤️", "😄", "🙌"] as const;
+
 export type MuralNote = {
   id: string;
   message: string;
@@ -26,6 +29,9 @@ export type MuralNote = {
   createdAt: string;
   mine: boolean;
   canDelete: boolean;
+  reactions: Array<{ emoji: string; count: number; mine: boolean }>;
+  /** Chegou depois da última vez que você abriu o mural. */
+  isNew: boolean;
 };
 
 export type MuralNoteInput = {
@@ -56,6 +62,19 @@ export const muralService = {
       method: "PATCH",
       body: data,
     });
+  },
+  reagir(id: string, emoji: string) {
+    return apiRequest<MuralNote>(`/mural/notes/${id}/reacoes`, {
+      method: "POST",
+      body: { emoji },
+    });
+  },
+  doMes(mes?: string) {
+    return apiRequest<{
+      mes: string;
+      ranking: Array<{ name: string; total: number }>;
+      total: number;
+    }>(`/mural/do-mes${mes ? `?mes=${mes}` : ""}`);
   },
   remove(id: string) {
     return apiRequest<{ ok: true }>(`/mural/notes/${id}`, { method: "DELETE" });

@@ -63,6 +63,8 @@ type Props = {
   arrastando?: boolean;
   onPointerDown?: (event: React.PointerEvent<HTMLDivElement>) => void;
   onClick?: () => void;
+  /** Clique numa reação; ausente deixa as reações só como leitura. */
+  onReagir?: (emoji: string) => void;
   style?: React.CSSProperties;
   className?: string;
 };
@@ -73,6 +75,7 @@ export function MuralNoteCard({
   arrastando = false,
   onPointerDown,
   onClick,
+  onReagir,
   style,
   className,
 }: Props) {
@@ -108,6 +111,12 @@ export function MuralNoteCard({
     >
       <Tarracha cor={tarrachaDe(note.id)} />
 
+      {note.isNew ? (
+        <span className="absolute -right-2 -top-2 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow animate-in zoom-in">
+          novo
+        </span>
+      ) : null}
+
       {note.toName ? (
         <p className="text-xs font-semibold uppercase tracking-wide opacity-70">
           Para {note.toName}
@@ -123,9 +132,31 @@ export function MuralNoteCard({
         {note.message}
       </p>
 
-      <p className="mt-auto pt-1 text-right text-xs italic opacity-75">
-        — {assinatura}
-      </p>
+      <div className="mt-auto flex items-end justify-between gap-2 pt-1">
+        <div className="flex flex-wrap gap-1">
+          {note.reactions.map((reacao) => (
+            <button
+              key={reacao.emoji}
+              type="button"
+              disabled={!onReagir}
+              onClick={(event) => {
+                // O clique na reação não abre o bilhete.
+                event.stopPropagation();
+                onReagir?.(reacao.emoji);
+              }}
+              className={cn(
+                "rounded-full px-1.5 py-0.5 text-[11px] leading-none transition",
+                "bg-black/10 hover:bg-black/20",
+                reacao.mine && "ring-1 ring-black/40",
+                !onReagir && "cursor-default hover:bg-black/10",
+              )}
+            >
+              {reacao.emoji} {reacao.count}
+            </button>
+          ))}
+        </div>
+        <p className="text-right text-xs italic opacity-75">— {assinatura}</p>
+      </div>
     </div>
   );
 }

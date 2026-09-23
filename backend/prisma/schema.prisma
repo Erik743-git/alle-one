@@ -65,6 +65,7 @@ enum MailboxNotificationKind {
   TICKET_STALLED_7D
   INVENTORY_EXPIRY
   TIFLUX_SYNC_STALE
+  MURAL_NOTE_RECEIVED
 }
 
 enum ContractFileType {
@@ -172,6 +173,8 @@ model User {
   rendimentoListPrefsAsOwner        RendimentoCollaboratorListPref[] @relation("RendimentoListPrefOwner")
   muralNotesWritten                 MuralNote[]                      @relation("MuralNoteAuthor")
   muralNotesReceived                MuralNote[]                      @relation("MuralNoteRecipient")
+  muralReactions                    MuralNoteReaction[]
+  muralVisit                        MuralVisit?
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
   projectActivitiesAssigned         ProjectActivity[]                @relation("ProjectActivityAssignee")
@@ -1698,8 +1701,40 @@ model MuralNote {
   author    User  @relation("MuralNoteAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
   recipient User? @relation("MuralNoteRecipient", fields: [toUserId], references: [id], onDelete: SetNull)
 
+  reactions MuralNoteReaction[]
+
   @@index([deletedAt])
   @@index([toUserId])
   @@index([authorUserId])
   @@map("mural_notes")
+}
+
+
+/// Reação rápida num bilhete: um clique em vez de escrever outro bilhete.
+model MuralNoteReaction {
+  id     String @id @default(uuid())
+  noteId String @map("note_id")
+  userId String @map("user_id")
+  /// Emoji da reação, de uma lista fixa oferecida na tela.
+  emoji String @db.VarChar(16)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  note MuralNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Uma pessoa dá cada reação uma vez por bilhete; clicar de novo desfaz.
+  @@unique([noteId, userId, emoji])
+  @@index([noteId])
+  @@map("mural_note_reactions")
+}
+
+/// Última vez que a pessoa abriu o mural, para destacar o que chegou depois.
+model MuralVisit {
+  userId String   @id @map("user_id")
+  seenAt DateTime @map("seen_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("mural_visits")
 }
