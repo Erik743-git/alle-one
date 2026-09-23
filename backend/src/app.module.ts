@@ -34,6 +34,7 @@ import { TicketsModule } from './modules/tickets/tickets.module';
 import { IntegrationsHealthJob } from './integrations/integrations-health.job';
 import { RedisModule } from './common/redis/redis.module';
 import { EmailInboundModule } from './modules/email-inbound/email-inbound.module';
+import { PlantaoModule } from './modules/plantao/plantao.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { EmailInboundModule } from './modules/email-inbound/email-inbound.module
     ConsoleModule,
     TicketsModule,
     EmailInboundModule,
+    PlantaoModule,
   ],
   controllers: [AppController],
   providers: [

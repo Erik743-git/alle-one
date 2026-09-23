@@ -317,6 +317,18 @@ export function canAccessConsole() {
   return canViewModule("MONITORING");
 }
 
+/**
+ * Escala de plantão: equipe interna, por papel.
+ *
+ * Não usa módulo de permissão de propósito — colaborador não tem linha na
+ * matriz para módulo novo e o guard nega quem não tem linha, que foi o que
+ * travou a lista de mesas do pré-ticket. Perfis de cliente ficam de fora:
+ * a escala expõe nome e horário de gente da Alle.
+ */
+export function canAccessPlantao() {
+  return isAdmin() || isCollaborator();
+}
+
 export function canAcknowledgeConsoleAlerts() {
   return hasPermission("MONITORING", "canEdit");
 }
