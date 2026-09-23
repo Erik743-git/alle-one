@@ -102,8 +102,13 @@ describe('turnosDoDia', () => {
   });
 
   describe('exceções', () => {
-    it('folga do turno inteiro deixa o turno vago', () => {
-      expect(turnosDoDia(SEG, [regra()], [excecao()])).toEqual([]);
+    it('folga do turno inteiro deixa o turno vago, mas visível', () => {
+      const turnos = turnosDoDia(SEG, [regra()], [excecao()]);
+      expect(turnos.map((t) => [t.origem, t.inicio, t.fim])).toEqual([
+        ['FOLGA', h(8), h(17)],
+      ]);
+      // Ninguém de turno: a folga aparece, mas não responde.
+      expect(deTurnoEm(turnos, h(9))).toEqual([]);
     });
 
     it('folga vale só para o dia dela', () => {
@@ -153,7 +158,12 @@ describe('turnosDoDia', () => {
         [regra()],
         [excecao({ startTime: '08:00', endTime: '10:00' })],
       );
-      expect(turnos.map((t) => [t.inicio, t.fim])).toEqual([[h(10), h(17)]]);
+      expect(turnos.map((t) => [t.origem, t.inicio, t.fim])).toEqual([
+        ['FOLGA', h(8), h(10)],
+        ['REGRA', h(10), h(17)],
+      ]);
+      expect(deTurnoEm(turnos, h(9))).toEqual([]);
+      expect(deTurnoEm(turnos, h(11)).map((t) => t.userName)).toEqual(['Ana']);
     });
 
     it('recorte da madrugada cai no turno que começou na véspera', () => {

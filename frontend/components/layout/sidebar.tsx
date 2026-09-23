@@ -103,8 +103,8 @@ function buildMenuItems(): MenuItem[] {
       visible: canAccessConsole(),
     },
     {
-      name: "Plantão",
-      href: "/plantao",
+      name: "Agendas",
+      href: "/agendas",
       icon: CalendarClock,
       visible: canAccessPlantao(),
     },

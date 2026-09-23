@@ -56,8 +56,12 @@ export type TurnoDia = {
   fim: number;
   /** Dia em que o turno começou — é nele que se faz a troca. */
   diaDoTurno: string;
-  origem: 'REGRA' | 'TROCA';
-  /** Nome de quem saiu, quando é troca. */
+  /**
+   * FOLGA é o pedaço vago: aparece na tela (para o NOC saber e o admin poder
+   * desfazer), mas não conta como alguém de turno.
+   */
+  origem: 'REGRA' | 'TROCA' | 'FOLGA';
+  /** Nome de quem saiu (troca) ou de quem está de folga. */
   substituiu: string | null;
   motivo: string | null;
 };
@@ -179,7 +183,21 @@ export function turnosDoDia(
         turnos.push(normal(resto.inicio, resto.fim));
       }
       // Dentro do recorte: folga deixa vago; troca põe o substituto.
-      if (excecao.tipo === 'TROCA' && excecao.substituteUserId) {
+      if (excecao.tipo === 'FOLGA') {
+        turnos.push({
+          regraId: regra.id,
+          excecaoId: excecao.id,
+          userId: regra.userId,
+          userName: regra.userName,
+          specialtyName: regra.specialtyName,
+          inicio: recorte.inicio + deslocamento,
+          fim: recorte.fim + deslocamento,
+          diaDoTurno,
+          origem: 'FOLGA',
+          substituiu: regra.userName,
+          motivo: excecao.motivo,
+        });
+      } else if (excecao.substituteUserId) {
         turnos.push({
           regraId: regra.id,
           excecaoId: excecao.id,
@@ -204,7 +222,9 @@ export function turnosDoDia(
     .sort((a, b) => a.inicio - b.inicio || a.userName.localeCompare(b.userName));
 }
 
-/** Quem está de turno num minuto do dia (ex.: agora). */
+/** Quem está de turno num minuto do dia (ex.: agora). Folga não conta. */
 export function deTurnoEm(turnos: TurnoDia[], minuto: number): TurnoDia[] {
-  return turnos.filter((t) => t.inicio <= minuto && minuto < t.fim);
+  return turnos.filter(
+    (t) => t.origem !== 'FOLGA' && t.inicio <= minuto && minuto < t.fim,
+  );
 }

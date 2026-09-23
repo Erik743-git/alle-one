@@ -130,7 +130,11 @@ function BlocoEscala({ escala }: { escala: EscalaPlantao }) {
   );
 }
 
-export function PortalPageComponent() {
+/**
+ * Conteúdo do Plantão (calendários do Outlook), sem a moldura da página.
+ * É a primeira aba de Agendas; a rota /plantao usa o mesmo conteúdo.
+ */
+export function PlantaoOutlook() {
   const [dados, setDados] = useState<PlantaoResposta | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -154,16 +158,11 @@ export function PortalPageComponent() {
   }, [carregar]);
 
   return (
-    <ProtectedPage>
-      <AppShell>
         <div className="font-sans w-full space-y-6">
-          <div className="space-y-1">
-            <h1 className="text-3xl font-bold text-foreground">Plantão</h1>
-            <p className="text-sm text-muted-foreground">
-              Quem está de plantão em cada equipe, direto do calendário do
-              Outlook. Só leitura — a escala continua sendo montada lá.
-            </p>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Quem está de plantão em cada equipe, direto do calendário do
+            Outlook. Só leitura — a escala continua sendo montada lá.
+          </p>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">
@@ -224,6 +223,17 @@ export function PortalPageComponent() {
               ))}
             </div>
           ) : null}
+        </div>
+  );
+}
+
+export function PortalPageComponent() {
+  return (
+    <ProtectedPage>
+      <AppShell>
+        <div className="font-sans w-full space-y-6">
+          <h1 className="text-3xl font-bold text-foreground">Plantão</h1>
+          <PlantaoOutlook />
         </div>
       </AppShell>
     </ProtectedPage>
