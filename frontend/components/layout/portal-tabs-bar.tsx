@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ContextMenu } from "radix-ui";
 import { Copy, Link2, X, XCircle } from "lucide-react";
@@ -37,9 +37,26 @@ export function PortalTabsBar() {
     closeOtherTabs,
     closeAllTabs,
     duplicateTab,
+    moveTab,
+    cancelScheduledClose,
     copyTabLink,
   } = usePortalTabs();
+  /** Guia sendo arrastada; guarda o id porque o dataTransfer so e legivel no drop. */
+  const [dragId, setDragId] = useState<string | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
+  /** Redesenha de segundo em segundo so enquanto alguma guia esta em contagem. */
+  const contando = tabs.some((tab) => tab.closingAt);
+  const [agora, setAgora] = useState(0);
+  useEffect(() => {
+    if (!contando) return;
+    // Primeiro acerto fora da renderizacao, para o contador ja aparecer.
+    const inicial = window.setTimeout(() => setAgora(Date.now()), 0);
+    const timer = window.setInterval(() => setAgora(Date.now()), 1000);
+    return () => {
+      window.clearTimeout(inicial);
+      window.clearInterval(timer);
+    };
+  }, [contando]);
 
   // A guia ativa sempre visível, mesmo com a barra rolada.
   useEffect(() => {
@@ -77,15 +94,48 @@ export function PortalTabsBar() {
               }
             }}
           >
-            {tabs.map((tab) => {
+            {tabs.map((tab, index) => {
               const active = tab.id === activeId;
+              const faltam =
+                tab.closingAt && agora
+                  ? Math.max(0, Math.ceil((tab.closingAt - agora) / 1000))
+                  : null;
               return (
                 <ContextMenu.Root key={tab.id}>
                   <ContextMenu.Trigger asChild>
                     <div
+                      draggable
+                      onDragStart={(event) => {
+                        setDragId(tab.id);
+                        event.dataTransfer.effectAllowed = "move";
+                        // Firefox so inicia o arrasto se algo for escrito.
+                        event.dataTransfer.setData("text/plain", tab.id);
+                      }}
+                      onDragEnd={() => setDragId(null)}
+                      onDragOver={(event) => {
+                        if (!dragId || dragId === tab.id) return;
+                        // Sem isto o navegador recusa o drop.
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                      }}
+                      onDrop={(event) => {
+                        if (!dragId || dragId === tab.id) return;
+                        event.preventDefault();
+                        // Metade direita da guia = soltar depois dela.
+                        const rect =
+                          event.currentTarget.getBoundingClientRect();
+                        const depois =
+                          event.clientX > rect.left + rect.width / 2;
+                        const from = tabs.findIndex((t) => t.id === dragId);
+                        // Indice ja sem a guia arrastada, que e o que moveTab espera.
+                        const base = from < index ? index - 1 : index;
+                        moveTab(dragId, depois ? base + 1 : base);
+                        setDragId(null);
+                      }}
                       data-active={active ? "true" : undefined}
                       className={cn(
-                        "group flex h-9 max-w-[260px] shrink-0 items-center gap-0.5 rounded-t-lg border border-b-0 pl-3 pr-1 text-sm transition-colors",
+                        "group flex h-9 max-w-[260px] shrink-0 cursor-grab items-center gap-0.5 rounded-t-lg border border-b-0 pl-3 pr-1 text-sm transition-colors active:cursor-grabbing",
+                        dragId === tab.id && "opacity-50",
                         active
                           ? "border-border bg-card font-semibold text-foreground shadow-[inset_0_2px_0_var(--color-primary)]"
                           : "border-transparent bg-muted/40 text-muted-foreground hover:bg-muted/70 hover:text-foreground",
@@ -107,12 +157,24 @@ export function PortalTabsBar() {
                         aria-selected={active}
                         title={tab.title}
                         onClick={() => {
+                          // Voltou a usar a guia: nao fecha mais sozinha.
+                          if (tab.closingAt) cancelScheduledClose(tab.id);
                           if (!active) activateTab(tab.id);
                         }}
                         className="min-w-0 truncate py-1.5 pr-1 text-left focus-visible:outline-none focus-visible:underline"
                       >
                         {tab.title}
                       </button>
+                      {faltam !== null ? (
+                        <button
+                          type="button"
+                          onClick={() => cancelScheduledClose(tab.id)}
+                          title={`Fecha sozinha em ${faltam}s. Clique para manter aberta.`}
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-800 ring-1 ring-amber-500/40 transition hover:bg-amber-500/10 dark:text-amber-200"
+                        >
+                          {faltam}s
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => closeTab(tab.id)}
