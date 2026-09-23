@@ -14,6 +14,9 @@ const htmlContentSecurityPolicy = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
+  // blob: e o visualizador de relatorio, que abre o PDF convertido numa URL
+  // de objeto. Sem isso o quadro vem com ERR_BLOCKED_BY_CSP.
+  "frame-src 'self' blob:",
   "form-action 'self'",
   "img-src 'self' data: blob:",
   "font-src 'self' data: https://fonts.gstatic.com",
