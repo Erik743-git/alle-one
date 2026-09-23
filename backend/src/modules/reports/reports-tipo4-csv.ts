@@ -2,14 +2,15 @@
  * Exportação CSV da Estatística Geral — mesmas seções/abas do XLSX (sem gráficos embutidos).
  */
 
+/**
+ * Uma linha por mês. As mesas são chaves dinâmicas — o dashboard agrupa pelo
+ * nome real da mesa, e ele muda conforme a empresa e o período. Só `monthLabel`
+ * e `Total` são fixos.
+ */
 export type Tipo4MonthRow = {
   monthLabel: string;
-  Infraestrutura?: number;
-  NOC?: number;
-  Rotinas?: number;
-  Consult?: number;
-  Sistema?: number;
   Total?: number;
+  [mesa: string]: string | number | undefined;
 };
 
 export type Tipo4TriggerRow = {
@@ -94,27 +95,39 @@ function sectionTitle(title: string): string[] {
   return ['', escapeCsv(`--- ${title} ---`)];
 }
 
-function monthTableRows(rows: Tipo4MonthRow[]) {
+/** Campos que não são mesa; o resto das chaves numéricas é. */
+const CAMPOS_RESERVADOS = new Set(['monthLabel', 'Total']);
+
+/**
+ * Mesas com movimento no período, da maior para a menor — mesma regra do
+ * XLSX, para os dois formatos do mesmo relatório não divergirem. Mesa sem
+ * chamado no filtro escolhido não vira coluna.
+ */
+function mesasComMovimento(rows: Tipo4MonthRow[]): string[] {
+  const totais = new Map<string, number>();
+  for (const row of rows) {
+    for (const [chave, valor] of Object.entries(row)) {
+      if (CAMPOS_RESERVADOS.has(chave) || typeof valor !== 'number') continue;
+      totais.set(chave, (totais.get(chave) ?? 0) + valor);
+    }
+  }
+  return [...totais.entries()]
+    .filter(([, total]) => total > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([mesa]) => mesa);
+}
+
+function monthTableRows(rows: Tipo4MonthRow[], mesas: string[]) {
   return rows.map((r) => [
     r.monthLabel,
-    Number(r.Infraestrutura) || 0,
-    Number(r.NOC) || 0,
-    Number(r.Rotinas) || 0,
-    Number(r.Consult) || 0,
-    Number(r.Sistema) || 0,
+    ...mesas.map((mesa) => Number((r as Record<string, unknown>)[mesa]) || 0),
     Number(r.Total) || 0,
   ]);
 }
 
-const MONTH_HEADERS = [
-  'Mês',
-  'Infraestrutura',
-  'NOC',
-  'Rotinas',
-  'Consult',
-  'Sistemas',
-  'Total',
-];
+function monthHeaders(mesas: string[]): string[] {
+  return ['Mês', ...mesas, 'Total'];
+}
 
 export function buildTipo4ReportCsv(bundle: Tipo4ReportBundle): string {
   const lines: string[] = [];
@@ -135,15 +148,17 @@ export function buildTipo4ReportCsv(bundle: Tipo4ReportBundle): string {
     'Gráficos (barras/linhas) existem apenas no XLSX; tabelas abaixo reproduzem os dados.',
   ]);
 
+  const mesasChamados = mesasComMovimento(bundle.chamadosMonths);
   lines.push(...sectionTitle('Chamados por mês'));
-  pushRow(MONTH_HEADERS);
-  for (const row of monthTableRows(bundle.chamadosMonths)) {
+  pushRow(monthHeaders(mesasChamados));
+  for (const row of monthTableRows(bundle.chamadosMonths, mesasChamados)) {
     pushRow(row);
   }
 
+  const mesasHoras = mesasComMovimento(bundle.horasMonths);
   lines.push(...sectionTitle('Apontamento de horas'));
-  pushRow(MONTH_HEADERS);
-  for (const row of monthTableRows(bundle.horasMonths)) {
+  pushRow(monthHeaders(mesasHoras));
+  for (const row of monthTableRows(bundle.horasMonths, mesasHoras)) {
     pushRow(row);
   }
 

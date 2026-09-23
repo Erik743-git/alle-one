@@ -42,6 +42,7 @@ import {
 } from '../dashboard/dashboard-date.utils';
 
 import { toReportFormat, toReportType } from './reports-type.helper';
+import { isReservedRowField } from '../dashboard/desk-categories';
 import {
   billingRowsToCsv,
   billingRowsToXlsx,
@@ -401,6 +402,53 @@ export class ReportsService {
     high: '#4472C4',
     disaster: '#C00000',
   };
+
+  /**
+   * Mesas que tiveram movimento no período, da maior para a menor.
+   *
+   * As colunas eram fixas — Infraestrutura, NOC, Rotinas, Consult, Sistemas —
+   * e o dashboard passou a agrupar pelo nome real da mesa. Duas consequências:
+   * "Sistemas" deixou de casar com o `Sistema` que o relatório lia, e mesa
+   * fora da lista (Protheus/BI - Fluidra, Triagem, Projetos, sem mesa) entrava
+   * no Total sem aparecer em coluna nenhuma — o cliente somava a linha e não
+   * fechava.
+   *
+   * Mesa sem nenhum chamado no filtro escolhido não vira coluna.
+   */
+  private mesasComMovimento(rows: Array<Record<string, unknown>>): string[] {
+    const totais = new Map<string, number>();
+    for (const row of rows) {
+      for (const [chave, valor] of Object.entries(row)) {
+        if (isReservedRowField(chave) || typeof valor !== 'number') continue;
+        totais.set(chave, (totais.get(chave) ?? 0) + valor);
+      }
+    }
+    return [...totais.entries()]
+      .filter(([, total]) => total > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([mesa]) => mesa);
+  }
+
+  /** Cor da mesa no gráfico: as conhecidas mantêm a cor de sempre. */
+  private corDaMesa(mesa: string, indice: number): string {
+    const conhecidas: Record<string, string> = {
+      Infraestrutura: this.tipo4Theme.infra,
+      NOC: this.tipo4Theme.noc,
+      Sistemas: this.tipo4Theme.sistemas,
+      Rotinas: this.tipo4Theme.rotinas,
+      Consult: this.tipo4Theme.consult,
+    };
+    const paleta = [
+      '#255E91',
+      '#9E480E',
+      '#636363',
+      '#997300',
+      '#264478',
+      '#43682B',
+      '#7B7B7B',
+    ];
+    return conhecidas[mesa] ?? paleta[indice % paleta.length];
+  }
 
   private splitTipo4MonthRows<T extends { monthLabel: string }>(rows: T[]) {
     const months = rows.filter((r) => r.monthLabel !== 'Total');
@@ -1332,7 +1380,12 @@ export class ReportsService {
         end: endIso,
         companyId: params.companyId,
       },
-      { includeHours: true, includeCharts: false },
+      // `includeCharts` desliga o DADO, não o desenho: com ele em false o
+      // dashboard devolve chamadosPorMes, horasPorMes, alertasPorMes,
+      // topTriggers e topHosts vazios — e é disso que este relatório vive.
+      // A tabela "Chamados Por Mês" saía em branco desde 14/08 por causa
+      // disto. Os gráficos deste relatório são montados aqui, não lá.
+      { includeHours: true },
     );
 
     const chamados = Array.isArray(dashTicketsHours.chamadosPorMes)
@@ -1609,14 +1662,11 @@ export class ReportsService {
       const sheet = workbook.addWorksheet('Chamados por mês', {
         views: [{ state: 'frozen', ySplit: 5 }],
       });
-      const colCount = 7;
+      const mesas = this.mesasComMovimento(chamadosMonths as any[]);
+      const colCount = mesas.length + 2;
       sheet.columns = [
         { width: 16 },
-        { width: 14 },
-        { width: 10 },
-        { width: 10 },
-        { width: 10 },
-        { width: 12 },
+        ...mesas.map((mesa) => ({ width: Math.max(10, mesa.length + 3) })),
         { width: 10 },
       ];
       this.styleTipo4TitleBand(sheet, 'Chamados Por Mês', colCount);
@@ -1624,28 +1674,15 @@ export class ReportsService {
       this.styleTipo4TableTitleRow(sheet, 'Total de Tickets', colCount);
 
       const headerRow = sheet.getRow(4);
-      headerRow.values = [
-        'Mês',
-        'Infraestrutura',
-        'NOC',
-        'Rotinas',
-        'Consult',
-        'Sistemas',
-        'Total',
-      ];
+      headerRow.values = ['Mês', ...mesas, 'Total'];
       this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
       let rowIdx = 5;
       for (const r of chamadosMonths as any[]) {
         const row = sheet.getRow(rowIdx);
-        const infra = Number(r.Infraestrutura) || 0;
         row.values = [
           r.monthLabel,
-          infra > 0 ? infra : null,
-          Number(r.NOC) || 0,
-          Number(r.Rotinas) || 0,
-          Number(r.Consult) || 0,
-          Number(r.Sistema) || 0,
+          ...mesas.map((mesa) => Number(r[mesa]) || 0),
           Number(r.Total) || 0,
         ];
         this.styleTipo4DataRow(row, rowIdx - 5, colCount);
@@ -1659,33 +1696,11 @@ export class ReportsService {
         this.buildTipo4GroupedBarChart({
           title: 'Tickets por Mês',
           labels: (chamadosMonths as any[]).map((r) => r.monthLabel),
-          datasets: [
-            {
-              label: 'Infraestrutura',
-              data: (chamadosMonths as any[]).map((r) => r.Infraestrutura),
-              backgroundColor: this.tipo4Theme.infra,
-            },
-            {
-              label: 'NOC',
-              data: (chamadosMonths as any[]).map((r) => r.NOC),
-              backgroundColor: this.tipo4Theme.noc,
-            },
-            {
-              label: 'Rotinas',
-              data: (chamadosMonths as any[]).map((r) => r.Rotinas),
-              backgroundColor: this.tipo4Theme.rotinas,
-            },
-            {
-              label: 'Consult',
-              data: (chamadosMonths as any[]).map((r) => r.Consult),
-              backgroundColor: this.tipo4Theme.consult,
-            },
-            {
-              label: 'Sistemas',
-              data: (chamadosMonths as any[]).map((r) => r.Sistema),
-              backgroundColor: this.tipo4Theme.sistemas,
-            },
-          ],
+          datasets: mesas.map((mesa, i) => ({
+            label: mesa,
+            data: (chamadosMonths as any[]).map((r) => Number(r[mesa]) || 0),
+            backgroundColor: this.corDaMesa(mesa, i),
+          })),
         }),
       );
     }
@@ -1695,14 +1710,11 @@ export class ReportsService {
       const sheet = workbook.addWorksheet('Apontamento de Horas', {
         views: [{ state: 'frozen', ySplit: 5 }],
       });
-      const colCount = 7;
+      const mesas = this.mesasComMovimento(horasMonths as any[]);
+      const colCount = mesas.length + 2;
       sheet.columns = [
         { width: 16 },
-        { width: 14 },
-        { width: 10 },
-        { width: 10 },
-        { width: 10 },
-        { width: 12 },
+        ...mesas.map((mesa) => ({ width: Math.max(10, mesa.length + 3) })),
         { width: 10 },
       ];
       this.styleTipo4TitleBand(sheet, 'Apontamento de Horas', colCount);
@@ -1710,29 +1722,16 @@ export class ReportsService {
       this.styleTipo4TableTitleRow(sheet, 'Total de Horas Apontadas', colCount);
 
       const headerRow = sheet.getRow(4);
-      headerRow.values = [
-        'Mês',
-        'Infraestrutura',
-        'NOC',
-        'Rotinas',
-        'Consult',
-        'Sistemas',
-        'Total',
-      ];
+      headerRow.values = ['Mês', ...mesas, 'Total'];
       this.styleTipo4ColumnHeaderRow(headerRow, colCount);
 
       const hourFmt = '#,##0.00';
       let rowIdx = 5;
       for (const r of horasMonths as any[]) {
         const row = sheet.getRow(rowIdx);
-        const infra = Number(r.Infraestrutura) || 0;
         row.values = [
           r.monthLabel,
-          infra > 0 ? infra : null,
-          Number(r.NOC) || 0,
-          Number(r.Rotinas) || 0,
-          Number(r.Consult) || 0,
-          Number(r.Sistema) || 0,
+          ...mesas.map((mesa) => Number(r[mesa]) || 0),
           Number(r.Total) || 0,
         ];
         this.styleTipo4DataRow(row, rowIdx - 5, colCount);
@@ -1750,34 +1749,14 @@ export class ReportsService {
           title: 'Total de Horas Apontadas',
           labels: (horasMonths as any[]).map((r) => r.monthLabel),
           datasets: [
-            {
-              label: 'Infraestrutura',
-              data: (horasMonths as any[]).map((r) => r.Infraestrutura),
-              backgroundColor: this.tipo4Theme.infra,
-            },
-            {
-              label: 'NOC',
-              data: (horasMonths as any[]).map((r) => r.NOC),
-              backgroundColor: this.tipo4Theme.noc,
-            },
-            {
-              label: 'Rotinas',
-              data: (horasMonths as any[]).map((r) => r.Rotinas),
-              backgroundColor: this.tipo4Theme.rotinas,
-            },
-            {
-              label: 'Consult',
-              data: (horasMonths as any[]).map((r) => r.Consult),
-              backgroundColor: this.tipo4Theme.consult,
-            },
-            {
-              label: 'Sistemas',
-              data: (horasMonths as any[]).map((r) => r.Sistema),
-              backgroundColor: this.tipo4Theme.sistemas,
-            },
+            ...mesas.map((mesa, i) => ({
+              label: mesa,
+              data: (horasMonths as any[]).map((r) => Number(r[mesa]) || 0),
+              backgroundColor: this.corDaMesa(mesa, i),
+            })),
             {
               label: 'Total',
-              data: (horasMonths as any[]).map((r) => r.Total),
+              data: (horasMonths as any[]).map((r) => Number(r.Total) || 0),
               backgroundColor: this.tipo4Theme.totalCyan,
             },
           ],
