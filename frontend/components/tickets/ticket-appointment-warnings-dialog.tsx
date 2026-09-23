@@ -53,7 +53,9 @@ export function TicketAppointmentWarningsDialog({
   const [listLoaded, setListLoaded] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [ackBusy, setAckBusy] = useState(false);
-  const [warnings, setWarnings] = useState<TicketAppointmentWarningListItem[]>([]);
+  const [warnings, setWarnings] = useState<TicketAppointmentWarningListItem[]>(
+    [],
+  );
   const [sessionDismissed, setSessionDismissed] = useState<Set<string>>(
     () => new Set(),
   );
@@ -65,7 +67,9 @@ export function TicketAppointmentWarningsDialog({
 
   const visibleWarnings = useMemo(
     () =>
-      warnings.filter((item) => !sessionDismissed.has(item.portalAppointmentId)),
+      warnings.filter(
+        (item) => !sessionDismissed.has(item.portalAppointmentId),
+      ),
     [warnings, sessionDismissed],
   );
 
@@ -204,8 +208,15 @@ export function TicketAppointmentWarningsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="font-sans max-h-[min(90vh,820px)] max-w-2xl overflow-hidden border-amber-500/30 bg-card p-0 text-card-foreground">
-        <DialogHeader className="space-y-2 border-b border-amber-500/20 bg-amber-500/10 px-6 py-4">
+      {/*
+        Coluna flex, não grade: com grade o rodapé era empurrado para fora do
+        max-h e o overflow-hidden comia o checkbox e o botão quando a atenção
+        era longa. Aqui só o miolo rola; cabeçalho e rodapé ficam fixos.
+        Mais largo e mais baixo de propósito — o texto cabe na horizontal em
+        vez de esticar o modal.
+      */}
+      <DialogContent className="font-sans flex max-h-[min(84vh,680px)] max-w-4xl flex-col overflow-hidden border-amber-500/30 bg-card p-0 text-card-foreground">
+        <DialogHeader className="shrink-0 space-y-2 border-b border-amber-500/20 bg-amber-500/10 px-6 py-4">
           <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
             <AlertTriangle className="size-5 shrink-0" />
             <DialogTitle className="text-lg text-foreground">
@@ -223,7 +234,7 @@ export function TicketAppointmentWarningsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[min(58vh,560px)] overflow-y-auto px-6 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
           {loadingList ? (
             <div className="flex min-h-[160px] items-center justify-center">
               <Loader2 className="size-7 animate-spin text-amber-400" />
@@ -268,21 +279,25 @@ export function TicketAppointmentWarningsDialog({
                 {detail.endTime}
               </div>
 
-              <div className="space-y-2">
-                <FieldLabel className="font-sans text-sm font-semibold text-foreground">
-                  Título
-                </FieldLabel>
-                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-foreground">
-                  {detail.ticketTitle}
+              {/* Lado a lado: são dois campos curtos, empilhados roubavam
+                  altura da descrição, que é o que interessa ler. */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <FieldLabel className="font-sans text-sm font-semibold text-foreground">
+                    Título
+                  </FieldLabel>
+                  <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-foreground">
+                    {detail.ticketTitle}
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <FieldLabel className="font-sans text-sm font-semibold text-foreground">
-                  Quem apontou
-                </FieldLabel>
-                <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-foreground">
-                  {detail.userName}
+                <div className="space-y-2">
+                  <FieldLabel className="font-sans text-sm font-semibold text-foreground">
+                    Quem apontou
+                  </FieldLabel>
+                  <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-foreground">
+                    {detail.userName}
+                  </div>
                 </div>
               </div>
 
@@ -298,7 +313,9 @@ export function TicketAppointmentWarningsDialog({
                 </div>
               </div>
 
-              {detail.attachments.some((a) => !a.mimeType.startsWith("image/")) ? (
+              {detail.attachments.some(
+                (a) => !a.mimeType.startsWith("image/"),
+              ) ? (
                 <ul className="space-y-2">
                   {detail.attachments
                     .filter((a) => !a.mimeType.startsWith("image/"))
@@ -318,7 +335,9 @@ export function TicketAppointmentWarningsDialog({
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => void openAttachment(attachment, true)}
+                            onClick={() =>
+                              void openAttachment(attachment, true)
+                            }
                           >
                             Abrir
                           </Button>
@@ -326,7 +345,9 @@ export function TicketAppointmentWarningsDialog({
                             type="button"
                             size="sm"
                             variant="outline"
-                            onClick={() => void openAttachment(attachment, false)}
+                            onClick={() =>
+                              void openAttachment(attachment, false)
+                            }
                           >
                             <Download className="mr-1 size-3.5" />
                             Baixar
@@ -342,48 +363,54 @@ export function TicketAppointmentWarningsDialog({
 
         {!showList && selectedId && detail ? (
           <>
-            <label className="mx-6 flex items-start gap-2 text-sm text-foreground">
-              <FlipCheckbox
-                checked={dontShowAgain}
-                onChange={(e) => setDontShowAgain(e.target.checked)}
-                disabled={ackBusy}
-              />
-              <span>Não exibir novamente</span>
-            </label>
+            {/* Checkbox dentro do rodapé: solto acima dele ele saía junto com
+                os botões quando a atenção era longa. */}
             <DialogFooter
               bleed={false}
-              className="gap-2 border-t border-border/60 px-6"
+              className="shrink-0 items-center gap-3 border-t border-border/60 px-6 sm:justify-between"
             >
-              {visibleWarnings.length > 1 ? (
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <FlipCheckbox
+                  checked={dontShowAgain}
+                  onChange={(e) => setDontShowAgain(e.target.checked)}
+                  disabled={ackBusy}
+                />
+                <span>Não exibir novamente</span>
+              </label>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center">
+                {visibleWarnings.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={ackBusy}
+                    onClick={() => {
+                      setSelectedId(null);
+                      setDetail(null);
+                      setDontShowAgain(false);
+                    }}
+                  >
+                    <ChevronLeft className="mr-1 size-4" />
+                    Voltar à lista
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
-                  variant="outline"
+                  className={cn(
+                    !dontShowAgain && "bg-amber-600 hover:bg-amber-600/90",
+                  )}
                   disabled={ackBusy}
-                  onClick={() => {
-                    setSelectedId(null);
-                    setDetail(null);
-                    setDontShowAgain(false);
-                  }}
+                  onClick={() => void handleConfirmRead()}
                 >
-                  <ChevronLeft className="mr-1 size-4" />
-                  Voltar à lista
+                  {ackBusy ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                      Salvando…
+                    </>
+                  ) : (
+                    "OK, li a atenção"
+                  )}
                 </Button>
-              ) : null}
-              <Button
-                type="button"
-                className={cn(!dontShowAgain && "bg-amber-600 hover:bg-amber-600/90")}
-                disabled={ackBusy}
-                onClick={() => void handleConfirmRead()}
-              >
-                {ackBusy ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                    Salvando…
-                  </>
-                ) : (
-                  "OK, li a atenção"
-                )}
-              </Button>
+              </div>
             </DialogFooter>
           </>
         ) : null}
