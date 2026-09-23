@@ -1231,7 +1231,7 @@ export class TicketsService {
       } else if (nextIsClosed && !portal?.isClosed) {
         eventType = 'TICKET_CLOSED';
         summary = `Chamado fechado · estágio "${resolvedStageName ?? PORTAL_STAGE.ENCERRADO}"`;
-        await this.appointments.notifyRoutineTicketClosed(
+        await this.appointments.notifyTicketClosed(
           ticketNumber,
           resolvedStageName ?? PORTAL_STAGE.ENCERRADO,
         );

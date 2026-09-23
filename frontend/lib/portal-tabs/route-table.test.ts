@@ -51,6 +51,8 @@ describe("matchPortalRoute", () => {
       "/esqueci-senha",
       "/primeiro-acesso",
       "/redefinir-senha",
+      // Pesquisa de satisfação: o cliente abre pelo link do e-mail, sem login.
+      "/satisfacao/[token]",
     ]);
     const rotas: string[] = [];
     const walk = (dir: string) => {

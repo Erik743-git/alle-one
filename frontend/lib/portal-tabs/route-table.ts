@@ -34,6 +34,7 @@ export const PORTAL_TAB_ROUTES = [
   "/projetos/[companyId]/[projectId]",
   "/admin",
   "/admin/auditoria",
+  "/admin/satisfacao",
   "/admin/classificacao",
   "/admin/email",
   "/admin/empresas",

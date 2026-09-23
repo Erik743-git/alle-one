@@ -74,6 +74,9 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     ),
     "/admin": lazy(() => import("@/app/admin/page-impl")),
     "/admin/auditoria": lazy(() => import("@/app/admin/auditoria/page-impl")),
+    "/admin/satisfacao": lazy(
+      () => import("@/app/admin/satisfacao/page-impl"),
+    ),
     "/admin/classificacao": lazy(
       () => import("@/app/admin/classificacao/page-impl"),
     ),

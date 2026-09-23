@@ -1632,3 +1632,35 @@ model EmailInboundSettings {
 
   @@map("email_inbound_settings")
 }
+
+/// Pesquisa de satisfação de um chamado fechado (1 a 5 estrelas).
+/// O NPS do relatório é derivado da nota: 5 promotor, 4 neutro, 1–3 detrator.
+model TicketSatisfactionSurvey {
+  id                    String    @id @default(uuid())
+  ticketNumber          Int       @unique @map("ticket_number")
+  /// Link do e-mail: responde sem entrar no portal.
+  token                 String    @unique
+  requestorEmail        String    @map("requestor_email") @db.VarChar(255)
+  requestorName         String?   @map("requestor_name") @db.VarChar(255)
+  companyId             String?   @map("company_id")
+  specialtyId           String?   @map("specialty_id")
+  /// Quem estava com o chamado no fechamento; é para quem a nota conta.
+  responsibleName       String?   @map("responsible_name") @db.VarChar(255)
+  responsibleExternalId Int?      @map("responsible_external_id")
+  stageName             String?   @map("stage_name") @db.VarChar(80)
+  sentAt                DateTime  @default(now()) @map("sent_at")
+  answeredAt            DateTime? @map("answered_at")
+  rating                Int?      @db.SmallInt
+  comment               String?   @db.Text
+  /// EMAIL | PORTAL
+  channel               String?   @db.VarChar(20)
+  /// Quantas vezes o card foi dispensado no portal.
+  dismissedCount        Int       @default(0) @map("dismissed_count")
+  dismissedAt           DateTime? @map("dismissed_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  @@index([requestorEmail, answeredAt])
+  @@index([answeredAt])
+  @@map("ticket_satisfaction_surveys")
+}

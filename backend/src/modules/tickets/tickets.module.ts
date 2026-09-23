@@ -5,6 +5,12 @@ import { ProjetosModule } from '../projetos/projetos.module';
 import { AuditModule } from '../audit/audit.module';
 import { MailModule } from '../mail/mail.module';
 import { PermissionsModule } from '../permissions/permissions.module';
+import {
+  TicketSatisfactionAdminController,
+  TicketSatisfactionPublicController,
+} from './ticket-satisfaction.controller';
+import { TicketSatisfactionService } from './ticket-satisfaction.service';
+import { TicketSatisfactionReportService } from './ticket-satisfaction-report.service';
 import { TicketsController } from './tickets.controller';
 import { FileStorageModule } from '../../common/storage/file-storage.module';
 import { TicketsAppointmentsService } from './tickets-appointments.service';
@@ -30,7 +36,11 @@ import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
     MailModule,
     PermissionsModule,
   ],
-  controllers: [TicketsController],
+  controllers: [
+    TicketsController,
+    TicketSatisfactionPublicController,
+    TicketSatisfactionAdminController,
+  ],
   providers: [
     TicketsPortalStoreService,
     TicketsAppointmentsService,
@@ -44,6 +54,8 @@ import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
     TicketListStateService,
     TicketAutomationService,
     TicketAutomationIdleJob,
+    TicketSatisfactionService,
+    TicketSatisfactionReportService,
   ],
   exports: [
     TicketsService,
@@ -54,6 +66,7 @@ import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
     TicketsOutboxService,
     TicketsReconcileService,
     TicketAutomationService,
+    TicketSatisfactionService,
   ],
 })
 export class TicketsModule {}

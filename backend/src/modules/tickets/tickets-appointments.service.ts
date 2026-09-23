@@ -38,6 +38,7 @@ import {
   hydrateAppointmentDescriptionImages,
   type SavedAppointmentImage,
 } from './appointment-doc.util';
+import { TicketSatisfactionService } from './ticket-satisfaction.service';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import type { SendMailAttachment } from '../mail/mail.service';
 import {
@@ -159,6 +160,7 @@ export class TicketsAppointmentsService {
     private readonly projetos: ProjetosService,
     private readonly tenantScope: TenantScopeService,
     private readonly emailTemplates: EmailTemplatesService,
+    private readonly satisfaction: TicketSatisfactionService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -1752,28 +1754,56 @@ export class TicketsAppointmentsService {
   }
 
   /**
-   * Chamado de rotina fechado: único aviso ao cliente, só para o solicitante.
+   * Chamado fechado: avisa o solicitante. Rotina tem texto próprio.
    * Nunca lança — falha de e-mail não pode desfazer o fechamento.
    */
-  async notifyRoutineTicketClosed(
+  async notifyTicketClosed(
     ticketNumber: number,
     stageName: string,
   ): Promise<void> {
     try {
-      if (!(await isRoutineTicket(this.prisma, ticketNumber))) return;
       const ticket = await this.prisma.portalTicket.findUnique({
         where: { ticketNumber },
-        select: { title: true, requestorEmail: true, requestorName: true },
+        select: {
+          title: true,
+          requestorEmail: true,
+          requestorName: true,
+          responsibleName: true,
+        },
       });
       const to = ticket?.requestorEmail?.trim();
       if (!ticket || !to) return;
-      await this.emailTemplates.sendRoutineTicketClosed({
+
+      // Rotina tem texto próprio (o cliente não acompanhou o atendimento);
+      // os demais recebem o aviso comum, com o número no assunto para a
+      // resposta voltar ao chamado.
+      if (await isRoutineTicket(this.prisma, ticketNumber)) {
+        await this.emailTemplates.sendRoutineTicketClosed({
+          to,
+          ticketNumber,
+          title: ticket.title ?? '',
+          requestorName: ticket.requestorName,
+          stageName,
+          closedAt: new Date(),
+        });
+        return;
+      }
+
+      // A pesquisa nasce junto com o aviso: as estrelas do e-mail são o
+      // link dela. Rotina não entra (o cliente não acompanhou o atendimento).
+      const pesquisa = await this.satisfaction
+        .criarParaTicketFechado({ ticketNumber, stageName })
+        .catch(() => null);
+
+      await this.emailTemplates.sendTicketClosed({
         to,
         ticketNumber,
         title: ticket.title ?? '',
         requestorName: ticket.requestorName,
         stageName,
+        responsibleName: ticket.responsibleName,
         closedAt: new Date(),
+        surveyToken: pesquisa?.token ?? null,
       });
     } catch (err) {
       this.logger.warn(
