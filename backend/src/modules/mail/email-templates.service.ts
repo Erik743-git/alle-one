@@ -41,12 +41,17 @@ const DEFAULTS: Array<{
   {
     key: EMAIL_TEMPLATE_KEYS.APPOINTMENT_CLIENT_NOTIFY,
     name: 'Comunicação com cliente (apontamento)',
-    subject:
-      'Atualização do chamado #{{ticketNumber}} — {{appointmentDate}} {{appointmentTime}}',
+    // Enxuto de proposito: o cliente quer ler o recado, nao um relatorio.
+    // Fora daqui ficaram a repeticao da descricao do chamado (foi ele quem
+    // escreveu), o bloco "quem apontou / quando" (vira uma linha no fim) e o
+    // horario no assunto, que empurrava o titulo para fora na caixa de
+    // entrada. O assunto mantem "#{{ticketNumber}}": a resposta do cliente
+    // volta para o chamado certo por esse numero.
+    subject: 'Chamado #{{ticketNumber}} — {{ticketTitle}}',
     bodyHtml:
-      '<p>Olá.</p><p>Há um apontamento de comunicação no chamado <strong>#{{ticketNumber}} — {{ticketTitle}}</strong>.</p><p><strong>Quem apontou:</strong> {{authorName}}<br/><strong>Quando:</strong> {{appointmentDate}} {{appointmentTime}}</p><p><strong>Descrição do apontamento</strong></p><div>{{appointmentDescriptionHtml}}</div><p><strong>Descrição do chamado</strong></p><div>{{ticketDescriptionHtml}}</div>{{attachmentsNote}}<p>Atenciosamente.<br/>Alle Tecnologia.</p>',
+      '<p>Olá.</p><div>{{appointmentDescriptionHtml}}</div>{{attachmentsNote}}<p>{{authorName}} — Alle Tecnologia<br/><span style="color:#64748b">Chamado #{{ticketNumber}} · {{appointmentDate}} {{appointmentTime}}</span></p>',
     bodyText:
-      'Olá.\n\nHá um apontamento de comunicação no chamado #{{ticketNumber}} — {{ticketTitle}}.\n\nQuem apontou: {{authorName}}\nQuando: {{appointmentDate}} {{appointmentTime}}\n\nDescrição do apontamento:\n{{appointmentDescriptionText}}\n\nDescrição do chamado:\n{{ticketDescriptionText}}\n\nAtenciosamente.\nAlle Tecnologia.\n',
+      'Olá.\n\n{{appointmentDescriptionText}}\n\n{{authorName}} — Alle Tecnologia\nChamado #{{ticketNumber}} · {{appointmentDate}} {{appointmentTime}}\n',
   },
   {
     key: EMAIL_TEMPLATE_KEYS.ROUTINE_TICKET_CLOSED,
