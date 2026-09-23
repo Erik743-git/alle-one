@@ -24,15 +24,29 @@ function bilhete(over: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+/** Prisma de mentira com o mínimo que listar() usa. */
+function prismaComNotas(
+  notas: Array<Record<string, unknown>>,
+  visita: Date | null = null,
+) {
+  return {
+    muralNote: { findMany: jest.fn().mockResolvedValue(notas) },
+    muralVisit: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue(visita ? { seenAt: visita } : null),
+      upsert: jest.fn().mockResolvedValue({}),
+    },
+  };
+}
+
 function servico(prisma: unknown) {
   return new MuralService(prisma as never);
 }
 
 describe('MuralService', () => {
   it('bilhete assinado mostra o nome de quem escreveu', async () => {
-    const prisma = {
-      muralNote: { findMany: jest.fn().mockResolvedValue([bilhete()]) },
-    };
+    const prisma = prismaComNotas([bilhete()]);
     const [dto] = await servico(prisma).listar(OUTRO);
     expect(dto.authorName).toBe('Erik');
     expect(dto.toName).toBe('Alisson');
@@ -40,11 +54,7 @@ describe('MuralService', () => {
   });
 
   it('bilhete anônimo não sai com o autor nem para admin', async () => {
-    const prisma = {
-      muralNote: {
-        findMany: jest.fn().mockResolvedValue([bilhete({ anonymous: true })]),
-      },
-    };
+    const prisma = prismaComNotas([bilhete({ anonymous: true })]);
     const [paraAdmin] = await servico(prisma).listar(ADMIN);
     expect(paraAdmin.authorName).toBeNull();
     expect(paraAdmin.anonymous).toBe(true);
@@ -54,11 +64,7 @@ describe('MuralService', () => {
   });
 
   it('o autor reconhece o próprio bilhete mesmo anônimo', async () => {
-    const prisma = {
-      muralNote: {
-        findMany: jest.fn().mockResolvedValue([bilhete({ anonymous: true })]),
-      },
-    };
+    const prisma = prismaComNotas([bilhete({ anonymous: true })]);
     const [dto] = await servico(prisma).listar(AUTOR);
     expect(dto.mine).toBe(true);
     expect(dto.canDelete).toBe(true);
@@ -67,9 +73,7 @@ describe('MuralService', () => {
   });
 
   it('admin pode tirar bilhete dos outros; colega não', async () => {
-    const prisma = {
-      muralNote: { findMany: jest.fn().mockResolvedValue([bilhete()]) },
-    };
+    const prisma = prismaComNotas([bilhete()]);
     const [paraAdmin] = await servico(prisma).listar(ADMIN);
     expect(paraAdmin.canDelete).toBe(true);
     const [paraColega] = await servico(prisma).listar(OUTRO);
@@ -78,14 +82,20 @@ describe('MuralService', () => {
 
   it('cor desconhecida vira a padrão', async () => {
     const create = jest.fn().mockResolvedValue(bilhete({ color: 'amarelo' }));
-    const prisma = { muralNote: { create } };
+    const prisma = {
+      muralNote: { create },
+      mailboxNotification: { create: jest.fn() },
+    };
     await servico(prisma).criar(AUTOR, { message: 'oi', color: 'roxo-neon' });
     expect(create.mock.calls[0][0].data.color).toBe('amarelo');
   });
 
   it('posição fora da parede é presa na borda', async () => {
     const create = jest.fn().mockResolvedValue(bilhete());
-    const prisma = { muralNote: { create } };
+    const prisma = {
+      muralNote: { create },
+      mailboxNotification: { create: jest.fn() },
+    };
     await servico(prisma).criar(AUTOR, { message: 'oi', x: 5, y: -2 });
     expect(create.mock.calls[0][0].data.x).toBe(1);
     expect(create.mock.calls[0][0].data.y).toBe(0);
@@ -132,5 +142,119 @@ describe('MuralService', () => {
     await expect(
       servico(prisma).remover(ADMIN, 'n1'),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('MuralService — novidades, reações e mural do mês', () => {
+  it('bilhete anterior à última visita não é novidade', async () => {
+    const visita = new Date('2026-09-23T13:00:00.000Z');
+    const prisma = prismaComNotas([bilhete()], visita);
+    const [dto] = await servico(prisma).listar(OUTRO);
+    expect(dto.isNew).toBe(false);
+  });
+
+  it('bilhete posterior à última visita acende como novidade', async () => {
+    const visita = new Date('2026-09-23T11:00:00.000Z');
+    const prisma = prismaComNotas([bilhete()], visita);
+    const [dto] = await servico(prisma).listar(OUTRO);
+    expect(dto.isNew).toBe(true);
+  });
+
+  it('primeira visita não acende o mural inteiro', async () => {
+    const prisma = prismaComNotas([bilhete()], null);
+    const [dto] = await servico(prisma).listar(OUTRO);
+    expect(dto.isNew).toBe(false);
+  });
+
+  it('o próprio bilhete nunca aparece como novidade', async () => {
+    const visita = new Date('2026-09-23T11:00:00.000Z');
+    const prisma = prismaComNotas([bilhete()], visita);
+    const [dto] = await servico(prisma).listar(AUTOR);
+    expect(dto.isNew).toBe(false);
+  });
+
+  it('a visita é atualizada depois de ler a anterior', async () => {
+    const visita = new Date('2026-09-23T11:00:00.000Z');
+    const prisma = prismaComNotas([bilhete()], visita);
+    await servico(prisma).listar(OUTRO);
+    expect(prisma.muralVisit.upsert).toHaveBeenCalled();
+  });
+
+  it('conta as reações e marca a minha; emoji sem ninguém não aparece', async () => {
+    const prisma = prismaComNotas([
+      bilhete({
+        reactions: [
+          { emoji: '👏', userId: OUTRO.userId },
+          { emoji: '👏', userId: AUTOR.userId },
+          { emoji: '❤️', userId: AUTOR.userId },
+        ],
+      }),
+    ]);
+    const [dto] = await servico(prisma).listar(OUTRO);
+    expect(dto.reactions).toEqual([
+      { emoji: '👏', count: 2, mine: true },
+      { emoji: '❤️', count: 1, mine: false },
+    ]);
+  });
+
+  it('avisa no correio quem recebeu o bilhete', async () => {
+    const criarAviso = jest.fn();
+    const prisma = {
+      muralNote: {
+        create: jest.fn().mockResolvedValue(bilhete({ toUserId: 'u-outro' })),
+      },
+      mailboxNotification: { create: criarAviso },
+    };
+    await servico(prisma).criar(AUTOR, { message: 'valeu!', toUserId: 'u-outro' });
+    expect(criarAviso).toHaveBeenCalled();
+    expect(criarAviso.mock.calls[0][0].data.userId).toBe('u-outro');
+  });
+
+  it('não avisa quem escreveu o bilhete para si mesmo', async () => {
+    const criarAviso = jest.fn();
+    const prisma = {
+      muralNote: {
+        create: jest.fn().mockResolvedValue(bilhete({ toUserId: AUTOR.userId })),
+      },
+      mailboxNotification: { create: criarAviso },
+    };
+    await servico(prisma).criar(AUTOR, {
+      message: 'nota para mim',
+      toUserId: AUTOR.userId,
+    });
+    expect(criarAviso).not.toHaveBeenCalled();
+  });
+
+  it('aviso que falha não derruba a criação do bilhete', async () => {
+    const prisma = {
+      muralNote: {
+        create: jest.fn().mockResolvedValue(bilhete({ toUserId: 'u-outro' })),
+      },
+      mailboxNotification: {
+        create: jest.fn().mockRejectedValue(new Error('correio fora do ar')),
+      },
+    };
+    await expect(
+      servico(prisma).criar(AUTOR, { message: 'valeu!', toUserId: 'u-outro' }),
+    ).resolves.toBeDefined();
+  });
+
+  it('mural do mês conta bilhetes recebidos, do maior para o menor', async () => {
+    const prisma = {
+      muralNote: {
+        findMany: jest.fn().mockResolvedValue([
+          { recipient: { name: 'Alisson' } },
+          { recipient: { name: 'Mirella' } },
+          { recipient: { name: 'Alisson' } },
+          { recipient: null },
+        ]),
+      },
+    };
+    const resultado = await servico(prisma).doMes('2026-09');
+    expect(resultado.mes).toBe('2026-09');
+    expect(resultado.ranking).toEqual([
+      { name: 'Alisson', total: 2 },
+      { name: 'Mirella', total: 1 },
+    ]);
   });
 });

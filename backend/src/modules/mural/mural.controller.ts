@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -15,7 +16,11 @@ import { UserRole } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
-import { CreateMuralNoteDto, UpdateMuralNoteDto } from './mural.dto';
+import {
+  CreateMuralNoteDto,
+  ReagirMuralNoteDto,
+  UpdateMuralNoteDto,
+} from './mural.dto';
 import { MuralService } from './mural.service';
 
 type AuthenticatedRequest = { user: AuthenticatedRequestUser };
@@ -39,6 +44,13 @@ export class MuralController {
     return this.mural.colegas();
   }
 
+  /** Mural do mês: quem o time mais reconheceu. Só ADMIN (diretoria). */
+  @Get('do-mes')
+  @Roles(UserRole.ADMIN)
+  doMes(@Query('mes') mes?: string) {
+    return this.mural.doMes(mes);
+  }
+
   @Get('notes')
   listar(@Req() req: AuthenticatedRequest) {
     return this.mural.listar(req.user);
@@ -56,6 +68,15 @@ export class MuralController {
     @Body() body: UpdateMuralNoteDto,
   ) {
     return this.mural.atualizar(req.user, id, body);
+  }
+
+  @Post('notes/:id/reacoes')
+  reagir(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ReagirMuralNoteDto,
+  ) {
+    return this.mural.reagir(req.user, id, body.emoji);
   }
 
   @Delete('notes/:id')
