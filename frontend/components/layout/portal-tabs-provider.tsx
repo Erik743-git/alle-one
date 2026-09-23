@@ -28,6 +28,7 @@ import {
   cancelTabClose as cancelTabCloseState,
   scheduleTabClose as scheduleTabCloseState,
   parseTabs,
+  findTabForPath,
   pathOf,
   portalTabsStorageKey,
   serializeTabs,
@@ -46,8 +47,12 @@ type PortalTabsApi = {
   duplicateTab: (id: string) => void;
   /** Arrastar a guia para outra posicao na barra. */
   moveTab: (id: string, toIndex: number) => void;
-  /** Fecha a guia atual sozinha depois de alguns segundos. */
-  scheduleCloseActiveTab: (seconds?: number) => void;
+  /**
+   * Fecha sozinha, depois de alguns segundos, a guia que mostra `path`.
+   * Não usa "a guia ativa": a pessoa pode ter trocado de guia enquanto o
+   * servidor respondia.
+   */
+  scheduleCloseTabOf: (path: string, seconds?: number) => void;
   /** Desiste do fechamento automatico da guia. */
   cancelScheduledClose: (id: string) => void;
   copyTabLink: (id: string) => void;
@@ -295,11 +300,11 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
     commit(cancelTabCloseState(current(), id));
   }, []);
 
-  const scheduleCloseActiveTab = useCallback(
-    (seconds: number = TAB_AUTO_CLOSE_SECONDS) => {
-      const active = activeOf(current());
-      if (!active) return;
-      const id = active.id;
+  const scheduleCloseTabOf = useCallback(
+    (path: string, seconds: number = TAB_AUTO_CLOSE_SECONDS) => {
+      const tab = findTabForPath(current(), path);
+      if (!tab) return;
+      const id = tab.id;
       clearCloseTimer(id);
       const ms = Math.max(1, seconds) * 1000;
       commit(scheduleTabCloseState(current(), id, Date.now() + ms));
@@ -308,7 +313,7 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
         window.setTimeout(() => {
           closeTimers.delete(id);
           // A guia pode ter sido fechada na mao nesse meio tempo.
-          if (current().tabs.some((tab) => tab.id === id)) closeTabRef.current(id);
+          if (current().tabs.some((item) => item.id === id)) closeTabRef.current(id);
         }, ms),
       );
     },
@@ -349,7 +354,7 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
       closeAllTabs,
       duplicateTab,
       moveTab,
-      scheduleCloseActiveTab,
+      scheduleCloseTabOf,
       cancelScheduledClose,
       copyTabLink,
       syncRoute,
@@ -364,7 +369,7 @@ export function PortalTabsProvider({ children }: { children: ReactNode }) {
       closeAllTabs,
       duplicateTab,
       moveTab,
-      scheduleCloseActiveTab,
+      scheduleCloseTabOf,
       cancelScheduledClose,
       copyTabLink,
       syncRoute,

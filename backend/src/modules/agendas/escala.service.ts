@@ -8,6 +8,7 @@ import { EscalaExcecaoTipo, UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   paraMinutos,
+  problemaNaExcecao,
   somarDias,
   turnosDoDia,
   type EscalaExcecaoDia,
@@ -239,7 +240,7 @@ export class EscalaService {
    */
   async registrarExcecao(actorId: string, input: ExcecaoInput) {
     exigirData(input.date, 'O dia');
-    await this.exigirRegra(input.regraId);
+    const regra = await this.exigirRegra(input.regraId);
 
     const recortado = Boolean(input.startTime || input.endTime);
     if (recortado) {
@@ -258,6 +259,20 @@ export class EscalaService {
     if (input.tipo === 'TROCA' && !input.substituteUserId) {
       throw new BadRequestException('Na troca, escolha quem assume o turno.');
     }
+
+    const problema = problemaNaExcecao(
+      {
+        startTime: regra.startTime,
+        endTime: regra.endTime,
+        daysOfWeek: regra.daysOfWeek,
+        validFrom: ymd(regra.validFrom),
+        validTo: regra.validTo ? ymd(regra.validTo) : null,
+      },
+      input.date,
+      recortado ? (input.startTime ?? null) : null,
+      recortado ? (input.endTime ?? null) : null,
+    );
+    if (problema) throw new BadRequestException(problema);
 
     const data = paraData(input.date);
     await this.prisma.$transaction([
@@ -296,8 +311,16 @@ export class EscalaService {
   private async exigirRegra(id: string) {
     const regra = await this.prisma.escalaRegra.findFirst({
       where: { id, deletedAt: null },
-      select: { id: true },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        daysOfWeek: true,
+        validFrom: true,
+        validTo: true,
+      },
     });
     if (!regra) throw new NotFoundException('Regra de escala não encontrada.');
+    return regra;
   }
 }

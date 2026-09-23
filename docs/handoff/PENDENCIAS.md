@@ -3,7 +3,7 @@
 Lista do que **só o Erik consegue fazer** (precisa da VM, do Azure ou de uma
 decisão dele). O detalhe de cada item está em `HANDOFF-20260924.md`.
 
-Atualizado em 23/09/2026.
+Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 
 ## Segurança (primeiro)
 
@@ -27,15 +27,23 @@ Atualizado em 23/09/2026.
 - [ ] Modelo do e-mail de comunicação:
       `cd /home/alleone/teste/backend && npx ts-node --transpile-only prisma/scripts/atualizar-template-comunicacao.ts`
       (sem `--aplicar` só mostra; com `--aplicar` grava).
-- [ ] Rodar a lista de conferência da seção 3 do `HANDOFF-20260924.md` na
-      teste (itens 3.1 a 3.8).
+- [ ] Na VM, conferir se o **LibreOffice Calc** está instalado:
+      `dpkg -l libreoffice-calc`. Só o `libreoffice-core` não basta: o botão
+      do olho aparece e a visualização dá erro 503. Se faltar:
+      `sudo apt install --no-install-recommends libreoffice-calc`.
+- [ ] Conferência rápida na teste. Os itens 3.1 a 3.8 já passaram numa cópia
+      isolada (ver `TESTE-20260923.md`); na teste falta só o que depende da
+      VM: o PDF atrás do nginx de verdade, o e-mail saindo pelo SMTP de
+      verdade e a resposta desse e-mail voltando ao chamado.
 
 ## Decisões em aberto
 
-- [ ] **Agendas → Manutenção:** GMUD fora da janela do cliente **bloqueia**
-      ou só **avisa**? Recomendação: só avisar (bloquear trava emergência de
-      madrugada).
+- [x] **Agendas → Manutenção:** GMUD fora da janela do cliente só **avisa**
+      (decidido em 23/09).
 - [ ] Guias: fechar sozinha em **10s** ou **30s** depois de fechar o chamado?
+      (Hoje é 10s, e vale também para Resolver, Cancelar e Agrupar.)
+- [ ] Relatório de Rendimento (planilha/PDF): tirar a comunicação de 0 min
+      como na tela de Apontamentos, ou manter?
 - [ ] Três `COLLABORATOR` com empresa "Outros" (Rogério Carvalho, Rodrigo
       Colpani, Rangel Werner Lemos): são da Alle ou de fora?
 - [ ] "Só admin tira relatório mas está confundindo do adm": o que isso quer
@@ -45,4 +53,5 @@ Atualizado em 23/09/2026.
 ## Fora do sistema
 
 - [ ] Compartilhar os três calendários do Outlook (dona: natalia.silva) com
-      `suporte@alletecnologia`. Sem isso a aba Plantão vem vazia.
+      `suporte@alletecnologia`. Sem isso a aba **Plantão** (dentro de Agendas)
+      vem vazia. A aba Escala não depende do Outlook.

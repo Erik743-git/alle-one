@@ -61,7 +61,7 @@ export function AppointmentViewDialog({
 
   return (
     <Dialog open={Boolean(appointment)} onOpenChange={onOpenChange}>
-      <DialogContent className="font-sans flex max-h-[min(84vh,680px)] max-w-4xl flex-col overflow-hidden bg-card p-0 text-card-foreground">
+      <DialogContent className="font-sans flex max-h-[min(84vh,680px)] sm:max-w-3xl flex-col overflow-hidden bg-card p-0 text-card-foreground">
         <DialogHeader className="shrink-0 space-y-1 border-b border-border/60 px-6 py-4">
           <DialogTitle className="text-lg text-foreground">
             Apontamento do chamado #{ticketNumber}

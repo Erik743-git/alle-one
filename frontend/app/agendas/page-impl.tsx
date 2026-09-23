@@ -6,6 +6,8 @@ import { PlantaoOutlook } from "@/app/plantao/page-impl";
 import ProtectedPage from "@/components/auth/protected-page";
 import { EscalaAba } from "@/components/agendas/escala-aba";
 import AppShell from "@/components/layout/app-shell";
+import { canAccessPlantao } from "@/lib/access-control";
+import { useExigirAcesso } from "@/lib/use-exigir-acesso";
 import { cn } from "@/lib/utils";
 
 const ABAS = [
@@ -21,6 +23,8 @@ type Aba = (typeof ABAS)[number]["id"];
  */
 function AgendasPageImpl() {
   const [aba, setAba] = useState<Aba>("escala");
+  // Cliente que digita /agendas volta para o painel (a API já recusa).
+  const semAcesso = useExigirAcesso(canAccessPlantao);
 
   return (
     <ProtectedPage>
@@ -48,7 +52,11 @@ function AgendasPageImpl() {
             ))}
           </div>
 
-          {aba === "plantao" ? <PlantaoOutlook /> : <EscalaAba />}
+          {semAcesso ? null : aba === "plantao" ? (
+            <PlantaoOutlook />
+          ) : (
+            <EscalaAba />
+          )}
         </div>
       </AppShell>
     </ProtectedPage>

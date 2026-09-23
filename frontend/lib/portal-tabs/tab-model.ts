@@ -226,6 +226,24 @@ export function scheduleTabClose(
   return withTab(state, id, { closingAt: at });
 }
 
+/**
+ * A guia que mostra `path`: a ativa, se for ela; senão a usada por último.
+ *
+ * Quem fecha um chamado espera a resposta do servidor antes de pedir o
+ * fechamento da guia. Nesse meio tempo a pessoa pode ter trocado de guia, e
+ * fechar "a ativa" levaria embora a guia errada.
+ */
+export function findTabForPath(
+  state: PortalTabsState,
+  path: string,
+): PortalTab | null {
+  const matches = state.tabs.filter((tab) => pathOf(tab.href) === path);
+  if (matches.length === 0) return null;
+  const active = matches.find((tab) => tab.id === state.activeId);
+  if (active) return active;
+  return matches.reduce((a, b) => (b.lastActiveAt > a.lastActiveAt ? b : a));
+}
+
 /** Desiste do fechamento automático (a pessoa voltou a usar a guia). */
 export function cancelTabClose(
   state: PortalTabsState,
