@@ -39,6 +39,7 @@ import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { Switch } from "@/components/ui/switch";
 import { usersService, type Specialty } from "@/lib/services/users.service";
 import { payrollPeriodRangeForCalendarMonthOf } from "@/lib/date-ranges";
+import { formatDateTime } from "@/lib/date-utils";
 
 function getReportCompanyLabel(report: ReportRow): string {
   if (report.filters?.allCompanies) {
@@ -65,8 +66,13 @@ function getReportGeneratedByLabel(report: ReportRow): string {
   );
 }
 
+/**
+ * O `createdAt` vem em UTC. Cortar os 19 primeiros caracteres do ISO mostrava
+ * a hora de Greenwich com cara de hora local — sempre 3 horas à frente aqui.
+ * `formatDateTime` converte para o fuso de quem está olhando.
+ */
 function formatReportGeneratedAt(value: string): string {
-  return String(value).slice(0, 19).replace("T", " ");
+  return formatDateTime(value);
 }
 
 function GeradorRelatoriosPageImpl() {

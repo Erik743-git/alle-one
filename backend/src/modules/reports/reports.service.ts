@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { ReportFormat, ReportStatus, ReportType } from '@prisma/client';
+import { Prisma, ReportFormat, ReportStatus, ReportType } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
 import { mapWithConcurrency } from '../../common/concurrency.util';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -43,6 +43,27 @@ import {
 
 import { toReportFormat, toReportType } from './reports-type.helper';
 import { isReservedRowField } from '../dashboard/desk-categories';
+
+/**
+ * Tira do relatório de rendimento quem aponta pelo lado do cliente.
+ *
+ * O relatório mede a equipe da Alle. Usuário de cliente aponta no próprio
+ * chamado e entrava aqui como atendente: no ciclo 26/08 a 25/09 eram 9
+ * gestores e 9 membros, 132 apontamentos — o Michel com 56 e o Dielson com 37
+ * apareciam lado a lado com o pessoal da Alle.
+ *
+ * PJ (Terceiro) continua contando: é gente da Alle, às vezes trabalhando
+ * dentro do cliente. Apontamento sem usuário mapeado (base antiga) também
+ * continua — tirá-lo apagaria hora real da equipe.
+ *
+ * `CLIENT` está no enum como papel antigo, ainda em uso em cadastros legados.
+ */
+const SEM_USUARIO_DE_CLIENTE = Prisma.sql`
+  and (
+    u.role is null
+    or u.role not in ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
+  )
+`;
 import {
   billingRowsToCsv,
   billingRowsToXlsx,
@@ -2081,6 +2102,7 @@ export class ReportsService {
             ${collaboratorFilter.portalUserId}::text is null
             or a.created_by = ${collaboratorFilter.portalUserId}::text
           )
+          ${SEM_USUARIO_DE_CLIENTE}
         order by a.appointment_date asc, user_name asc, a.ticket_number asc, a.id asc
       `) ?? [])
       : ((await this.prisma.$queryRaw<
@@ -2250,6 +2272,7 @@ export class ReportsService {
             ${collaboratorFilter.portalUserId}::text is null
             or a.created_by = ${collaboratorFilter.portalUserId}::text
           )
+          ${SEM_USUARIO_DE_CLIENTE}
         group by a.appointment_date::date, coalesce(nullif(trim(u.name), ''), 'Não mapeado'), t.client_external_id
         order by a.appointment_date::date asc, user_name asc
       `) ?? [])
@@ -2547,6 +2570,7 @@ export class ReportsService {
             ${collaboratorFilter.portalUserId}::text is null
             or a.created_by = ${collaboratorFilter.portalUserId}::text
           )
+          ${SEM_USUARIO_DE_CLIENTE}
       `) ?? [])
       : ((await this.prisma.$queryRaw<
           Array<{
