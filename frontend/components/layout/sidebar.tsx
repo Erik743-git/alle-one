@@ -23,12 +23,14 @@ import {
   MonitorDot,
   Activity,
   Plus,
+  StickyNote,
 } from "lucide-react";
 import {
   canAccessAdmin,
   canAccessAplicativos,
   canAccessConsole,
   canAccessPlantao,
+  canAccessMural,
   canAccessInventario,
   canAccessProjetos,
   canAccessDashboard,
@@ -111,6 +113,12 @@ function buildMenuItems(): MenuItem[] {
       href: "/monitoramento",
       icon: Activity,
       visible: canAccessConsole(),
+    },
+    {
+      name: "Mural",
+      href: "/mural",
+      icon: StickyNote,
+      visible: canAccessMural(),
     },
     {
       name: "Financeiro",

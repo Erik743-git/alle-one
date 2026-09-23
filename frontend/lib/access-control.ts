@@ -329,6 +329,11 @@ export function canAccessPlantao() {
   return isAdmin() || isCollaborator();
 }
 
+/** Mural de reconhecimento: mesma regra, só equipe interna. */
+export function canAccessMural() {
+  return isAdmin() || isCollaborator();
+}
+
 export function canAcknowledgeConsoleAlerts() {
   return hasPermission("MONITORING", "canEdit");
 }

@@ -10,6 +10,7 @@ export const PORTAL_TAB_ROUTES = [
   "/plantao",
   "/monitoramento",
   "/correio",
+  "/mural",
   "/financeiro",
   "/gerador-relatorios",
   "/tickets",

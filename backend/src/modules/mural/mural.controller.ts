@@ -1,0 +1,68 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { UserRole } from '@prisma/client';
+
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { CreateMuralNoteDto, UpdateMuralNoteDto } from './mural.dto';
+import { MuralService } from './mural.service';
+
+type AuthenticatedRequest = { user: AuthenticatedRequestUser };
+
+/**
+ * Mural de reconhecimento.
+ *
+ * Barrado por **papel**, não por módulo de permissão — mesma escolha da tela
+ * de Plantão: colaborador não tem linha na matriz para módulo novo, e o guard
+ * de módulo nega quem não tem linha. Aqui entra só a equipe interna; nenhum
+ * perfil de cliente alcança estas rotas.
+ */
+@Controller('mural')
+@UseGuards(RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
+export class MuralController {
+  constructor(private readonly mural: MuralService) {}
+
+  @Get('colegas')
+  colegas() {
+    return this.mural.colegas();
+  }
+
+  @Get('notes')
+  listar(@Req() req: AuthenticatedRequest) {
+    return this.mural.listar(req.user);
+  }
+
+  @Post('notes')
+  criar(@Req() req: AuthenticatedRequest, @Body() body: CreateMuralNoteDto) {
+    return this.mural.criar(req.user, body);
+  }
+
+  @Patch('notes/:id')
+  atualizar(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdateMuralNoteDto,
+  ) {
+    return this.mural.atualizar(req.user, id, body);
+  }
+
+  @Delete('notes/:id')
+  remover(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.mural.remover(req.user, id);
+  }
+}
