@@ -81,10 +81,7 @@ import {
   findExecutionStageOption,
 } from "@/lib/tickets/appointment-stage-guard";
 import { useAuth } from "@/lib/use-auth";
-import {
-  PORTAL_STAGE,
-  canAddAppointmentToTicket,
-} from "@/lib/portal-ticket-stages";
+import { PORTAL_STAGE, canAddAppointmentToTicket } from "@/lib/portal-ticket-stages";
 import { shouldShowTifluxPortalOnlyWarning } from "@/lib/ticket-appointment-warning";
 import { formatBrPhone, isValidBrPhone } from "@/lib/ticket-form";
 import {
@@ -175,7 +172,10 @@ function formatFileSize(bytes: number) {
 type TicketMainView = "appointments" | "history";
 
 function isServerConfigMissingError(err: unknown) {
-  return err instanceof Error && err.message.includes("Serviço não encontrado");
+  return (
+    err instanceof Error &&
+    err.message.includes("Serviço não encontrado")
+  );
 }
 
 async function openPortalAttachment(
@@ -220,9 +220,7 @@ function TicketDetailPageImpl() {
   const [stageChangeBusy, setStageChangeBusy] = useState(false);
   const [externalGmudRefInput, setExternalGmudRefInput] = useState("");
   const [gmudLinking, setGmudLinking] = useState(false);
-  const [stagesData, setStagesData] = useState<TicketStagesResponse | null>(
-    null,
-  );
+  const [stagesData, setStagesData] = useState<TicketStagesResponse | null>(null);
   const [stageIdInput, setStageIdInput] = useState("");
   const [stageSaving, setStageSaving] = useState(false);
   const [stagesLoading, setStagesLoading] = useState(false);
@@ -249,10 +247,8 @@ function TicketDetailPageImpl() {
   const [nextClientId, setNextClientId] = useState("");
   const [loadingClients, setLoadingClients] = useState(false);
   const [changeClientRequestorId, setChangeClientRequestorId] = useState("");
-  const [changeClientRequestorName, setChangeClientRequestorName] =
-    useState("");
-  const [changeClientRequestorEmail, setChangeClientRequestorEmail] =
-    useState("");
+  const [changeClientRequestorName, setChangeClientRequestorName] = useState("");
+  const [changeClientRequestorEmail, setChangeClientRequestorEmail] = useState("");
   const [changeClientRequestorTelephone, setChangeClientRequestorTelephone] =
     useState("");
   const [changeClientRequestorOptions, setChangeClientRequestorOptions] =
@@ -288,39 +284,34 @@ function TicketDetailPageImpl() {
     }
   }, [ticketNumber]);
 
-  const load = useCallback(
-    async (silent = false) => {
-      if (!Number.isFinite(ticketNumber)) return;
-      try {
-        if (!silent) setLoading(true);
-        const res = await ticketsService.detail(ticketNumber);
-        if (!res?.ticket) {
-          throw new Error(
-            "Servidor indisponível no momento. Aguarde alguns segundos e tente novamente.",
-          );
-        }
-        // Recarga em segundo plano (depois de editar/fechar um apontamento):
-        // sem mudança real, não mexe na tela — nem no histórico.
-        const json = JSON.stringify(res);
-        if (silent && json === lastDetailJsonRef.current) return;
-        lastDetailJsonRef.current = json;
-        setData(res);
-        setFollowers(
-          (res.watchers ?? []).map((watcher) => ({ email: watcher.email })),
+  const load = useCallback(async (silent = false) => {
+    if (!Number.isFinite(ticketNumber)) return;
+    try {
+      if (!silent) setLoading(true);
+      const res = await ticketsService.detail(ticketNumber);
+      if (!res?.ticket) {
+        throw new Error(
+          "Servidor indisponível no momento. Aguarde alguns segundos e tente novamente.",
         );
-        setHistoryRefreshToken((value) => value + 1);
-      } catch (err) {
-        notifyError(
-          err instanceof Error
-            ? err.message
-            : "Não foi possível carregar o ticket.",
-        );
-      } finally {
-        if (!silent) setLoading(false);
       }
-    },
-    [ticketNumber],
-  );
+      // Recarga em segundo plano (depois de editar/fechar um apontamento):
+      // sem mudança real, não mexe na tela — nem no histórico.
+      const json = JSON.stringify(res);
+      if (silent && json === lastDetailJsonRef.current) return;
+      lastDetailJsonRef.current = json;
+      setData(res);
+      setFollowers(
+        (res.watchers ?? []).map((watcher) => ({ email: watcher.email })),
+      );
+      setHistoryRefreshToken((value) => value + 1);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível carregar o ticket.",
+      );
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [ticketNumber]);
 
   const loadStages = useCallback(async () => {
     if (!Number.isFinite(ticketNumber) || !canManageTicketAssignment()) return;
@@ -464,10 +455,7 @@ function TicketDetailPageImpl() {
                 ...prev.ticket,
                 ...(patch.isClosed != null ? { isClosed: patch.isClosed } : {}),
                 ...(patch.stageName != null
-                  ? {
-                      stageName: patch.stageName,
-                      statusName: patch.statusName ?? patch.stageName,
-                    }
+                  ? { stageName: patch.stageName, statusName: patch.statusName ?? patch.stageName }
                   : {}),
                 ...(patch.deskName != null
                   ? {
@@ -503,10 +491,7 @@ function TicketDetailPageImpl() {
       notifyError("Selecione um estágio válido.");
       return;
     }
-    if (
-      stagesData?.currentStageId != null &&
-      stageId === stagesData.currentStageId
-    ) {
+    if (stagesData?.currentStageId != null && stageId === stagesData.currentStageId) {
       return;
     }
     try {
@@ -538,9 +523,7 @@ function TicketDetailPageImpl() {
       setHistoryRefreshToken((value) => value + 1);
     } catch (err) {
       notifyError(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível atualizar o estágio.",
+        err instanceof Error ? err.message : "Não foi possível atualizar o estágio.",
       );
       if (stagesData?.currentStageId != null) {
         setStageIdInput(String(stagesData.currentStageId));
@@ -615,10 +598,7 @@ function TicketDetailPageImpl() {
       notifyError("Informe o nome do solicitante.");
       return;
     }
-    if (
-      !requestorEmail.trim() ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestorEmail)
-    ) {
+    if (!requestorEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requestorEmail)) {
       notifyError("Informe um e-mail de solicitante válido.");
       return;
     }
@@ -736,10 +716,7 @@ function TicketDetailPageImpl() {
       notifyError("Selecione o novo cliente.");
       return;
     }
-    if (
-      ticket?.clientExternalId != null &&
-      clientId === ticket.clientExternalId
-    ) {
+    if (ticket?.clientExternalId != null && clientId === ticket.clientExternalId) {
       notifyError("Selecione um cliente diferente do atual.");
       return;
     }
@@ -754,10 +731,7 @@ function TicketDetailPageImpl() {
       notifyError("Informe um e-mail válido do novo solicitante.");
       return;
     }
-    if (
-      changeClientRequestorTelephone.trim() &&
-      !isValidBrPhone(changeClientRequestorTelephone)
-    ) {
+    if (changeClientRequestorTelephone.trim() && !isValidBrPhone(changeClientRequestorTelephone)) {
       notifyError("Telefone do solicitante inválido.");
       return;
     }
@@ -768,9 +742,7 @@ function TicketDetailPageImpl() {
       changeClientRequestorName.trim().toLowerCase() ===
         (ticket?.requestorName?.trim().toLowerCase() ?? "");
     if (sameRequestor) {
-      notifyError(
-        "Selecione ou informe outro solicitante para o novo cliente.",
-      );
+      notifyError("Selecione ou informe outro solicitante para o novo cliente.");
       return;
     }
 
@@ -829,9 +801,7 @@ function TicketDetailPageImpl() {
       setFollowersOpen(false);
     } catch (err) {
       notifyError(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível adicionar seguidor.",
+        err instanceof Error ? err.message : "Não foi possível adicionar seguidor.",
       );
     }
   }
@@ -843,9 +813,7 @@ function TicketDetailPageImpl() {
       notifySuccess("Seguidor removido.");
     } catch (err) {
       notifyError(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível remover seguidor.",
+        err instanceof Error ? err.message : "Não foi possível remover seguidor.",
       );
     }
   }
@@ -853,10 +821,7 @@ function TicketDetailPageImpl() {
   async function resumePausedSync(portalAppointmentId: string | null) {
     if (!portalAppointmentId || !Number.isFinite(ticketNumber)) return;
     try {
-      await ticketsService.resumeAppointmentSync(
-        ticketNumber,
-        portalAppointmentId,
-      );
+      await ticketsService.resumeAppointmentSync(ticketNumber, portalAppointmentId);
       await load(true);
     } catch {
       /* ignore */
@@ -939,10 +904,7 @@ function TicketDetailPageImpl() {
         );
         return;
       }
-      const res = await ticketsService.updateStage(
-        ticketNumber,
-        executionStage.id,
-      );
+      const res = await ticketsService.updateStage(ticketNumber, executionStage.id);
       setData((prev) =>
         prev?.ticket
           ? {
@@ -982,8 +944,7 @@ function TicketDetailPageImpl() {
 
   function handleAppointmentModalOpenChange(open: boolean) {
     if (!open) {
-      const pausedId =
-        editingAppointment?.portalAppointmentId ?? pendingResumeId;
+      const pausedId = editingAppointment?.portalAppointmentId ?? pendingResumeId;
       setAppointmentOpen(false);
       setEditingAppointment(null);
       if (pausedId) {
@@ -1006,10 +967,7 @@ function TicketDetailPageImpl() {
         portalAppointmentId,
       );
       if (ctx.canPauseSync) {
-        await ticketsService.pauseAppointmentSync(
-          ticketNumber,
-          portalAppointmentId,
-        );
+        await ticketsService.pauseAppointmentSync(ticketNumber, portalAppointmentId);
         setPendingResumeId(portalAppointmentId);
         await load(true);
       }
@@ -1023,9 +981,7 @@ function TicketDetailPageImpl() {
       proceed();
     } catch (err) {
       notifyError(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível preparar a ação.",
+        err instanceof Error ? err.message : "Não foi possível preparar a ação.",
       );
     }
   }
@@ -1041,7 +997,8 @@ function TicketDetailPageImpl() {
     await preparePortalAppointmentAction(portalAppointmentId, async () => {
       const ok = await confirm({
         title: "Excluir apontamento",
-        description: TICKET_DELETE_APPOINTMENT_CONFIRM,
+        description:
+          TICKET_DELETE_APPOINTMENT_CONFIRM,
         confirmText: "Excluir",
         variant: "error",
       });
@@ -1083,11 +1040,7 @@ function TicketDetailPageImpl() {
           : "Referência GMUD removida.",
       );
     } catch (err) {
-      notifyError(
-        err instanceof Error
-          ? err.message
-          : "Não foi possível atualizar a GMUD.",
-      );
+      notifyError(err instanceof Error ? err.message : "Não foi possível atualizar a GMUD.");
     } finally {
       setGmudLinking(false);
     }
@@ -1243,9 +1196,7 @@ function TicketDetailPageImpl() {
                     <CardContent className="space-y-3 text-sm">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 space-y-1">
-                          <p className="font-semibold">
-                            {ticket.requestorName ?? "—"}
-                          </p>
+                          <p className="font-semibold">{ticket.requestorName ?? "—"}</p>
                           <p className="text-muted-foreground">
                             {ticket.requestorEmail ?? "—"}
                           </p>
@@ -1268,9 +1219,7 @@ function TicketDetailPageImpl() {
                       </div>
                       <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
                         <p className="min-w-0">
-                          <span className="text-muted-foreground">
-                            Cliente:{" "}
-                          </span>
+                          <span className="text-muted-foreground">Cliente: </span>
                           {ticket.clientName ?? "—"}
                         </p>
                         {data.canChangeClient && !ticket.isClosed ? (
@@ -1314,14 +1263,11 @@ function TicketDetailPageImpl() {
                                 <span title={person.email}>
                                   {person.name || person.email}
                                 </span>
-                                {canManageTicketFollowers() &&
-                                !ticket.isClosed ? (
+                                {canManageTicketFollowers() && !ticket.isClosed ? (
                                   <button
                                     type="button"
                                     className="text-muted-foreground hover:text-foreground"
-                                    onClick={() =>
-                                      void removeFollower(person.email)
-                                    }
+                                    onClick={() => void removeFollower(person.email)}
                                     aria-label={`Remover seguidor ${person.email}`}
                                   >
                                     <X className="size-3.5" />
@@ -1350,9 +1296,7 @@ function TicketDetailPageImpl() {
                         {ticket.origin ?? "—"}
                       </p>
                       <p>
-                        <span className="text-muted-foreground">
-                          Prioridade:{" "}
-                        </span>
+                        <span className="text-muted-foreground">Prioridade: </span>
                         {ticket.priorityName ?? "—"}
                       </p>
                       {canManageTicketAssignment() ? (
@@ -1364,9 +1308,7 @@ function TicketDetailPageImpl() {
                             ticketNumber={ticket.ticketNumber}
                             responsibleId={ticket.responsibleExternalId}
                             responsibleName={ticket.responsibleName}
-                            hasAppointments={
-                              (data?.appointments?.length ?? 0) > 0
-                            }
+                            hasAppointments={(data?.appointments?.length ?? 0) > 0}
                             options={deskResponsibles}
                             allowEmpty={canChangeTicketStage()}
                             disabled={ticket.isClosed}
@@ -1397,17 +1339,14 @@ function TicketDetailPageImpl() {
                           {ticket.responsibleName ?? "—"}
                         </p>
                       )}
-                      {canManageTicketAssignment() &&
-                      (stagesLoading || stagesData) ? (
+                      {canManageTicketAssignment() && (stagesLoading || stagesData) ? (
                         <div className="space-y-2 border-t border-border pt-3">
                           <Label className="text-xs font-semibold text-muted-foreground">
                             Estágio
                           </Label>
                           {ticket.isClosed || stagesData?.isClosed ? (
                             <p className="text-sm">
-                              {ticket.stageName ??
-                                stagesData?.currentStageName ??
-                                "—"}
+                              {ticket.stageName ?? stagesData?.currentStageName ?? "—"}
                               <span className="mt-1 block text-xs text-muted-foreground">
                                 Ticket encerrado. Use Opções → Reabrir ticket.
                               </span>
@@ -1425,8 +1364,7 @@ function TicketDetailPageImpl() {
                                 preserveOrder
                               />
                               <p className="text-xs text-muted-foreground">
-                                Andamento do atendimento. Fechar, cancelar e
-                                reabrir ficam em Opções.
+                                Andamento do atendimento. Fechar, cancelar e reabrir ficam em Opções.
                               </p>
                             </>
                           )}
@@ -1440,9 +1378,7 @@ function TicketDetailPageImpl() {
                   <Button
                     type="button"
                     size="sm"
-                    variant={
-                      mainView === "appointments" ? "default" : "outline"
-                    }
+                    variant={mainView === "appointments" ? "default" : "outline"}
                     onClick={() => setMainView("appointments")}
                   >
                     <Clock className="mr-1.5 h-3.5 w-3.5" />
@@ -1469,279 +1405,250 @@ function TicketDetailPageImpl() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <Card>
-                    <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-                      <div className="space-y-1">
-                        <CardTitle className="text-base">
-                          Apontamentos
-                        </CardTitle>
-                        {!canCreateTicketAppointment() ? (
-                          <p className="text-xs font-normal text-muted-foreground">
-                            {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
-                          </p>
-                        ) : null}
-                      </div>
-                      {ticket && canAddAppointment ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={requestNewAppointment}
-                          >
-                            <Clock className="mr-2 size-4" />
-                            Apontar
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="bg-[#0e9cb8] text-white shadow-sm shadow-[#12b5d9]/20 hover:bg-[#14c4eb]"
-                            onClick={requestCommunication}
-                          >
-                            <MessageSquare className="mr-2 size-4" />
-                            Comunicação
-                          </Button>
-                        </div>
+                <Card>
+                  <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base">Apontamentos</CardTitle>
+                      {!canCreateTicketAppointment() ? (
+                        <p className="text-xs font-normal text-muted-foreground">
+                          {TICKETS_APPOINTMENT_CREATE_RESTRICTED}
+                        </p>
                       ) : null}
-                    </CardHeader>
-                    <CardContent className="overflow-x-auto p-0">
-                      <div className="max-h-[22rem] overflow-y-auto">
-                        <table className="w-full min-w-[860px] text-left text-sm">
-                          <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
-                            <tr>
-                              <th className="px-4 py-2">Atendente</th>
-                              <th className="px-4 py-2">Data</th>
-                              <th className="px-4 py-2">Horário</th>
-                              <th className="px-4 py-2">Duração</th>
-                              <th className="px-4 py-2">Tipo</th>
-                              <th className="px-4 py-2">Descrição</th>
-                              {canCreateTicketAppointment() ? (
-                                <th className="px-4 py-2">Ações</th>
-                              ) : null}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(data?.appointments ?? []).length === 0 ? (
-                              <tr>
-                                <td
-                                  colSpan={canCreateTicketAppointment() ? 7 : 6}
-                                  className="px-4 py-8 text-center text-muted-foreground"
-                                >
-                                  Nenhum apontamento neste ticket.
-                                </td>
-                              </tr>
-                            ) : (
-                              data?.appointments.map((row) => {
-                                const rowEditable =
-                                  Boolean(row.portalAppointmentId) &&
-                                  canManageTicketAppointment(
-                                    row.createdByUserId,
-                                    row.canManage,
-                                  );
-                                return (
-                                  <tr
-                                    key={appointmentRowKey(row)}
-                                    className={cn(
-                                      "border-b border-border/60 align-top",
-                                      "cursor-pointer transition-colors hover:bg-muted/30",
-                                    )}
-                                    title={
-                                      rowEditable
-                                        ? "Clique para editar"
-                                        : "Clique para ver o apontamento"
-                                    }
-                                    onClick={(event) => {
-                                      // Botões, links, menu e seleção de texto não abrem a edição.
-                                      const target =
-                                        event.target as HTMLElement;
-                                      // Pop-ups (menu, prévia de imagem) ficam fora da linha no DOM,
-                                      // mas o clique neles ainda sobe até aqui.
-                                      if (!event.currentTarget.contains(target))
-                                        return;
-                                      if (
-                                        target.closest(
-                                          'button, a, input, textarea, select, [role="menuitem"], [role="menu"], [data-no-row-click]',
-                                        )
-                                      ) {
-                                        return;
-                                      }
-                                      if (window.getSelection()?.toString())
-                                        return;
-                                      // Quem pode editar vai para a edição; todo o
-                                      // resto abre a leitura — qualquer pessoa pode
-                                      // ver o apontamento de qualquer uma.
-                                      if (rowEditable) {
-                                        void handleEditAppointment(
-                                          row.portalAppointmentId!,
-                                        );
-                                        return;
-                                      }
-                                      setAppointmentToView(row);
-                                    }}
-                                  >
-                                    <td className="px-4 py-2">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <span>{row.userName ?? "—"}</span>
-                                        {row.isWarning ? (
-                                          <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
-                                            <AlertTriangle className="size-3" />
-                                            Atenção
+                    </div>
+                    {ticket && canAddAppointment ? (
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={requestNewAppointment}
+                        >
+                          <Clock className="mr-2 size-4" />
+                          Apontar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-[#0e9cb8] text-white shadow-sm shadow-[#12b5d9]/20 hover:bg-[#14c4eb]"
+                          onClick={requestCommunication}
+                        >
+                          <MessageSquare className="mr-2 size-4" />
+                          Comunicação
+                        </Button>
+                      </div>
+                    ) : null}
+                  </CardHeader>
+                  <CardContent className="overflow-x-auto p-0">
+                    <div className="max-h-[22rem] overflow-y-auto">
+                    <table className="w-full min-w-[860px] text-left text-sm">
+                      <thead className="border-b border-border bg-muted/40 text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-2">Atendente</th>
+                          <th className="px-4 py-2">Data</th>
+                          <th className="px-4 py-2">Horário</th>
+                          <th className="px-4 py-2">Duração</th>
+                          <th className="px-4 py-2">Tipo</th>
+                          <th className="px-4 py-2">Descrição</th>
+                          {canCreateTicketAppointment() ? (
+                            <th className="px-4 py-2">Ações</th>
+                          ) : null}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(data?.appointments ?? []).length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={canCreateTicketAppointment() ? 7 : 6}
+                              className="px-4 py-8 text-center text-muted-foreground"
+                            >
+                              Nenhum apontamento neste ticket.
+                            </td>
+                          </tr>
+                        ) : (
+                          data?.appointments.map((row) => {
+                            const rowEditable =
+                              Boolean(row.portalAppointmentId) &&
+                              canManageTicketAppointment(
+                                row.createdByUserId,
+                                row.canManage,
+                              );
+                            return (
+                            <tr
+                              key={appointmentRowKey(row)}
+                              className={cn(
+                                "border-b border-border/60 align-top",
+                                "cursor-pointer transition-colors hover:bg-muted/30",
+                              )}
+                              title={
+                                rowEditable
+                                  ? "Clique para editar"
+                                  : "Clique para ver o apontamento"
+                              }
+                              onClick={(event) => {
+                                // Botões, links, menu e seleção de texto não abrem a edição.
+                                const target = event.target as HTMLElement;
+                                // Pop-ups (menu, prévia de imagem) ficam fora da linha no DOM,
+                                // mas o clique neles ainda sobe até aqui.
+                                if (!event.currentTarget.contains(target)) return;
+                                if (
+                                  target.closest(
+                                    'button, a, input, textarea, select, [role="menuitem"], [role="menu"], [data-no-row-click]',
+                                  )
+                                ) {
+                                  return;
+                                }
+                                if (window.getSelection()?.toString()) return;
+                                // Quem pode editar vai para a edicao; todo o
+                                // resto abre a leitura — qualquer pessoa pode
+                                // ver o apontamento de qualquer uma.
+                                if (!rowEditable) {
+                                  setAppointmentToView(row);
+                                  return;
+                                }
+                                void handleEditAppointment(row.portalAppointmentId!);
+                              }}
+                            >
+                              <td className="px-4 py-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span>{row.userName ?? "—"}</span>
+                                  {row.isWarning ? (
+                                    <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                                      <AlertTriangle className="size-3" />
+                                      Atenção
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {row.attachmentCount > 0 ? (
+                                  <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                                    {row.attachmentCount} anexo(s)
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="px-4 py-2">
+                                {formatAppointmentDateCell(
+                                  row.appointmentDate,
+                                  row.initTime,
+                                  row.endTime,
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-2">
+                                {row.initTime ?? "—"} – {row.endTime ?? "—"}
+                              </td>
+                              <td className="px-4 py-2">{formatMinutes(row.minutes)}</td>
+                              <td className="px-4 py-2">{row.valorizationLabel ?? "—"}</td>
+                              <td className="w-[240px] max-w-[240px] px-4 py-2">
+                                <AppointmentDescriptionCell
+                                  description={row.description}
+                                  attachments={row.attachments ?? []}
+                                />
+                                {(row.attachments ?? []).some(
+                                  (a) => !a.mimeType.startsWith("image/"),
+                                ) ? (
+                                  <ul className="mt-2 space-y-1">
+                                    {row.attachments.map((attachment) => {
+                                      if (attachment.mimeType.startsWith("image/")) return null;
+                                      return (
+                                        <li
+                                          key={attachment.id}
+                                          className="flex flex-wrap items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-xs text-foreground"
+                                        >
+                                          <Paperclip className="size-3 shrink-0" />
+                                          <span className="min-w-0 truncate">
+                                            {attachment.originalName} ({formatFileSize(attachment.size)})
                                           </span>
-                                        ) : null}
-                                      </div>
-                                      {row.attachmentCount > 0 ? (
-                                        <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                                          {row.attachmentCount} anexo(s)
-                                        </span>
-                                      ) : null}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                      {formatAppointmentDateCell(
-                                        row.appointmentDate,
-                                        row.initTime,
-                                        row.endTime,
-                                      )}
-                                    </td>
-                                    <td className="whitespace-nowrap px-4 py-2">
-                                      {row.initTime ?? "—"} –{" "}
-                                      {row.endTime ?? "—"}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                      {formatMinutes(row.minutes)}
-                                    </td>
-                                    <td className="px-4 py-2">
-                                      {row.valorizationLabel ?? "—"}
-                                    </td>
-                                    <td className="w-[240px] max-w-[240px] px-4 py-2">
-                                      <AppointmentDescriptionCell
-                                        description={row.description}
-                                        attachments={row.attachments ?? []}
-                                      />
-                                      {(row.attachments ?? []).some(
-                                        (a) => !a.mimeType.startsWith("image/"),
-                                      ) ? (
-                                        <ul className="mt-2 space-y-1">
-                                          {row.attachments.map((attachment) => {
-                                            if (
-                                              attachment.mimeType.startsWith(
-                                                "image/",
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 px-2 text-xs"
+                                            onClick={() =>
+                                              void openPortalAttachment(attachment, false).catch(
+                                                (err) =>
+                                                  notifyError(
+                                                    err instanceof Error
+                                                      ? err.message
+                                                      : "Não foi possível baixar o anexo.",
+                                                  ),
                                               )
-                                            )
-                                              return null;
-                                            return (
-                                              <li
-                                                key={attachment.id}
-                                                className="flex flex-wrap items-center gap-1 rounded-md border border-border/60 bg-muted/20 px-2 py-1 text-xs text-foreground"
-                                              >
-                                                <Paperclip className="size-3 shrink-0" />
-                                                <span className="min-w-0 truncate">
-                                                  {attachment.originalName} (
-                                                  {formatFileSize(
-                                                    attachment.size,
-                                                  )}
-                                                  )
-                                                </span>
-                                                <Button
-                                                  type="button"
-                                                  variant="ghost"
-                                                  size="sm"
-                                                  className="h-6 px-2 text-xs"
-                                                  onClick={() =>
-                                                    void openPortalAttachment(
-                                                      attachment,
-                                                      false,
-                                                    ).catch((err) =>
-                                                      notifyError(
-                                                        err instanceof Error
-                                                          ? err.message
-                                                          : "Não foi possível baixar o anexo.",
-                                                      ),
-                                                    )
-                                                  }
-                                                >
-                                                  Baixar
-                                                </Button>
-                                              </li>
-                                            );
-                                          })}
-                                        </ul>
-                                      ) : null}
-                                    </td>
-                                    {canManageTicketAppointment(
-                                      row.createdByUserId,
-                                      row.canManage,
-                                    ) ? (
-                                      <td className="px-4 py-2">
-                                        {row.portalAppointmentId ? (
-                                          <DropdownMenu modal={false}>
-                                            <DropdownMenuTrigger asChild>
-                                              <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="icon"
-                                                className="size-8"
-                                                aria-label="Ações do apontamento"
-                                              >
-                                                <MoreVertical className="size-4" />
-                                              </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent
-                                              align="end"
-                                              sideOffset={6}
-                                              className="min-w-[9.5rem] w-auto"
-                                            >
-                                              <DropdownMenuItem
-                                                onClick={() =>
-                                                  void handleEditAppointment(
-                                                    row.portalAppointmentId!,
-                                                  )
-                                                }
-                                              >
-                                                <Pencil className="mr-2 size-4" />
-                                                Editar
-                                              </DropdownMenuItem>
-                                              <DropdownMenuItem
-                                                variant="destructive"
-                                                onClick={() =>
-                                                  void handleDeleteAppointment(
-                                                    row.portalAppointmentId!,
-                                                  )
-                                                }
-                                              >
-                                                <Trash2 className="mr-2 size-4" />
-                                                Excluir
-                                              </DropdownMenuItem>
-                                            </DropdownMenuContent>
-                                          </DropdownMenu>
-                                        ) : (
-                                          <span
-                                            className="inline-flex max-w-[9rem] flex-col gap-0.5 text-xs text-muted-foreground"
-                                            title={
-                                              TICKET_APPOINTMENT_TIFLUX_ONLY_HINT
                                             }
                                           >
-                                            <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-800 dark:text-sky-200">
-                                              {
-                                                TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE
-                                              }
-                                            </span>
-                                            <span className="leading-snug">
-                                              {
-                                                TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION
-                                              }
-                                            </span>
-                                          </span>
-                                        )}
-                                      </td>
-                                    ) : null}
-                                  </tr>
-                                );
-                              })
-                            )}
-                          </tbody>
-                        </table>
-                      </div>
-                    </CardContent>
-                  </Card>
+                                            Baixar
+                                          </Button>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                ) : null}
+                              </td>
+                              {canManageTicketAppointment(
+                                row.createdByUserId,
+                                row.canManage,
+                              ) ? (
+                                <td className="px-4 py-2">
+                                  {row.portalAppointmentId ? (
+                                    <DropdownMenu modal={false}>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          className="size-8"
+                                          aria-label="Ações do apontamento"
+                                        >
+                                          <MoreVertical className="size-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent
+                                        align="end"
+                                        sideOffset={6}
+                                        className="min-w-[9.5rem] w-auto"
+                                      >
+                                        <DropdownMenuItem
+                                          onClick={() =>
+                                            void handleEditAppointment(
+                                              row.portalAppointmentId!,
+                                            )
+                                          }
+                                        >
+                                          <Pencil className="mr-2 size-4" />
+                                          Editar
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          variant="destructive"
+                                          onClick={() =>
+                                            void handleDeleteAppointment(
+                                              row.portalAppointmentId!,
+                                            )
+                                          }
+                                        >
+                                          <Trash2 className="mr-2 size-4" />
+                                          Excluir
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  ) : (
+                                    <span
+                                      className="inline-flex max-w-[9rem] flex-col gap-0.5 text-xs text-muted-foreground"
+                                      title={TICKET_APPOINTMENT_TIFLUX_ONLY_HINT}
+                                    >
+                                      <span className="rounded bg-sky-500/15 px-1.5 py-0.5 font-medium text-sky-800 dark:text-sky-200">
+                                        {TICKET_APPOINTMENT_EXTERNAL_ONLY_BADGE}
+                                      </span>
+                                      <span className="leading-snug">
+                                        {TICKET_APPOINTMENT_EXTERNAL_ONLY_ACTION}
+                                      </span>
+                                    </span>
+                                  )}
+                                </td>
+                              ) : null}
+                            </tr>
+                          );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                    </div>
+                  </CardContent>
+                </Card>
                 )}
 
                 {(data?.portalDescription?.attachments ?? []).length > 0 ? (
@@ -1763,12 +1670,8 @@ function TicketDetailPageImpl() {
                 <div className="grid gap-4 md:grid-cols-4">
                   <Card>
                     <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">
-                        Atendentes
-                      </p>
-                      <p className="text-2xl font-bold">
-                        {data?.summary.attendantsCount ?? 0}
-                      </p>
+                      <p className="text-xs text-muted-foreground">Atendentes</p>
+                      <p className="text-2xl font-bold">{data?.summary.attendantsCount ?? 0}</p>
                     </CardContent>
                   </Card>
                   <Card>
@@ -1781,9 +1684,7 @@ function TicketDetailPageImpl() {
                   </Card>
                   <Card>
                     <CardContent className="pt-6 text-center">
-                      <p className="text-xs text-muted-foreground">
-                        Apontamentos
-                      </p>
+                      <p className="text-xs text-muted-foreground">Apontamentos</p>
                       <p className="text-2xl font-bold">
                         {data?.summary.appointmentsCount ?? 0}
                       </p>
@@ -1792,22 +1693,20 @@ function TicketDetailPageImpl() {
                   <Card>
                     <CardContent className="pt-6 text-center">
                       <p className="text-xs text-muted-foreground">Catálogo</p>
-                      <p className="text-lg font-semibold">
-                        {ticket.deskName ?? "—"}
-                      </p>
+                      <p className="text-lg font-semibold">{ticket.deskName ?? "—"}</p>
                     </CardContent>
                   </Card>
                 </div>
 
                 {canManageTicketGmud() ? (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <Link2 className="size-4 text-primary" />
-                        GMUD do cliente
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Link2 className="size-4 text-primary" />
+                      GMUD do cliente
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label className="text-xs font-semibold text-muted-foreground">
                           Referência GMUD do cliente
@@ -1815,9 +1714,7 @@ function TicketDetailPageImpl() {
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                           <Input
                             value={externalGmudRefInput}
-                            onChange={(e) =>
-                              setExternalGmudRefInput(e.target.value)
-                            }
+                            onChange={(e) => setExternalGmudRefInput(e.target.value)}
                             placeholder="Ex.: GMUD-2024-001 (vazio remove)"
                             className="h-11 flex-1"
                             disabled={gmudLinking}
@@ -1836,12 +1733,11 @@ function TicketDetailPageImpl() {
                           </Button>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Código informado pelo cliente — não vincula à GMUD
-                          cadastrada no Alle.
+                          Código informado pelo cliente — não vincula à GMUD cadastrada no Alle.
                         </p>
                       </div>
-                    </CardContent>
-                  </Card>
+                  </CardContent>
+                </Card>
                 ) : null}
 
                 {canCreateTicketAppointment() ? (
@@ -1925,10 +1821,7 @@ function TicketDetailPageImpl() {
             )}
           </div>
 
-          <Dialog
-            open={changeRequestorOpen}
-            onOpenChange={setChangeRequestorOpen}
-          >
+          <Dialog open={changeRequestorOpen} onOpenChange={setChangeRequestorOpen}>
             <DialogContent className="sm:max-w-md" showCloseButton>
               <DialogHeader>
                 <DialogTitle>Editar solicitante</DialogTitle>
@@ -2024,7 +1917,10 @@ function TicketDetailPageImpl() {
             selected={followers}
             requestors={requestorCatalog}
             responsibles={filterCatalogs?.responsibles ?? []}
-            excludeEmails={[data?.ticket?.requestorEmail, user?.email]}
+            excludeEmails={[
+              data?.ticket?.requestorEmail,
+              user?.email,
+            ]}
             onAdd={(person) => void addFollower(person)}
           />
 
@@ -2044,9 +1940,7 @@ function TicketDetailPageImpl() {
                   <Label>Novo cliente</Label>
                   <SearchableSelectField
                     value={nextClientId}
-                    onChange={(value) =>
-                      void handleChangeClientSelection(value)
-                    }
+                    onChange={(value) => void handleChangeClientSelection(value)}
                     options={clientOptions}
                     loading={loadingClients}
                     placeholder="Selecione o cliente"
@@ -2078,9 +1972,7 @@ function TicketDetailPageImpl() {
                           setChangeClientRequestorId("");
                         }}
                         placeholder="Nome de quem está solicitando"
-                        disabled={
-                          lifecycleBusy || loadingChangeClientRequestors
-                        }
+                        disabled={lifecycleBusy || loadingChangeClientRequestors}
                       />
                     </div>
                     <div className="space-y-2">
@@ -2093,9 +1985,7 @@ function TicketDetailPageImpl() {
                           setChangeClientRequestorId("");
                         }}
                         placeholder="email@empresa.com"
-                        disabled={
-                          lifecycleBusy || loadingChangeClientRequestors
-                        }
+                        disabled={lifecycleBusy || loadingChangeClientRequestors}
                       />
                     </div>
                     <div className="space-y-2">
@@ -2103,15 +1993,11 @@ function TicketDetailPageImpl() {
                       <Input
                         value={changeClientRequestorTelephone}
                         onChange={(e) => {
-                          setChangeClientRequestorTelephone(
-                            formatBrPhone(e.target.value),
-                          );
+                          setChangeClientRequestorTelephone(formatBrPhone(e.target.value));
                           setChangeClientRequestorId("");
                         }}
                         placeholder="(00) 00000-0000"
-                        disabled={
-                          lifecycleBusy || loadingChangeClientRequestors
-                        }
+                        disabled={lifecycleBusy || loadingChangeClientRequestors}
                       />
                     </div>
                   </>
@@ -2148,8 +2034,7 @@ function TicketDetailPageImpl() {
                     !nextClientId ||
                     !changeClientRequestorName.trim() ||
                     !changeClientRequestorEmail.trim() ||
-                    (Boolean(externalGmudRef?.trim()) &&
-                      !changeClientGmudRef.trim())
+                    (Boolean(externalGmudRef?.trim()) && !changeClientGmudRef.trim())
                   }
                   onClick={() => void confirmChangeClient()}
                 >
