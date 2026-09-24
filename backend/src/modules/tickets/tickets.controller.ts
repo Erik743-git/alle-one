@@ -62,6 +62,7 @@ import {
   CreateTicketListPresetDto,
   UpdateTicketListPresetDto,
 } from './ticket-list-presets.dto';
+import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
 
 /** Cliente sempre aponta em hora normal. */
 const CLIENT_APPOINTMENT_SERVICE_NAME = 'HORA NORMAL';
@@ -222,11 +223,14 @@ export class TicketsController {
         fileId,
         inline === 'true',
       );
-    res?.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
-    res?.setHeader(
-      'Content-Disposition',
-      `${meta.inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(meta.originalName)}"`,
-    );
+    const cabecalhos = cabecalhosDeArquivo({
+      mimeType: meta.mimeType,
+      originalName: meta.originalName,
+      inline: meta.inline,
+    });
+    for (const [nome, valor] of Object.entries(cabecalhos)) {
+      res?.setHeader(nome, valor);
+    }
     return stream;
   }
 

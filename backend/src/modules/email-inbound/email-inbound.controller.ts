@@ -29,6 +29,7 @@ import {
   OpenPreTicketDto,
   PreTicketsService,
 } from './pre-tickets.service';
+import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
 
 class UpdateEmailTemplateDto {
   @IsOptional()
@@ -175,11 +176,14 @@ export class EmailInboundController {
       attachmentId,
       inline === 'true',
     );
-    res?.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
-    res?.setHeader(
-      'Content-Disposition',
-      `${meta.inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(meta.originalName)}"`,
-    );
+    const cabecalhos = cabecalhosDeArquivo({
+      mimeType: meta.mimeType,
+      originalName: meta.originalName,
+      inline: meta.inline,
+    });
+    for (const [nome, valor] of Object.entries(cabecalhos)) {
+      res?.setHeader(nome, valor);
+    }
     return stream;
   }
 

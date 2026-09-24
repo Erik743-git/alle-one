@@ -9,6 +9,7 @@ import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { FinancialOverviewQueryDto } from './financial.dto';
 import { FinancialService } from './financial.service';
 import type { Response } from 'express';
+import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
 
 @ApiTags('Financial')
 @ApiBearerAuth()
@@ -48,12 +49,14 @@ export class FinancialController {
       query,
       contractId,
     );
-    const inline = query.inline === 'true';
-    res.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
-    res.setHeader(
-      'Content-Disposition',
-      `${inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(meta.originalName)}"`,
-    );
+    const cabecalhos = cabecalhosDeArquivo({
+      mimeType: meta.mimeType,
+      originalName: meta.originalName,
+      inline: query.inline === 'true',
+    });
+    for (const [nome, valor] of Object.entries(cabecalhos)) {
+      res.setHeader(nome, valor);
+    }
     return file;
   }
 }
