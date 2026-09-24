@@ -62,7 +62,7 @@ Trello). Respostas do Erik em 24/09. **Nada construído ainda.**
 
 ## Avisos
 
-- **Troca de estágio:** e-mail ao solicitante (ver pergunta 19 abaixo).
+- **Troca de estágio:** e-mail ao solicitante **interno**. Uma chave no admin liga o envio também para solicitantes externos (desligada por padrão).
 - **Pendente há 15 dias** ou **card aberto sem nenhuma alteração há 1 mês**:
   e-mail a todos os comerciais, **repetido uma vez por semana** até alguém
   agir. Aprovado, Reprovado e Fechado ficam fora.
@@ -83,8 +83,10 @@ Trello). Respostas do Erik em 24/09. **Nada construído ainda.**
 Botão no card aprovado. Cria o projeto ou o chamado já com cliente, título e
 descrição, e deixa o link gravado no card.
 
-## Em aberto
+- **Resposta a e-mail de oportunidade existente:** não cria card nem
+  aparece como texto; **só os anexos** dela entram no card (sem as imagens
+  do corpo).
 
-- **18.** Resposta a um e-mail de oportunidade que já existe.
-- **19.** E-mail de estágio para solicitante externo.
-- **G.** Painel de funil: fica para depois.
+## Fica para depois
+
+- **G.** Painel de funil.

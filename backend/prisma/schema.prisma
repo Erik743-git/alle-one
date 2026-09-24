@@ -66,6 +66,10 @@ enum MailboxNotificationKind {
   INVENTORY_EXPIRY
   TIFLUX_SYNC_STALE
   MURAL_NOTE_RECEIVED
+  OPORTUNIDADE_NOVA
+  OPORTUNIDADE_ESTAGIO
+  OPORTUNIDADE_ALERTA
+  OPORTUNIDADE_RETORNO
 }
 
 enum ContractFileType {
@@ -176,6 +180,8 @@ model User {
   muralReactions                    MuralNoteReaction[]
   muralVisit                        MuralVisit?
   escalaRegras                      EscalaRegra[]                    @relation("EscalaRegraPessoa")
+  oportunidadesSolicitadas          Oportunidade[]                   @relation("OportunidadeSolicitante")
+  oportunidadesResponsavel          Oportunidade[]                   @relation("OportunidadeResponsavel")
   escalaSubstituicoes               EscalaExcecao[]                  @relation("EscalaExcecaoSubstituto")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
@@ -254,6 +260,7 @@ model Company {
   ticketListPresets     TicketListPreset[]
   ticketSpecialties     CompanyTicketSpecialty[]
   janelasManutencao     JanelaManutencao[]
+  oportunidades         Oportunidade[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -575,6 +582,7 @@ model File {
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
   projectDocuments   ProjectDocument[]
   preTicketAttachments             PreTicketAttachment[]
+  oportunidadeAnexos               OportunidadeAnexo[]
   ticketAutoOpenRuleAttachments    TicketAutoOpenRuleAttachment[]
 
   @@index([uploadedBy])
@@ -1849,4 +1857,150 @@ model JanelaManutencao {
 
   @@index([companyId, deletedAt])
   @@map("manutencao_janelas")
+}
+
+/// Colunas do quadro de oportunidades. FECHADO fica escondido por padrão.
+enum OportunidadeEstagio {
+  PENDENTE
+  EM_ANALISE
+  PROPOSTA
+  AGUARDO_CLIENTE
+  APROVADO
+  REPROVADO
+  FECHADO
+}
+
+enum OportunidadeTipo {
+  PRODUTO
+  CONTRATO
+  SERVICO_AVULSO
+  PROSPECCAO
+}
+
+enum OportunidadeOrigem {
+  EMAIL
+  PORTAL
+}
+
+enum OportunidadeMotivoReprova {
+  PRECO
+  CONCORRENTE
+  DESISTENCIA
+  OUTRO
+}
+
+/// Oportunidade comercial (card do quadro). Ver docs/desenho/OPORTUNIDADES.md.
+model Oportunidade {
+  id        String @id @default(uuid())
+  numero    Int    @unique @default(autoincrement())
+  titulo    String @db.VarChar(200)
+  descricao String @default("")
+
+  estagio OportunidadeEstagio @default(PENDENTE)
+  /// Última coluna antes de FECHADO: é para lá que a reabertura volta.
+  estagioAnterior OportunidadeEstagio? @map("estagio_anterior")
+  /// Quando entrou na coluna atual (2 dias para fechar, 15 dias em pendente).
+  estagioDesde DateTime @default(now()) @map("estagio_desde")
+  /// Qualquer alteração no card (alerta de 1 mês parado).
+  ultimaMovimentacao DateTime @default(now()) @map("ultima_movimentacao")
+
+  tipo   OportunidadeTipo?
+  origem OportunidadeOrigem
+
+  /// Solicitante: usuário do portal quando houver; nome e e-mail sempre.
+  solicitanteUserId String? @map("solicitante_user_id")
+  solicitanteNome   String  @map("solicitante_nome") @db.VarChar(200)
+  solicitanteEmail  String? @map("solicitante_email") @db.VarChar(255)
+
+  /// Cliente cadastrado, ou só o nome ("empresa nova").
+  companyId   String? @map("company_id")
+  clienteNome String? @map("cliente_nome") @db.VarChar(200)
+
+  responsavelUserId String? @map("responsavel_user_id")
+
+  valorEstimado Decimal? @map("valor_estimado") @db.Decimal(14, 2)
+
+  motivoReprova      OportunidadeMotivoReprova? @map("motivo_reprova")
+  motivoReprovaTexto String?                    @map("motivo_reprova_texto") @db.VarChar(500)
+
+  /// Aguardo cliente: quando cobrar o retorno.
+  dataRetorno          DateTime? @map("data_retorno") @db.Date
+  retornoAvisadoEm     DateTime? @map("retorno_avisado_em")
+  /// Último alerta semanal (15 dias pendente / 1 mês parado).
+  alertaEnviadoEm      DateTime? @map("alerta_enviado_em")
+
+  /// E-mail de origem: evita card duplicado e liga as respostas ao card.
+  emailMessageId      String? @unique @map("email_message_id") @db.VarChar(500)
+  emailConversationId String? @map("email_conversation_id") @db.VarChar(500)
+
+  /// Conversão da aprovada em projeto ou chamado.
+  projetoId          String? @map("projeto_id")
+  chamadoNumero      Int?    @map("chamado_numero")
+
+  fechadoEm DateTime? @map("fechado_em")
+  createdBy String?   @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by")
+
+  solicitante User?    @relation("OportunidadeSolicitante", fields: [solicitanteUserId], references: [id], onDelete: SetNull)
+  responsavel User?    @relation("OportunidadeResponsavel", fields: [responsavelUserId], references: [id], onDelete: SetNull)
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  eventos     OportunidadeEvento[]
+  anexos      OportunidadeAnexo[]
+
+  @@index([estagio, deletedAt])
+  @@index([responsavelUserId])
+  @@index([solicitanteUserId])
+  @@index([companyId])
+  @@index([emailConversationId])
+  @@map("oportunidades")
+}
+
+/// Registro interno do que aconteceu com o card (não aparece na tela).
+/// Serve à reabertura, ao ranking de aprovadas e à auditoria.
+model OportunidadeEvento {
+  id             String   @id @default(uuid())
+  oportunidadeId String   @map("oportunidade_id")
+  /// CRIADA, ESTAGIO, RESPONSAVEL, REABERTA, EDITADA, CONVERTIDA, APAGADA.
+  tipo           String   @db.VarChar(20)
+  de             String?  @db.VarChar(200)
+  para           String?  @db.VarChar(200)
+  userId         String?  @map("user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  oportunidade Oportunidade @relation(fields: [oportunidadeId], references: [id], onDelete: Cascade)
+
+  @@index([oportunidadeId])
+  @@index([tipo, para, createdAt])
+  @@map("oportunidade_eventos")
+}
+
+model OportunidadeAnexo {
+  id             String   @id @default(uuid())
+  oportunidadeId String   @map("oportunidade_id")
+  fileId         String   @map("file_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  oportunidade Oportunidade @relation(fields: [oportunidadeId], references: [id], onDelete: Cascade)
+  file         File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([oportunidadeId])
+  @@map("oportunidade_anexos")
+}
+
+/// Configuração da caixa de oportunidades (uma linha só, id "default").
+model OportunidadeConfig {
+  id                   String    @id @default("default")
+  /// Endereço da caixa no Microsoft 365. Vazio = leitura desligada.
+  caixaEmail           String?   @map("caixa_email") @db.VarChar(255)
+  leituraAtiva         Boolean   @default(false) @map("leitura_ativa")
+  /// E-mail de troca de estágio também para solicitante de fora da Alle.
+  avisarSolicitanteExterno Boolean @default(false) @map("avisar_solicitante_externo")
+  deltaLink            String?   @map("delta_link") @db.Text
+  ultimaLeituraEm      DateTime? @map("ultima_leitura_em")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@map("oportunidade_config")
 }
