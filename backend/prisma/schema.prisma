@@ -187,6 +187,7 @@ model User {
   npsDestinatarios                  NpsDestinatario[]
   npsPesquisas                      NpsPesquisa[]
   popupSatisfacao                   PopupSatisfacao?
+  preferenciaMenu                   PreferenciaMenu?
   escalaSubstituicoes               EscalaExcecao[]                  @relation("EscalaExcecaoSubstituto")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
@@ -2156,4 +2157,19 @@ model ContratoAviso {
 
   @@id([companyId, mes, faixa])
   @@map("contrato_avisos")
+}
+
+/// Menu lateral de cada pessoa: ordem e itens escondidos (Personalizar menu).
+/// Só preferência de tela: não libera nem bloqueia acesso a nada.
+model PreferenciaMenu {
+  userId    String   @id @map("user_id")
+  /// Chaves do menu na ordem escolhida.
+  ordem     Json     @default("[]")
+  /// { chave: true|false } só para o que a pessoa escolheu; o resto segue o padrão.
+  visivel   Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preferencias_menu")
 }

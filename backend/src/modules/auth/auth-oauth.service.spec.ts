@@ -42,7 +42,11 @@ describe('AuthService.loginWithOAuth', () => {
     permissionsService as never,
     presence as never,
     totp as never,
-    { desligadosPara: jest.fn().mockResolvedValue([]) } as never,
+    {
+      desligadosPara: jest.fn().mockResolvedValue([]),
+      emConstrucao: jest.fn().mockResolvedValue([]),
+      preferenciaMenu: jest.fn().mockResolvedValue(null),
+    } as never,
   );
 
   beforeEach(() => {

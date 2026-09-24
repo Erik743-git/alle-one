@@ -7,6 +7,10 @@ import {
   type LinhaAcesso,
 } from './acesso-regras';
 import { MODULOS_PORTAL } from './modulos-portal';
+import {
+  normalizarPreferencia,
+  type PreferenciaMenuDados,
+} from './menu-lateral';
 
 /** A tabela muda pouco; 30 s é o mesmo prazo do cache de permissões. */
 const TTL_MS = 30_000;
@@ -32,6 +36,39 @@ export class AcessoService {
     });
     this.cache = { linhas, ate: agora + TTL_MS };
     return linhas;
+  }
+
+  /** Módulos em construção (só admin vê; no menu do admin começam escondidos). */
+  async emConstrucao(): Promise<string[]> {
+    return (await this.linhas())
+      .filter((l) => l.emConstrucao)
+      .map((l) => l.chave);
+  }
+
+  async preferenciaMenu(userId: string): Promise<PreferenciaMenuDados | null> {
+    const p = await this.prisma.preferenciaMenu.findUnique({
+      where: { userId },
+      select: { ordem: true, visivel: true },
+    });
+    return p ? normalizarPreferencia(p) : null;
+  }
+
+  async salvarPreferenciaMenu(
+    userId: string,
+    entrada: unknown,
+  ): Promise<PreferenciaMenuDados> {
+    const dados = normalizarPreferencia(entrada);
+    await this.prisma.preferenciaMenu.upsert({
+      where: { userId },
+      create: { userId, ordem: dados.ordem, visivel: dados.visivel },
+      update: { ordem: dados.ordem, visivel: dados.visivel },
+    });
+    return dados;
+  }
+
+  /** "Voltar ao padrão": apaga a preferência. */
+  async limparPreferenciaMenu(userId: string): Promise<void> {
+    await this.prisma.preferenciaMenu.deleteMany({ where: { userId } });
   }
 
   async desligadosPara(role: string): Promise<string[]> {

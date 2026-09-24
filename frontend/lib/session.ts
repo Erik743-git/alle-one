@@ -23,6 +23,10 @@ export type AuthUser = {
   permissions?: ModulePermission[];
   /** Administração → Acesso por perfil: chaves que a API bloqueia para este perfil. */
   modulosDesligados?: string[];
+  /** Módulos em construção: no menu do admin começam escondidos. */
+  modulosEmConstrucao?: string[];
+  /** Personalizar menu: ordem e itens escondidos (null = padrão). */
+  preferenciaMenu?: { ordem: string[]; visivel: Record<string, boolean> } | null;
   totpEnabled?: boolean;
   totpAdminMustEnable?: boolean;
   specialtyId?: string | null;
