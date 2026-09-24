@@ -69,8 +69,8 @@ VM, na teste ou na produção.**
 | P6 | **O servidor não limpa o HTML ao gravar.** A tela agora limpa (C1), mas a limpeza do e-mail é por expressão regular, fácil de contornar. | Limpar no backend com biblioteca de lista permitida (`sanitize-html`) ao gravar descrição e comunicação. |
 | P7 | **E-mail recebido sem checagem de autenticidade:** "De" falsificado vale como remetente; remetente da equipe interna entra em qualquer chamado. | Aceitar como remetente conhecido só com `dmarc=pass` no cabeçalho `Authentication-Results`. Conferir se o DMARC do domínio está em `p=reject`. |
 | P8 | **Terceiro (PJ) vê contatos de clientes de todas as empresas** (nome, e-mail, papel) nas buscas de usuários de GMUD e Projetos. É ponto de LGPD. | Limitar ao escopo do PJ (empresas e mesas dele). |
-| P9 | **PJ vê a fila inteira da mesa, de todas as empresas**, com anexos, e pode editar esses chamados. É intencional ("a mesa manda"). | **Decisão sua:** manter, ou restringir o terceiro às empresas associadas a ele. |
-| P10 | **GMUD sem separação de funções:** quem cria pode se pôr como aprovador e aprovar a própria mudança. | **Decisão sua:** proibir criador/executor como aprovador, ou exigir pelo menos um aprovador do cliente. |
+| P9 | **PJ vê a fila inteira da mesa, de todas as empresas**, com anexos, e pode editar esses chamados. É intencional ("a mesa manda"). | **Decidido em 24/09: manter.** Terceiro definido por mesa vê a fila inteira dela. |
+| P10 | **GMUD sem separação de funções:** quem cria pode se pôr como aprovador e aprovar a própria mudança. | **Decidido em 24/09: manter.** Quem cria pode aprovar a própria GMUD. |
 | P11 | **Pré-ticket apagado sem rastro:** colaboradores apagam e-mails de clientes (inclusive em massa) sem registro de quem apagou. | Gravar `deletedBy` e pôr `@AuditMeta` nas rotas de exclusão. |
 | P12 | **Sem faixa de ambiente de teste** (regra do projeto). | Variável `NEXT_PUBLIC_AMBIENTE=teste` no build da teste e uma tarja fixa no topo, com cor própria. |
 
