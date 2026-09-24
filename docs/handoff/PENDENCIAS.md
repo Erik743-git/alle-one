@@ -17,11 +17,12 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 
 ## Colocar a teste no ar (nada de hoje está lá ainda)
 
-- [ ] Deploy da teste (**sete** migrations novas, todas só criam tabela ou
-      tipo — `20260924120000_manutencao_janelas`,
+- [ ] Deploy da teste (**nove** migrations novas, todas só criam tabela,
+      tipo ou linha nova — `20260924120000_manutencao_janelas`,
       `20260925090000_oportunidades`, que também cria a mesa **Comercial**,
-      `20260925150000_acesso_por_perfil`, que grava o acesso de hoje, e
-      `20260926090000_nps`):
+      `20260925150000_acesso_por_perfil`, que grava o acesso de hoje,
+      `20260926090000_nps`, `20260926120000_fechamento_ciclo` e
+      `20260926130000_acesso_carga_equipe`):
       ```bash
       sudo -u alleone -i env ALLEONE_BRANCH=teste/integracao-20260923 bash /home/alleone/teste/deploy/scripts/pos-deploy-alleone-teste.sh
       ```

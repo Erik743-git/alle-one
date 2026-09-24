@@ -13,6 +13,7 @@ import {
   MODULO_AGENDAS,
   MODULO_APLICATIVOS,
   MODULO_APONTAMENTOS,
+  MODULO_CARGA_EQUIPE,
   MODULO_DASHBOARD,
   MODULO_FINANCEIRO,
   MODULO_GMUD,
@@ -392,4 +393,13 @@ export function canAccessAplicativos() {
   if (moduloDesabilitado(MODULO_APLICATIVOS)) return false;
   const role = getCurrentRole();
   return isInternalStaffRole(role) || isClientPortalRole(role);
+}
+
+/**
+ * Carga da equipe (Apontamentos): admin sempre; colaborador quando o admin
+ * liberar em Acesso por perfil. Mostra a carga de todos os técnicos.
+ */
+export function canAccessCargaEquipe() {
+  if (moduloDesabilitado(MODULO_CARGA_EQUIPE)) return false;
+  return isAdmin() || isCollaborator();
 }

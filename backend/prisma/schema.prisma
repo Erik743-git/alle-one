@@ -2098,3 +2098,39 @@ model PopupSatisfacao {
 
   @@map("popup_satisfacao")
 }
+
+/// Ciclo de horas (26 → 25) fechado pelo admin em Apontamentos → Fechamento.
+/// Fechado: ninguém cria, edita ou apaga apontamento com data dentro dele.
+model FechamentoCiclo {
+  /// AAAA-MM do mês em que o ciclo termina (dia 25).
+  ciclo     String    @id @db.VarChar(7)
+  inicio    DateTime  @db.Date
+  fim       DateTime  @db.Date
+  fechado   Boolean   @default(true)
+  fechadoEm DateTime  @map("fechado_em")
+  fechadoPor String   @map("fechado_por")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  eventos FechamentoEvento[]
+
+  @@index([inicio, fim])
+  @@map("fechamento_ciclos")
+}
+
+/// Histórico: cada fechar e reabrir, com quem e por quê.
+model FechamentoEvento {
+  id        String   @id @default(uuid())
+  ciclo     String   @db.VarChar(7)
+  /// FECHOU | REABRIU
+  acao      String   @db.VarChar(10)
+  motivo    String?  @db.Text
+  /// Quantos pontos de conferência havia na hora de fechar.
+  pendencias Int?
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  fechamento FechamentoCiclo @relation(fields: [ciclo], references: [ciclo], onDelete: Cascade)
+
+  @@index([ciclo, createdAt])
+  @@map("fechamento_eventos")
+}

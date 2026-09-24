@@ -55,6 +55,9 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     "/apontamentos/aprovar-justificativas": lazy(
       () => import("@/app/apontamentos/aprovar-justificativas/page-impl"),
     ),
+    "/apontamentos/carga": lazy(
+      () => import("@/app/apontamentos/carga/page-impl"),
+    ),
     "/apontamentos/empresa/[companyId]": lazy(
       () => import("@/app/apontamentos/empresa/[companyId]/page-impl"),
     ),

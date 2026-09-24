@@ -340,6 +340,7 @@ const STATIC_TITLES: Record<string, string> = {
   "/gerador-relatorios": "Relatórios",
   "/apontamentos": "Apontamentos",
   "/apontamentos/aprovar-horas-extras": "Aprovar horas extras",
+  "/apontamentos/carga": "Carga da equipe",
   "/apontamentos/aprovar-justificativas": "Aprovar justificativas",
   "/inventario": "Inventário",
   "/projetos": "Projetos",

@@ -27,6 +27,7 @@ export const PORTAL_TAB_ROUTES = [
   "/apontamentos",
   "/apontamentos/aprovar-horas-extras",
   "/apontamentos/aprovar-justificativas",
+  "/apontamentos/carga",
   "/apontamentos/empresa/[companyId]",
   "/apontamentos/[userId]",
   "/inventario",
@@ -103,6 +104,7 @@ export function moduloDaRota(pathname: string): string | null {
   if (inicio("/financeiro")) return "financeiro";
   if (inicio("/gmud")) return "gmud";
   if (inicio("/gerador-relatorios")) return "relatorios";
+  if (inicio("/apontamentos/carga")) return "carga-equipe";
   if (inicio("/apontamentos")) return "apontamentos";
   if (inicio("/inventario")) return "inventario";
   if (inicio("/projetos")) return "projetos";

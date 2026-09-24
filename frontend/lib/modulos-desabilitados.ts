@@ -23,6 +23,8 @@ export const MODULO_FINANCEIRO = "financeiro";
 export const MODULO_GMUD = "gmud";
 export const MODULO_RELATORIOS = "relatorios";
 export const MODULO_APONTAMENTOS = "apontamentos";
+/** Aba "Carga da equipe" de Apontamentos (começa só para admin). */
+export const MODULO_CARGA_EQUIPE = "carga-equipe";
 /** Bloco de somatório de horas no topo do calendário de Apontamentos. */
 export const MODULO_HORAS_APONTAMENTOS = "apontamentos-horas";
 export const MODULO_INVENTARIO = "inventario";

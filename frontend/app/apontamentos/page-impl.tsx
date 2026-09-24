@@ -31,12 +31,14 @@ import {
   APONTAMENTOS_MONTH_HOURS_NOTE,
 } from "@/lib/module-copy";
 import { notifyError } from "@/lib/notify";
-import { ensureArray } from "@/lib/utils";
+import { cn, ensureArray } from "@/lib/utils";
 import {
   rendimentoService,
   type RendimentoCollaborator,
   type RendimentoCollaboratorListPreference,
 } from "@/lib/services/rendimento.service";
+import { FechamentoAba } from "@/components/apontamentos/fechamento-aba";
+import { CargaEquipe } from "@/components/apontamentos/carga-equipe";
 
 type CompanyEmployee = {
   id: string;
@@ -73,6 +75,9 @@ function ApontamentosPageImpl() {
     RendimentoCollaboratorListPreference[] | null
   >(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aba, setAba] = useState<"colaboradores" | "fechamento" | "carga">(
+    "colaboradores",
+  );
 
   useEffect(() => {
     void (async () => {
@@ -333,6 +338,40 @@ function ApontamentosPageImpl() {
               }
             />
 
+            <div
+              role="tablist"
+              aria-label="Seções de apontamentos"
+              className="flex gap-1 overflow-x-auto border-b border-border"
+            >
+              {(
+                [
+                  ["colaboradores", "Colaboradores"],
+                  ["fechamento", "Fechamento"],
+                  ["carga", "Carga da equipe"],
+                ] as const
+              ).map(([id, rotulo]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={aba === id}
+                  onClick={() => setAba(id)}
+                  className={cn(
+                    "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                    aba === id
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+
+            {aba === "fechamento" ? <FechamentoAba /> : null}
+            {aba === "carga" ? <CargaEquipe /> : null}
+
+            <div hidden={aba !== "colaboradores"} className="space-y-8">
             <ApontamentosCollaboratorListSettingsSheet
               open={settingsOpen}
               onOpenChange={setSettingsOpen}
@@ -451,6 +490,7 @@ function ApontamentosPageImpl() {
                 )}
               </CardContent>
             </Card>
+            </div>
           </div>
         </AppShell>
       </PermissionGate>
