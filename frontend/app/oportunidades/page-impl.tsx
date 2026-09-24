@@ -26,6 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { FieldLabel } from "@/components/ui/field-label";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
 import { Input } from "@/components/ui/input";
@@ -506,11 +507,11 @@ function Filtros({
       ) : null}
       <div className="flex items-center gap-2 text-sm">
         <span className="shrink-0 text-muted-foreground">De</span>
-        <Input type="date" aria-label="Criadas a partir de" value={filtros.de ?? ""} onChange={(e) => muda("de", e.target.value)} />
+        <DatePickerField allowClear placeholder="Criadas a partir de" value={filtros.de ?? ""} onChange={(v) => muda("de", v)} />
       </div>
       <div className="flex items-center gap-2 text-sm">
         <span className="shrink-0 text-muted-foreground">até</span>
-        <Input type="date" aria-label="Criadas até" value={filtros.ate ?? ""} onChange={(e) => muda("ate", e.target.value)} />
+        <DatePickerField allowClear placeholder="Criadas até" align="end" value={filtros.ate ?? ""} onChange={(v) => muda("ate", v)} />
       </div>
       <label className="flex items-center gap-2 text-sm text-foreground">
         <FlipCheckbox
@@ -956,7 +957,7 @@ function DetalheCard({
             </div>
             <div className="space-y-2">
               <FieldLabel className="font-sans text-sm font-semibold">Data de retorno do cliente</FieldLabel>
-              <Input disabled={leitura} type="date" value={form.dataRetorno} onChange={(e) => set({ dataRetorno: e.target.value })} />
+              <DatePickerField modal allowClear disabled={leitura} value={form.dataRetorno} onChange={(v) => set({ dataRetorno: v })} />
               <p className="text-xs text-muted-foreground">Em “Aguardo cliente”, o responsável é lembrado nesse dia.</p>
             </div>
           </div>
@@ -1207,9 +1208,9 @@ function RankingDialog({ aberto, onFechar }: { aberto: boolean; onFechar: () => 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-muted-foreground">De</span>
-            <Input type="date" className="w-40" value={de} onChange={(e) => setDe(e.target.value)} />
+            <DatePickerField modal allowClear className="w-40" value={de} onChange={setDe} />
             <span className="text-muted-foreground">até</span>
-            <Input type="date" className="w-40" value={ate} onChange={(e) => setAte(e.target.value)} />
+            <DatePickerField modal allowClear align="end" className="w-40" value={ate} onChange={setAte} />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <section>
