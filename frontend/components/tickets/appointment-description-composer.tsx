@@ -313,8 +313,11 @@ function prepareEmailHtmlForEditor(html: string): {
   bodyHtml: string;
   images: Array<{ src: string; alt: string }>;
 } {
+  // DOMParser monta um documento inerte: com `div.innerHTML = html` o
+  // navegador já buscava <img> e disparava onerror antes da limpeza abaixo.
+  const parsed = new DOMParser().parseFromString(html, "text/html");
   const temp = document.createElement("div");
-  temp.innerHTML = html;
+  while (parsed.body.firstChild) temp.appendChild(parsed.body.firstChild);
 
   const images = Array.from(temp.querySelectorAll("img[src]")).map((img) => ({
     src: img.getAttribute("src")?.trim() ?? "",

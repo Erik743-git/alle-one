@@ -78,12 +78,12 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('google')
-  googleLogin(
+  async googleLogin(
     @Res() res: Response,
     @Query('email') email?: string,
     @Query('deviceTrustToken') deviceTrustToken?: string,
-  ): void {
-    this.authOAuth.startGoogle(res, email, deviceTrustToken);
+  ): Promise<void> {
+    await this.authOAuth.startGoogle(res, email, deviceTrustToken);
   }
 
   @Public()
@@ -99,12 +99,12 @@ export class AuthController {
   @Public()
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('microsoft')
-  microsoftLogin(
+  async microsoftLogin(
     @Res() res: Response,
     @Query('email') email?: string,
     @Query('deviceTrustToken') deviceTrustToken?: string,
-  ): void {
-    this.authOAuth.startMicrosoft(res, email, deviceTrustToken);
+  ): Promise<void> {
+    await this.authOAuth.startMicrosoft(res, email, deviceTrustToken);
   }
 
   @Public()

@@ -81,6 +81,27 @@ export function stripHtmlToPlain(html: string): string {
     .trim();
 }
 
+/** Some com tudo dentro: o conteúdo destas tags nunca é texto legível. */
+const DROPPED_WITH_CONTENT = new Set([
+  "SCRIPT",
+  "STYLE",
+  "IFRAME",
+  "FRAME",
+  "OBJECT",
+  "EMBED",
+  "TEMPLATE",
+  "NOSCRIPT",
+  "SVG",
+  "MATH",
+  "TITLE",
+  "HEAD",
+  "META",
+  "LINK",
+  "BASE",
+  "TEXTAREA",
+  "SELECT",
+]);
+
 const ALLOWED_HTML_TAGS = new Set([
   "B",
   "STRONG",
@@ -245,13 +266,23 @@ export function sanitizeComposerHtml(html: string): string {
       return;
     }
     const tag = node.tagName.toUpperCase();
+    if (DROPPED_WITH_CONTENT.has(tag)) {
+      node.parentNode?.removeChild(node);
+      return;
+    }
     if (!ALLOWED_HTML_TAGS.has(tag)) {
       const parent = node.parentNode;
       if (!parent) return;
-      while (node.firstChild) {
-        parent.insertBefore(node.firstChild, node);
+      // Os filhos sobem de nível e passam pela mesma limpeza. Antes eles
+      // subiam sem ser olhados: <form><iframe srcdoc=…> saía intacto.
+      const children = Array.from(node.childNodes);
+      for (const child of children) {
+        parent.insertBefore(child, node);
       }
       parent.removeChild(node);
+      for (const child of children) {
+        walk(child);
+      }
       return;
     }
     applySafeAttributes(node);

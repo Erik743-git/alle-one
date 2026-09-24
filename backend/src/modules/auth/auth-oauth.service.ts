@@ -86,20 +86,30 @@ export class AuthOAuthService {
     );
   }
 
+  /**
+   * Devolve a promessa para o controller aguardar. Antes era disparada com
+   * `void`: um erro aqui (ex.: provedor não configurado) virava rejeição sem
+   * dono e o Node derrubava a API inteira — bastava um GET anônimo.
+   */
   startGoogle(
     res: Response,
     emailHint?: string,
     deviceTrustToken?: string,
-  ): void {
-    void this.startProvider(res, 'google', emailHint, deviceTrustToken);
+  ): Promise<void> {
+    return this.startProvider(res, 'google', emailHint, deviceTrustToken);
   }
 
+  /**
+   * Devolve a promessa para o controller aguardar. Antes era disparada com
+   * `void`: um erro aqui (ex.: provedor não configurado) virava rejeição sem
+   * dono e o Node derrubava a API inteira — bastava um GET anônimo.
+   */
   startMicrosoft(
     res: Response,
     emailHint?: string,
     deviceTrustToken?: string,
-  ): void {
-    void this.startProvider(res, 'microsoft', emailHint, deviceTrustToken);
+  ): Promise<void> {
+    return this.startProvider(res, 'microsoft', emailHint, deviceTrustToken);
   }
 
   private async startProvider(

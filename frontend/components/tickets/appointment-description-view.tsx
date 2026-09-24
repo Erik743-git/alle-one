@@ -8,6 +8,7 @@ import {
   isAppointmentDoc,
   looksLikeHtml,
   parseAppointmentDoc,
+  sanitizeComposerHtml,
   stripHtmlToPlain,
   type StoredImageBlock,
 } from "@/lib/appointment-doc";
@@ -170,7 +171,13 @@ function FullDescriptionBody({
                     "text-foreground/90",
                     COMPOSER_HTML_CLASS,
                   )}
-                  dangerouslySetInnerHTML={{ __html: block.content }}
+                  // O bloco vem do banco: qualquer um que aponta consegue
+                  // gravar HTML arbitrário pela API (o editor limpa, a API
+                  // não). Sem limpar aqui, <iframe srcdoc> rodava script na
+                  // sessão de quem abrisse o chamado.
+                  dangerouslySetInnerHTML={{
+                    __html: sanitizeComposerHtml(block.content),
+                  }}
                 />
               );
             }
