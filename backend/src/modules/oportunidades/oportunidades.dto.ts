@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsEmail,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -94,4 +95,15 @@ export class ConfigOportunidadesDto {
   @IsOptional() @IsString() @Length(0, 255) caixaEmail?: string | null;
   @IsOptional() @IsBoolean() leituraAtiva?: boolean;
   @IsOptional() @IsBoolean() avisarSolicitanteExterno?: boolean;
+}
+
+export class ConverterOportunidadeDto {
+  @IsIn(['CHAMADO', 'PROJETO']) destino!: 'CHAMADO' | 'PROJETO';
+  /** Chamado: mesa (id da mesa, o mesmo da abertura de chamado). */
+  @IsOptional() @IsInt() @Min(1) deskId?: number;
+  /** Projeto: orçamento em horas ou dias. */
+  @IsOptional() @IsIn(['HOURS', 'DAYS']) budgetUnit?: 'HOURS' | 'DAYS';
+  @IsOptional() @IsInt() @Min(1) @Max(100000) budgetAmount?: number;
+  /** Projeto: chamado ao qual ele fica ligado (padrão: o gerado pela oportunidade). */
+  @IsOptional() @IsInt() @Min(1) ticketNumber?: number;
 }

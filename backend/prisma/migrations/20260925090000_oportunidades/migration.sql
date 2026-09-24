@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS "oportunidade_config" (
     "caixa_email" VARCHAR(255),
     "leitura_ativa" BOOLEAN NOT NULL DEFAULT false,
     "avisar_solicitante_externo" BOOLEAN NOT NULL DEFAULT false,
+    "leitura_desde" TIMESTAMP(3),
     "delta_link" TEXT,
     "ultima_leitura_em" TIMESTAMP(3),
     "updated_at" TIMESTAMP(3) NOT NULL,

@@ -1998,6 +1998,8 @@ model OportunidadeConfig {
   leituraAtiva         Boolean   @default(false) @map("leitura_ativa")
   /// E-mail de troca de estágio também para solicitante de fora da Alle.
   avisarSolicitanteExterno Boolean @default(false) @map("avisar_solicitante_externo")
+  /// Só vira card o e-mail que chegou depois que a leitura foi ligada.
+  leituraDesde         DateTime? @map("leitura_desde")
   deltaLink            String?   @map("delta_link") @db.Text
   ultimaLeituraEm      DateTime? @map("ultima_leitura_em")
   updatedAt            DateTime  @updatedAt @map("updated_at")

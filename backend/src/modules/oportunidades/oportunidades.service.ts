@@ -974,12 +974,18 @@ export class OportunidadesService {
         'Informe a caixa antes de ligar a leitura.',
       );
     }
+    const atual = await this.prisma.oportunidadeConfig.findUnique({
+      where: { id: 'default' },
+    });
+    // Ligar a leitura marca o corte: e-mail antigo da caixa não vira card.
+    const ligando = Boolean(dados.leituraAtiva) && !atual?.leituraAtiva;
     await this.prisma.oportunidadeConfig.upsert({
       where: { id: 'default' },
       create: {
         id: 'default',
         caixaEmail: caixa,
         leituraAtiva: Boolean(dados.leituraAtiva),
+        leituraDesde: ligando ? new Date() : null,
         avisarSolicitanteExterno: Boolean(dados.avisarSolicitanteExterno),
       },
       update: {
@@ -989,6 +995,7 @@ export class OportunidadesService {
         ...(dados.leituraAtiva !== undefined
           ? { leituraAtiva: dados.leituraAtiva }
           : {}),
+        ...(ligando ? { leituraDesde: new Date() } : {}),
         ...(dados.avisarSolicitanteExterno !== undefined
           ? { avisarSolicitanteExterno: dados.avisarSolicitanteExterno }
           : {}),
@@ -1005,6 +1012,11 @@ export class OportunidadesService {
     });
     if (!row) throw new NotFoundException('Oportunidade não encontrada.');
     return row;
+  }
+
+  /** Card completo para montar aviso (uso interno: leitor de e-mail). */
+  obterParaAviso(id: string): Promise<Card> {
+    return this.obterSemChecar(id);
   }
 
   private async obterSemChecar(id: string): Promise<Card> {
@@ -1147,8 +1159,17 @@ export class OportunidadesService {
     if (!destinos.length) return;
     const link = `${getFrontendBaseUrl()}/oportunidades?card=${card.id}`;
     try {
+      // Resposta ao aviso volta para a caixa de oportunidades (e entra no
+      // card), não para a caixa de chamados, que a transformaria em pré-ticket.
+      const caixa = (
+        await this.prisma.oportunidadeConfig.findUnique({
+          where: { id: 'default' },
+          select: { caixaEmail: true },
+        })
+      )?.caixaEmail;
       await this.mail.sendMail({
         to: destinos,
+        ...(caixa ? { replyTo: caixa } : {}),
         subject: assunto,
         text: `${texto}\n\nEstágio: ${ROTULO_ESTAGIO[card.estagio]}${comLink ? `\n${link}` : ''}\n\nAlle Tecnologia`,
         html: `<p>${escapeHtml(texto)}</p><p>Estágio: <strong>${escapeHtml(ROTULO_ESTAGIO[card.estagio])}</strong></p>${

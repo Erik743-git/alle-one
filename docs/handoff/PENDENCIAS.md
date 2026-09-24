@@ -17,8 +17,9 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 
 ## Colocar a teste no ar (nada de hoje está lá ainda)
 
-- [ ] Deploy da teste (**quatro** migrations novas, todas só criam tabela —
-      a quarta é `20260924120000_manutencao_janelas`, da aba Manutenção):
+- [ ] Deploy da teste (**cinco** migrations novas, todas só criam tabela ou
+      tipo — `20260924120000_manutencao_janelas` e
+      `20260925090000_oportunidades`, que também cria a mesa **Comercial**):
       ```bash
       sudo -u alleone -i env ALLEONE_BRANCH=teste/integracao-20260923 bash /home/alleone/teste/deploy/scripts/pos-deploy-alleone-teste.sh
       ```
@@ -56,7 +57,12 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
       Colpani, Rangel Werner Lemos): são da Alle ou de fora?
 - [ ] "Só admin tira relatório mas está confundindo do adm": o que isso quer
       dizer?
-- [ ] Oportunidades (kanban por e-mail): 7 perguntas em aberto.
+- [x] Oportunidades: desenho fechado e **construído** em 24-25/09
+      (`docs/desenho/OPORTUNIDADES.md`).
+- [ ] Oportunidades, para ligar: pôr as pessoas do comercial na mesa
+      **Comercial** (Admin → Usuários); criar a caixa no Microsoft 365 e dar a
+      ela a mesma permissão de leitura da caixa de chamados no Azure; depois,
+      no quadro, ⚙ → preencher a caixa e ligar a leitura.
 
 ## Fora do sistema
 

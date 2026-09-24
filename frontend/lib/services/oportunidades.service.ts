@@ -61,6 +61,9 @@ export type Oportunidade = {
   dataRetorno: string | null;
   fechadoEm: string | null;
   createdAt: string;
+  /** Conversão da aprovada. */
+  projetoId: string | null;
+  chamadoNumero: number | null;
   anexos: Array<{
     id: string;
     fileId: string;
@@ -207,6 +210,27 @@ export const oportunidadesService = {
   },
   urlAnexo(id: string, anexoId: string) {
     return `/oportunidades/${id}/anexos/${anexoId}`;
+  },
+  mesas(id: string) {
+    return apiRequest<Array<{ id: number; nome: string }>>(
+      `/oportunidades/${id}/mesas`,
+    );
+  },
+  converter(
+    id: string,
+    dados:
+      | { destino: "CHAMADO"; deskId: number }
+      | {
+          destino: "PROJETO";
+          budgetUnit: "HOURS" | "DAYS";
+          budgetAmount: number;
+          ticketNumber?: number;
+        },
+  ) {
+    return apiRequest<Oportunidade>(`/oportunidades/${id}/converter`, {
+      method: "POST",
+      body: dados,
+    });
   },
   config() {
     return apiRequest<ConfigOportunidades>("/oportunidades/config");

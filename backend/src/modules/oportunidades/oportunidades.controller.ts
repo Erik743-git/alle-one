@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -29,12 +30,14 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import {
   ConfigOportunidadesDto,
+  ConverterOportunidadeDto,
   CriarOportunidadeDto,
   EditarOportunidadeDto,
   MoverOportunidadeDto,
   PeriodoQueryDto,
   QuadroQueryDto,
 } from './oportunidades.dto';
+import { OportunidadesConversaoService } from './oportunidades-conversao.service';
 import { OportunidadesService } from './oportunidades.service';
 
 type Req = { user: AuthenticatedRequestUser };
@@ -49,7 +52,10 @@ const MAX_ARQUIVOS = 10;
 @UseGuards(RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
 export class OportunidadesController {
-  constructor(private readonly svc: OportunidadesService) {}
+  constructor(
+    private readonly svc: OportunidadesService,
+    private readonly conversao: OportunidadesConversaoService,
+  ) {}
 
   @Get()
   quadro(@Req() req: Req, @Query() q: QuadroQueryDto) {
@@ -129,6 +135,37 @@ export class OportunidadesController {
     @Body() body: MoverOportunidadeDto,
   ) {
     return this.svc.mover(req.user, id, body);
+  }
+
+  @Get(':id/mesas')
+  mesas(@Req() req: Req, @Param('id', ParseUUIDPipe) id: string) {
+    return this.conversao.mesas(req.user, id);
+  }
+
+  @Post(':id/converter')
+  @AuditMeta({ entity: 'Oportunidade', action: 'CONVERT', entityIdParam: 'id' })
+  converter(
+    @Req() req: Req,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: ConverterOportunidadeDto,
+  ) {
+    if (body.destino === 'CHAMADO') {
+      if (!body.deskId)
+        throw new BadRequestException('Escolha a mesa do chamado.');
+      return this.conversao.converter(req.user, id, {
+        destino: 'CHAMADO',
+        deskId: body.deskId,
+      });
+    }
+    if (!body.budgetUnit || !body.budgetAmount) {
+      throw new BadRequestException('Informe o orçamento do projeto.');
+    }
+    return this.conversao.converter(req.user, id, {
+      destino: 'PROJETO',
+      budgetUnit: body.budgetUnit,
+      budgetAmount: body.budgetAmount,
+      ticketNumber: body.ticketNumber,
+    });
   }
 
   @Post(':id/reabrir')

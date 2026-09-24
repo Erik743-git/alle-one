@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -960,6 +961,12 @@ function DetalheCard({
             </div>
           </div>
 
+          {gestao &&
+          (card.estagio === "APROVADO" ||
+            (card.estagio === "FECHADO" && card.estagioAnterior === "APROVADO")) ? (
+            <ConverterSecao card={card} onAtualizado={onAtualizado} />
+          ) : null}
+
           <div className="space-y-2">
             <FieldLabel className="font-sans text-sm font-semibold">Anexos</FieldLabel>
             {card.anexos.length === 0 ? (
@@ -1016,6 +1023,162 @@ function DetalheCard({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// --- conversão da aprovada -------------------------------------------------------------
+
+function ConverterSecao({
+  card,
+  onAtualizado,
+}: {
+  card: Oportunidade;
+  onAtualizado: (c: Oportunidade) => void;
+}) {
+  const [modo, setModo] = useState<"CHAMADO" | "PROJETO" | null>(null);
+  const [mesas, setMesas] = useState<Array<{ id: number; nome: string }>>([]);
+  const [deskId, setDeskId] = useState("");
+  const [unidade, setUnidade] = useState<"HOURS" | "DAYS">("HOURS");
+  const [quantidade, setQuantidade] = useState("");
+  const [chamado, setChamado] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (modo !== "CHAMADO") return;
+    oportunidadesService
+      .mesas(card.id)
+      .then((m) => {
+        setMesas(m);
+        if (m.length === 1) setDeskId(String(m[0].id));
+      })
+      .catch(() => setMesas([]));
+  }, [modo, card.id]);
+
+  useEffect(() => {
+    setChamado(card.chamadoNumero ? String(card.chamadoNumero) : "");
+  }, [card.chamadoNumero]);
+
+  async function converter() {
+    try {
+      setEnviando(true);
+      const novo =
+        modo === "CHAMADO"
+          ? await oportunidadesService.converter(card.id, {
+              destino: "CHAMADO",
+              deskId: Number(deskId),
+            })
+          : await oportunidadesService.converter(card.id, {
+              destino: "PROJETO",
+              budgetUnit: unidade,
+              budgetAmount: Number(quantidade),
+              ...(chamado ? { ticketNumber: Number(chamado) } : {}),
+            });
+      onAtualizado(novo);
+      setModo(null);
+      notifySuccess(
+        modo === "CHAMADO"
+          ? `Virou o chamado #${novo.chamadoNumero}.`
+          : "Projeto criado.",
+      );
+    } catch (err) {
+      notifyError(err instanceof Error ? err.message : "Não foi possível converter.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const semCliente = !card.cliente?.companyId;
+
+  return (
+    <section className="space-y-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+      <h3 className="text-sm font-semibold text-foreground">Oportunidade aprovada</h3>
+      <div className="flex flex-wrap gap-2 text-sm">
+        {card.chamadoNumero ? (
+          <Link className="text-primary underline-offset-2 hover:underline" href={`/tickets/${card.chamadoNumero}`}>
+            Chamado #{card.chamadoNumero}
+          </Link>
+        ) : null}
+        {card.projetoId && card.cliente?.companyId ? (
+          <Link
+            className="text-primary underline-offset-2 hover:underline"
+            href={`/projetos/${card.cliente.companyId}/${card.projetoId}`}
+          >
+            Abrir o projeto
+          </Link>
+        ) : null}
+      </div>
+      {semCliente ? (
+        <p className="text-xs text-muted-foreground">
+          Para virar chamado ou projeto, escolha um cliente cadastrado no campo Cliente e salve.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {!card.chamadoNumero ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setModo("CHAMADO")}>
+              Virar chamado
+            </Button>
+          ) : null}
+          {!card.projetoId ? (
+            <Button type="button" size="sm" variant="outline" onClick={() => setModo("PROJETO")}>
+              Virar projeto
+            </Button>
+          ) : null}
+        </div>
+      )}
+
+      {modo === "CHAMADO" ? (
+        <div className="space-y-2">
+          <FieldLabel className="font-sans text-sm font-semibold">Mesa do chamado</FieldLabel>
+          <select className={SELECT} value={deskId} onChange={(e) => setDeskId(e.target.value)}>
+            <option value="">Escolha…</option>
+            {mesas.map((m) => (
+              <option key={m.id} value={m.id}>{m.nome}</option>
+            ))}
+          </select>
+          {mesas.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Nenhuma mesa liberada para este cliente.</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {modo === "PROJETO" ? (
+        <div className="grid gap-2 sm:grid-cols-3">
+          <label className="space-y-1 text-sm">
+            <span className="font-semibold">Orçamento</span>
+            <Input inputMode="numeric" placeholder="Ex.: 40" value={quantidade} onChange={(e) => setQuantidade(e.target.value.replace(/\D/g, ""))} />
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="font-semibold">Unidade</span>
+            <select className={SELECT} value={unidade} onChange={(e) => setUnidade(e.target.value as "HOURS" | "DAYS")}>
+              <option value="HOURS">Horas</option>
+              <option value="DAYS">Dias</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-sm">
+            <span className="font-semibold">Chamado ligado</span>
+            <Input inputMode="numeric" placeholder="Nº do chamado" value={chamado} onChange={(e) => setChamado(e.target.value.replace(/\D/g, ""))} />
+          </label>
+          <p className="text-xs text-muted-foreground sm:col-span-3">
+            Todo projeto fica ligado a um chamado. Sem chamado, vire chamado primeiro.
+          </p>
+        </div>
+      ) : null}
+
+      {modo ? (
+        <div className="flex gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => setModo(null)}>Cancelar</Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={enviando || (modo === "CHAMADO" ? !deskId : !quantidade)}
+            onClick={() => void converter()}
+          >
+            {enviando ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            Confirmar
+          </Button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

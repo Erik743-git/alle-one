@@ -80,8 +80,23 @@ Trello). Respostas do Erik em 24/09. **Nada construído ainda.**
 
 ## Oportunidade aprovada → Projeto ou Chamado
 
-Botão no card aprovado. Cria o projeto ou o chamado já com cliente, título e
-descrição, e deixa o link gravado no card.
+Botões no card aprovado. Criam o chamado ou o projeto já com cliente, título
+e descrição, e deixam o link gravado no card. Usam a mesma criação das telas
+de Chamado e Projeto, com as mesmas permissões.
+
+- **Chamado:** pede só a mesa. Se o cliente tiver uma mesa só, ela já vem
+  escolhida. O solicitante do chamado é o da oportunidade.
+- **Projeto:** pede o orçamento (horas ou dias). **Todo projeto fica ligado
+  a um chamado** (regra do módulo Projetos): usa o chamado que a
+  oportunidade gerou ou um número informado.
+- Só funciona com **cliente cadastrado** no card.
+
+## E-mail: detalhes
+
+- Os avisos saem com **"Responder para" a caixa de oportunidades**, para a
+  resposta entrar no card e não virar pré-ticket na caixa de chamados.
+- A leitura usa as mesmas credenciais do Azure da caixa de chamados. **Só
+  entra e-mail que chegou depois de a leitura ser ligada.**
 
 - **Resposta a e-mail de oportunidade existente:** não cria card nem
   aparece como texto; **só os anexos** dela entram no card (sem as imagens
