@@ -345,6 +345,7 @@ const STATIC_TITLES: Record<string, string> = {
   "/projetos": "Projetos",
   "/admin": "Administração",
   "/admin/auditoria": "Auditoria",
+  "/admin/satisfacao": "Satisfação",
   "/admin/acesso": "Acesso por perfil",
   "/admin/classificacao": "Classificação",
   "/admin/email": "E-mail",

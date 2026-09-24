@@ -57,6 +57,8 @@ describe("matchPortalRoute", () => {
       "/redefinir-senha",
       // Pesquisa de satisfação: o cliente abre pelo link do e-mail, sem login.
       "/satisfacao/[token]",
+      // NPS: mesmo caso, link do e-mail sem login.
+      "/nps/[token]",
     ]);
     const rotas: string[] = [];
     const walk = (dir: string) => {

@@ -70,6 +70,7 @@ enum MailboxNotificationKind {
   OPORTUNIDADE_ESTAGIO
   OPORTUNIDADE_ALERTA
   OPORTUNIDADE_RETORNO
+  NPS_DETRATOR
 }
 
 enum ContractFileType {
@@ -182,6 +183,9 @@ model User {
   escalaRegras                      EscalaRegra[]                    @relation("EscalaRegraPessoa")
   oportunidadesSolicitadas          Oportunidade[]                   @relation("OportunidadeSolicitante")
   oportunidadesResponsavel          Oportunidade[]                   @relation("OportunidadeResponsavel")
+  npsDestinatarios                  NpsDestinatario[]
+  npsPesquisas                      NpsPesquisa[]
+  popupSatisfacao                   PopupSatisfacao?
   escalaSubstituicoes               EscalaExcecao[]                  @relation("EscalaExcecaoSubstituto")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
@@ -261,6 +265,9 @@ model Company {
   ticketSpecialties     CompanyTicketSpecialty[]
   janelasManutencao     JanelaManutencao[]
   oportunidades         Oportunidade[]
+  npsConfig             NpsConfigEmpresa?
+  npsDestinatarios      NpsDestinatario[]
+  npsPesquisas          NpsPesquisa[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -2021,4 +2028,73 @@ model AcessoModulo {
   updatedBy String?  @map("updated_by")
 
   @@map("acesso_modulos")
+}
+
+/// NPS por empresa (Administração → Empresas). Desenho: docs/desenho/AVALIACAO-E-NPS.md.
+model NpsConfigEmpresa {
+  companyId      String   @id @map("company_id")
+  ativo          Boolean  @default(false)
+  /// De quantos em quantos meses cada destinatário recebe a pergunta.
+  intervaloMeses Int      @default(3) @map("intervalo_meses") @db.SmallInt
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedBy      String?  @map("updated_by")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("nps_config_empresa")
+}
+
+/// Quem recebe o NPS em cada empresa (escolhido pelo admin).
+model NpsDestinatario {
+  companyId String   @map("company_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, userId])
+  @@index([userId])
+  @@map("nps_destinatarios")
+}
+
+/// Uma pergunta de NPS enviada a uma pessoa. O token do link responde sem login.
+model NpsPesquisa {
+  id            String    @id @default(uuid())
+  token         String    @unique @db.VarChar(64)
+  companyId     String    @map("company_id")
+  userId        String    @map("user_id")
+  email         String    @db.VarChar(255)
+  nome          String?   @db.VarChar(255)
+  enviadaEm     DateTime  @default(now()) @map("enviada_em")
+  respondidaEm  DateTime? @map("respondida_em")
+  /// 0 a 10.
+  nota          Int?      @db.SmallInt
+  comentario    String?   @db.Text
+  /// EMAIL | PORTAL
+  canal         String?   @db.VarChar(20)
+  /// "Agora não" no pop-up: não volta mais no pop-up (o link segue valendo).
+  dispensadaEm  DateTime? @map("dispensada_em")
+  /// Aviso de nota baixa já saiu (sai uma vez só, mesmo se a nota mudar).
+  alertaEm      DateTime? @map("alerta_em")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, respondidaEm])
+  @@index([userId, respondidaEm])
+  @@index([respondidaEm])
+  @@map("nps_pesquisas")
+}
+
+/// Último pop-up de satisfação (NPS ou avaliação) mostrado à pessoa: no máximo um por dia.
+model PopupSatisfacao {
+  userId      String   @id @map("user_id")
+  ultimoEm    DateTime @map("ultimo_em")
+  /// NPS | AVALIACAO
+  ultimoTipo  String   @map("ultimo_tipo") @db.VarChar(20)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("popup_satisfacao")
 }

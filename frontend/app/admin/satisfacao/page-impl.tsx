@@ -13,6 +13,8 @@ import { DatePickerField } from "@/components/ui/date-picker-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { notifyError } from "@/lib/notify";
 import { apiRequest } from "@/lib/api";
+import { PainelNpsAba } from "@/components/satisfacao/painel-nps";
+import { cn } from "@/lib/utils";
 
 type Grupo = { nome: string; media: number; nps: number; respostas: number };
 
@@ -143,6 +145,14 @@ function AdminSatisfacaoPageImpl() {
   const [resumo, setResumo] = useState<Resumo | null>(null);
   const [respostas, setRespostas] = useState<Resposta[]>([]);
   const [carregando, setCarregando] = useState(true);
+  // Aba NPS abre direto pelo link do aviso de nota baixa (?aba=nps).
+  const [aba, setAba] = useState<"avaliacao" | "nps">(() =>
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("aba") === "nps"
+      ? "nps"
+      : "avaliacao",
+  );
+  const [versaoNps, setVersaoNps] = useState(0);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -189,8 +199,9 @@ function AdminSatisfacaoPageImpl() {
                 </Link>
                 <h1 className="text-2xl font-semibold">Satisfação</h1>
                 <p className="text-sm text-muted-foreground">
-                  Pesquisa enviada no fechamento de cada chamado. O NPS vem das
-                  estrelas: 5 é promotor, 4 é neutro, 1 a 3 é detrator.
+                  {aba === "avaliacao"
+                    ? "Pesquisa enviada no fechamento de cada chamado. O índice vem das estrelas: 5 é promotor, 4 é neutro, 1 a 3 é detrator."
+                    : "Pergunta de 0 a 10 enviada às pessoas escolhidas em cada empresa (Administração → Empresas)."}
                 </p>
               </div>
               <div className="flex flex-wrap items-end gap-2">
@@ -205,7 +216,11 @@ function AdminSatisfacaoPageImpl() {
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => void carregar()}
+                  onClick={() =>
+                    aba === "nps"
+                      ? setVersaoNps((v) => v + 1)
+                      : void carregar()
+                  }
                   disabled={carregando}
                 >
                   {carregando ? (
@@ -218,7 +233,38 @@ function AdminSatisfacaoPageImpl() {
               </div>
             </div>
 
-            {carregando && !resumo ? (
+            <div
+              role="tablist"
+              aria-label="Tipo de pesquisa"
+              className="flex gap-1 border-b border-border"
+            >
+              {(
+                [
+                  ["avaliacao", "Avaliação de chamados"],
+                  ["nps", "NPS"],
+                ] as const
+              ).map(([id, rotulo]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={aba === id}
+                  onClick={() => setAba(id)}
+                  className={cn(
+                    "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                    aba === id
+                      ? "border-primary text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+
+            {aba === "nps" ? (
+              <PainelNpsAba de={de} ate={ate} versao={versaoNps} />
+            ) : carregando && !resumo ? (
               <Skeleton className="h-40 w-full" />
             ) : (
               <>
@@ -226,7 +272,7 @@ function AdminSatisfacaoPageImpl() {
                   <Card>
                     <CardContent className="space-y-1 pt-6">
                       <p className="text-xs uppercase text-muted-foreground">
-                        NPS
+                        Índice das estrelas
                       </p>
                       <p className="text-3xl font-semibold tabular-nums">
                         {resumo?.nps ?? "—"}

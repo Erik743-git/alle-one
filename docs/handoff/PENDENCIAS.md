@@ -17,10 +17,11 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 
 ## Colocar a teste no ar (nada de hoje está lá ainda)
 
-- [ ] Deploy da teste (**seis** migrations novas, todas só criam tabela ou
+- [ ] Deploy da teste (**sete** migrations novas, todas só criam tabela ou
       tipo — `20260924120000_manutencao_janelas`,
-      `20260925090000_oportunidades`, que também cria a mesa **Comercial**, e
-      `20260925150000_acesso_por_perfil`, que grava o acesso de hoje):
+      `20260925090000_oportunidades`, que também cria a mesa **Comercial**,
+      `20260925150000_acesso_por_perfil`, que grava o acesso de hoje, e
+      `20260926090000_nps`):
       ```bash
       sudo -u alleone -i env ALLEONE_BRANCH=teste/integracao-20260923 bash /home/alleone/teste/deploy/scripts/pos-deploy-alleone-teste.sh
       ```
@@ -29,6 +30,8 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
       **em construção** (igual à produção). Na teste, para ver como antes,
       desligue "Em construção" deles. A variável
       `NEXT_PUBLIC_MODULOS_DESABILITADOS` pode sair do .env depois.
+- [ ] NPS: em Administração → Empresas, ligar "Participa do NPS" e escolher
+      quem recebe. Nada é enviado até alguém ligar.
 - [ ] Nginx: `grep -rn "frame-src" /etc/nginx/`, copiar
       `deploy/nginx-alleone-csp-html.snippet.conf` para lá, `sudo nginx -t`,
       `sudo systemctl reload nginx`. Sem isso o PDF continua bloqueado.

@@ -1,7 +1,7 @@
 # Avaliação de chamados e NPS — desenho para aprovação
 
 O módulo de avaliação passa a ter duas partes. Respostas do Erik em 25/09.
-**Nada construído ainda.**
+**Construído em 24/09 (sandbox)** — ver "Como ficou" no fim.
 
 ## 1. Avaliação do chamado (como hoje, com o pop-up)
 
@@ -46,8 +46,33 @@ Administração → Satisfação ganha duas abas:
 - **NPS:** nota NPS global, evolução por trimestre, por empresa, quantos
   responderam e os comentários, com os detratores em destaque.
 
-## Em aberto
+## Como ficou (construído)
 
-- **Quem recebe:** todos os gestores da empresa, ou um contato escolhido por
-  empresa?
-- **O link do NPS pede login?**
+- **Quem recebe:** escolhido por empresa em Administração → Empresas →
+  Editar (seção NPS): "Participa do NPS", "A cada N meses" (1 a 24, padrão
+  3) e a lista de usuários do portal daquela empresa. A API recusa usuário
+  de outra empresa ou da equipe.
+- **Envio:** rotina diária às 09:00 (Brasília). Cada pessoa recebe quando o
+  último envio dela passou do intervalo. E-mail com os números 0–10
+  clicáveis; o clique grava a nota na hora.
+- **Link sem login** (`/nps/<token>`, 48 caracteres aleatórios, limite de
+  20–30 tentativas por minuto por IP). Pode trocar a nota e escrever o
+  porquê por 24 h.
+- **Nota 0–6:** um e-mail para todos os admins ativos (empresa, pessoa,
+  nota e porquê) e aviso no Correio. Sai uma vez só por resposta.
+- **Pop-up no portal do cliente:** NPS pendente primeiro; senão a avaliação
+  do chamado mais recente em que a pessoa é a solicitante (últimos 30 dias,
+  sem nota, não dispensado, não cancelado). No máximo um por dia (meia-noite
+  de Brasília). "Agora não" ou fechar = não volta mais no pop-up (o link do
+  e-mail continua valendo).
+- **Painel:** Administração → Satisfação com as abas "Avaliação de
+  chamados" (a de antes; o número que se chamava "NPS" virou "Índice das
+  estrelas", para não confundir) e "NPS" (global, por trimestre, por
+  empresa, taxa de resposta e comentários com detratores primeiro).
+- **Correção junto:** o link de avaliação do e-mail (`/satisfacao/<token>`)
+  mandava para o login quem não estava logado. Agora abre direto.
+
+## Perguntas respondidas
+
+- Quem recebe: parametrizado por empresa (pessoas escolhidas).
+- O link pede login? Não: o token é da pessoa para quem foi enviado.
