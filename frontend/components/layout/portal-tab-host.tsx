@@ -8,6 +8,9 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { useAuth } from "@/lib/auth-context";
+import { moduloDesabilitado } from "@/lib/modulos-desabilitados";
+import { moduloDaRota } from "@/lib/portal-tabs/route-table";
 import {
   getRenderCacheEntries,
   getRenderCacheVersion,
@@ -17,6 +20,24 @@ import { usePortalTabs } from "./portal-tabs-provider";
 import { PortalRouteContextOverride } from "./portal-route-context";
 import { getDockNode, subscribeDock } from "./portal-tab-dock";
 import { PortalTabHostContext } from "./portal-tab-host-context";
+
+/** Tela de módulo desligado em Administração → Acesso por perfil. */
+function ModuloIndisponivel() {
+  return (
+    <div
+      role="status"
+      className="mx-auto mt-16 max-w-md rounded-xl border border-border bg-card p-8 text-center"
+    >
+      <p className="text-lg font-semibold text-foreground">
+        Este módulo não está disponível.
+      </p>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Ele foi desligado para o seu perfil. Se precisar dele, fale com um
+        administrador.
+      </p>
+    </div>
+  );
+}
 
 /**
  * Mantém viva a tela de cada guia aberta. Fica no layout raiz (nunca
@@ -30,6 +51,8 @@ import { PortalTabHostContext } from "./portal-tab-host-context";
  */
 export function PortalTabHost() {
   const { tabs, activeId } = usePortalTabs();
+  // Relê a lista de módulos desligados quando a sessão muda (login, /auth/me).
+  useAuth();
   useSyncExternalStore(subscribeRenderCache, getRenderCacheVersion, () => 0);
   const entries = getRenderCacheEntries();
   const dock = useSyncExternalStore(subscribeDock, getDockNode, () => null);
@@ -78,7 +101,14 @@ export function PortalTabHost() {
                 href={entry.href}
                 params={entry.params}
               >
-                {entry.node}
+                {(() => {
+                  const modulo = moduloDaRota(entry.href);
+                  return modulo && moduloDesabilitado(modulo) ? (
+                    <ModuloIndisponivel />
+                  ) : (
+                    entry.node
+                  );
+                })()}
               </PortalRouteContextOverride>,
               containerFor(entry.href),
               entry.href,

@@ -8,9 +8,11 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../gmud/gmud.types';
 import { ListContractsQueryDto } from './contracts.dto';
 import { ContractsService } from './contracts.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('Contracts')
 @ApiBearerAuth()
+@ModuloPortal('financeiro')
 @Controller('contracts')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard)
 export class ContractsController {

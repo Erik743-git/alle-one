@@ -15,6 +15,7 @@ import {
   FolderTree,
   Star,
   Ticket,
+  KeyRound,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -64,6 +65,13 @@ function AdminPageImpl() {
         "Crie, edite, exclua usuários e defina permissões por empresa.",
       icon: Users,
       href: "/admin/usuarios",
+    },
+    {
+      name: "Acesso por perfil",
+      description:
+        "Escolha quais perfis veem cada módulo e deixe módulos novos em construção.",
+      icon: KeyRound,
+      href: "/admin/acesso",
     },
     {
       name: "Classificação",

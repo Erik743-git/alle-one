@@ -16,7 +16,8 @@ import {
 
 /**
  * Regras de produto (sobrescrevem a matriz `permissions` do banco):
- * - REPORTS: somente ADMIN (pack CLIENT com REPORTS ainda bloqueado no MVP)
+ * - REPORTS: sem regra fixa. Quem libera é Administração → Acesso por perfil
+ *   (guard global) e, por baixo, a permissão da pessoa, como nos outros.
  * - DASHBOARD canView: liberado para autenticados (escopo por empresa no service)
  * - CORREIO canView: não-CLIENT_*
  * - INVENTARIO/FINANCIAL/RENDIMENTO: defaults por role documentados abaixo
@@ -47,12 +48,6 @@ export class ModulePermissionGuard implements CanActivate {
 
     if (user.role === 'ADMIN') {
       return true;
-    }
-
-    if (meta.module === ('REPORTS' as PermissionModule)) {
-      throw new ForbiddenException(
-        'Relatórios disponíveis apenas para administradores.',
-      );
     }
 
     if (

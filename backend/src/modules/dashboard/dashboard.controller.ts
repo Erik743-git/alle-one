@@ -18,11 +18,13 @@ import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { DashboardService } from './dashboard.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = Request & {
   user: AuthenticatedRequestUser;
 };
 
+@ModuloPortal('dashboard')
 @Controller('dashboard')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard)
 export class DashboardController {

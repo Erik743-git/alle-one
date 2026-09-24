@@ -80,6 +80,7 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     "/admin/satisfacao": lazy(
       () => import("@/app/admin/satisfacao/page-impl"),
     ),
+    "/admin/acesso": lazy(() => import("@/app/admin/acesso/page-impl")),
     "/admin/classificacao": lazy(
       () => import("@/app/admin/classificacao/page-impl"),
     ),

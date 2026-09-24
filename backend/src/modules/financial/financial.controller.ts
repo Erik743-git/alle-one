@@ -10,9 +10,11 @@ import { FinancialOverviewQueryDto } from './financial.dto';
 import { FinancialService } from './financial.service';
 import type { Response } from 'express';
 import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('Financial')
 @ApiBearerAuth()
+@ModuloPortal('financeiro')
 @Controller('financial')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard)
 export class FinancialController {

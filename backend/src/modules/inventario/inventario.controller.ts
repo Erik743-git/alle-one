@@ -42,9 +42,11 @@ import {
 import { InventarioService } from './inventario.service';
 import { InventarioImportService } from './inventario-import.service';
 import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('Inventário')
 @ApiBearerAuth()
+@ModuloPortal('inventario')
 @Controller('inventario')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class InventarioController {

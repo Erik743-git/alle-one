@@ -38,6 +38,7 @@ export const PORTAL_TAB_ROUTES = [
   "/admin",
   "/admin/auditoria",
   "/admin/satisfacao",
+  "/admin/acesso",
   "/admin/classificacao",
   "/admin/email",
   "/admin/empresas",
@@ -80,5 +81,30 @@ export function matchPortalRoute(pathname: string): PortalRouteMatch | null {
     }
     if (ok) return { route, params };
   }
+  return null;
+}
+
+/**
+ * Módulo de Administração → Acesso por perfil de cada tela. Com o módulo
+ * desligado a guia mostra "indisponível" em vez da tela (a API já responde
+ * 403). Correio e Administração não estão na tabela: devolvem null.
+ */
+export function moduloDaRota(pathname: string): string | null {
+  const p = pathname.split("?")[0];
+  const inicio = (prefixo: string) =>
+    p === prefixo || p.startsWith(`${prefixo}/`);
+  if (inicio("/tickets/pre-tickets")) return "pre-tickets";
+  if (inicio("/tickets")) return "tickets";
+  if (inicio("/dashboard")) return "dashboard";
+  if (inicio("/console") || inicio("/monitoramento")) return "monitoramento";
+  if (inicio("/agendas") || inicio("/plantao")) return "agendas";
+  if (inicio("/mural")) return "mural";
+  if (inicio("/oportunidades")) return "oportunidades";
+  if (inicio("/financeiro")) return "financeiro";
+  if (inicio("/gmud")) return "gmud";
+  if (inicio("/gerador-relatorios")) return "relatorios";
+  if (inicio("/apontamentos")) return "apontamentos";
+  if (inicio("/inventario")) return "inventario";
+  if (inicio("/projetos")) return "projetos";
   return null;
 }

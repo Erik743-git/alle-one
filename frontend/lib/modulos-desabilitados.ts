@@ -1,33 +1,41 @@
+import { getStoredUser } from "./session";
+
 /**
- * Desligamento temporário de módulos por ambiente.
+ * Módulos desligados para quem está logado.
  *
- * Serve para tirar algo do ar em produção sem remover o código, enquanto a
- * funcionalidade é reavaliada — o teste segue com tudo ligado, porque é lá que
- * a reavaliação acontece. Por isso a lista vem de variável de ambiente, e não
- * de constante no código: o mesmo build se comporta conforme o ambiente.
+ * Quem decide é Administração → Acesso por perfil: a API manda a lista
+ * `modulosDesligados` no login e no /auth/me, e também devolve 403 nas rotas
+ * do módulo. Aqui a lista só serve para esconder menu e tela.
  *
- * `NEXT_PUBLIC_*` é resolvido em tempo de build no Next, então a variável
- * precisa estar definida ANTES do `npm run build` do ambiente em questão —
- * definir depois e só reiniciar não muda nada.
- *
- * Para religar um módulo: tire o nome da variável em produção e rebuilde.
- * Nenhum código precisa ser alterado.
- *
- * Exemplo no .env de produção:
- *   NEXT_PUBLIC_MODULOS_DESABILITADOS=financeiro,inventario,projetos,horas-apontamentos
+ * Sessão salva antes dessa versão não tem a lista até o próximo /auth/me;
+ * nesse intervalo vale a variável antiga NEXT_PUBLIC_MODULOS_DESABILITADOS
+ * (resolvida no build), para nenhum módulo em construção piscar no menu.
  */
 
+export const MODULO_DASHBOARD = "dashboard";
+export const MODULO_TICKETS = "tickets";
+export const MODULO_PRE_TICKETS = "pre-tickets";
+export const MODULO_MONITORAMENTO = "monitoramento";
+export const MODULO_AGENDAS = "agendas";
+export const MODULO_MURAL = "mural";
+export const MODULO_OPORTUNIDADES = "oportunidades";
 export const MODULO_FINANCEIRO = "financeiro";
+export const MODULO_GMUD = "gmud";
+export const MODULO_RELATORIOS = "relatorios";
+export const MODULO_APONTAMENTOS = "apontamentos";
+/** Bloco de somatório de horas no topo do calendário de Apontamentos. */
+export const MODULO_HORAS_APONTAMENTOS = "apontamentos-horas";
 export const MODULO_INVENTARIO = "inventario";
 export const MODULO_PROJETOS = "projetos";
-/** Bloco de somatório de horas no topo do calendário de Apontamentos. */
-export const MODULO_HORAS_APONTAMENTOS = "horas-apontamentos";
+export const MODULO_APLICATIVOS = "aplicativos";
 
 function normalizar(valor: string): string {
-  return valor.trim().toLowerCase();
+  const v = valor.trim().toLowerCase();
+  // Nome antigo usado na variável de ambiente.
+  return v === "horas-apontamentos" ? MODULO_HORAS_APONTAMENTOS : v;
 }
 
-const desabilitados = new Set(
+const daVariavel = new Set(
   (process.env.NEXT_PUBLIC_MODULOS_DESABILITADOS ?? "")
     .split(",")
     .map(normalizar)
@@ -35,5 +43,9 @@ const desabilitados = new Set(
 );
 
 export function moduloDesabilitado(nome: string): boolean {
-  return desabilitados.has(normalizar(nome));
+  const user = getStoredUser();
+  if (user?.role === "ADMIN") return false;
+  const lista = user?.modulosDesligados;
+  if (Array.isArray(lista)) return lista.includes(normalizar(nome));
+  return daVariavel.has(normalizar(nome));
 }

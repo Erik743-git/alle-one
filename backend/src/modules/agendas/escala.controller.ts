@@ -18,6 +18,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { EscalaExcecaoDto, EscalaRegraDto } from './escala.dto';
 import { EscalaService } from './escala.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = { user: AuthenticatedRequestUser };
 
@@ -30,6 +31,7 @@ type AuthenticatedRequest = { user: AuthenticatedRequestUser };
  * Barrado por papel, não por módulo de permissão, como Plantão e Mural:
  * colaborador não tem linha na matriz para módulo novo.
  */
+@ModuloPortal('agendas')
 @Controller('agendas/escala')
 @UseGuards(RolesGuard)
 export class EscalaController {

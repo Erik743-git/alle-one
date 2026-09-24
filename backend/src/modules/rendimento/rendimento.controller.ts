@@ -40,11 +40,13 @@ import {
 import { AuditMeta } from '../audit/audit.decorator';
 import { RendimentoCompanyService } from './rendimento-company.service';
 import { RendimentoService } from './rendimento.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
 @ApiTags('Rendimento')
 @ApiBearerAuth()
+@ModuloPortal('apontamentos')
 @Controller('rendimento')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 @Roles('ADMIN', 'COLLABORATOR', 'CLIENT')

@@ -39,6 +39,7 @@ import {
 } from './oportunidades.dto';
 import { OportunidadesConversaoService } from './oportunidades-conversao.service';
 import { OportunidadesService } from './oportunidades.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type Req = { user: AuthenticatedRequestUser };
 const MAX_ARQUIVOS = 10;
@@ -48,6 +49,7 @@ const MAX_ARQUIVOS = 10;
  * Quem administra (comercial ou admin) é conferido no serviço, porque
  * depende da mesa da pessoa, não só do papel.
  */
+@ModuloPortal('oportunidades')
 @Controller('oportunidades')
 @UseGuards(RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)

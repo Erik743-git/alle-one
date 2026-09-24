@@ -63,12 +63,14 @@ import {
   UpdateTicketListPresetDto,
 } from './ticket-list-presets.dto';
 import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 /** Cliente sempre aponta em hora normal. */
 const CLIENT_APPOINTMENT_SERVICE_NAME = 'HORA NORMAL';
 
 @ApiTags('Tickets')
 @ApiBearerAuth()
+@ModuloPortal('tickets')
 @Controller('tickets')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class TicketsController {

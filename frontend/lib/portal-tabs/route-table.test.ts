@@ -2,7 +2,11 @@ import { readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { PORTAL_TAB_ROUTES, matchPortalRoute } from "./route-table";
+import {
+  PORTAL_TAB_ROUTES,
+  matchPortalRoute,
+  moduloDaRota,
+} from "./route-table";
 
 describe("matchPortalRoute", () => {
   it.each([
@@ -68,5 +72,21 @@ describe("matchPortalRoute", () => {
     walk(appDir);
     const autenticadas = rotas.filter((rota) => !publicas.has(rota)).sort();
     expect([...PORTAL_TAB_ROUTES].sort()).toEqual(autenticadas);
+  });
+});
+
+describe("moduloDaRota", () => {
+  it.each([
+    ["/tickets/pre-tickets/abc", "pre-tickets"],
+    ["/tickets/81247", "tickets"],
+    ["/ticketsx", null],
+    ["/plantao", "agendas"],
+    ["/monitoramento?x=1", "monitoramento"],
+    ["/gerador-relatorios", "relatorios"],
+    ["/apontamentos/empresa/1", "apontamentos"],
+    ["/admin/acesso", null],
+    ["/correio", null],
+  ])("%s → %s", (path, esperado) => {
+    expect(moduloDaRota(path)).toBe(esperado);
   });
 });

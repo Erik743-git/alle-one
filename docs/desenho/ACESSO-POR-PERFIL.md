@@ -1,7 +1,7 @@
 # Acesso por perfil — desenho para aprovação
 
-Módulo novo em **Administração**. Respostas do Erik em 25/09. **Nada
-construído ainda.**
+Módulo novo em **Administração**. Respostas do Erik em 25/09. **Construído
+em 24/09 (sandbox)** — ver "Como ficou" no fim.
 
 ## Objetivo
 
@@ -69,3 +69,32 @@ nota baixa, bloqueio de login, sessão).
 SLA, Cobrança e Documentação estão na lista de módulos e não são usados.
 Somem da tela; o valor no banco fica, porque tirar valor de enum no Postgres é
 arriscado e não traz ganho.
+
+## Como ficou (construído)
+
+- **Tabela** `acesso_modulos` (migração `20260925150000_acesso_por_perfil`),
+  semeada com o comportamento de hoje: Financeiro, Inventário, Projetos e o
+  bloco de horas de Apontamentos entram **em construção** (o que a variável
+  de produção já escondia); Relatórios entra desligado para todos (hoje só
+  admin).
+- **API:** guard global depois do JWT lê `@ModuloPortal('chave')` nos
+  controllers e responde 403 "Este módulo não está disponível.". Admin
+  sempre passa. Cache de 30 s, limpo na hora a cada gravação.
+- **Login e /auth/me** mandam `modulosDesligados`; o menu lateral, os botões
+  e as guias leem essa lista. Abrir a URL de um módulo desligado mostra
+  "Este módulo não está disponível." no lugar da tela.
+- **Tela:** Administração → Acesso por perfil (tabela no computador, cartões
+  no celular). Alterações vão para a Auditoria (interceptor de admin).
+- **Travas em código (perfis que não podem ser marcados):**
+  - Pré-tickets, Agendas, Mural e Oportunidades: só Colaborador. A caixa de
+    pré-tickets não tem recorte por mesa e escala/mural listam só CLT;
+    liberar para Terceiro pede ajuste nessas telas antes.
+  - Relatórios: só Colaborador (terceiro veria todas as empresas; para
+    cliente as rotas precisam de revisão de recorte). Além da tabela, o
+    colaborador precisa da permissão REPORTS em Usuários. A trava fixa
+    "só admin" no guard de permissão saiu.
+- `NEXT_PUBLIC_MODULOS_DESABILITADOS` só vale como reserva para sessão
+  antiga até o próximo /auth/me; pode ser removida do .env depois do deploy.
+- **Diferença para o admin:** antes, a variável escondia Financeiro etc. até
+  do admin; agora o admin vê os módulos em construção (é o objetivo).
+- Não feito: `ROLE_FALLBACK` (padrão de usuário novo) continua em código.

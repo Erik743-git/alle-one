@@ -22,6 +22,7 @@ import {
   UpdateMuralNoteDto,
 } from './mural.dto';
 import { MuralService } from './mural.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = { user: AuthenticatedRequestUser };
 
@@ -33,6 +34,7 @@ type AuthenticatedRequest = { user: AuthenticatedRequestUser };
  * de módulo nega quem não tem linha. Aqui entra só a equipe interna; nenhum
  * perfil de cliente alcança estas rotas.
  */
+@ModuloPortal('mural')
 @Controller('mural')
 @UseGuards(RolesGuard)
 @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)

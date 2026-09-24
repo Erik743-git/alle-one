@@ -42,6 +42,7 @@ describe('AuthService.loginWithOAuth', () => {
     permissionsService as never,
     presence as never,
     totp as never,
+    { desligadosPara: jest.fn().mockResolvedValue([]) } as never,
   );
 
   beforeEach(() => {

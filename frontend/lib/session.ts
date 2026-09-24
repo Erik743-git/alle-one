@@ -21,6 +21,8 @@ export type AuthUser = {
   companies?: AuthCompanyMembership[];
   /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */
   permissions?: ModulePermission[];
+  /** Administração → Acesso por perfil: chaves que a API bloqueia para este perfil. */
+  modulosDesligados?: string[];
   totpEnabled?: boolean;
   totpAdminMustEnable?: boolean;
   specialtyId?: string | null;

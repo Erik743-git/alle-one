@@ -2006,3 +2006,19 @@ model OportunidadeConfig {
 
   @@map("oportunidade_config")
 }
+
+/// Administração → Acesso por perfil: um registro por módulo do portal.
+/// O catálogo de módulos mora em src/modules/acesso/modulos-portal.ts.
+model AcessoModulo {
+  chave String @id @db.VarChar(60)
+  /// Ligado: só admins enxergam o módulo (menu e API).
+  emConstrucao Boolean @default(false) @map("em_construcao")
+  colaborador   Boolean @default(false)
+  terceiro      Boolean @default(false)
+  clienteGestor Boolean @default(false) @map("cliente_gestor")
+  clienteMembro Boolean @default(false) @map("cliente_membro")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  @@map("acesso_modulos")
+}

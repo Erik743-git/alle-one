@@ -18,6 +18,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { JanelaManutencaoDto } from './escala.dto';
 import { ManutencaoService } from './manutencao.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = { user: AuthenticatedRequestUser };
 
@@ -27,6 +28,7 @@ type AuthenticatedRequest = { user: AuthenticatedRequestUser };
  * Ver: equipe interna (as GMUDs seguem o escopo da tela de GMUD).
  * Cadastrar janela: só ADMIN — e entra na auditoria, como todo POST de admin.
  */
+@ModuloPortal('agendas')
 @Controller('agendas/manutencao')
 @UseGuards(RolesGuard)
 export class ManutencaoController {

@@ -39,6 +39,8 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
 import { RedisModule } from './common/redis/redis.module';
 import { EmailInboundModule } from './modules/email-inbound/email-inbound.module';
 import { PlantaoModule } from './modules/plantao/plantao.module';
+import { AcessoModule } from './modules/acesso/acesso.module';
+import { AcessoModuloGuard } from './modules/acesso/acesso-modulo.guard';
 
 @Module({
   imports: [
@@ -57,6 +59,7 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     PrismaModule,
     PresenceModule,
     AuditModule,
+    AcessoModule,
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -94,6 +97,11 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     {
       provide: APP_GUARD,
       useClass: JwtGlobalAuthGuard,
+    },
+    {
+      // Depois do JWT: módulo desligado em Acesso por perfil → 403.
+      provide: APP_GUARD,
+      useClass: AcessoModuloGuard,
     },
     {
       provide: APP_INTERCEPTOR,

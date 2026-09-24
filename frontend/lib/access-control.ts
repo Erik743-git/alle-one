@@ -10,11 +10,27 @@ import {
 } from "./app-roles";
 import { getStoredUser } from "./session";
 import {
+  MODULO_AGENDAS,
+  MODULO_APLICATIVOS,
+  MODULO_APONTAMENTOS,
+  MODULO_DASHBOARD,
   MODULO_FINANCEIRO,
+  MODULO_GMUD,
   MODULO_INVENTARIO,
+  MODULO_MONITORAMENTO,
+  MODULO_MURAL,
+  MODULO_OPORTUNIDADES,
+  MODULO_PRE_TICKETS,
   MODULO_PROJETOS,
+  MODULO_RELATORIOS,
+  MODULO_TICKETS,
   moduloDesabilitado,
 } from "./modulos-desabilitados";
+
+/*
+ * Todo canAccessX começa por `moduloDesabilitado`: é a tabela de
+ * Administração → Acesso por perfil, a mesma que a API usa para dar 403.
+ */
 
 export type { AppRole };
 
@@ -53,6 +69,7 @@ export function isClientMember() {
  * veria o botão e levaria 403.
  */
 export function canAccessPreTickets() {
+  if (moduloDesabilitado(MODULO_PRE_TICKETS)) return false;
   return isAdmin() || isCollaborator();
 }
 
@@ -150,21 +167,29 @@ export function canAccessFinanceiro() {
 }
 
 export function canAccessGmud() {
+  if (moduloDesabilitado(MODULO_GMUD)) return false;
   return canViewModule("GMUD");
 }
 
+/**
+ * Relatórios: ligado em Acesso por perfil (hoje só pode para colaborador) e
+ * com a permissão da pessoa, como a API confere.
+ */
 export function canAccessRelatorios() {
-  return isAdmin();
+  if (moduloDesabilitado(MODULO_RELATORIOS)) return false;
+  if (isAdmin()) return true;
+  return isCollaborator() && hasPermission("REPORTS", "canView");
 }
 
 export function canAccessDashboard() {
+  if (moduloDesabilitado(MODULO_DASHBOARD)) return false;
   return canViewModule("DASHBOARD");
 }
 
 /** Primeira rota acessível quando o usuário não tem o módulo atual. */
 export function getDefaultAppRoute(): string {
   const candidates: Array<{ ok: boolean; path: string }> = [
-    { ok: canViewModule("DASHBOARD"), path: "/dashboard" },
+    { ok: canAccessDashboard(), path: "/dashboard" },
     { ok: canAccessTickets(), path: "/tickets" },
     { ok: canAccessGmud(), path: "/gmud" },
     { ok: canAccessFinanceiro(), path: "/financeiro" },
@@ -177,6 +202,7 @@ export function getDefaultAppRoute(): string {
 }
 
 export function canAccessRendimento() {
+  if (moduloDesabilitado(MODULO_APONTAMENTOS)) return false;
   if (isClientMember()) return false;
   if (isClient()) {
     return canViewModule("RENDIMENTO");
@@ -186,6 +212,7 @@ export function canAccessRendimento() {
 }
 
 export function canAccessTickets() {
+  if (moduloDesabilitado(MODULO_TICKETS)) return false;
   return canViewModule("TICKETS");
 }
 
@@ -196,6 +223,7 @@ export {
 
 /** Criar ticket: staff com canCreate, ou CLIENT_* com canCreate (pack). */
 export function canCreateTicket() {
+  if (moduloDesabilitado(MODULO_TICKETS)) return false;
   if (isAdmin()) return hasPermission("TICKETS", "canCreate");
   if (isCollaborator() || isPj()) {
     return hasPermission("TICKETS", "canCreate");
@@ -314,6 +342,7 @@ export function canAccessProjetos() {
 }
 
 export function canAccessConsole() {
+  if (moduloDesabilitado(MODULO_MONITORAMENTO)) return false;
   return canViewModule("MONITORING");
 }
 
@@ -326,6 +355,7 @@ export function canAccessConsole() {
  * a escala expõe nome e horário de gente da Alle.
  */
 export function canAccessPlantao() {
+  if (moduloDesabilitado(MODULO_AGENDAS)) return false;
   return isAdmin() || isCollaborator();
 }
 
@@ -334,11 +364,13 @@ export function canAccessPlantao() {
  * quadro (mesa Comercial ou admin) a API informa junto com os cards.
  */
 export function canAccessOportunidades() {
+  if (moduloDesabilitado(MODULO_OPORTUNIDADES)) return false;
   return isAdmin() || isCollaborator();
 }
 
 /** Mural de reconhecimento: mesma regra, só equipe interna. */
 export function canAccessMural() {
+  if (moduloDesabilitado(MODULO_MURAL)) return false;
   return isAdmin() || isCollaborator();
 }
 
@@ -357,6 +389,7 @@ export function canImportProjetos() {
 }
 
 export function canAccessAplicativos() {
+  if (moduloDesabilitado(MODULO_APLICATIVOS)) return false;
   const role = getCurrentRole();
   return isInternalStaffRole(role) || isClientPortalRole(role);
 }
