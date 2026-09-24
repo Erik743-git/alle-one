@@ -17,7 +17,8 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 
 ## Colocar a teste no ar (nada de hoje está lá ainda)
 
-- [ ] Deploy da teste (três migrations novas, todas só criam tabela):
+- [ ] Deploy da teste (**quatro** migrations novas, todas só criam tabela —
+      a quarta é `20260924120000_manutencao_janelas`, da aba Manutenção):
       ```bash
       sudo -u alleone -i env ALLEONE_BRANCH=teste/integracao-20260923 bash /home/alleone/teste/deploy/scripts/pos-deploy-alleone-teste.sh
       ```
@@ -39,7 +40,14 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 ## Decisões em aberto
 
 - [x] **Agendas → Manutenção:** GMUD fora da janela do cliente só **avisa**
-      (decidido em 23/09).
+      (decidido em 23/09). **Construída** em 24/09.
+- [ ] Manutenção — confirmar duas leituras que fiz sem você:
+      1. O **horário da GMUD** são as atividades agendadas (início + duração)
+         e, se houver, a indisponibilidade. GMUD sem atividade nem
+         indisponibilidade não aparece no calendário.
+      2. A GMUD é comparada com **todas** as janelas da empresa, seja a
+         alteração da Alle ou do cliente. Se a ideia era comparar só com as
+         janelas "da Alle", é uma linha para mudar.
 - [ ] Guias: fechar sozinha em **10s** ou **30s** depois de fechar o chamado?
       (Hoje é 10s, e vale também para Resolver, Cancelar e Agrupar.)
 - [ ] Relatório de Rendimento (planilha/PDF): tirar a comunicação de 0 min

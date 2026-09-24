@@ -2,8 +2,10 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
@@ -73,4 +75,55 @@ export class EscalaExcecaoDto {
   @IsString()
   @Length(0, 300)
   motivo?: string | null;
+}
+
+/** Janela de manutenção de um cliente (aba Manutenção). */
+export class JanelaManutencaoDto {
+  @IsUUID()
+  companyId!: string;
+
+  /** true = repete nos dias da semana; false = avulsa, com início e fim. */
+  @IsBoolean()
+  recorrente!: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(7)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(6, { each: true })
+  daysOfWeek?: number[];
+
+  @IsOptional()
+  @Matches(HHMM, { message: 'Início no formato HH:MM.' })
+  startTime?: string | null;
+
+  @IsOptional()
+  @Matches(HHMM, { message: 'Fim no formato HH:MM.' })
+  endTime?: string | null;
+
+  @IsOptional()
+  @Matches(YMD, { message: 'Início da validade como AAAA-MM-DD.' })
+  validFrom?: string | null;
+
+  @IsOptional()
+  @Matches(YMD, { message: 'Fim da validade como AAAA-MM-DD.' })
+  validTo?: string | null;
+
+  /** Avulsa: instante ISO 8601 (com fuso). */
+  @IsOptional()
+  @IsISO8601({ strict: true }, { message: 'Início da janela inválido.' })
+  inicio?: string | null;
+
+  @IsOptional()
+  @IsISO8601({ strict: true }, { message: 'Fim da janela inválido.' })
+  fim?: string | null;
+
+  @IsIn(['ALLE', 'CLIENTE'])
+  responsavel!: 'ALLE' | 'CLIENTE';
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 2000)
+  observacoes?: string | null;
 }

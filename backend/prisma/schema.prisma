@@ -253,6 +253,7 @@ model Company {
   dashboardChartPresets DashboardChartPreset[]
   ticketListPresets     TicketListPreset[]
   ticketSpecialties     CompanyTicketSpecialty[]
+  janelasManutencao     JanelaManutencao[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -1805,4 +1806,47 @@ model EscalaExcecao {
   @@index([date])
   @@index([regraId])
   @@map("escala_excecoes")
+}
+
+/// De quem é a alteração feita na janela.
+enum JanelaManutencaoResponsavel {
+  ALLE
+  CLIENTE
+}
+
+/// Janela de manutenção combinada com o cliente (aba Manutenção de Agendas).
+///
+/// Recorrente (dias da semana + horário, como a Escala) ou avulsa (início e
+/// fim com data). Horários no fuso de Brasília. Serve de referência: GMUD
+/// fora de toda janela da empresa aparece destacada, mas não é bloqueada.
+model JanelaManutencao {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  recorrente Boolean
+  /// Recorrente: 0 = domingo ... 6 = sábado.
+  daysOfWeek Int[]   @map("days_of_week")
+  /// Recorrente: "HH:MM". Fim menor ou igual ao início = cruza a meia-noite.
+  startTime  String? @map("start_time") @db.VarChar(5)
+  endTime    String? @map("end_time") @db.VarChar(5)
+  validFrom  DateTime? @map("valid_from") @db.Date
+  validTo    DateTime? @map("valid_to") @db.Date
+
+  /// Avulsa: início e fim com data.
+  inicio DateTime? @map("inicio")
+  fim    DateTime? @map("fim")
+
+  responsavel JanelaManutencaoResponsavel
+  /// Dicas para quem for mexer ("não reiniciar o ERP antes das 23h").
+  observacoes String? @db.VarChar(2000)
+
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, deletedAt])
+  @@map("manutencao_janelas")
 }

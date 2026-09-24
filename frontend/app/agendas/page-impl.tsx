@@ -5,6 +5,7 @@ import { useState } from "react";
 import { PlantaoOutlook } from "@/app/plantao/page-impl";
 import ProtectedPage from "@/components/auth/protected-page";
 import { EscalaAba } from "@/components/agendas/escala-aba";
+import { ManutencaoAba } from "@/components/agendas/manutencao-aba";
 import AppShell from "@/components/layout/app-shell";
 import { canAccessPlantao } from "@/lib/access-control";
 import { useExigirAcesso } from "@/lib/use-exigir-acesso";
@@ -13,13 +14,14 @@ import { cn } from "@/lib/utils";
 const ABAS = [
   { id: "plantao", rotulo: "Plantão" },
   { id: "escala", rotulo: "Escala" },
+  { id: "manutencao", rotulo: "Manutenção" },
 ] as const;
 type Aba = (typeof ABAS)[number]["id"];
 
 /**
- * Agendas: Plantão (calendários do Outlook, igual a antes) e Escala (quem
- * responde por hora, cadastrada no portal). Manutenção entra como terceira
- * aba quando for feita.
+ * Agendas: Plantão (calendários do Outlook, igual a antes), Escala (quem
+ * responde por hora, cadastrada no portal) e Manutenção (janelas combinadas
+ * com cada cliente, com as GMUDs por cima).
  */
 function AgendasPageImpl() {
   const [aba, setAba] = useState<Aba>("escala");
@@ -54,8 +56,10 @@ function AgendasPageImpl() {
 
           {semAcesso ? null : aba === "plantao" ? (
             <PlantaoOutlook />
-          ) : (
+          ) : aba === "escala" ? (
             <EscalaAba />
+          ) : (
+            <ManutencaoAba />
           )}
         </div>
       </AppShell>
