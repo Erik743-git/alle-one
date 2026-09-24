@@ -364,6 +364,7 @@ export class TicketsController {
       actor,
       ticketNumber,
       body.stageId,
+      { motivoCancelamento: body.cancelReason },
     );
   }
 

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { useConfirm } from "@/lib/confirm";
 import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
@@ -50,6 +51,9 @@ type TicketOptionsMenuProps = {
   clientGestorMode?: boolean;
   onChanged: (patch?: TicketOptionsChange) => Promise<void> | void;
 };
+
+/** Mesmo mínimo da API (ticket-cancelamento.ts no backend). */
+const MOTIVO_CANCELAMENTO_MINIMO = 10;
 
 export type TicketOptionsChange = {
   isClosed?: boolean;
@@ -77,6 +81,8 @@ export function TicketOptionsMenu({
   const [busy, setBusy] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [deskId, setDeskId] = useState("");
   const [deskOptions, setDeskOptions] = useState<
     Array<{ value: string; label: string }>
@@ -164,19 +170,36 @@ export function TicketOptionsMenu({
     );
   }
 
+  /** Cancelar pede motivo (a API também exige); ele vai para o histórico. */
   function handleCancelTicket() {
-    return runLifecycle(
-      "Cancelar Ticket?",
-      "o ticket será marcado como Cancelado e encerrado. Essa ação pode ser desfeita com Reabrir.",
-      "Cancelar Ticket",
-      {
-        isClosed: true,
-        stageName: PORTAL_STAGE.CANCELADO,
-        statusName: PORTAL_STAGE.CANCELADO,
-      },
-      "Ticket cancelado.",
-      "error",
-    );
+    setCancelReason("");
+    setCancelOpen(true);
+  }
+
+  async function confirmCancel() {
+    const motivo = cancelReason.trim();
+    if (motivo.length < MOTIVO_CANCELAMENTO_MINIMO) return;
+    const payload = {
+      isClosed: true,
+      stageName: PORTAL_STAGE.CANCELADO,
+      statusName: PORTAL_STAGE.CANCELADO,
+    };
+    try {
+      setBusy(true);
+      await ticketsService.updateTicket(ticketNumber, {
+        ...payload,
+        cancelReason: motivo,
+      });
+      notifySuccess("Ticket cancelado.");
+      setCancelOpen(false);
+      await onChanged(payload);
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível cancelar o ticket.",
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   function handleReopenTicket() {
@@ -541,6 +564,53 @@ export function TicketOptionsMenu({
             >
               {busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
               Transferir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancelOpen} onOpenChange={(v) => !busy && setCancelOpen(v)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar Ticket #{ticketNumber}?</DialogTitle>
+            <DialogDescription>
+              O ticket será marcado como Cancelado e encerrado. O motivo fica no
+              histórico do chamado. Dá para desfazer com Reabrir.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="motivo-cancelamento">Motivo do cancelamento</Label>
+            <Textarea
+              id="motivo-cancelamento"
+              rows={3}
+              maxLength={1000}
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Ex.: cliente resolveu por conta própria; aberto em duplicidade."
+              aria-describedby="motivo-cancelamento-ajuda"
+            />
+            <p id="motivo-cancelamento-ajuda" className="text-xs text-muted-foreground">
+              {cancelReason.trim().length < MOTIVO_CANCELAMENTO_MINIMO
+                ? `Obrigatório: faltam ${MOTIVO_CANCELAMENTO_MINIMO - cancelReason.trim().length} caracteres.`
+                : "Motivo ok."}
+            </p>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => setCancelOpen(false)}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busy || cancelReason.trim().length < MOTIVO_CANCELAMENTO_MINIMO}
+              onClick={() => void confirmCancel()}
+            >
+              Cancelar Ticket
             </Button>
           </DialogFooter>
         </DialogContent>

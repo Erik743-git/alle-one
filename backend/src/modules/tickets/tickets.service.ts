@@ -54,6 +54,10 @@ import { assertDeskAllowedForCompany } from './company-ticket-specialties.helper
 import { canonicalizeStageName } from './tickets-stage-groups';
 import { PORTAL_STAGE } from './portal-ticket-stages';
 import {
+  ehCancelado,
+  exigirMotivoCancelamento,
+} from './ticket-cancelamento';
+import {
   actorDisplayName,
   recordPortalTicketHistory,
 } from './portal-ticket-history';
@@ -884,6 +888,14 @@ export class TicketsService {
     const stageName = canonicalizeStageName(dto.stageName?.trim()) ?? undefined;
     const statusName =
       canonicalizeStageName(dto.statusName?.trim()) ?? undefined;
+    // Cancelar exige motivo; checado antes de qualquer gravação (TiFlux
+    // inclusive), para não cancelar pela metade.
+    const cancelando =
+      (ehCancelado(stageName) || ehCancelado(statusName)) &&
+      !ehCancelado(portal?.stageName);
+    const motivoCancelamento = cancelando
+      ? exigirMotivoCancelamento(dto.cancelReason)
+      : null;
     const descriptionRaw = dto.description?.trim();
 
     let nextClientExternalId = portal?.clientExternalId ?? null;
@@ -1242,6 +1254,11 @@ export class TicketsService {
         eventType = 'TICKET_CANCELLED';
         summary = 'Chamado cancelado';
       }
+      if (motivoCancelamento) {
+        // Cancelar também fecha; no histórico o que importa é o cancelamento.
+        eventType = 'TICKET_CANCELLED';
+        summary = `Chamado cancelado · motivo: ${motivoCancelamento}`;
+      }
       try {
         await this.prisma.ticketHistory.create({
           data: {
@@ -1255,6 +1272,9 @@ export class TicketsService {
               fromStageName: portal?.stageName ?? null,
               toStageName: resolvedStageName,
               isClosed: nextIsClosed,
+              ...(motivoCancelamento
+                ? { cancelReason: motivoCancelamento }
+                : {}),
             },
             occurredAt: new Date(),
           },

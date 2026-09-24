@@ -401,6 +401,8 @@ export type UpdateTicketPayload = {
   requestorTelephone?: string | null;
   removeAttachmentFileIds?: string[];
   externalGmudRef?: string;
+  /** Obrigatório ao cancelar (mínimo de 10 caracteres). */
+  cancelReason?: string;
 };
 
 export type UpdateTicketResult = {
@@ -574,10 +576,10 @@ export const ticketsService = {
     return apiRequest<TicketStagesResponse>(`/tickets/${ticketNumber}/stages`);
   },
 
-  updateStage(ticketNumber: number, stageId: number) {
+  updateStage(ticketNumber: number, stageId: number, cancelReason?: string) {
     return apiRequest<UpdateTicketStageResult>(`/tickets/${ticketNumber}/stage`, {
       method: "PATCH",
-      body: { stageId },
+      body: cancelReason ? { stageId, cancelReason } : { stageId },
     });
   },
 

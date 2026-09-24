@@ -1,5 +1,6 @@
 "use client";
 
+import { PORTAL_STAGE } from "@/lib/portal-ticket-stages";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { FileText, Loader2, Pencil, Tags, UserRound } from "lucide-react";
@@ -134,11 +135,19 @@ function EditTicketPageImpl() {
 
   const stageOptions = useMemo(
     () =>
-      (stages?.stages ?? []).map((stage) => ({
-        value: String(stage.id),
-        label: stage.firstStage ? `${stage.name} (inicial)` : stage.name,
-      })),
-    [stages],
+      (stages?.stages ?? [])
+        // Cancelar é pelo menu do chamado, que pede o motivo. Aqui só
+        // aparece se já for o estágio atual.
+        .filter(
+          (stage) =>
+            stage.name !== PORTAL_STAGE.CANCELADO ||
+            String(stage.id) === stageId,
+        )
+        .map((stage) => ({
+          value: String(stage.id),
+          label: stage.firstStage ? `${stage.name} (inicial)` : stage.name,
+        })),
+    [stages, stageId],
   );
 
   const responsibleOptions = useMemo(
