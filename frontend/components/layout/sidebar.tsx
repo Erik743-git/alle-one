@@ -24,6 +24,7 @@ import {
   Activity,
   Plus,
   StickyNote,
+  Handshake,
 } from "lucide-react";
 import {
   canAccessAdmin,
@@ -31,6 +32,7 @@ import {
   canAccessConsole,
   canAccessPlantao,
   canAccessMural,
+  canAccessOportunidades,
   canAccessInventario,
   canAccessProjetos,
   canAccessDashboard,
@@ -119,6 +121,12 @@ function buildMenuItems(): MenuItem[] {
       href: "/mural",
       icon: StickyNote,
       visible: canAccessMural(),
+    },
+    {
+      name: "Oportunidades",
+      href: "/oportunidades",
+      icon: Handshake,
+      visible: canAccessOportunidades(),
     },
     {
       name: "Financeiro",

@@ -71,6 +71,16 @@ export class OportunidadesController {
     return this.svc.responsaveisPossiveis(req.user);
   }
 
+  @Get('clientes')
+  clientes(@Req() req: Req) {
+    return this.svc.clientes(req.user);
+  }
+
+  @Get('pessoas')
+  pessoas(@Req() req: Req) {
+    return this.svc.pessoas(req.user);
+  }
+
   @Get('config')
   @Roles(UserRole.ADMIN)
   config() {

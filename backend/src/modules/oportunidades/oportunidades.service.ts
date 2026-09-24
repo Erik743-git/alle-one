@@ -441,6 +441,30 @@ export class OportunidadesService {
     });
   }
 
+  /** Clientes cadastrados, para o filtro e para o campo Cliente. */
+  async clientes(actor: AuthenticatedRequestUser) {
+    await this.exigirGestao(actor);
+    return this.prisma.company.findMany({
+      where: { deletedAt: null, status: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  /** Equipe interna ativa, para trocar o solicitante. */
+  async pessoas(actor: AuthenticatedRequestUser) {
+    await this.exigirGestao(actor);
+    return this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        status: UserStatus.ACTIVE,
+        role: { in: [UserRole.ADMIN, UserRole.COLLABORATOR] },
+      },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   // --- criação ---------------------------------------------------------------
 
   /** Qualquer colaborador registra uma oportunidade pelo portal. */

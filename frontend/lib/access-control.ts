@@ -329,6 +329,14 @@ export function canAccessPlantao() {
   return isAdmin() || isCollaborator();
 }
 
+/**
+ * Oportunidades: só a equipe interna (PJ e cliente não). Quem administra o
+ * quadro (mesa Comercial ou admin) a API informa junto com os cards.
+ */
+export function canAccessOportunidades() {
+  return isAdmin() || isCollaborator();
+}
+
 /** Mural de reconhecimento: mesma regra, só equipe interna. */
 export function canAccessMural() {
   return isAdmin() || isCollaborator();

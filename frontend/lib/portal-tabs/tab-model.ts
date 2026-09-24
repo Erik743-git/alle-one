@@ -333,6 +333,7 @@ const STATIC_TITLES: Record<string, string> = {
   "/tickets/pre-tickets": "Pré-tickets",
   "/console": "Console",
   "/correio": "Correio",
+  "/oportunidades": "Oportunidades",
   "/financeiro": "Financeiro",
   "/gmud": "GMUD",
   "/gmud/new": "Nova GMUD",

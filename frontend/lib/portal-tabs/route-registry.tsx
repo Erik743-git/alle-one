@@ -28,6 +28,7 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     "/monitoramento": lazy(() => import("@/app/monitoramento/page-impl")),
     "/correio": lazy(() => import("@/app/correio/page-impl")),
     "/mural": lazy(() => import("@/app/mural/page-impl")),
+    "/oportunidades": lazy(() => import("@/app/oportunidades/page-impl")),
     "/financeiro": lazy(() => import("@/app/financeiro/page-impl")),
     "/gerador-relatorios": lazy(() => import("@/app/gerador-relatorios/page-impl")),
     "/tickets": lazy(() => import("@/app/tickets/page-impl")),
