@@ -11,6 +11,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { PortalTabsProvider } from "@/components/layout/portal-tabs-provider";
 import { PortalTabHost } from "@/components/layout/portal-tab-host";
 import { PopupSatisfacaoHost } from "@/components/satisfacao/popup-satisfacao";
+import { TarjaAmbiente } from "@/components/layout/tarja-ambiente";
 
 const CHUNK_RELOAD_KEY = "alleone_chunk_reload_once";
 
@@ -34,6 +35,7 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
           <PopupSatisfacaoHost />
           <SessionIdleGuard />
           <ToastHost />
+          <TarjaAmbiente />
           <ServiceWorkerRegister />
           <PwaInstallHint />
         </ConfirmProvider>
