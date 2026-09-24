@@ -34,6 +34,10 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
       `NEXT_PUBLIC_MODULOS_DESABILITADOS` pode sair do .env depois.
 - [ ] NPS: em Administração → Empresas, ligar "Participa do NPS" e escolher
       quem recebe. Nada é enviado até alguém ligar.
+- [ ] Tarja de teste: aparece sozinha se o endereço da teste tiver "teste"
+      no nome; senão, pôr `NEXT_PUBLIC_AMBIENTE=teste` no `.env` do frontend
+      da teste **antes** do build. Na produção, deixar vazia ou `producao`.
+- [ ] Relatório completo desta rodada: `docs/auditoria/RELATORIO-FINAL-20260924.md`.
 - [ ] Nginx: `grep -rn "frame-src" /etc/nginx/`, copiar
       `deploy/nginx-alleone-csp-html.snippet.conf` para lá, `sudo nginx -t`,
       `sudo systemctl reload nginx`. Sem isso o PDF continua bloqueado.
