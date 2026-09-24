@@ -512,6 +512,36 @@ export class OportunidadesService {
     return card;
   }
 
+  /**
+   * Card criado pelo próprio sistema (ex.: contrato passou de 100% das horas).
+   * Nasce em Pendente, sem autor humano, e avisa o comercial como qualquer
+   * card novo.
+   */
+  async criarAutomatica(dados: {
+    titulo: string;
+    descricao: string;
+    tipo: OportunidadeTipo;
+    companyId: string;
+    clienteNome: string;
+    origemDescricao: string;
+  }): Promise<Card> {
+    const criado = await this.prisma.oportunidade.create({
+      data: {
+        titulo: dados.titulo.slice(0, 200),
+        descricao: dados.descricao.trim(),
+        tipo: dados.tipo,
+        origem: 'PORTAL',
+        solicitanteNome: dados.origemDescricao.slice(0, 200),
+        companyId: dados.companyId,
+        clienteNome: dados.clienteNome.slice(0, 200),
+        eventos: { create: { tipo: 'CRIADA', para: 'PENDENTE' } },
+      },
+    });
+    const card = await this.obterSemChecar(criado.id);
+    await this.avisarComercialNova(card);
+    return card;
+  }
+
   // --- alterações --------------------------------------------------------------
 
   async editar(

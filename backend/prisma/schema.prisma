@@ -71,6 +71,7 @@ enum MailboxNotificationKind {
   OPORTUNIDADE_ALERTA
   OPORTUNIDADE_RETORNO
   NPS_DETRATOR
+  CONTRATO_CONSUMO
 }
 
 enum ContractFileType {
@@ -268,6 +269,7 @@ model Company {
   npsConfig             NpsConfigEmpresa?
   npsDestinatarios      NpsDestinatario[]
   npsPesquisas          NpsPesquisa[]
+  contratoAvisos        ContratoAviso[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -2133,4 +2135,25 @@ model FechamentoEvento {
 
   @@index([ciclo, createdAt])
   @@map("fechamento_eventos")
+}
+
+/// Aviso de consumo do contrato já enviado (80% e 100% das horas do mês).
+/// Um por empresa, mês e faixa: a rotina roda de hora em hora sem repetir.
+model ContratoAviso {
+  companyId       String   @map("company_id")
+  /// AAAA-MM (Brasília).
+  mes             String   @db.VarChar(7)
+  /// 80 ou 100.
+  faixa           Int      @db.SmallInt
+  percentual      Decimal  @db.Decimal(6, 1)
+  horasUsadas     Decimal  @map("horas_usadas") @db.Decimal(10, 2)
+  horasContratadas Decimal @map("horas_contratadas") @db.Decimal(10, 2)
+  /// Oportunidade de renovação criada no aviso de 100%.
+  oportunidadeId  String?  @map("oportunidade_id")
+  enviadoEm       DateTime @default(now()) @map("enviado_em")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, mes, faixa])
+  @@map("contrato_avisos")
 }
