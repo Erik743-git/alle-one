@@ -211,6 +211,14 @@ async function main() {
         FROM portal_ticket_appointments p
         WHERE p.tiflux_appointment_external_id = a.external_id
       )
+      -- Número em colisão com chamado nascido no portal: o apontamento é de
+      -- OUTRO chamado (o do TiFlux). Pendurar aqui foi o que pôs o
+      -- apontamento da rotina da Elmeca no #81029 do Yan.
+      AND NOT EXISTS (
+        SELECT 1
+        FROM portal_tickets pt
+        WHERE pt.ticket_number = a.ticket_number AND pt.origin = 'PORTAL'
+      )
     `,
     fallbackUserId,
   );

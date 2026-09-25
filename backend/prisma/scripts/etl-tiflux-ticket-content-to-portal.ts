@@ -205,6 +205,21 @@ async function importTicketContent(params: {
   refresh: boolean;
 }): Promise<{ descriptionImported: boolean; filesImported: number }> {
   const ticketNumber = Number(params.row.ticket_number);
+
+  // Chamado nascido no portal com o mesmo número de um do TiFlux: o conteúdo
+  // do espelho é de OUTRO chamado. Com --refresh, trocaria a descrição que
+  // a pessoa escreveu pela do TiFlux.
+  const doPortal = await prisma.portalTicket.findFirst({
+    where: { ticketNumber, origin: 'PORTAL' },
+    select: { ticketNumber: true },
+  });
+  if (doPortal) {
+    console.warn(
+      `Ticket ${ticketNumber}: nasceu no portal, conteúdo do TiFlux não aplicado (colisão de número).`,
+    );
+    return { descriptionImported: false, filesImported: 0 };
+  }
+
   const description =
     params.row.description?.trim() ||
     params.row.raw_description?.trim() ||

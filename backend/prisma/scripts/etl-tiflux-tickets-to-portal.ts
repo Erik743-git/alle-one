@@ -8,6 +8,12 @@
  *   npx ts-node prisma/scripts/etl-tiflux-tickets-to-portal.ts --dry-run
  *
  * Seguro com alleone-tiflux-sync ainda rodando: ON CONFLICT atualiza o espelho portal.
+ *
+ * NUNCA sobrescreve chamado que nasceu no portal (origin = PORTAL). Portal e
+ * TiFlux numeraram chamado em paralelo de 01 a 15/09/2026 e os contadores se
+ * cruzaram; na migração final este ETL gravou a rotina do TiFlux por cima do
+ * chamado do portal com o mesmo número (#81029 e outros 8). Número em colisão
+ * agora é pulado e listado no fim, para ganhar número novo à mão.
  */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
@@ -104,6 +110,7 @@ async function main() {
         is_closed = EXCLUDED.is_closed,
         updated_at_source = EXCLUDED.updated_at_source,
         updated_at = NOW()
+      WHERE portal_tickets.origin = 'TIFLUX'
     `
     : `
       INSERT INTO portal_tickets (
@@ -162,12 +169,35 @@ async function main() {
         is_closed = EXCLUDED.is_closed,
         updated_at_source = EXCLUDED.updated_at_source,
         updated_at = NOW()
+      WHERE portal_tickets.origin = 'TIFLUX'
     `;
 
   if (limit) {
     await prisma.$executeRawUnsafe(sql, limit);
   } else {
     await prisma.$executeRawUnsafe(sql);
+  }
+
+  // Números do TiFlux que batem com chamado nascido no portal: o DO UPDATE
+  // acima pulou esses de propósito. Listados para ninguém achar que foram
+  // importados — cada um precisa de conferência (mesmo chamado nos dois lados,
+  // ou colisão que pede número novo).
+  const colisoes = await prisma.$queryRawUnsafe<
+    Array<{ ticket_number: number; title: string | null }>
+  >(`
+    SELECT x.ticket_number, x.title
+    FROM tiflux.tickets x
+    JOIN portal_tickets p
+      ON p.ticket_number = x.ticket_number AND p.origin = 'PORTAL'
+    ORDER BY x.ticket_number
+  `);
+  if (colisoes.length > 0) {
+    console.warn(
+      `ATENÇÃO: ${colisoes.length} número(s) do TiFlux já usados por chamado do portal — não sobrescritos:`,
+    );
+    for (const c of colisoes) {
+      console.warn(`  #${c.ticket_number} ${c.title ?? ''}`);
+    }
   }
 
   // Unifica labels já gravados (Pending / Em Execução / …) — um comando por statement (Prisma prepared).
