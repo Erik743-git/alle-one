@@ -120,3 +120,54 @@ describe('e-mail de novo responsável', () => {
     expect(extractTicketNumberFromText(`RES: ${enviado.subject}`)).toBeNull();
   });
 });
+
+describe('a tela liga o aviso; o resto fica calado', () => {
+  // A regra só funciona se quem chama ligar. Estes testes seguram a ponta da
+  // tela: se alguém tirar a opção do controller, o aviso para de sair sem
+  // nenhum outro teste perceber.
+  function montarController() {
+    const ticketsService = {
+      createTicket: jest.fn(async (..._args: unknown[]) => ({ ok: true })),
+      updateTicket: jest.fn(async (..._args: unknown[]) => ({ ok: true })),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TicketsController } = require('./tickets.controller');
+    const controller = new TicketsController(
+      ticketsService,
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+    );
+    return { controller, ticketsService };
+  }
+
+  const actor = { userId: 'u1', email: 'ana@alletecnologia.com.br' };
+
+  it('abertura pela tela pede o aviso', async () => {
+    const { controller, ticketsService } = montarController();
+    await controller.create(
+      actor,
+      JSON.stringify({
+        title: 'Teste',
+        description: 'Descrição',
+        clientId: 1,
+        deskId: 1,
+        requestorName: 'Cliente',
+        requestorEmail: 'cliente@empresa.com.br',
+      }),
+      [],
+    );
+    const opcoes = ticketsService.createTicket.mock.calls[0][3];
+    expect(opcoes).toEqual({ avisarNovoResponsavel: true });
+  });
+
+  it('edição pela tela pede o aviso', async () => {
+    const { controller, ticketsService } = montarController();
+    await controller.updateTicket(actor, 81825, JSON.stringify({}), []);
+    const opcoes = ticketsService.updateTicket.mock.calls[0][4];
+    expect(opcoes).toEqual({ avisarNovoResponsavel: true });
+  });
+});

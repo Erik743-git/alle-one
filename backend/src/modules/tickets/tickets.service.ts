@@ -453,7 +453,15 @@ export class TicketsService {
     actor: AuthenticatedRequestUser,
     dto: CreateTicketDto,
     files: Express.Multer.File[] = [],
-    options: { createdByOverride?: string } = {},
+    options: {
+      createdByOverride?: string;
+      /**
+       * Desligado por padrão, como no `updateTicket`: só a tela liga. A
+       * rotina automática também abre chamado por aqui, já com
+       * responsável, e não é uma pessoa escolhendo ninguém.
+       */
+      avisarNovoResponsavel?: boolean;
+    } = {},
   ) {
     await assertTicketCreateClientScope(this.tenantScope, actor, dto.clientId);
     // Quem "abriu" o ticket no registro (portal_tickets.created_by). Por padrão é
@@ -781,6 +789,26 @@ export class TicketsService {
             }`,
           ),
         );
+
+      if (
+        responsibleMeta &&
+        deveAvisarNovoResponsavel({
+          ligado: options.avisarNovoResponsavel,
+          // Chamado nasce com responsável: é atribuição. Sem ninguém, é
+          // pré-ticket e não há quem avisar.
+          atribuindo: !isPreTicket,
+          emailNovoResponsavel: responsibleMeta.email,
+          emailAtor: actor.email,
+        })
+      ) {
+        void this.avisarNovoResponsavel({
+          actor,
+          ticketNumber,
+          para: responsibleMeta,
+          title: dto.title.trim(),
+          clientName,
+        });
+      }
 
       return {
         ok: true,
@@ -1597,11 +1625,8 @@ export class TicketsService {
       const email = params.para.email?.trim();
       if (!email) return;
 
-      const quem = await this.prisma.user.findUnique({
-        where: { id: params.actor.userId },
-        select: { name: true },
-      });
-      const actorName = quem?.name?.trim() || params.actor.email;
+      // Mesmo nome que aparece no histórico do chamado.
+      const actorName = await actorDisplayName(this.prisma, params.actor);
 
       await this.emailTemplates.sendTicketResponsibleAssigned({
         to: email,

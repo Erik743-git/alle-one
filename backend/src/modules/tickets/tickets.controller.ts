@@ -275,7 +275,11 @@ export class TicketsController {
       throw new BadRequestException(msg);
     }
 
-    return this.ticketsService.createTicket(actor, dto, files ?? []);
+    // Aberto por uma pessoa: se ela deixar outra como responsável, essa
+    // outra recebe aviso. A rotina automática chama o serviço sem isto.
+    return this.ticketsService.createTicket(actor, dto, files ?? [], {
+      avisarNovoResponsavel: true,
+    });
   }
 
   @Get(':ticketNumber/catalogs/appointment')
