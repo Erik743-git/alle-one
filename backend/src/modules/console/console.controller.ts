@@ -27,11 +27,13 @@ import {
   ConsoleHostsQueryDto,
 } from './console.dto';
 import { ConsoleService } from './console.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
 @ApiTags('Console')
 @ApiBearerAuth()
+@ModuloPortal('monitoramento')
 @Controller('console')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 @Roles('ADMIN', 'COLLABORATOR', 'PJ', 'CLIENT')

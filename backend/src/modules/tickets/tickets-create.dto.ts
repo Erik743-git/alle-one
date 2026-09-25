@@ -195,6 +195,12 @@ export class UpdateTicketDto {
   @Type(() => Boolean)
   isClosed?: boolean;
 
+  /** Obrigatório quando o chamado passa a Cancelado (fica no histórico). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  cancelReason?: string;
+
   /** Troca de cliente (tiflux client id). Só ADMIN no service. */
   @IsOptional()
   @IsInt()

@@ -50,6 +50,10 @@ export function appointmentToInterval(
     return { start, end: start + duration };
   }
 
+  // Início igual ao fim é comunicação (0 min), não registro sem fim: sem
+  // isto cada comunicação caía no "1 minuto" abaixo e somava na folha.
+  if (parseClockToMinutes(endTime) === start) return null;
+
   // Sem fim utilizável: usa o campo `minutes` como último recurso, saneado.
   const fallback = Math.max(0, Math.trunc(Number(minutes) || 0));
   return { start, end: start + (fallback > 0 ? fallback : 1) };

@@ -16,7 +16,15 @@ function prismaFalso() {
   const prisma = {
     escalaRegra: {
       create: jest.fn().mockResolvedValue({ id: 'r1' }),
-      findFirst: jest.fn().mockResolvedValue({ id: 'r1' }),
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'r1',
+        startTime: '22:00',
+        endTime: '06:00',
+        // Todos os dias: os casos daqui não dependem do dia da semana.
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        validFrom: new Date('2026-01-01T12:00:00Z'),
+        validTo: null,
+      }),
       update: jest.fn().mockResolvedValue({}),
     },
     escalaExcecao: {
@@ -107,6 +115,20 @@ describe('EscalaService — exceções', () => {
       substituteUserId: 'u-bia',
     });
     expect(prisma.$transaction).toHaveBeenCalledWith(['apagar', 'criar']);
+  });
+
+  it('recorte fora do turno é recusado e não apaga a exceção do dia', async () => {
+    const prisma = prismaFalso();
+    await expect(
+      servico(prisma).registrarExcecao('admin', {
+        ...base,
+        tipo: 'TROCA',
+        substituteUserId: 'u-bia',
+        startTime: '10:00',
+        endTime: '12:00',
+      }),
+    ).rejects.toThrow(/dentro do turno/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('folga ignora substituto que venha junto', async () => {

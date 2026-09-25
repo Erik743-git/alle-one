@@ -21,6 +21,12 @@ export type AuthUser = {
   companies?: AuthCompanyMembership[];
   /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */
   permissions?: ModulePermission[];
+  /** Administração → Acesso por perfil: chaves que a API bloqueia para este perfil. */
+  modulosDesligados?: string[];
+  /** Módulos em construção: no menu do admin começam escondidos. */
+  modulosEmConstrucao?: string[];
+  /** Personalizar menu: ordem e itens escondidos (null = padrão). */
+  preferenciaMenu?: { ordem: string[]; visivel: Record<string, boolean> } | null;
   totpEnabled?: boolean;
   totpAdminMustEnable?: boolean;
   specialtyId?: string | null;

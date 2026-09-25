@@ -29,6 +29,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { RendimentoModule } from './modules/rendimento/rendimento.module';
 import { MuralModule } from './modules/mural/mural.module';
 import { AgendasModule } from './modules/agendas/agendas.module';
+import { OportunidadesModule } from './modules/oportunidades/oportunidades.module';
 import { MailboxModule } from './modules/mailbox/mailbox.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { ProjetosModule } from './modules/projetos/projetos.module';
@@ -38,6 +39,12 @@ import { IntegrationsHealthJob } from './integrations/integrations-health.job';
 import { RedisModule } from './common/redis/redis.module';
 import { EmailInboundModule } from './modules/email-inbound/email-inbound.module';
 import { PlantaoModule } from './modules/plantao/plantao.module';
+import { AcessoModule } from './modules/acesso/acesso.module';
+import { NpsModule } from './modules/nps/nps.module';
+import { FechamentoModule } from './modules/fechamento/fechamento.module';
+import { CargaModule } from './modules/carga/carga.module';
+import { ContratoAvisoModule } from './modules/contrato-aviso/contrato-aviso.module';
+import { AcessoModuloGuard } from './modules/acesso/acesso-modulo.guard';
 
 @Module({
   imports: [
@@ -56,6 +63,7 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     PrismaModule,
     PresenceModule,
     AuditModule,
+    AcessoModule,
     AuthModule,
     UsersModule,
     CompaniesModule,
@@ -73,6 +81,7 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     RendimentoModule,
     MuralModule,
     AgendasModule,
+    OportunidadesModule,
     MailboxModule,
     InventarioModule,
     ProjetosModule,
@@ -80,6 +89,10 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     TicketsModule,
     EmailInboundModule,
     PlantaoModule,
+    NpsModule,
+    FechamentoModule,
+    CargaModule,
+    ContratoAvisoModule,
   ],
   controllers: [AppController],
   providers: [
@@ -92,6 +105,11 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
     {
       provide: APP_GUARD,
       useClass: JwtGlobalAuthGuard,
+    },
+    {
+      // Depois do JWT: módulo desligado em Acesso por perfil → 403.
+      provide: APP_GUARD,
+      useClass: AcessoModuloGuard,
     },
     {
       provide: APP_INTERCEPTOR,

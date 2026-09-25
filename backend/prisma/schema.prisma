@@ -66,6 +66,12 @@ enum MailboxNotificationKind {
   INVENTORY_EXPIRY
   TIFLUX_SYNC_STALE
   MURAL_NOTE_RECEIVED
+  OPORTUNIDADE_NOVA
+  OPORTUNIDADE_ESTAGIO
+  OPORTUNIDADE_ALERTA
+  OPORTUNIDADE_RETORNO
+  NPS_DETRATOR
+  CONTRATO_CONSUMO
 }
 
 enum ContractFileType {
@@ -176,6 +182,12 @@ model User {
   muralReactions                    MuralNoteReaction[]
   muralVisit                        MuralVisit?
   escalaRegras                      EscalaRegra[]                    @relation("EscalaRegraPessoa")
+  oportunidadesSolicitadas          Oportunidade[]                   @relation("OportunidadeSolicitante")
+  oportunidadesResponsavel          Oportunidade[]                   @relation("OportunidadeResponsavel")
+  npsDestinatarios                  NpsDestinatario[]
+  npsPesquisas                      NpsPesquisa[]
+  popupSatisfacao                   PopupSatisfacao?
+  preferenciaMenu                   PreferenciaMenu?
   escalaSubstituicoes               EscalaExcecao[]                  @relation("EscalaExcecaoSubstituto")
   projectsCreated                   Project[]                        @relation("ProjectCreator")
   projectsCompletionApproved        Project[]                        @relation("ProjectCompletionApprover")
@@ -253,6 +265,12 @@ model Company {
   dashboardChartPresets DashboardChartPreset[]
   ticketListPresets     TicketListPreset[]
   ticketSpecialties     CompanyTicketSpecialty[]
+  janelasManutencao     JanelaManutencao[]
+  oportunidades         Oportunidade[]
+  npsConfig             NpsConfigEmpresa?
+  npsDestinatarios      NpsDestinatario[]
+  npsPesquisas          NpsPesquisa[]
+  contratoAvisos        ContratoAviso[]
 
   @@unique([cnpj])
   @@map("companies")
@@ -574,6 +592,7 @@ model File {
   portalTicketAppointmentAttachments PortalTicketAppointmentAttachment[]
   projectDocuments   ProjectDocument[]
   preTicketAttachments             PreTicketAttachment[]
+  oportunidadeAnexos               OportunidadeAnexo[]
   ticketAutoOpenRuleAttachments    TicketAutoOpenRuleAttachment[]
 
   @@index([uploadedBy])
@@ -1805,4 +1824,352 @@ model EscalaExcecao {
   @@index([date])
   @@index([regraId])
   @@map("escala_excecoes")
+}
+
+/// De quem é a alteração feita na janela.
+enum JanelaManutencaoResponsavel {
+  ALLE
+  CLIENTE
+}
+
+/// Janela de manutenção combinada com o cliente (aba Manutenção de Agendas).
+///
+/// Recorrente (dias da semana + horário, como a Escala) ou avulsa (início e
+/// fim com data). Horários no fuso de Brasília. Serve de referência: GMUD
+/// fora de toda janela da empresa aparece destacada, mas não é bloqueada.
+model JanelaManutencao {
+  id        String @id @default(uuid())
+  companyId String @map("company_id")
+
+  recorrente Boolean
+  /// Recorrente: 0 = domingo ... 6 = sábado.
+  daysOfWeek Int[]   @map("days_of_week")
+  /// Recorrente: "HH:MM". Fim menor ou igual ao início = cruza a meia-noite.
+  startTime  String? @map("start_time") @db.VarChar(5)
+  endTime    String? @map("end_time") @db.VarChar(5)
+  validFrom  DateTime? @map("valid_from") @db.Date
+  validTo    DateTime? @map("valid_to") @db.Date
+
+  /// Avulsa: início e fim com data.
+  inicio DateTime? @map("inicio")
+  fim    DateTime? @map("fim")
+
+  responsavel JanelaManutencaoResponsavel
+  /// Dicas para quem for mexer ("não reiniciar o ERP antes das 23h").
+  observacoes String? @db.VarChar(2000)
+
+  createdBy String    @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, deletedAt])
+  @@map("manutencao_janelas")
+}
+
+/// Colunas do quadro de oportunidades. FECHADO fica escondido por padrão.
+enum OportunidadeEstagio {
+  PENDENTE
+  EM_ANALISE
+  PROPOSTA
+  AGUARDO_CLIENTE
+  APROVADO
+  REPROVADO
+  FECHADO
+}
+
+enum OportunidadeTipo {
+  PRODUTO
+  CONTRATO
+  SERVICO_AVULSO
+  PROSPECCAO
+}
+
+enum OportunidadeOrigem {
+  EMAIL
+  PORTAL
+}
+
+enum OportunidadeMotivoReprova {
+  PRECO
+  CONCORRENTE
+  DESISTENCIA
+  OUTRO
+}
+
+/// Oportunidade comercial (card do quadro). Ver docs/desenho/OPORTUNIDADES.md.
+model Oportunidade {
+  id        String @id @default(uuid())
+  numero    Int    @unique @default(autoincrement())
+  titulo    String @db.VarChar(200)
+  descricao String @default("")
+
+  estagio OportunidadeEstagio @default(PENDENTE)
+  /// Última coluna antes de FECHADO: é para lá que a reabertura volta.
+  estagioAnterior OportunidadeEstagio? @map("estagio_anterior")
+  /// Quando entrou na coluna atual (2 dias para fechar, 15 dias em pendente).
+  estagioDesde DateTime @default(now()) @map("estagio_desde")
+  /// Qualquer alteração no card (alerta de 1 mês parado).
+  ultimaMovimentacao DateTime @default(now()) @map("ultima_movimentacao")
+
+  tipo   OportunidadeTipo?
+  origem OportunidadeOrigem
+
+  /// Solicitante: usuário do portal quando houver; nome e e-mail sempre.
+  solicitanteUserId String? @map("solicitante_user_id")
+  solicitanteNome   String  @map("solicitante_nome") @db.VarChar(200)
+  solicitanteEmail  String? @map("solicitante_email") @db.VarChar(255)
+
+  /// Cliente cadastrado, ou só o nome ("empresa nova").
+  companyId   String? @map("company_id")
+  clienteNome String? @map("cliente_nome") @db.VarChar(200)
+
+  responsavelUserId String? @map("responsavel_user_id")
+
+  valorEstimado Decimal? @map("valor_estimado") @db.Decimal(14, 2)
+
+  motivoReprova      OportunidadeMotivoReprova? @map("motivo_reprova")
+  motivoReprovaTexto String?                    @map("motivo_reprova_texto") @db.VarChar(500)
+
+  /// Aguardo cliente: quando cobrar o retorno.
+  dataRetorno          DateTime? @map("data_retorno") @db.Date
+  retornoAvisadoEm     DateTime? @map("retorno_avisado_em")
+  /// Último alerta semanal (15 dias pendente / 1 mês parado).
+  alertaEnviadoEm      DateTime? @map("alerta_enviado_em")
+
+  /// E-mail de origem: evita card duplicado e liga as respostas ao card.
+  emailMessageId      String? @unique @map("email_message_id") @db.VarChar(500)
+  emailConversationId String? @map("email_conversation_id") @db.VarChar(500)
+
+  /// Conversão da aprovada em projeto ou chamado.
+  projetoId          String? @map("projeto_id")
+  chamadoNumero      Int?    @map("chamado_numero")
+
+  fechadoEm DateTime? @map("fechado_em")
+  createdBy String?   @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by")
+
+  solicitante User?    @relation("OportunidadeSolicitante", fields: [solicitanteUserId], references: [id], onDelete: SetNull)
+  responsavel User?    @relation("OportunidadeResponsavel", fields: [responsavelUserId], references: [id], onDelete: SetNull)
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  eventos     OportunidadeEvento[]
+  anexos      OportunidadeAnexo[]
+
+  @@index([estagio, deletedAt])
+  @@index([responsavelUserId])
+  @@index([solicitanteUserId])
+  @@index([companyId])
+  @@index([emailConversationId])
+  @@map("oportunidades")
+}
+
+/// Registro interno do que aconteceu com o card (não aparece na tela).
+/// Serve à reabertura, ao ranking de aprovadas e à auditoria.
+model OportunidadeEvento {
+  id             String   @id @default(uuid())
+  oportunidadeId String   @map("oportunidade_id")
+  /// CRIADA, ESTAGIO, RESPONSAVEL, REABERTA, EDITADA, CONVERTIDA, APAGADA.
+  tipo           String   @db.VarChar(20)
+  de             String?  @db.VarChar(200)
+  para           String?  @db.VarChar(200)
+  userId         String?  @map("user_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  oportunidade Oportunidade @relation(fields: [oportunidadeId], references: [id], onDelete: Cascade)
+
+  @@index([oportunidadeId])
+  @@index([tipo, para, createdAt])
+  @@map("oportunidade_eventos")
+}
+
+model OportunidadeAnexo {
+  id             String   @id @default(uuid())
+  oportunidadeId String   @map("oportunidade_id")
+  fileId         String   @map("file_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  oportunidade Oportunidade @relation(fields: [oportunidadeId], references: [id], onDelete: Cascade)
+  file         File         @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([oportunidadeId])
+  @@map("oportunidade_anexos")
+}
+
+/// Configuração da caixa de oportunidades (uma linha só, id "default").
+model OportunidadeConfig {
+  id                   String    @id @default("default")
+  /// Endereço da caixa no Microsoft 365. Vazio = leitura desligada.
+  caixaEmail           String?   @map("caixa_email") @db.VarChar(255)
+  leituraAtiva         Boolean   @default(false) @map("leitura_ativa")
+  /// E-mail de troca de estágio também para solicitante de fora da Alle.
+  avisarSolicitanteExterno Boolean @default(false) @map("avisar_solicitante_externo")
+  /// Só vira card o e-mail que chegou depois que a leitura foi ligada.
+  leituraDesde         DateTime? @map("leitura_desde")
+  deltaLink            String?   @map("delta_link") @db.Text
+  ultimaLeituraEm      DateTime? @map("ultima_leitura_em")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  @@map("oportunidade_config")
+}
+
+/// Administração → Acesso por perfil: um registro por módulo do portal.
+/// O catálogo de módulos mora em src/modules/acesso/modulos-portal.ts.
+model AcessoModulo {
+  chave String @id @db.VarChar(60)
+  /// Ligado: só admins enxergam o módulo (menu e API).
+  emConstrucao Boolean @default(false) @map("em_construcao")
+  colaborador   Boolean @default(false)
+  terceiro      Boolean @default(false)
+  clienteGestor Boolean @default(false) @map("cliente_gestor")
+  clienteMembro Boolean @default(false) @map("cliente_membro")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  @@map("acesso_modulos")
+}
+
+/// NPS por empresa (Administração → Empresas). Desenho: docs/desenho/AVALIACAO-E-NPS.md.
+model NpsConfigEmpresa {
+  companyId      String   @id @map("company_id")
+  ativo          Boolean  @default(false)
+  /// De quantos em quantos meses cada destinatário recebe a pergunta.
+  intervaloMeses Int      @default(3) @map("intervalo_meses") @db.SmallInt
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  updatedBy      String?  @map("updated_by")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("nps_config_empresa")
+}
+
+/// Quem recebe o NPS em cada empresa (escolhido pelo admin).
+model NpsDestinatario {
+  companyId String   @map("company_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, userId])
+  @@index([userId])
+  @@map("nps_destinatarios")
+}
+
+/// Uma pergunta de NPS enviada a uma pessoa. O token do link responde sem login.
+model NpsPesquisa {
+  id            String    @id @default(uuid())
+  token         String    @unique @db.VarChar(64)
+  companyId     String    @map("company_id")
+  userId        String    @map("user_id")
+  email         String    @db.VarChar(255)
+  nome          String?   @db.VarChar(255)
+  enviadaEm     DateTime  @default(now()) @map("enviada_em")
+  respondidaEm  DateTime? @map("respondida_em")
+  /// 0 a 10.
+  nota          Int?      @db.SmallInt
+  comentario    String?   @db.Text
+  /// EMAIL | PORTAL
+  canal         String?   @db.VarChar(20)
+  /// "Agora não" no pop-up: não volta mais no pop-up (o link segue valendo).
+  dispensadaEm  DateTime? @map("dispensada_em")
+  /// Aviso de nota baixa já saiu (sai uma vez só, mesmo se a nota mudar).
+  alertaEm      DateTime? @map("alerta_em")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, respondidaEm])
+  @@index([userId, respondidaEm])
+  @@index([respondidaEm])
+  @@map("nps_pesquisas")
+}
+
+/// Último pop-up de satisfação (NPS ou avaliação) mostrado à pessoa: no máximo um por dia.
+model PopupSatisfacao {
+  userId      String   @id @map("user_id")
+  ultimoEm    DateTime @map("ultimo_em")
+  /// NPS | AVALIACAO
+  ultimoTipo  String   @map("ultimo_tipo") @db.VarChar(20)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("popup_satisfacao")
+}
+
+/// Ciclo de horas (26 → 25) fechado pelo admin em Apontamentos → Fechamento.
+/// Fechado: ninguém cria, edita ou apaga apontamento com data dentro dele.
+model FechamentoCiclo {
+  /// AAAA-MM do mês em que o ciclo termina (dia 25).
+  ciclo     String    @id @db.VarChar(7)
+  inicio    DateTime  @db.Date
+  fim       DateTime  @db.Date
+  fechado   Boolean   @default(true)
+  fechadoEm DateTime  @map("fechado_em")
+  fechadoPor String   @map("fechado_por")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  eventos FechamentoEvento[]
+
+  @@index([inicio, fim])
+  @@map("fechamento_ciclos")
+}
+
+/// Histórico: cada fechar e reabrir, com quem e por quê.
+model FechamentoEvento {
+  id        String   @id @default(uuid())
+  ciclo     String   @db.VarChar(7)
+  /// FECHOU | REABRIU
+  acao      String   @db.VarChar(10)
+  motivo    String?  @db.Text
+  /// Quantos pontos de conferência havia na hora de fechar.
+  pendencias Int?
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  fechamento FechamentoCiclo @relation(fields: [ciclo], references: [ciclo], onDelete: Cascade)
+
+  @@index([ciclo, createdAt])
+  @@map("fechamento_eventos")
+}
+
+/// Aviso de consumo do contrato já enviado (80% e 100% das horas do mês).
+/// Um por empresa, mês e faixa: a rotina roda de hora em hora sem repetir.
+model ContratoAviso {
+  companyId       String   @map("company_id")
+  /// AAAA-MM (Brasília).
+  mes             String   @db.VarChar(7)
+  /// 80 ou 100.
+  faixa           Int      @db.SmallInt
+  percentual      Decimal  @db.Decimal(6, 1)
+  horasUsadas     Decimal  @map("horas_usadas") @db.Decimal(10, 2)
+  horasContratadas Decimal @map("horas_contratadas") @db.Decimal(10, 2)
+  /// Oportunidade de renovação criada no aviso de 100%.
+  oportunidadeId  String?  @map("oportunidade_id")
+  enviadoEm       DateTime @default(now()) @map("enviado_em")
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([companyId, mes, faixa])
+  @@map("contrato_avisos")
+}
+
+/// Menu lateral de cada pessoa: ordem e itens escondidos (Personalizar menu).
+/// Só preferência de tela: não libera nem bloqueia acesso a nada.
+model PreferenciaMenu {
+  userId    String   @id @map("user_id")
+  /// Chaves do menu na ordem escolhida.
+  ordem     Json     @default("[]")
+  /// { chave: true|false } só para o que a pessoa escolheu; o resto segue o padrão.
+  visivel   Json     @default("{}")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preferencias_menu")
 }

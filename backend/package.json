@@ -35,6 +35,9 @@
     "descricoes:recuperar": "ts-node prisma/scripts/recuperar-descricoes-cortadas.ts",
     "descricoes:recuperar:apply": "ts-node prisma/scripts/recuperar-descricoes-cortadas.ts --apply"
   },
+  "prisma": {
+    "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
+  },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
@@ -116,7 +119,7 @@
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
     "transformIgnorePatterns": [
-      "node_modules/(?!jose)"
+      "node_modules/(?!(jose|otplib|@otplib|@scure|@noble)/)"
     ]
   },
   "optionalDependencies": {

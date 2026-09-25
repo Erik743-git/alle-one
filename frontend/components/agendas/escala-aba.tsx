@@ -482,7 +482,7 @@ export function EscalaAba() {
         open={Boolean(regraAberta)}
         onOpenChange={(open) => !open && setRegraAberta(null)}
       >
-        <DialogContent className="font-sans flex max-h-[min(84vh,680px)] max-w-2xl flex-col overflow-hidden p-0">
+        <DialogContent className="font-sans flex max-h-[min(84vh,680px)] sm:max-w-2xl flex-col overflow-hidden p-0">
           <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
             <DialogTitle>
               {regraAberta?.id ? "Editar regra" : "Nova regra de escala"}
@@ -653,7 +653,7 @@ export function EscalaAba() {
 
       {/* --- folga / troca --- */}
       <Dialog open={Boolean(excecao)} onOpenChange={(open) => !open && setExcecao(null)}>
-        <DialogContent className="font-sans flex max-h-[min(84vh,680px)] max-w-xl flex-col overflow-hidden p-0">
+        <DialogContent className="font-sans flex max-h-[min(84vh,680px)] sm:max-w-xl flex-col overflow-hidden p-0">
           <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
             <DialogTitle>Folga ou troca</DialogTitle>
           </DialogHeader>

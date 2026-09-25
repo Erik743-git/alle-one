@@ -45,6 +45,11 @@ describe('AuthService.login', () => {
     permissionsService as never,
     presence as never,
     totp as never,
+    {
+      desligadosPara: jest.fn().mockResolvedValue([]),
+      emConstrucao: jest.fn().mockResolvedValue([]),
+      preferenciaMenu: jest.fn().mockResolvedValue(null),
+    } as never,
   );
 
   const totpEnabledAt = new Date('2026-01-01T00:00:00.000Z');

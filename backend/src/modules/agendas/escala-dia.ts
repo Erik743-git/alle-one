@@ -85,7 +85,10 @@ export function diaDaSemana(ymd: string): number {
   return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
-function regraValeNoDia(regra: EscalaRegraDia, ymd: string): boolean {
+function regraValeNoDia(
+  regra: Pick<EscalaRegraDia, 'daysOfWeek' | 'validFrom' | 'validTo'>,
+  ymd: string,
+): boolean {
   if (ymd < regra.validFrom) return false;
   if (regra.validTo && ymd > regra.validTo) return false;
   return regra.daysOfWeek.includes(diaDaSemana(ymd));
@@ -122,6 +125,37 @@ function recorteNoTurno(
     inicio: Math.max(inicio, turno.inicio),
     fim: Math.min(fim, turno.fim),
   };
+}
+
+/**
+ * Por que a exceção não serve para esta regra, ou null se serve.
+ *
+ * Sem esta checagem uma folga em dia sem turno ficava gravada à toa, e um
+ * recorte fora do turno (10h–12h num turno das 22h) virava uma barra
+ * invertida na tela — além de apagar a exceção boa que já existia no dia.
+ */
+export function problemaNaExcecao(
+  regra: Pick<
+    EscalaRegraDia,
+    'startTime' | 'endTime' | 'daysOfWeek' | 'validFrom' | 'validTo'
+  >,
+  date: string,
+  startTime: string | null,
+  endTime: string | null,
+): string | null {
+  if (!regraValeNoDia(regra, date)) {
+    return 'Nesse dia a regra não tem turno.';
+  }
+  if (!startTime || !endTime) return null;
+  const turno = intervaloDoTurno(regra.startTime, regra.endTime);
+  let inicio = paraMinutos(startTime);
+  let fim = paraMinutos(endTime);
+  if (inicio < turno.inicio) inicio += MINUTOS_DIA;
+  if (fim <= inicio) fim += MINUTOS_DIA;
+  if (inicio < turno.inicio || fim > turno.fim) {
+    return `O recorte precisa ficar dentro do turno (${regra.startTime} às ${regra.endTime}).`;
+  }
+  return null;
 }
 
 /** O que sobra de [a, b) tirando [c, d). Zero, um ou dois pedaços. */

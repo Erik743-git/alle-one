@@ -17,9 +17,11 @@ import type { Response } from 'express';
 import { ReportsService } from './reports.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('Reports')
 @ApiBearerAuth()
+@ModuloPortal('relatorios')
 @Controller('reports')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard)
 export class ReportsController {

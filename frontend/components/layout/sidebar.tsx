@@ -24,13 +24,18 @@ import {
   Activity,
   Plus,
   StickyNote,
+  Handshake,
+  SlidersHorizontal,
 } from "lucide-react";
+import { aplicarPreferenciaMenu } from "@/lib/menu-lateral";
+import { PersonalizarMenuDialog } from "./personalizar-menu-dialog";
 import {
   canAccessAdmin,
   canAccessAplicativos,
   canAccessConsole,
   canAccessPlantao,
   canAccessMural,
+  canAccessOportunidades,
   canAccessInventario,
   canAccessProjetos,
   canAccessDashboard,
@@ -72,6 +77,8 @@ type MenuItem = {
   action?: () => void;
   active?: boolean;
   highlight?: boolean;
+  /** Chave do Personalizar menu. Sem chave = fixo (Novo ticket, Administração). */
+  chave?: string;
 };
 
 /** Recalculado no render — não usar `visible` no topo do módulo (SSR/login). */
@@ -86,78 +93,98 @@ function buildMenuItems(): MenuItem[] {
     },
     {
       name: "Dashboard",
+      chave: "dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
       visible: canAccessDashboard(),
     },
     {
       name: "Tickets",
+      chave: "tickets",
       href: "/tickets",
       icon: Ticket,
       visible: canAccessTickets(),
     },
     {
       name: "Console",
+      chave: "console",
       href: "/console",
       icon: MonitorDot,
       visible: canAccessConsole(),
     },
     {
       name: "Agendas",
+      chave: "agendas",
       href: "/agendas",
       icon: CalendarClock,
       visible: canAccessPlantao(),
     },
     {
       name: "Monitoramento",
+      chave: "monitoramento",
       href: "/monitoramento",
       icon: Activity,
       visible: canAccessConsole(),
     },
     {
       name: "Somos Alle",
+      chave: "mural",
       href: "/mural",
       icon: StickyNote,
       visible: canAccessMural(),
     },
     {
+      name: "Oportunidades",
+      chave: "oportunidades",
+      href: "/oportunidades",
+      icon: Handshake,
+      visible: canAccessOportunidades(),
+    },
+    {
       name: "Financeiro",
+      chave: "financeiro",
       href: "/financeiro",
       icon: DollarSign,
       visible: canAccessFinanceiro(),
     },
     {
       name: "GMUD",
+      chave: "gmud",
       href: "/gmud",
       icon: ClipboardList,
       visible: canAccessGmud(),
     },
     {
       name: "Relatórios",
+      chave: "relatorios",
       href: "/gerador-relatorios",
       icon: FileText,
       visible: canAccessRelatorios(),
     },
     {
       name: "Apontamentos",
+      chave: "apontamentos",
       href: "/apontamentos",
       icon: CalendarRange,
       visible: canAccessRendimento(),
     },
     {
       name: "Inventário",
+      chave: "inventario",
       href: "/inventario",
       icon: Package,
       visible: canAccessInventario(),
     },
     {
       name: "Projetos",
+      chave: "projetos",
       href: "/projetos",
       icon: FolderKanban,
       visible: canAccessProjetos(),
     },
     {
       name: "Aplicativos",
+      chave: "aplicativos",
       icon: Boxes,
       visible: canAccessAplicativos(),
     },
@@ -217,10 +244,17 @@ const SidebarNav = memo(function SidebarNav({
     () => visibleMenu.filter((item) => item.highlight),
     [visibleMenu],
   );
-  const scrollItems = useMemo(
-    () => visibleMenu.filter((item) => !item.highlight),
-    [visibleMenu],
-  );
+  // Personalizar menu: ordem e itens escondidos da pessoa; os fixos (sem
+  // chave, ex.: Administração) vêm depois, sempre visíveis.
+  const scrollItems = useMemo(() => {
+    const personalizados = aplicarPreferenciaMenu(
+      visibleMenu.filter((item): item is MenuItem & { chave: string } => !!item.chave),
+      user?.preferenciaMenu,
+      user?.modulosEmConstrucao ?? [],
+    ).filter((item) => item.visivel);
+    const fixos = visibleMenu.filter((item) => !item.highlight && !item.chave);
+    return [...personalizados, ...fixos];
+  }, [visibleMenu, user]);
 
   const navIconClass = collapsed
     ? "size-[18px] xl:size-5 2xl:size-[22px]"
@@ -429,6 +463,60 @@ const SidebarBrand = memo(function SidebarBrand({
   );
 });
 
+/** Botão "Personalizar menu" (ao lado de Recolher menu; no celular, no rodapé). */
+function PersonalizarMenuBotao({
+  collapsed,
+  comTexto = false,
+}: {
+  collapsed: boolean;
+  comTexto?: boolean;
+}) {
+  const { user } = useAuth();
+  const [aberto, setAberto] = useState(false);
+  const itens = useMemo(
+    () =>
+      aplicarPreferenciaMenu(
+        buildMenuItems().filter(
+          (item): item is MenuItem & { chave: string } => item.visible && !!item.chave,
+        ),
+        user?.preferenciaMenu,
+        user?.modulosEmConstrucao ?? [],
+      ).map((item) => ({
+        chave: item.chave,
+        nome: item.name,
+        icon: item.icon,
+        visivel: item.visivel,
+        emConstrucao: item.emConstrucao,
+      })),
+    // Recalcula ao abrir, com a sessão atual.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, aberto],
+  );
+  if (!itens.length) return null;
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size={comTexto ? "sm" : "icon"}
+        className={cn(
+          "shrink-0 text-sidebar-foreground/80",
+          comTexto ? "w-full justify-start gap-2" : collapsed ? "h-10 w-10 xl:h-11 xl:w-11" : "size-9",
+        )}
+        onClick={() => setAberto(true)}
+        aria-label="Personalizar menu"
+        title="Personalizar menu"
+      >
+        <SlidersHorizontal className="size-4 shrink-0" />
+        {comTexto ? <span className="truncate">Personalizar menu</span> : null}
+      </Button>
+      {aberto ? (
+        <PersonalizarMenuDialog aberto itens={itens} onFechar={() => setAberto(false)} />
+      ) : null}
+    </>
+  );
+}
+
 function DesktopSidebar() {
   const { collapsed, toggleCollapsed, endLayoutAnimation } = useSidebar();
 
@@ -456,10 +544,11 @@ function DesktopSidebar() {
       </div>
       <div
         className={cn(
-          "shrink-0 border-t border-sidebar-border p-2",
-          collapsed ? "flex justify-center" : "px-3",
+          "flex shrink-0 gap-1 border-t border-sidebar-border p-2",
+          collapsed ? "flex-col items-center" : "flex-row-reverse items-center px-3",
         )}
       >
+        <PersonalizarMenuBotao collapsed={collapsed} />
         <Button
           type="button"
           variant="ghost"
@@ -468,7 +557,7 @@ function DesktopSidebar() {
             "overflow-hidden text-sidebar-foreground/80",
             collapsed
               ? "mx-auto h-10 w-10 shrink-0 xl:h-11 xl:w-11"
-              : "w-full justify-start gap-2",
+              : "min-w-0 flex-1 justify-start gap-2",
           )}
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
@@ -506,6 +595,9 @@ function MobileSidebar() {
               collapsed={false}
               onNavigate={() => setMobileOpen(false)}
             />
+          </div>
+          <div className="shrink-0 border-t border-sidebar-border px-3 py-2">
+            <PersonalizarMenuBotao collapsed={false} comTexto />
           </div>
         </div>
       </SheetContent>

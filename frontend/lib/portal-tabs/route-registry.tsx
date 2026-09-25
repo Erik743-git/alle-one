@@ -28,6 +28,7 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     "/monitoramento": lazy(() => import("@/app/monitoramento/page-impl")),
     "/correio": lazy(() => import("@/app/correio/page-impl")),
     "/mural": lazy(() => import("@/app/mural/page-impl")),
+    "/oportunidades": lazy(() => import("@/app/oportunidades/page-impl")),
     "/financeiro": lazy(() => import("@/app/financeiro/page-impl")),
     "/gerador-relatorios": lazy(() => import("@/app/gerador-relatorios/page-impl")),
     "/tickets": lazy(() => import("@/app/tickets/page-impl")),
@@ -54,6 +55,9 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     "/apontamentos/aprovar-justificativas": lazy(
       () => import("@/app/apontamentos/aprovar-justificativas/page-impl"),
     ),
+    "/apontamentos/carga": lazy(
+      () => import("@/app/apontamentos/carga/page-impl"),
+    ),
     "/apontamentos/empresa/[companyId]": lazy(
       () => import("@/app/apontamentos/empresa/[companyId]/page-impl"),
     ),
@@ -79,6 +83,7 @@ export const PORTAL_ROUTE_COMPONENTS: Record<PortalTabRoute, ComponentType> =
     "/admin/satisfacao": lazy(
       () => import("@/app/admin/satisfacao/page-impl"),
     ),
+    "/admin/acesso": lazy(() => import("@/app/admin/acesso/page-impl")),
     "/admin/classificacao": lazy(
       () => import("@/app/admin/classificacao/page-impl"),
     ),

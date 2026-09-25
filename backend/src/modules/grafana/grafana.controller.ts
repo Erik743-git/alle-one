@@ -6,6 +6,7 @@ import { ModulePermissionGuard } from '../auth/guards/module-permission.guard';
 import { RequirePermission } from '../auth/decorators/require-permission.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { GrafanaService } from './grafana.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
 
@@ -16,6 +17,7 @@ type AuthenticatedRequest = Request & { user: AuthenticatedRequestUser };
  * direto no navegador. O token da empresa fica no servidor e serve apenas
  * para perguntar ao Grafana o que aquela organização publicou.
  */
+@ModuloPortal('monitoramento')
 @Controller('grafana')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard)
 export class GrafanaController {

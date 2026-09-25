@@ -26,6 +26,11 @@ import {
   PORTAL_STAGES_ORDER,
 } from './portal-ticket-stages';
 import {
+  ehCancelado,
+  exigirMotivoCancelamento,
+  MOTIVO_CANCELAMENTO_AUTOMACAO,
+} from './ticket-cancelamento';
+import {
   canonicalizeStageName,
   resolveTicketStageGroup,
   TICKET_STAGE_GROUPS,
@@ -2168,7 +2173,12 @@ export class TicketsQueryService {
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
     stageId: number,
-    options?: { skipAutomations?: boolean; systemTransition?: boolean },
+    options?: {
+      skipAutomations?: boolean;
+      systemTransition?: boolean;
+      /** Obrigatório (pessoa) quando o destino é Cancelado. */
+      motivoCancelamento?: string;
+    },
   ) {
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
@@ -2201,6 +2211,18 @@ export class TicketsQueryService {
         'Estágio inválido para a mesa de serviço deste ticket.',
       );
     }
+
+    // Cancelar exige motivo de quem cancela. Automação não tem pessoa: grava
+    // um motivo padrão. Checado antes de gravar no TiFlux ou no portal.
+    const cancelando =
+      ehCancelado(targetStage.name) &&
+      !ehCancelado(ticket.stage_name) &&
+      stagesResponse.currentStageId !== stageId;
+    const motivoCancelamento = !cancelando
+      ? null
+      : options?.skipAutomations
+        ? options.motivoCancelamento?.trim() || MOTIVO_CANCELAMENTO_AUTOMACAO
+        : exigirMotivoCancelamento(options?.motivoCancelamento);
 
     if (stagesResponse.currentStageId === stageId) {
       if (targetStage.lastStage && !ticket.is_closed) {
@@ -2312,10 +2334,16 @@ export class TicketsQueryService {
       await this.prisma.ticketHistory.create({
         data: {
           ticketNumber,
-          eventType: closing ? 'TICKET_CLOSED' : 'STAGE_CHANGED',
-          summary: closing
-            ? `Chamado fechado · estágio "${stageName}"`
-            : `Estágio atualizado de "${ticket.stage_name ?? '—'}" para "${stageName}"`,
+          eventType: motivoCancelamento
+            ? 'TICKET_CANCELLED'
+            : closing
+              ? 'TICKET_CLOSED'
+              : 'STAGE_CHANGED',
+          summary: motivoCancelamento
+            ? `Chamado cancelado · motivo: ${motivoCancelamento}`
+            : closing
+              ? `Chamado fechado · estágio "${stageName}"`
+              : `Estágio atualizado de "${ticket.stage_name ?? '—'}" para "${stageName}"`,
           actorName: actor.email ?? null,
           source: 'PORTAL',
           externalKey: `stage:${ticketNumber}:${stageId}:${Date.now()}`,
@@ -2324,6 +2352,9 @@ export class TicketsQueryService {
             toStageName: stageName,
             stageId,
             isClosed: Boolean(targetStage.lastStage),
+            ...(motivoCancelamento
+              ? { cancelReason: motivoCancelamento }
+              : {}),
           },
           occurredAt: new Date(),
         },

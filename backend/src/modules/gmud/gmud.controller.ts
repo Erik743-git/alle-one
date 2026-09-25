@@ -35,9 +35,11 @@ import {
 } from './dto/gmud.dto';
 import { GmudService } from './gmud.service';
 import type { AuthenticatedRequestUser } from './gmud.types';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('GMUD')
 @ApiBearerAuth()
+@ModuloPortal('gmud')
 @Controller('gmuds')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class GmudController {

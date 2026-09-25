@@ -1,6 +1,7 @@
 import {
   deTurnoEm,
   diaDaSemana,
+  problemaNaExcecao,
   somarDias,
   turnosDoDia,
   type EscalaExcecaoDia,
@@ -201,5 +202,45 @@ describe('turnosDoDia', () => {
 
   it('horário inválido é ignorado em vez de quebrar a tela', () => {
     expect(turnosDoDia(SEG, [regra({ startTime: 'xx' })], [])).toEqual([]);
+  });
+});
+
+describe('problemaNaExcecao', () => {
+  const noturno = regra({
+    startTime: '22:00',
+    endTime: '06:00',
+    daysOfWeek: [1],
+  });
+
+  it('aceita folga ou troca inteira no dia do turno', () => {
+    expect(problemaNaExcecao(noturno, SEG, null, null)).toBeNull();
+  });
+
+  it('recusa exceção em dia que a regra não tem turno', () => {
+    expect(problemaNaExcecao(noturno, TER, null, null)).toMatch(
+      /não tem turno/,
+    );
+  });
+
+  it('aceita recorte na madrugada seguinte do turno noturno', () => {
+    expect(problemaNaExcecao(noturno, SEG, '02:00', '06:00')).toBeNull();
+    expect(problemaNaExcecao(noturno, SEG, '22:00', '06:00')).toBeNull();
+  });
+
+  it('recusa recorte fora do turno', () => {
+    expect(problemaNaExcecao(noturno, SEG, '10:00', '12:00')).toMatch(
+      /dentro do turno \(22:00 às 06:00\)/,
+    );
+    expect(problemaNaExcecao(noturno, SEG, '04:00', '08:00')).not.toBeNull();
+  });
+
+  it('recusa recorte que passa do fim no turno diurno', () => {
+    const tarde = regra({
+      startTime: '14:00',
+      endTime: '20:00',
+      daysOfWeek: [1],
+    });
+    expect(problemaNaExcecao(tarde, SEG, '15:00', '19:00')).toBeNull();
+    expect(problemaNaExcecao(tarde, SEG, '19:00', '21:00')).not.toBeNull();
   });
 });

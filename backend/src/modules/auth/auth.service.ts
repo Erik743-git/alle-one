@@ -26,6 +26,7 @@ import {
   hashPasswordResetCode,
   normalizeResetTokenInput,
 } from './password-reset.helper';
+import { AcessoService } from '../acesso/acesso.service';
 import { TotpService } from './totp.service';
 import {
   createTotpTrustToken,
@@ -74,6 +75,7 @@ export class AuthService {
     private readonly permissionsService: PermissionsService,
     private readonly presence: PresenceService,
     private readonly totp: TotpService,
+    private readonly acesso: AcessoService,
   ) {}
 
   async login(data: LoginDto, opts?: { trustCookie?: string }) {
@@ -355,6 +357,9 @@ export class AuthService {
         companyName: activeName,
         firstAccess: user.firstAccess,
         permissions: requestUser.permissions,
+        modulosDesligados: await this.acesso.desligadosPara(requestUser.role),
+        modulosEmConstrucao: await this.acesso.emConstrucao(),
+        preferenciaMenu: await this.acesso.preferenciaMenu(requestUser.userId),
         companies: requestUser.companies ?? [],
         totpEnabled: Boolean(user.totpEnabledAt),
         specialtyId,
@@ -435,6 +440,9 @@ export class AuthService {
         companyName: activeName,
         firstAccess: user.firstAccess,
         permissions: requestUser.permissions,
+        modulosDesligados: await this.acesso.desligadosPara(requestUser.role),
+        modulosEmConstrucao: await this.acesso.emConstrucao(),
+        preferenciaMenu: await this.acesso.preferenciaMenu(requestUser.userId),
         companies: requestUser.companies ?? [],
         totpEnabled: Boolean(user.totpEnabledAt),
         totpAdminMustEnable: this.totp.adminMustEnable(user),

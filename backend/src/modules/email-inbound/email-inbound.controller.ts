@@ -29,6 +29,8 @@ import {
   OpenPreTicketDto,
   PreTicketsService,
 } from './pre-tickets.service';
+import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 class UpdateEmailTemplateDto {
   @IsOptional()
@@ -125,12 +127,14 @@ export class EmailInboundController {
     return this.emailTemplates.update(key, dto);
   }
 
+  @ModuloPortal('pre-tickets')
   @Get('pre-tickets/count')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   count(@CurrentUser() actor: AuthenticatedRequestUser) {
     return this.preTickets.countPending(actor).then((count) => ({ count }));
   }
 
+  @ModuloPortal('pre-tickets')
   @Get('pre-tickets')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   list(@CurrentUser() actor: AuthenticatedRequestUser, @Query('q') q?: string) {
@@ -145,12 +149,14 @@ export class EmailInboundController {
    * exigem módulo (Usuários ou criar ticket) que nem todo atendente tem —
    * e, como a mesa virou obrigatória, sem a lista ele ficaria travado.
    */
+  @ModuloPortal('pre-tickets')
   @Get('pre-tickets/desks')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   desks() {
     return this.preTickets.listDesks();
   }
 
+  @ModuloPortal('pre-tickets')
   @Get('pre-tickets/:id')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   getOne(
@@ -160,6 +166,7 @@ export class EmailInboundController {
     return this.preTickets.getOne(actor, id);
   }
 
+  @ModuloPortal('pre-tickets')
   @Get('pre-tickets/:id/attachments/:attachmentId')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   async downloadAttachment(
@@ -175,14 +182,18 @@ export class EmailInboundController {
       attachmentId,
       inline === 'true',
     );
-    res?.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
-    res?.setHeader(
-      'Content-Disposition',
-      `${meta.inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(meta.originalName)}"`,
-    );
+    const cabecalhos = cabecalhosDeArquivo({
+      mimeType: meta.mimeType,
+      originalName: meta.originalName,
+      inline: meta.inline,
+    });
+    for (const [nome, valor] of Object.entries(cabecalhos)) {
+      res?.setHeader(nome, valor);
+    }
     return stream;
   }
 
+  @ModuloPortal('pre-tickets')
   @Post('pre-tickets/bulk-delete')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   removeMany(
@@ -192,6 +203,7 @@ export class EmailInboundController {
     return this.preTickets.softDeleteMany(actor, dto.ids);
   }
 
+  @ModuloPortal('pre-tickets')
   @Delete('pre-tickets/:id')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   remove(
@@ -201,6 +213,7 @@ export class EmailInboundController {
     return this.preTickets.softDelete(actor, id);
   }
 
+  @ModuloPortal('pre-tickets')
   @Post('pre-tickets/:id/open')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   open(
@@ -212,6 +225,7 @@ export class EmailInboundController {
   }
 
   /** Reserva o pré-ticket para quem vai atender (evita trabalho duplicado). */
+  @ModuloPortal('pre-tickets')
   @Post('pre-tickets/:id/claim')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   claim(
@@ -221,6 +235,7 @@ export class EmailInboundController {
     return this.preTickets.claim(actor, id);
   }
 
+  @ModuloPortal('pre-tickets')
   @Delete('pre-tickets/:id/claim')
   @Roles(UserRole.ADMIN, UserRole.COLLABORATOR)
   release(

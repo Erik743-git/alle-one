@@ -1,3 +1,5 @@
+import { htmlParaTexto } from '../email-inbound/html-para-texto';
+
 export const APPOINTMENT_DOC_PREFIX = '__ALLEONE_DOC_V1__:';
 
 type StoredTextBlock = { type: 'text'; content: string };
@@ -183,18 +185,22 @@ export function hydrateAppointmentDescriptionImages(
   );
 }
 
+const LOOKS_LIKE_HTML =
+  /<(p|div|br|b|i|u|s|ul|ol|li|h[1-4]|a|span|font|img|strong|em)\b/i;
+
 export function appointmentDescriptionToEmailParts(description: string): {
   html: string;
   text: string;
   inlineImages: AppointmentEmailInlineImage[];
 } {
-  const text = appointmentDescriptionToPlainText(description);
+  const plain = appointmentDescriptionToPlainText(description);
+  // O editor grava HTML: sem converter, a versão texto do e-mail saía com as
+  // tags cruas (<p>, <b>) para quem lê sem HTML. Texto que só tem um "<"
+  // solto ("Olá <cliente>") continua como veio.
+  const text = LOOKS_LIKE_HTML.test(plain) ? htmlParaTexto(plain) : plain;
   if (!description.startsWith(APPOINTMENT_DOC_PREFIX)) {
     const raw = description.trim();
-    const looksLikeHtml =
-      /<(p|div|br|b|i|u|s|ul|ol|li|h[1-4]|a|span|font|img|strong|em)\b/i.test(
-        raw,
-      );
+    const looksLikeHtml = LOOKS_LIKE_HTML.test(raw);
     const html = looksLikeHtml
       ? stripUnsafeHtml(raw)
       : `<p>${escapeHtml(raw)}</p>`;

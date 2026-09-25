@@ -5,7 +5,8 @@ import AppShell from "@/components/layout/app-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useRef } from "react";
+import { useRef, type MutableRefObject } from "react";
+import { NpsEmpresaSecao } from "@/components/satisfacao/nps-empresa-secao";
 import ModalNovaEmpresa from "@/components/modals/modal-nova-empresa";
 import ModalContratosEmpresa from "@/components/modals/modal-contratos-empresa";
 import {
@@ -95,6 +96,7 @@ function EditarEmpresaModal({
   salvando,
   tifluxClients,
   carregandoTiflux,
+  npsSalvarRef,
 }: {
   open: boolean;
   onClose: () => void;
@@ -111,6 +113,7 @@ function EditarEmpresaModal({
   salvando: boolean;
   tifluxClients: TifluxClient[];
   carregandoTiflux: boolean;
+  npsSalvarRef: MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const [logoUploading, setLogoUploading] = useState(false);
   const [logoError, setLogoError] = useState<string | null>(null);
@@ -400,6 +403,12 @@ function EditarEmpresaModal({
               </div>
             </div>
 
+            <NpsEmpresaSecao
+              key={form.id}
+              companyId={form.id}
+              salvarRef={npsSalvarRef}
+            />
+
             <div className="space-y-2 md:col-span-2">
               <label className="font-sans text-sm font-medium tracking-normal text-foreground">
                 Cliente vinculado
@@ -581,6 +590,7 @@ function AdminEmpresasPageImpl() {
   const [empresaParaInativar, setEmpresaParaInativar] =
     useState<EmpresaUI | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const npsSalvarRef = useRef<(() => Promise<void>) | null>(null);
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string>("");
 
@@ -800,6 +810,7 @@ function AdminEmpresasPageImpl() {
         empresaEdicao.id,
         empresaEdicao.ticketSpecialtyIds,
       );
+      await npsSalvarRef.current?.();
 
       setModalEditarEmpresa(false);
       setEmpresaEdicao(null);
@@ -1219,6 +1230,7 @@ function AdminEmpresasPageImpl() {
           salvando={salvandoEdicao}
           tifluxClients={tifluxClients}
           carregandoTiflux={carregandoTiflux}
+          npsSalvarRef={npsSalvarRef}
         />
 
         <InativarEmpresaModal

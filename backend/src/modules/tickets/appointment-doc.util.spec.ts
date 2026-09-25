@@ -32,4 +32,13 @@ describe('appointmentDescriptionToEmailParts', () => {
     expect(parts.text).toContain('Feito');
     expect(parts.text).toContain('[imagem]');
   });
+
+  it('versão texto do e-mail sai sem as tags do editor', () => {
+    const parts = appointmentDescriptionToEmailParts(
+      '<p>Olá Carla, a <b>janela</b> foi confirmada.</p><p>Até sexta.</p>',
+    );
+    expect(parts.text).not.toMatch(/<\/?(p|b)>/);
+    expect(parts.text).toContain('Olá Carla, a janela foi confirmada.');
+    expect(parts.text).toContain('Até sexta.');
+  });
 });

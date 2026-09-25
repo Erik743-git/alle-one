@@ -228,3 +228,43 @@ describe('rendimento-worked-minutes', () => {
     });
   });
 });
+
+describe('comunicação (início = fim) não soma minuto', () => {
+  it('um dia com 1h30 + 30min + uma comunicação dá 120 min, não 121', () => {
+    const r = computeCategorizedMinutes([
+      {
+        appointment_date: '2026-09-23',
+        init_time: '09:00',
+        end_time: '10:30',
+        minutes: 90,
+      },
+      {
+        appointment_date: '2026-09-23',
+        init_time: '14:00',
+        end_time: '14:30',
+        minutes: 30,
+      },
+      {
+        appointment_date: '2026-09-23',
+        init_time: '13:41',
+        end_time: '13:41',
+        minutes: 0,
+      },
+    ]);
+    expect(r.total).toBe(120);
+    expect(r.normal).toBe(120);
+    expect(r.bruto).toBe(120);
+  });
+
+  it('registro sem fim continua contando pelo campo minutes', () => {
+    const r = computeCategorizedMinutes([
+      {
+        appointment_date: '2026-09-23',
+        init_time: '09:00',
+        end_time: null,
+        minutes: 45,
+      },
+    ]);
+    expect(r.total).toBe(45);
+  });
+});

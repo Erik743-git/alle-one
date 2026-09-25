@@ -42,6 +42,12 @@ export class UpdateTicketStageDto {
   @Min(1)
   @Type(() => Number)
   stageId!: number;
+
+  /** Obrigatório quando o estágio escolhido é Cancelado. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  cancelReason?: string;
 }
 
 export class GroupTicketDto {

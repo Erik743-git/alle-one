@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { CalendarDays } from "lucide-react";
+import Link from "next/link";
+import { CalendarDays, Gauge } from "lucide-react";
+import { canAccessCargaEquipe } from "@/lib/access-control";
 
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -414,6 +416,17 @@ function RendimentoAgendaPageImpl() {
               }`}
               backHref={!isPjUser ? "/apontamentos" : undefined}
               backLabel={isAdmin ? "Voltar à lista" : null}
+              actions={
+                // Admin chega pela aba da lista; colaborador liberado, por aqui.
+                !isAdmin && canAccessCargaEquipe() ? (
+                  <Button asChild variant="outline">
+                    <Link href="/apontamentos/carga">
+                      <Gauge className="mr-2 size-4" aria-hidden />
+                      Carga da equipe
+                    </Link>
+                  </Button>
+                ) : undefined
+              }
             />
 
             <RendimentoCalendar

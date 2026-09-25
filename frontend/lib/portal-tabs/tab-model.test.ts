@@ -9,6 +9,7 @@ import {
   closeTab,
   defaultTabTitle,
   duplicateTab,
+  findTabForPath,
   moveTab,
   parseTabs,
   serializeTabs,
@@ -160,6 +161,33 @@ describe("ações da barra", () => {
     s = setTabTitle(s, s.tabs[0].id, "  #81247 - Planalto   Validação ");
     expect(s.tabs[0].title).toBe("#81247 - Planalto Validação");
     expect(setTabTitle(s, s.tabs[0].id, "   ")).toBe(s);
+  });
+});
+
+describe("findTabForPath", () => {
+  it("acha a guia do chamado mesmo quando outra está ativa", () => {
+    let s = go(EMPTY_TABS, "/tickets/10", "k1", 1).state;
+    s = go(s, "/tickets/20", "k2", 2).state;
+    // A pessoa fechou o #10 e, antes da resposta, foi para o #20.
+    expect(activeHref(s)).toBe("/tickets/20");
+    expect(findTabForPath(s, "/tickets/10")?.href).toBe("/tickets/10");
+  });
+
+  it("com duas guias do mesmo chamado prefere a ativa, depois a mais recente", () => {
+    let s = go(EMPTY_TABS, "/tickets/10", "k1", 1).state;
+    s = go(s, "/tickets/10?aba=historico", "k2", 2).state;
+    s = go(s, "/mural", "k3", 3).state;
+    expect(findTabForPath(s, "/tickets/10")?.href).toBe(
+      "/tickets/10?aba=historico",
+    );
+    const first = s.tabs[0];
+    s = activateTab(s, first.id, 4);
+    expect(findTabForPath(s, "/tickets/10")?.id).toBe(first.id);
+  });
+
+  it("sem guia do chamado não devolve nada", () => {
+    const s = go(EMPTY_TABS, "/mural", "k1", 1).state;
+    expect(findTabForPath(s, "/tickets/10")).toBeNull();
   });
 });
 

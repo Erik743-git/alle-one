@@ -215,7 +215,7 @@ export function TicketAppointmentWarningsDialog({
         Mais largo e mais baixo de propósito — o texto cabe na horizontal em
         vez de esticar o modal.
       */}
-      <DialogContent className="font-sans flex max-h-[min(84vh,680px)] max-w-4xl flex-col overflow-hidden border-amber-500/30 bg-card p-0 text-card-foreground">
+      <DialogContent className="font-sans flex max-h-[min(84vh,680px)] sm:max-w-3xl flex-col overflow-hidden border-amber-500/30 bg-card p-0 text-card-foreground">
         <DialogHeader className="shrink-0 space-y-2 border-b border-amber-500/20 bg-amber-500/10 px-6 py-4">
           <div className="flex items-center gap-2 text-amber-800 dark:text-amber-200">
             <AlertTriangle className="size-5 shrink-0" />

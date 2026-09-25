@@ -19,11 +19,13 @@ import {
   ChartPresetQueryDto,
   UpsertDashboardChartPresetDto,
 } from './dto/upsert-chart-preset.dto';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 type AuthenticatedRequest = Request & {
   user: AuthenticatedRequestUser;
 };
 
+@ModuloPortal('dashboard')
 @Controller('dashboard/chart-presets')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard)
 export class DashboardChartPresetsController {

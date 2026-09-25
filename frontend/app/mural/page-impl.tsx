@@ -26,7 +26,8 @@ import {
   type MuralNote,
 } from "@/lib/services/mural.service";
 import { cn } from "@/lib/utils";
-import { isAdmin } from "@/lib/access-control";
+import { canAccessMural, isAdmin } from "@/lib/access-control";
+import { useExigirAcesso } from "@/lib/use-exigir-acesso";
 
 const LIMITE_CARACTERES = 600;
 
@@ -113,9 +114,13 @@ function MuralPageImpl() {
     }
   }, []);
 
+  // Cliente que digita /mural volta para o painel (a API já recusa).
+  const semAcesso = useExigirAcesso(canAccessMural);
+
   useEffect(() => {
+    if (semAcesso) return;
     void carregar();
-  }, [carregar]);
+  }, [carregar, semAcesso]);
 
   // --- arrastar -------------------------------------------------------------
 
@@ -409,7 +414,7 @@ function MuralPageImpl() {
             if (!open) setRascunho(RASCUNHO_VAZIO);
           }}
         >
-          <DialogContent className="font-sans flex max-h-[min(84vh,680px)] max-w-2xl flex-col overflow-hidden p-0">
+          <DialogContent className="font-sans flex max-h-[min(84vh,680px)] sm:max-w-2xl flex-col overflow-hidden p-0">
             <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
               <DialogTitle>Novo bilhete</DialogTitle>
             </DialogHeader>
@@ -537,7 +542,7 @@ function MuralPageImpl() {
             }
           }}
         >
-          <DialogContent className="font-sans flex max-h-[min(84vh,620px)] max-w-xl flex-col overflow-hidden p-0">
+          <DialogContent className="font-sans flex max-h-[min(84vh,620px)] sm:max-w-xl flex-col overflow-hidden p-0">
             <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
               <DialogTitle>
                 {aberto?.mine ? "Seu bilhete" : "Bilhete do mural"}

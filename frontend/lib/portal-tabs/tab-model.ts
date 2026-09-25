@@ -226,6 +226,24 @@ export function scheduleTabClose(
   return withTab(state, id, { closingAt: at });
 }
 
+/**
+ * A guia que mostra `path`: a ativa, se for ela; senão a usada por último.
+ *
+ * Quem fecha um chamado espera a resposta do servidor antes de pedir o
+ * fechamento da guia. Nesse meio tempo a pessoa pode ter trocado de guia, e
+ * fechar "a ativa" levaria embora a guia errada.
+ */
+export function findTabForPath(
+  state: PortalTabsState,
+  path: string,
+): PortalTab | null {
+  const matches = state.tabs.filter((tab) => pathOf(tab.href) === path);
+  if (matches.length === 0) return null;
+  const active = matches.find((tab) => tab.id === state.activeId);
+  if (active) return active;
+  return matches.reduce((a, b) => (b.lastActiveAt > a.lastActiveAt ? b : a));
+}
+
 /** Desiste do fechamento automático (a pessoa voltou a usar a guia). */
 export function cancelTabClose(
   state: PortalTabsState,
@@ -315,17 +333,21 @@ const STATIC_TITLES: Record<string, string> = {
   "/tickets/pre-tickets": "Pré-tickets",
   "/console": "Console",
   "/correio": "Correio",
+  "/oportunidades": "Oportunidades",
   "/financeiro": "Financeiro",
   "/gmud": "GMUD",
   "/gmud/new": "Nova GMUD",
   "/gerador-relatorios": "Relatórios",
   "/apontamentos": "Apontamentos",
   "/apontamentos/aprovar-horas-extras": "Aprovar horas extras",
+  "/apontamentos/carga": "Carga da equipe",
   "/apontamentos/aprovar-justificativas": "Aprovar justificativas",
   "/inventario": "Inventário",
   "/projetos": "Projetos",
   "/admin": "Administração",
   "/admin/auditoria": "Auditoria",
+  "/admin/satisfacao": "Satisfação",
+  "/admin/acesso": "Acesso por perfil",
   "/admin/classificacao": "Classificação",
   "/admin/email": "E-mail",
   "/admin/empresas": "Empresas",

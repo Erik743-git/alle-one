@@ -49,9 +49,11 @@ import {
   UpdateProjectDto,
 } from './projetos.dto';
 import { ProjetosService } from './projetos.service';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('Projetos')
 @ApiBearerAuth()
+@ModuloPortal('projetos')
 @Controller('projetos')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class ProjetosController {

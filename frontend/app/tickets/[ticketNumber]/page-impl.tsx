@@ -429,7 +429,7 @@ function TicketDetailPageImpl() {
       ? `#${ticketNumber}${ticket.title ? ` - ${ticket.title}` : ""}`
       : null,
   );
-  const { scheduleCloseActiveTab } = usePortalTabs();
+  const { scheduleCloseTabOf } = usePortalTabs();
   const externalGmudRef = data?.externalGmudRef;
   const canAddAppointment =
     Boolean(ticket) &&
@@ -454,7 +454,9 @@ function TicketDetailPageImpl() {
     if (patch?.isClosed) {
       // Chamado fechado: a guia se fecha sozinha para agilizar quem fecha
       // varios seguidos. A contagem aparece na guia e o clique nela cancela.
-      scheduleCloseActiveTab();
+      // Fecha a guia deste chamado, nao a ativa: a pessoa pode ter trocado de
+      // guia enquanto o servidor respondia.
+      scheduleCloseTabOf(`/tickets/${ticketNumber}`);
       notifySuccess(
         `Chamado fechado. Esta guia fecha em ${TAB_AUTO_CLOSE_SECONDS}s — clique nela para manter aberta.`,
       );

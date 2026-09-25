@@ -41,9 +41,12 @@ import {
 } from './inventario.dto';
 import { InventarioService } from './inventario.service';
 import { InventarioImportService } from './inventario-import.service';
+import { cabecalhosDeArquivo } from '../../common/http/content-disposition';
+import { ModuloPortal } from '../acesso/modulo-portal.decorator';
 
 @ApiTags('Inventário')
 @ApiBearerAuth()
+@ModuloPortal('inventario')
 @Controller('inventario')
 @UseGuards(JwtAuthGuard, ModulePermissionGuard, RolesGuard)
 export class InventarioController {
@@ -208,11 +211,14 @@ export class InventarioController {
       query.companyId,
       query.inline === 'true',
     );
-    res.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
-    res.setHeader(
-      'Content-Disposition',
-      `${meta.inline ? 'inline' : 'attachment'}; filename="${encodeURIComponent(meta.originalName)}"`,
-    );
+    const cabecalhos = cabecalhosDeArquivo({
+      mimeType: meta.mimeType,
+      originalName: meta.originalName,
+      inline: meta.inline,
+    });
+    for (const [nome, valor] of Object.entries(cabecalhos)) {
+      res.setHeader(nome, valor);
+    }
     return stream;
   }
 }
