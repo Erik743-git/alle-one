@@ -292,13 +292,33 @@ LEFT JOIN users u ON u.id = a.created_by
 WHERE a.tiflux_appointment_external_id IS NULL;
 
 \echo 'CONFERIR A MAO - outras coisas que apontam para o numero antigo:'
-SELECT 'projeto' AS o_que, count(*) FROM projects p JOIN _o o ON p.ticket_number = o.n
-UNION ALL SELECT 'pre-ticket', count(*) FROM pre_tickets p JOIN _o o
-  ON p.ticket_number = o.n OR p.linked_ticket_number = o.n
-UNION ALL SELECT 'pesquisa de satisfacao', count(*) FROM ticket_satisfaction_surveys s
-  JOIN _o o ON s.ticket_number = o.n
-UNION ALL SELECT 'seguidor de outra pessoa', count(*) FROM portal_ticket_watchers w
-  JOIN _o o ON w.ticket_number = o.n;
+-- Cada tabela só é consultada se existir: o script vive na branch da teste,
+-- mas roda também em bancos com esquema mais antigo (em 25/09 produção ainda
+-- não tinha a pesquisa de satisfação, e a conferência abortava tudo).
+DO $$
+DECLARE
+  n int;
+  c int;
+  item record;
+BEGIN
+  SELECT o.n INTO n FROM _o o;
+  FOR item IN
+    SELECT * FROM (VALUES
+      ('projeto', 'projects', 'ticket_number = $1'),
+      ('pre-ticket', 'pre_tickets', 'ticket_number = $1 OR linked_ticket_number = $1'),
+      ('pesquisa de satisfacao', 'ticket_satisfaction_surveys', 'ticket_number = $1'),
+      ('seguidor de outra pessoa', 'portal_ticket_watchers', 'ticket_number = $1')
+    ) AS v(rotulo, tabela, filtro)
+  LOOP
+    IF to_regclass('public.' || item.tabela) IS NULL THEN
+      RAISE NOTICE '%: tabela nao existe neste banco', item.rotulo;
+    ELSE
+      EXECUTE format('SELECT count(*) FROM %I WHERE %s', item.tabela, item.filtro)
+        INTO c USING n;
+      RAISE NOTICE '%: %', item.rotulo, c;
+    END IF;
+  END LOOP;
+END $$;
 
 \echo ''
 \echo 'Terminando com:' :acao
