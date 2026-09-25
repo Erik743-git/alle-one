@@ -115,7 +115,7 @@ function buildMenuItems(): MenuItem[] {
       visible: canAccessConsole(),
     },
     {
-      name: "Mural",
+      name: "Somos Alle",
       href: "/mural",
       icon: StickyNote,
       visible: canAccessMural(),

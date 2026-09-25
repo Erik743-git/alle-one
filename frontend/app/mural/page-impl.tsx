@@ -304,10 +304,11 @@ function MuralPageImpl() {
         <div className="font-sans w-full space-y-4 pb-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-semibold text-foreground">Mural</h1>
+              <h1 className="text-2xl font-semibold text-foreground">Somos Alle</h1>
               <p className="text-sm text-muted-foreground">
-                Recados e agradecimentos entre a equipe. Arraste o seu bilhete
-                para onde quiser; clique no dos outros para ler de perto.
+                Recados, agradecimentos e reconhecimento entre a equipe.
+                Arraste os bilhetes, descubra as mensagens e compartilhe
+                também a sua!
               </p>
             </div>
             <Button type="button" onClick={() => setNovoAberto(true)}>
