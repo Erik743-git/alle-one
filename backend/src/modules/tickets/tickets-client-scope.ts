@@ -140,9 +140,14 @@ export async function resolveClientListFilter(
   };
 }
 
-/** Tickets em que o usuário é responsável, solicitante, criador ou seguidor (CC). */
 /**
- * "Meus tickets" = sou solicitante, responsável ou seguidor.
+ * "Meus tickets" = sou solicitante, responsável ou seguidor — para CLIENTE.
+ *
+ * Para a equipe da Alle (`soResponsavel`), é só "sou o responsável", como a
+ * tela diz. Solicitante e seguidor entraram em 24/08 para o cliente membro
+ * enxergar o que ele mesmo abriu; aplicados à equipe, prendiam na fila de
+ * quem abriu ou segue um chamado que já estava com outra pessoa — o Breno
+ * via o do Otávio e não havia como tirar.
  * NÃO inclui "eu abri" (`createdBy`): tickets de rotina são criados pelo dono da
  * regra de auto-abertura e não devem cair no "Meus tickets" dele.
  */
@@ -152,10 +157,12 @@ export function buildPortalMineOnlyOr(params: {
   /** Fallback quando o espelho portal/TiFlux diverge no ID do responsável. */
   responsibleDisplayName?: string | null;
   watcherTicketNumbers: number[];
+  /** Equipe da Alle: só o responsável conta. */
+  soResponsavel?: boolean;
 }): Prisma.PortalTicketWhereInput[] {
   const email = normalizeEmail(params.actorEmail);
   const mineOr: Prisma.PortalTicketWhereInput[] = [
-    ...(email
+    ...(email && !params.soResponsavel
       ? [
           {
             requestorEmail: {
@@ -183,7 +190,7 @@ export function buildPortalMineOnlyOr(params: {
     });
   }
 
-  if (params.watcherTicketNumbers.length > 0) {
+  if (!params.soResponsavel && params.watcherTicketNumbers.length > 0) {
     mineOr.push({ ticketNumber: { in: params.watcherTicketNumbers } });
   }
 

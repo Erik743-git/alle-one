@@ -389,14 +389,17 @@ export class TicketsQueryService {
     const toDate = query.to?.trim() ? new Date(`${query.to}T23:59:59`) : null;
     const search = query.search?.trim() ?? '';
 
-    const watcherTicketNumbers = mineOnly
-      ? (
-          await this.prisma.portalTicketWatcher.findMany({
-            where: { email: actorEmail },
-            select: { ticketNumber: true },
-          })
-        ).map((w) => w.ticketNumber)
-      : [];
+    // Equipe da Alle: "meus" é só o que está com ela. Ver buildPortalMineOnlyOr.
+    const soResponsavel = !isClientPortalRole(actor.role);
+    const watcherTicketNumbers =
+      mineOnly && !soResponsavel
+        ? (
+            await this.prisma.portalTicketWatcher.findMany({
+              where: { email: actorEmail },
+              select: { ticketNumber: true },
+            })
+          ).map((w) => w.ticketNumber)
+        : [];
 
     const andParts: Prisma.PortalTicketWhereInput[] = [];
     if (withoutResponsible) {
@@ -415,6 +418,7 @@ export class TicketsQueryService {
         responsibleExternalId: responsibleFilter,
         responsibleDisplayName: responsibleName,
         watcherTicketNumbers,
+        soResponsavel,
       });
       andParts.push({ OR: mineOr });
     }
@@ -2323,10 +2327,7 @@ export class TicketsQueryService {
       isClosed: Boolean(targetStage.lastStage),
     });
     if (targetStage.lastStage && !ticket.is_closed) {
-      await this.appointments.notifyTicketClosed(
-        ticketNumber,
-        stageName,
-      );
+      await this.appointments.notifyTicketClosed(ticketNumber, stageName);
     }
 
     try {
@@ -2352,9 +2353,7 @@ export class TicketsQueryService {
             toStageName: stageName,
             stageId,
             isClosed: Boolean(targetStage.lastStage),
-            ...(motivoCancelamento
-              ? { cancelReason: motivoCancelamento }
-              : {}),
+            ...(motivoCancelamento ? { cancelReason: motivoCancelamento } : {}),
           },
           occurredAt: new Date(),
         },

@@ -127,6 +127,44 @@ describe('tickets-client-scope', () => {
   });
 
   describe('buildPortalMineOnlyOr', () => {
+    it('equipe da Alle: só o responsável — nem solicitante, nem seguidor', () => {
+      // O Breno abriu um chamado e pôs o Otávio como responsável; pelo
+      // solicitante, o chamado ficava preso na fila do Breno.
+      const clauses = buildPortalMineOnlyOr({
+        actorEmail: 'breno@alletecnologia.com.br',
+        responsibleExternalId: 999,
+        responsibleDisplayName: 'Breno Wonczewski',
+        watcherTicketNumbers: [10, 20],
+        soResponsavel: true,
+      });
+      expect(clauses).toEqual([
+        { responsibleExternalId: 999 },
+        {
+          responsibleName: { equals: 'Breno Wonczewski', mode: 'insensitive' },
+        },
+      ]);
+    });
+
+    it('cliente continua vendo o que abriu e o que segue', () => {
+      const clauses = buildPortalMineOnlyOr({
+        actorEmail: 'cliente@empresa.com',
+        responsibleExternalId: null,
+        watcherTicketNumbers: [10],
+        soResponsavel: false,
+      });
+      expect(clauses).toEqual(
+        expect.arrayContaining([
+          {
+            requestorEmail: {
+              equals: 'cliente@empresa.com',
+              mode: 'insensitive',
+            },
+          },
+          { ticketNumber: { in: [10] } },
+        ]),
+      );
+    });
+
     it('inclui responsável, solicitante e seguidor — mas NÃO criador', () => {
       const clauses = buildPortalMineOnlyOr({
         actorEmail: 'Cliente@empresa.com',
