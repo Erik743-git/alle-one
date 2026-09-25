@@ -148,7 +148,12 @@ export function PersonalizarMenuDialog({
             );
           })}
         </ul>
-        <DialogFooter className="shrink-0 gap-2 px-5 py-4 sm:justify-between sm:gap-0">
+        {/* bleed=false: o DialogContent daqui é p-0, então não há padding para
+            cancelar — com o padrão a barra descia 16px e o Salvar colava na borda. */}
+        <DialogFooter
+          bleed={false}
+          className="shrink-0 gap-2 px-5 py-4 sm:justify-between sm:gap-0"
+        >
           <Button
             type="button"
             variant="ghost"
