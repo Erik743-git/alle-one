@@ -244,7 +244,7 @@ WHERE t.ticket_number = o.n AND x.ticket_number = o.n;
 -- 9) Nota nos dois, para quem abrir entender o que houve.
 INSERT INTO ticket_history (id, ticket_number, event_type, summary, actor_name,
                             source, external_key, payload, occurred_at, created_at)
-SELECT gen_random_uuid()::text, m.m, 'CHAMADO_SEPARADO',
+SELECT gen_random_uuid(), m.m, 'CHAMADO_SEPARADO',
        'Chamado recuperado: foi aberto por ' || o.dono_nome || ' como #' || o.n ||
        ' e a migração do TiFlux gravou outro chamado por cima do mesmo número. '
        || 'Título, cliente, descrição e apontamentos trazidos para cá.',
@@ -254,7 +254,7 @@ SELECT gen_random_uuid()::text, m.m, 'CHAMADO_SEPARADO',
        now(), now()
 FROM _o o, _m m
 UNION ALL
-SELECT gen_random_uuid()::text, o.n, 'CHAMADO_SEPARADO',
+SELECT gen_random_uuid(), o.n, 'CHAMADO_SEPARADO',
        'Este número também tinha um chamado aberto no portal por ' || o.dono_nome ||
        ', gravado por cima na migração do TiFlux. Ele foi separado para o #' || m.m || '.',
        'Correção de dados', 'PORTAL',
