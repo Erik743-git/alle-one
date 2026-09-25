@@ -17,6 +17,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { primeiraMensagemDeValidacao } from '../../common/validation/traduzir-validacao';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PermissionModule } from '@prisma/client';
@@ -274,11 +275,9 @@ export class TicketsController {
     const dto = plainToInstance(CreateTicketDto, parsed);
     const errors = await validate(dto);
     if (errors.length > 0) {
-      const first = errors[0];
-      const msg =
-        Object.values(first.constraints ?? {})[0] ??
-        'Dados do chamado inválidos.';
-      throw new BadRequestException(msg);
+      throw new BadRequestException(
+        primeiraMensagemDeValidacao(errors, 'Dados do chamado inválidos.'),
+      );
     }
 
     // Aberto por uma pessoa: se ela deixar outra como responsável, essa
@@ -404,11 +403,9 @@ export class TicketsController {
     const dto = plainToInstance(UpdateTicketDto, parsed);
     const errors = await validate(dto);
     if (errors.length > 0) {
-      const first = errors[0];
-      const msg =
-        Object.values(first.constraints ?? {})[0] ??
-        'Dados do ticket inválidos.';
-      throw new BadRequestException(msg);
+      throw new BadRequestException(
+        primeiraMensagemDeValidacao(errors, 'Dados do ticket inválidos.'),
+      );
     }
 
     return this.ticketsService.updateTicket(
@@ -557,11 +554,9 @@ export class TicketsController {
     if (isClient) dto.serviceName = CLIENT_APPOINTMENT_SERVICE_NAME;
     const errors = await validate(dto);
     if (errors.length > 0) {
-      const first = errors[0];
-      const msg =
-        Object.values(first.constraints ?? {})[0] ??
-        'Dados do apontamento inválidos.';
-      throw new BadRequestException(msg);
+      throw new BadRequestException(
+        primeiraMensagemDeValidacao(errors, 'Dados do apontamento inválidos.'),
+      );
     }
 
     const result = await this.appointmentsService.createAppointment(
@@ -686,11 +681,9 @@ export class TicketsController {
     }
     const errors = await validate(dto);
     if (errors.length > 0) {
-      const first = errors[0];
-      const msg =
-        Object.values(first.constraints ?? {})[0] ??
-        'Dados do apontamento inválidos.';
-      throw new BadRequestException(msg);
+      throw new BadRequestException(
+        primeiraMensagemDeValidacao(errors, 'Dados do apontamento inválidos.'),
+      );
     }
 
     return this.appointmentsService.updatePortalAppointment(

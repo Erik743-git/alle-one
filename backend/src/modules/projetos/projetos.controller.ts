@@ -15,6 +15,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { primeiraMensagemDeValidacao } from '../../common/validation/traduzir-validacao';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { PermissionModule } from '@prisma/client';
@@ -119,11 +120,9 @@ export class ProjetosController {
 
     const errors = await validate(dto);
     if (errors.length > 0) {
-      const first = errors[0];
-      const msg =
-        Object.values(first.constraints ?? {})[0] ??
-        'Dados do projeto inválidos.';
-      throw new BadRequestException(msg);
+      throw new BadRequestException(
+        primeiraMensagemDeValidacao(errors, 'Dados do projeto inválidos.'),
+      );
     }
 
     return this.projetos.createProject(

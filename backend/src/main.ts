@@ -1,4 +1,5 @@
-import { ValidationPipe } from '@nestjs/common';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { mensagensDeValidacao } from './common/validation/traduzir-validacao';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
@@ -113,6 +114,10 @@ async function bootstrap() {
       whitelist: true,
       transform: true,
       forbidNonWhitelisted: true,
+      // Mesmo formato da resposta padrão (lista em `message`), só que em
+      // português. Ver traduzir-validacao.ts.
+      exceptionFactory: (erros) =>
+        new BadRequestException(mensagensDeValidacao(erros)),
     }),
   );
 

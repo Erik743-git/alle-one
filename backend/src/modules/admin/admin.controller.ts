@@ -13,6 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import { primeiraMensagemDeValidacao } from '../../common/validation/traduzir-validacao';
 import type { Request } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { plainToInstance } from 'class-transformer';
@@ -432,11 +433,9 @@ export class AdminController {
     const dto = plainToInstance(dtoClass, parsed);
     const errors = await validate(dto);
     if (errors.length > 0) {
-      const first = errors[0];
-      const msg =
-        Object.values(first.constraints ?? {})[0] ??
-        'Dados da regra inválidos.';
-      throw new BadRequestException(msg);
+      throw new BadRequestException(
+        primeiraMensagemDeValidacao(errors, 'Dados da regra inválidos.'),
+      );
     }
     return dto;
   }
