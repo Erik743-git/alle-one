@@ -1064,7 +1064,9 @@ function rewriteRemainingCidsByOrder(
   return out;
 }
 
-function extractTicketNumberFromText(text: string): number | null {
+// Exportada para teste: o aviso de novo responsável prova contra ela que o
+// assunto dele não é lido como resposta de chamado.
+export function extractTicketNumberFromText(text: string): number | null {
   const patterns = [
     /#\s*(\d{1,9})\b/,
     /\bchamado\s*[#:.-]?\s*(\d{1,9})\b/i,

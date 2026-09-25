@@ -40,6 +40,7 @@ import { applyClientTitlePrefix } from './ticket-title.util';
 import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { assertPjAccessToTicketNumber } from './tickets-pj-scope';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
+import { deveAvisarNovoResponsavel } from './ticket-responsavel-aviso';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import {
@@ -831,6 +832,12 @@ export class TicketsService {
     ticketNumber: number,
     dto: UpdateTicketDto,
     files: Express.Multer.File[] = [],
+    /**
+     * Desligado por padrão: só a edição feita pela tela liga. Assim a
+     * automação — e qualquer chamador interno futuro — fica calada a menos
+     * que peça. Ver `deveAvisarNovoResponsavel`.
+     */
+    opcoes: { avisarNovoResponsavel?: boolean } = {},
   ) {
     const portal = await this.prisma.portalTicket.findUnique({
       where: { ticketNumber },
@@ -1001,6 +1008,10 @@ export class TicketsService {
         ? undefined
         : dto.responsibleName?.trim() || null;
 
+    // Guardado para o aviso por e-mail no fim: é aqui que se sabe o e-mail
+    // de quem está virando responsável.
+    let novoResponsavel: { name: string; email: string | null } | null =
+      null;
     if (responsibleId != null) {
       const deskForResponsible =
         dto.deskId != null ? dto.deskId : (portal?.deskExternalId ?? null);
@@ -1019,6 +1030,7 @@ export class TicketsService {
       if (!responsibleName) {
         responsibleName = match.name;
       }
+      novoResponsavel = match;
     }
 
     const isRemovingResponsible =
@@ -1530,6 +1542,26 @@ export class TicketsService {
       }
     }
 
+    if (
+      novoResponsavel &&
+      deveAvisarNovoResponsavel({
+        ligado: opcoes.avisarNovoResponsavel,
+        atribuindo: isAssigningResponsible,
+        emailNovoResponsavel: novoResponsavel.email,
+        emailAtor: actor.email,
+      })
+    ) {
+      // Sem await: o e-mail não segura a resposta da tela, e falha de envio
+      // não desfaz uma troca que já está salva.
+      void this.avisarNovoResponsavel({
+        actor,
+        ticketNumber,
+        para: novoResponsavel,
+        title: resolvedTitle ?? portal?.title ?? null,
+        clientName: nextClientName,
+      });
+    }
+
     return {
       ok: true,
       ticketNumber,
@@ -1548,6 +1580,45 @@ export class TicketsService {
               ? 'Ticket atualizado.'
               : 'Ticket atualizado no portal.',
     };
+  }
+
+  /**
+   * Manda o aviso de "fulano colocou você como responsável". Nunca lança:
+   * roda depois de a troca estar salva, e erro aqui vira só log.
+   */
+  private async avisarNovoResponsavel(params: {
+    actor: AuthenticatedRequestUser;
+    ticketNumber: number;
+    para: { name: string; email: string | null };
+    title: string | null;
+    clientName: string | null;
+  }) {
+    try {
+      const email = params.para.email?.trim();
+      if (!email) return;
+
+      const quem = await this.prisma.user.findUnique({
+        where: { id: params.actor.userId },
+        select: { name: true },
+      });
+      const actorName = quem?.name?.trim() || params.actor.email;
+
+      await this.emailTemplates.sendTicketResponsibleAssigned({
+        to: email,
+        replyTo: params.actor.email ?? null,
+        responsibleName: params.para.name,
+        actorName,
+        ticketNumber: params.ticketNumber,
+        title: params.title,
+        clientName: params.clientName,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Aviso de novo responsável não enviado (#${params.ticketNumber}): ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
   }
 
   async groupIntoParent(

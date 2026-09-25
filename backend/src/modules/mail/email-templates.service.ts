@@ -8,6 +8,7 @@ export const EMAIL_TEMPLATE_KEYS = {
   APPOINTMENT_CLIENT_NOTIFY: 'APPOINTMENT_CLIENT_NOTIFY',
   ROUTINE_TICKET_CLOSED: 'ROUTINE_TICKET_CLOSED',
   TICKET_CLOSED: 'TICKET_CLOSED',
+  TICKET_RESPONSIBLE_ASSIGNED: 'TICKET_RESPONSIBLE_ASSIGNED',
 } as const;
 
 export type EmailTemplateKey =
@@ -72,6 +73,21 @@ const DEFAULTS: Array<{
       '<p>Olá {{requestorName}}.</p><p>O chamado <strong>#{{ticketNumber}} — {{title}}</strong> foi concluído em {{closedAt}}.</p><p>Situação: <strong>{{stageName}}</strong><br/>Atendimento: {{responsibleName}}</p>{{pesquisaHtml}}<p>Se ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.</p><p>Atenciosamente.<br/>Alle Tecnologia.</p>',
     bodyText:
       'Olá {{requestorName}}.\n\nO chamado #{{ticketNumber}} — {{title}} foi concluído em {{closedAt}}.\n\nSituação: {{stageName}}\nAtendimento: {{responsibleName}}\n\n{{pesquisaTexto}}\n\nSe ainda precisar de algo neste chamado, basta responder este e-mail: ele volta para a nossa fila.\n\nAtenciosamente.\nAlle Tecnologia.\n',
+  },
+  {
+    // Aviso interno, para o colaborador. O ASSUNTO não leva "#" nem
+    // "chamado"/"ticket" colado ao número de propósito: é por esses
+    // padrões que a caixa de entrada liga uma resposta a um chamado, e um
+    // "ok, vou ver" do colega viraria comunicação no chamado. A proteção
+    // principal é o replyTo (a resposta vai para quem atribuiu); o
+    // assunto é a segunda trava, caso alguém edite o modelo.
+    key: EMAIL_TEMPLATE_KEYS.TICKET_RESPONSIBLE_ASSIGNED,
+    name: 'Novo responsável pelo chamado',
+    subject: 'Você agora é responsável: {{ticketNumber}} — {{title}}',
+    bodyHtml:
+      '<p>Olá {{responsibleName}}.</p><p><strong>{{actorName}}</strong> colocou você como responsável do chamado <strong>#{{ticketNumber}} — {{title}}</strong>.</p><p>Cliente: {{clientName}}</p><p><a href="{{ticketLink}}">Abrir o chamado no portal</a></p><p style="font-size:12px;color:#64748b">Aviso automático do Alle One. Se responder este e-mail, a resposta vai para {{actorName}}.</p>',
+    bodyText:
+      'Olá {{responsibleName}}.\n\n{{actorName}} colocou você como responsável do chamado #{{ticketNumber}} — {{title}}.\n\nCliente: {{clientName}}\n\nAbrir o chamado: {{ticketLink}}\n\nAviso automático do Alle One. Se responder este e-mail, a resposta vai para {{actorName}}.\n',
   },
 ];
 
@@ -302,6 +318,57 @@ export class EmailTemplatesService {
     } catch (err) {
       this.logger.warn(
         `Falha ao enviar TICKET_CLOSED #${params.ticketNumber}: ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * Avisa o colaborador que outra pessoa o colocou como responsável.
+   *
+   * A resposta vai para quem atribuiu (`replyTo`), nunca para a caixa do
+   * suporte: lá, uma resposta com o número do chamado no assunto vira
+   * comunicação no chamado e pode até reabri-lo.
+   */
+  async sendTicketResponsibleAssigned(params: {
+    to: string;
+    replyTo: string | null;
+    responsibleName: string;
+    actorName: string;
+    ticketNumber: number;
+    title: string | null;
+    clientName: string | null;
+  }) {
+    const to = params.to.trim();
+    if (!to) return false;
+
+    const portalUrl = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
+    const rendered = await this.getRendered(
+      EMAIL_TEMPLATE_KEYS.TICKET_RESPONSIBLE_ASSIGNED,
+      {
+        responsibleName: params.responsibleName,
+        actorName: params.actorName,
+        ticketNumber: params.ticketNumber,
+        title: params.title?.trim() || 'sem título',
+        clientName: params.clientName?.trim() || '—',
+        ticketLink: `${portalUrl}/tickets/${params.ticketNumber}`,
+      },
+    );
+
+    const replyTo = params.replyTo?.trim();
+    try {
+      return await this.mail.sendMail({
+        to,
+        ...(replyTo ? { replyTo } : {}),
+        subject: rendered.subject,
+        text: rendered.text,
+        html: rendered.html,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enviar TICKET_RESPONSIBLE_ASSIGNED #${params.ticketNumber}: ${
           err instanceof Error ? err.message : err
         }`,
       );

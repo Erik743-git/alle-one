@@ -405,6 +405,9 @@ export class TicketsController {
       ticketNumber,
       dto,
       files ?? [],
+      // Edição feita por uma pessoa: quem ela colocar como responsável
+      // recebe aviso. A automação chama o serviço sem isto.
+      { avisarNovoResponsavel: true },
     );
   }
 
