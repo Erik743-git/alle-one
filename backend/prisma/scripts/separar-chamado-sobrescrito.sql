@@ -232,11 +232,18 @@ WHERE h.ticket_number = o.n
   AND lower(coalesce(h.actor_name, '')) IN (lower(o.dono_nome), o.dono_email);
 
 -- 8) O número antigo passa a ser, de fato, o chamado do TiFlux.
+-- O ETL trocou mesa pelo nome e pelo id do TiFlux, mas NÃO o specialty_id
+-- nem a classificação: esses ficaram os do dono. Sem acertar aqui, o chamado
+-- do TiFlux continua preso à mesa do dono (escopo do terceiro, relatórios).
 UPDATE portal_tickets t
 SET origin = 'TIFLUX',
     created_by = NULL,
     created_by_way_of = x.created_by_way_of,
     created_at_source = x.created_at_source,
+    specialty_id = (SELECT s.id FROM specialties s
+                     WHERE s.external_id = t.desk_external_id AND s.deleted_at IS NULL
+                     LIMIT 1),
+    classification_id = NULL,
     updated_at = now()
 FROM tiflux.tickets x, _o o
 WHERE t.ticket_number = o.n AND x.ticket_number = o.n;
