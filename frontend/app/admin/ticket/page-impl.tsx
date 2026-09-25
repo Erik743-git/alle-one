@@ -100,6 +100,7 @@ function ruleMatchesFilters(
   nameQuery: string,
   periodicityFilter: string,
   clientFilter: string,
+  statusFilter: string,
 ): boolean {
   const q = nameQuery.trim().toLowerCase();
   if (q) {
@@ -110,6 +111,8 @@ function ruleMatchesFilters(
   if (clientFilter && String(rule.clientExternalId) !== clientFilter) {
     return false;
   }
+  if (statusFilter === "ativas" && !rule.active) return false;
+  if (statusFilter === "inativas" && rule.active) return false;
   return true;
 }
 
@@ -150,6 +153,7 @@ function AdminTicketPageImpl() {
   const [rulesNameSearch, setRulesNameSearch] = useState("");
   const [rulesPeriodicityFilter, setRulesPeriodicityFilter] = useState("");
   const [rulesClientFilter, setRulesClientFilter] = useState("");
+  const [rulesStatusFilter, setRulesStatusFilter] = useState("");
   const [clientNameById, setClientNameById] = useState<Map<number, string>>(
     () => new Map(),
   );
@@ -243,9 +247,16 @@ function AdminTicketPageImpl() {
           rulesNameSearch,
           rulesPeriodicityFilter,
           rulesClientFilter,
+          rulesStatusFilter,
         ),
       ),
-    [rules, rulesNameSearch, rulesPeriodicityFilter, rulesClientFilter],
+    [
+      rules,
+      rulesNameSearch,
+      rulesPeriodicityFilter,
+      rulesClientFilter,
+      rulesStatusFilter,
+    ],
   );
 
   const clientFilterOptions = useMemo(() => {
@@ -266,7 +277,8 @@ function AdminTicketPageImpl() {
   const hasActiveRuleFilters =
     rulesNameSearch.trim().length > 0 ||
     rulesPeriodicityFilter !== "" ||
-    rulesClientFilter !== "";
+    rulesClientFilter !== "" ||
+    rulesStatusFilter !== "";
 
   const rulesTotalPages = Math.max(
     1,
@@ -287,7 +299,12 @@ function AdminTicketPageImpl() {
 
   useEffect(() => {
     setRulesPage(1);
-  }, [rulesNameSearch, rulesPeriodicityFilter, rulesClientFilter]);
+  }, [
+    rulesNameSearch,
+    rulesPeriodicityFilter,
+    rulesClientFilter,
+    rulesStatusFilter,
+  ]);
 
   function openCreateStage() {
     setEditingStage(null);
@@ -573,7 +590,7 @@ function AdminTicketPageImpl() {
             ) : tab === "auto-open" ? (
               <>
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-                  <div className="grid w-full gap-3 sm:grid-cols-2 xl:max-w-3xl xl:grid-cols-3">
+                  <div className="grid w-full gap-3 sm:grid-cols-2 xl:max-w-4xl xl:grid-cols-4">
                     <div className="relative sm:col-span-2 xl:col-span-1">
                       <Search
                         size={18}
@@ -603,6 +620,18 @@ function AdminTicketPageImpl() {
                       emptyLabel="Todos os clientes"
                       preserveOrder
                       alwaysShowSearch
+                      className="w-full"
+                    />
+                    <SearchableSelectField
+                      value={rulesStatusFilter}
+                      onChange={setRulesStatusFilter}
+                      options={[
+                        { value: "ativas", label: "Só ativas" },
+                        { value: "inativas", label: "Só inativas" },
+                      ]}
+                      placeholder="Situação"
+                      emptyLabel="Ativas e inativas"
+                      preserveOrder
                       className="w-full"
                     />
                   </div>
