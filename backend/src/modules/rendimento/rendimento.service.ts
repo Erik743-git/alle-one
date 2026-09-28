@@ -3739,6 +3739,25 @@ export class RendimentoService {
     return { id: params.justificationId, deleted: true as const };
   }
 
+  /**
+   * Atualiza a esteira (HE/plantão pendentes, órfãos) de algumas pessoas no
+   * período, como a tela de aprovação faz. Usado pelo relatório antes de
+   * somar aprovada/pendente/negada.
+   */
+  async sincronizarEsteira(params: {
+    start: string;
+    end: string;
+    userIds: string[];
+  }): Promise<void> {
+    for (const userId of new Set(params.userIds)) {
+      await this.syncDayEventsForApprovalRange({
+        start: params.start,
+        end: params.end,
+        userId,
+      });
+    }
+  }
+
   private async syncDayEventsForApprovalRange(params: {
     start: string;
     end: string;

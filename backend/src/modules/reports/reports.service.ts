@@ -1,4 +1,9 @@
 import {
+  somarEsteira,
+  type EventoEsteira,
+  type TotaisEsteira,
+} from './esteira-totais';
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -2518,11 +2523,16 @@ export class ReportsService {
       extraMinutes: number;
       plantaoMinutes: number;
       alerts: number;
-      /** Da esteira de aprovação (rendimento_day_events), não do apontamento. */
+      /**
+       * Da esteira de aprovação (rendimento_day_events), sem contar duas
+       * vezes horário sobreposto no mesmo dia. Aprovada = o que se paga.
+       */
       extraApprovedMinutes: number;
-      extraNotApprovedMinutes: number;
+      extraPendingMinutes: number;
+      extraRejectedMinutes: number;
       plantaoApprovedMinutes: number;
-      plantaoNotApprovedMinutes: number;
+      plantaoPendingMinutes: number;
+      plantaoRejectedMinutes: number;
       justifications: number;
     }>
   > {
@@ -2646,6 +2656,20 @@ export class ReportsService {
       }
     }
 
+    // Esteira em dia antes de somar: cria o pendente de HE que ninguém abriu
+    // ainda e tira o que perdeu o apontamento. Falha aqui não impede o
+    // relatório (soma o que houver, como antes).
+    try {
+      await this.rendimento.sincronizarEsteira({
+        start: startDateOnly,
+        end: endDateOnly,
+        userIds: [...userIdByAttendant.values()],
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Relatório: esteira não sincronizada antes da soma: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     const approvals = await this.getRendimentoApprovalTotals({
       userIds: [...userIdByAttendant.values()],
       startDateOnly,
@@ -2666,10 +2690,7 @@ export class ReportsService {
         const cat = computeCategorizedMinutes(mapped);
         const userId = userIdByAttendant.get(name);
         const appr = (userId ? approvals.get(userId) : null) ?? {
-          extraApproved: 0,
-          extraNotApproved: 0,
-          plantaoApproved: 0,
-          plantaoNotApproved: 0,
+          ...somarEsteira([]),
           justifications: 0,
         };
         return {
@@ -2679,10 +2700,12 @@ export class ReportsService {
           extraMinutes: cat.extra,
           plantaoMinutes: cat.plantao,
           alerts: this.countRendimentoAlertsInPeriod(group),
-          extraApprovedMinutes: appr.extraApproved,
-          extraNotApprovedMinutes: appr.extraNotApproved,
-          plantaoApprovedMinutes: appr.plantaoApproved,
-          plantaoNotApprovedMinutes: appr.plantaoNotApproved,
+          extraApprovedMinutes: appr.extraAprovada,
+          extraPendingMinutes: appr.extraPendente,
+          extraRejectedMinutes: appr.extraNegada,
+          plantaoApprovedMinutes: appr.plantaoAprovado,
+          plantaoPendingMinutes: appr.plantaoPendente,
+          plantaoRejectedMinutes: appr.plantaoNegado,
           justifications: appr.justifications,
         };
       });
@@ -2710,75 +2733,60 @@ export class ReportsService {
     userIds: string[];
     startDateOnly: string;
     endDateOnly: string;
-  }): Promise<
-    Map<
-      string,
-      {
-        extraApproved: number;
-        extraNotApproved: number;
-        plantaoApproved: number;
-        plantaoNotApproved: number;
-        justifications: number;
-      }
-    >
-  > {
-    const result = new Map<
-      string,
-      {
-        extraApproved: number;
-        extraNotApproved: number;
-        plantaoApproved: number;
-        plantaoNotApproved: number;
-        justifications: number;
-      }
-    >();
+  }): Promise<Map<string, TotaisEsteira & { justifications: number }>> {
+    const result = new Map<string, TotaisEsteira & { justifications: number }>();
     const userIds = [...new Set(params.userIds.filter(Boolean))];
     if (userIds.length === 0) return result;
 
     const ensure = (userId: string) => {
       if (!result.has(userId)) {
-        result.set(userId, {
-          extraApproved: 0,
-          extraNotApproved: 0,
-          plantaoApproved: 0,
-          plantaoNotApproved: 0,
-          justifications: 0,
-        });
+        result.set(userId, { ...somarEsteira([]), justifications: 0 });
       }
       return result.get(userId)!;
     };
 
+    // Evento a evento (com horário), para somar sem contar sobreposição.
     const eventRows = await this.prisma.$queryRaw<
       Array<{
         user_id: string;
+        date_ref: string;
         event_type: string;
-        approved: boolean;
-        total: number | bigint | null;
+        status: string;
+        from_time: string | null;
+        to_time: string | null;
+        minutes: number;
       }>
     >`
       select
         e.user_id,
+        e.date_ref::text as date_ref,
         e.event_type,
-        (e.status = 'APPROVED') as approved,
-        coalesce(sum(e.minutes), 0)::int as total
+        e.status::text as status,
+        to_char(e.from_time, 'HH24:MI') as from_time,
+        to_char(e.to_time, 'HH24:MI') as to_time,
+        e.minutes
       from rendimento_day_events e
       where e.user_id = any(${userIds}::text[])
         and e.deleted_at is null
         and e.event_type in ('OVERTIME', 'PLANTAO')
         and e.date_ref between ${params.startDateOnly}::date and ${params.endDateOnly}::date
-      group by e.user_id, e.event_type, (e.status = 'APPROVED')
     `;
 
+    const porUsuario = new Map<string, EventoEsteira[]>();
     for (const row of eventRows) {
-      const bucket = ensure(row.user_id);
-      const minutes = Number(row.total) || 0;
-      if (row.event_type === 'PLANTAO') {
-        if (row.approved) bucket.plantaoApproved += minutes;
-        else bucket.plantaoNotApproved += minutes;
-      } else {
-        if (row.approved) bucket.extraApproved += minutes;
-        else bucket.extraNotApproved += minutes;
-      }
+      const lista = porUsuario.get(row.user_id) ?? [];
+      lista.push({
+        dateRef: row.date_ref,
+        eventType: row.event_type,
+        status: row.status,
+        fromTime: row.from_time,
+        toTime: row.to_time,
+        minutes: Number(row.minutes) || 0,
+      });
+      porUsuario.set(row.user_id, lista);
+    }
+    for (const [userId, eventos] of porUsuario) {
+      Object.assign(ensure(userId), somarEsteira(eventos));
     }
 
     const justificationRows = await this.prisma.$queryRaw<
@@ -2909,10 +2917,12 @@ export class ReportsService {
       'alertas',
       // Ver nota no XLSX: a esteira de aprovação não tem empresa, então estes
       // quatro são do atendente em todos os clientes, não só no do relatório.
-      'he_aprovada_todas_empresas',
-      'he_nao_aprovada_todas_empresas',
-      'plantao_aprovado_todas_empresas',
-      'plantao_nao_aprovado_todas_empresas',
+      'he_aprovada_a_pagar_todas_empresas',
+      'he_pendente_todas_empresas',
+      'he_negada_todas_empresas',
+      'plantao_aprovado_a_pagar_todas_empresas',
+      'plantao_pendente_todas_empresas',
+      'plantao_negado_todas_empresas',
       'justificativas',
     ].join(',');
     const summaryLines = summaries.map((s) =>
@@ -2924,9 +2934,11 @@ export class ReportsService {
         this.formatMinutesHHMM(s.plantaoMinutes),
         String(s.alerts),
         this.formatMinutesHHMM(s.extraApprovedMinutes),
-        this.formatMinutesHHMM(s.extraNotApprovedMinutes),
+        this.formatMinutesHHMM(s.extraPendingMinutes),
+        this.formatMinutesHHMM(s.extraRejectedMinutes),
         this.formatMinutesHHMM(s.plantaoApprovedMinutes),
-        this.formatMinutesHHMM(s.plantaoNotApprovedMinutes),
+        this.formatMinutesHHMM(s.plantaoPendingMinutes),
+        this.formatMinutesHHMM(s.plantaoRejectedMinutes),
         String(s.justifications),
       ].join(','),
     );
@@ -3152,12 +3164,11 @@ export class ReportsService {
     summarySheet.getColumn(4).width = 14;
     summarySheet.getColumn(5).width = 12;
     summarySheet.getColumn(6).width = 10;
-    // 7 a 10 mais largas: os rótulos ganharam "(todas as empresas)".
-    summarySheet.getColumn(7).width = 30;
-    summarySheet.getColumn(8).width = 32;
-    summarySheet.getColumn(9).width = 30;
-    summarySheet.getColumn(10).width = 32;
-    summarySheet.getColumn(11).width = 16;
+    // 7 a 12 mais largas: os rótulos ganharam "(todas as empresas)".
+    for (const col of [7, 8, 9, 10, 11, 12]) {
+      summarySheet.getColumn(col).width = 30;
+    }
+    summarySheet.getColumn(13).width = 16;
 
     const summaryHeaderRow = summarySheet.getRow(1);
     summaryHeaderRow.values = [
@@ -3172,10 +3183,12 @@ export class ReportsService {
       // só, estes quatro números continuam sendo o total do atendente em todos
       // os clientes. Sem o aviso no cabeçalho, o número é lido como se fosse
       // da empresa do relatório.
-      'HE aprovada (todas as empresas)',
-      'HE não aprovada (todas as empresas)',
-      'Plantão aprovado (todas as empresas)',
-      'Plantão não aprovado (todas as empresas)',
+      'HE aprovada — a pagar (todas as empresas)',
+      'HE pendente (todas as empresas)',
+      'HE negada (todas as empresas)',
+      'Plantão aprovado — a pagar (todas as empresas)',
+      'Plantão pendente (todas as empresas)',
+      'Plantão negado (todas as empresas)',
       'Justificativas',
     ];
     summaryHeaderRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -3198,12 +3211,14 @@ export class ReportsService {
         toExcelDuration(s.plantaoMinutes),
         s.alerts,
         toExcelDuration(s.extraApprovedMinutes),
-        toExcelDuration(s.extraNotApprovedMinutes),
+        toExcelDuration(s.extraPendingMinutes),
+        toExcelDuration(s.extraRejectedMinutes),
         toExcelDuration(s.plantaoApprovedMinutes),
-        toExcelDuration(s.plantaoNotApprovedMinutes),
+        toExcelDuration(s.plantaoPendingMinutes),
+        toExcelDuration(s.plantaoRejectedMinutes),
         s.justifications,
       ];
-      [2, 3, 4, 5, 7, 8, 9, 10].forEach((col) => {
+      [2, 3, 4, 5, 7, 8, 9, 10, 11, 12].forEach((col) => {
         row.getCell(col).numFmt = EXCEL_DURATION_FMT;
       });
       summaryRowIndex += 1;
@@ -3213,24 +3228,24 @@ export class ReportsService {
     if (summaryLastRow >= 1) {
       summarySheet.autoFilter = {
         from: { row: 1, column: 1 },
-        to: { row: summaryLastRow, column: 11 },
+        to: { row: summaryLastRow, column: 13 },
       };
     }
 
     if (summaryLastRow >= 2) {
       const totalRow = summarySheet.getRow(summaryLastRow + 1);
       totalRow.getCell(1).value = 'Total';
-      [2, 3, 4, 5, 6, 7, 8, 9, 10, 11].forEach((col) => {
+      [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].forEach((col) => {
         const letra = String.fromCharCode(64 + col);
         totalRow.getCell(col).value = {
           formula: `SUBTOTAL(109,${letra}2:${letra}${summaryLastRow})`,
         };
-        if (col !== 6 && col !== 11) {
+        if (col !== 6 && col !== 13) {
           totalRow.getCell(col).numFmt = EXCEL_DURATION_FMT;
         }
       });
       totalRow.font = { bold: true };
-      for (let col = 1; col <= 11; col += 1) {
+      for (let col = 1; col <= 13; col += 1) {
         totalRow.getCell(col).border = { top: { style: 'thin' } };
       }
       summaryRowIndex += 1;
@@ -3241,12 +3256,12 @@ export class ReportsService {
     // com "Hora extra"/"Plantao" e nem se limitam a empresa do relatorio.
     const noteRow = summarySheet.getRow(summaryRowIndex + 1);
     noteRow.getCell(1).value =
-      'Aprovada/Não aprovada: origem na esteira de aprovação, que é por colaborador e dia — não tem vínculo com empresa. Por isso somam a hora extra e o plantão do atendente em TODAS as empresas no período, e não apenas nesta. São também por apontamento, sem descontar sobreposição, então não fecham com as colunas "Hora extra" e "Plantão" ao lado. "Não aprovada" inclui pendentes e negadas.';
+      'Aprovada / pendente / negada: vêm da tela de aprovação, que é por colaborador e dia — não tem empresa. Por isso somam a hora extra e o plantão do atendente em TODAS as empresas no período. Horário sobreposto no mesmo dia conta uma vez só. "Aprovada — a pagar" é o valor da folha. "Hora extra" e "Plantão" (à esquerda) são o que foi lançado nas empresas deste relatório, inclusive o que ainda está pendente ou foi negado.';
     noteRow.getCell(1).font = { italic: true, size: 9 };
     // Sem wrapText a nota fica cortada na borda da célula mesclada.
     noteRow.getCell(1).alignment = { wrapText: true, vertical: 'top' };
     noteRow.height = 46;
-    summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 11);
+    summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 13);
 
     this.addHorasPorEspecialidadeSheet(workbook, rows);
 
