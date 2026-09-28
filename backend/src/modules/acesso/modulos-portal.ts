@@ -71,12 +71,6 @@ export const MODULOS_PORTAL: ModuloPortal[] = [
   },
   { chave: 'apontamentos', nome: 'Apontamentos', perfisPossiveis: TODOS },
   {
-    // Aba de Apontamentos com a carga de todos os técnicos: só equipe CLT.
-    chave: 'carga-equipe',
-    nome: 'Apontamentos — Carga da equipe',
-    perfisPossiveis: SO_CLT,
-  },
-  {
     chave: 'apontamentos-horas',
     nome: 'Apontamentos — bloco de horas do mês',
     perfisPossiveis: TODOS,

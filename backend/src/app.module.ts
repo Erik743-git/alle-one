@@ -41,8 +41,6 @@ import { EmailInboundModule } from './modules/email-inbound/email-inbound.module
 import { PlantaoModule } from './modules/plantao/plantao.module';
 import { AcessoModule } from './modules/acesso/acesso.module';
 import { NpsModule } from './modules/nps/nps.module';
-import { FechamentoModule } from './modules/fechamento/fechamento.module';
-import { CargaModule } from './modules/carga/carga.module';
 import { ContratoAvisoModule } from './modules/contrato-aviso/contrato-aviso.module';
 import { AcessoModuloGuard } from './modules/acesso/acesso-modulo.guard';
 
@@ -90,8 +88,6 @@ import { AcessoModuloGuard } from './modules/acesso/acesso-modulo.guard';
     EmailInboundModule,
     PlantaoModule,
     NpsModule,
-    FechamentoModule,
-    CargaModule,
     ContratoAvisoModule,
   ],
   controllers: [AppController],

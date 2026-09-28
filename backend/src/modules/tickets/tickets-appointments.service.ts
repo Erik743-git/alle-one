@@ -38,7 +38,6 @@ import {
   hydrateAppointmentDescriptionImages,
   type SavedAppointmentImage,
 } from './appointment-doc.util';
-import { PeriodoFechadoService } from '../fechamento/periodo-fechado.service';
 import { TicketSatisfactionService } from './ticket-satisfaction.service';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import type { SendMailAttachment } from '../mail/mail.service';
@@ -162,7 +161,6 @@ export class TicketsAppointmentsService {
     private readonly tenantScope: TenantScopeService,
     private readonly emailTemplates: EmailTemplatesService,
     private readonly satisfaction: TicketSatisfactionService,
-    private readonly periodoFechado: PeriodoFechadoService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -1339,12 +1337,6 @@ export class TicketsAppointmentsService {
       portalAppointmentId,
     );
     assertCanManagePortalAppointment(actor, row.createdBy);
-    // Ciclo fechado trava a data antiga (tirar de lá) e a nova (pôr lá).
-    await this.periodoFechado.assertAberto([
-      row.appointmentDate,
-      dto.date,
-      dto.endDate,
-    ]);
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
@@ -1533,7 +1525,6 @@ export class TicketsAppointmentsService {
       portalAppointmentId,
     );
     assertCanManagePortalAppointment(actor, row.createdBy);
-    await this.periodoFechado.assertAberto([row.appointmentDate]);
     const ticket = await this.getTicketContext(ticketNumber);
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
@@ -1613,8 +1604,6 @@ export class TicketsAppointmentsService {
     }
 
     this.validateAppointmentDto(dto);
-    await this.periodoFechado.assertAberto([dto.date, dto.endDate]);
-
     await this.assertNoOverlappingAppointmentForUser({
       userId: actor.userId,
       ticketNumber,

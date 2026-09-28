@@ -37,8 +37,6 @@ import {
   type RendimentoCollaborator,
   type RendimentoCollaboratorListPreference,
 } from "@/lib/services/rendimento.service";
-import { FechamentoAba } from "@/components/apontamentos/fechamento-aba";
-import { CargaEquipe } from "@/components/apontamentos/carga-equipe";
 
 type CompanyEmployee = {
   id: string;
@@ -94,9 +92,7 @@ function ApontamentosPageImpl() {
     }
   });
   const periodoInicial = useRef(periodo);
-  const [aba, setAba] = useState<"colaboradores" | "fechamento" | "carga">(
-    "colaboradores",
-  );
+  const [aba, setAba] = useState<"colaboradores">("colaboradores");
 
   async function trocarPeriodo(novo: "mes" | "folha") {
     if (novo === periodo) return;
@@ -385,8 +381,6 @@ function ApontamentosPageImpl() {
               {(
                 [
                   ["colaboradores", "Colaboradores"],
-                  ["fechamento", "Fechamento"],
-                  ["carga", "Carga da equipe"],
                 ] as const
               ).map(([id, rotulo]) => (
                 <button
@@ -406,9 +400,6 @@ function ApontamentosPageImpl() {
                 </button>
               ))}
             </div>
-
-            {aba === "fechamento" ? <FechamentoAba /> : null}
-            {aba === "carga" ? <CargaEquipe /> : null}
 
             <div hidden={aba !== "colaboradores"} className="space-y-8">
             <ApontamentosCollaboratorListSettingsSheet

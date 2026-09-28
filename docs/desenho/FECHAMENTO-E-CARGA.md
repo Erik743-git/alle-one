@@ -1,3 +1,7 @@
+> **Removido em 28/09/2026** (decisão do Erik em 25/09, ver `APONTAMENTOS-TELAS-ADMIN.md`).
+> O código saiu; a migração `20260928200000_remove_fechamento_carga` apaga as tabelas.
+> Este arquivo fica só como histórico.
+
 # Fechamento do mês e Carga da equipe
 
 Combinado com o Erik em 25/09 (itens C e D). **Construído em 24/09

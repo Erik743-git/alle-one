@@ -86,7 +86,6 @@ describe("moduloDaRota", () => {
     ["/monitoramento?x=1", "monitoramento"],
     ["/gerador-relatorios", "relatorios"],
     ["/apontamentos/empresa/1", "apontamentos"],
-    ["/apontamentos/carga", "carga-equipe"],
     ["/admin/acesso", null],
     ["/correio", null],
   ])("%s → %s", (path, esperado) => {
