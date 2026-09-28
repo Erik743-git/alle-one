@@ -2142,10 +2142,20 @@ export class RendimentoService {
     return Number(rows[0]?.count) || 0;
   }
 
+  /**
+   * Grava na esteira os eventos dos dias. Com `intervalo`, também apaga (soft
+   * delete) a hora extra/plantão PENDENTE do período que não tem mais
+   * apontamento de HE/plantão por trás — apontamento que trocou de serviço,
+   * mudou de dia ou foi apagado. Sem isso o pendente ficava para sempre e
+   * aparecia como "HE não aprovada" no relatório. Aprovado e negado não são
+   * tocados; se o apontamento voltar a ser HE, o upsert reativa o evento.
+   */
   private async syncDayEventsForDays(
     userId: string,
     days: RendimentoDaySummaryDto[],
+    intervalo?: { start: Date; end: Date },
   ): Promise<void> {
+    const horasExtrasVigentes: string[] = [];
     for (const day of days) {
       if (!day.insights) continue;
       const dayRef = day.date.slice(0, 10);
@@ -2168,7 +2178,10 @@ export class RendimentoService {
         ) {
           continue;
         }
-        await this.upsertDayEvent(item);
+        const id = await this.upsertDayEvent(item);
+        if (item.eventType === 'OVERTIME' || item.eventType === 'PLANTAO') {
+          horasExtrasVigentes.push(id);
+        }
       }
       for (const voluntary of day.voluntaryJustifications ?? []) {
         await this.upsertDayEvent({
@@ -2190,6 +2203,33 @@ export class RendimentoService {
         });
       }
     }
+    if (intervalo) {
+      await this.apagarHorasExtrasOrfas(userId, intervalo, horasExtrasVigentes);
+    }
+  }
+
+  private async apagarHorasExtrasOrfas(
+    userId: string,
+    intervalo: { start: Date; end: Date },
+    vigentes: string[],
+  ): Promise<number> {
+    const apagados = await this.prisma.$executeRaw`
+      UPDATE rendimento_day_events
+      SET deleted_at = NOW(), updated_at = NOW()
+      WHERE user_id = ${userId}
+        AND event_type IN ('OVERTIME', 'PLANTAO')
+        AND status = 'PENDING'
+        AND deleted_at IS NULL
+        AND date_ref BETWEEN ${this.toDateOnlyString(intervalo.start)}::date
+                         AND ${this.toDateOnlyString(intervalo.end)}::date
+        AND NOT (id = ANY(${vigentes}::text[]))
+    `;
+    if (apagados) {
+      this.logger.log(
+        `Esteira: ${apagados} hora(s) extra/plantão pendente(s) sem apontamento removida(s) (user=${userId}).`,
+      );
+    }
+    return apagados;
   }
 
   /**
@@ -2310,7 +2350,7 @@ export class RendimentoService {
               item.eventType === 'IDLE_ALERT' || item.eventType === 'LUNCH',
           ).length;
         }
-        await this.syncDayEventsForDays(collaborator.id, days);
+        await this.syncDayEventsForDays(collaborator.id, days, { start, end });
         usersProcessed += 1;
       } catch (err) {
         const msg =
@@ -2948,7 +2988,7 @@ export class RendimentoService {
       }
     }
     try {
-      await this.syncDayEventsForDays(user.id, days);
+      await this.syncDayEventsForDays(user.id, days, { start, end });
     } catch (err) {
       this.logger.error(
         `Falha ao sincronizar eventos de rendimento (user=${user.id}): ${
@@ -3746,7 +3786,7 @@ export class RendimentoService {
           justificationsByDate,
           this.toRendimentoDaySchedule(user),
         );
-        await this.syncDayEventsForDays(collaborator.id, days);
+        await this.syncDayEventsForDays(collaborator.id, days, { start, end });
       } catch (err) {
         this.logger.warn(
           `Falha ao sincronizar eventos para aprovação (${collaborator.email}): ${
