@@ -161,7 +161,11 @@ describe('a tela liga o aviso; o resto fica calado', () => {
       [],
     );
     const opcoes = ticketsService.createTicket.mock.calls[0][3];
-    expect(opcoes).toEqual({ avisarNovoResponsavel: true });
+    // A tela liga os dois avisos: o do responsável e o do solicitante (Correio).
+    expect(opcoes).toEqual({
+      avisarNovoResponsavel: true,
+      avisarSolicitante: true,
+    });
   });
 
   it('edição pela tela pede o aviso', async () => {

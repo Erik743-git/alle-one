@@ -13,7 +13,18 @@ export type MailboxNotificationKind =
   | "TICKET_STALLED_48H"
   | "TICKET_STALLED_7D"
   | "INVENTORY_EXPIRY"
-  | "TIFLUX_SYNC_STALE";
+  | "TIFLUX_SYNC_STALE"
+  // Tipos que o backend já grava e a tela não conhecia (ficavam escondidos
+  // pelo filtro): Mural, Oportunidades, NPS, contrato e os de chamado.
+  | "MURAL_NOTE_RECEIVED"
+  | "OPORTUNIDADE_NOVA"
+  | "OPORTUNIDADE_ESTAGIO"
+  | "OPORTUNIDADE_ALERTA"
+  | "OPORTUNIDADE_RETORNO"
+  | "NPS_DETRATOR"
+  | "CONTRATO_CONSUMO"
+  | "TICKET_ABERTO_PARA_VOCE"
+  | "TICKET_NOVO_RESPONSAVEL";
 
 export type MailboxNotification = {
   id: string;
@@ -39,6 +50,15 @@ const KIND_LABELS: Record<MailboxNotificationKind, string> = {
   TICKET_STALLED_7D: "Ticket",
   INVENTORY_EXPIRY: "Inventário",
   TIFLUX_SYNC_STALE: "Integrações",
+  MURAL_NOTE_RECEIVED: "Somos Alle",
+  OPORTUNIDADE_NOVA: "Oportunidades",
+  OPORTUNIDADE_ESTAGIO: "Oportunidades",
+  OPORTUNIDADE_ALERTA: "Oportunidades",
+  OPORTUNIDADE_RETORNO: "Oportunidades",
+  NPS_DETRATOR: "NPS",
+  CONTRATO_CONSUMO: "Contrato",
+  TICKET_ABERTO_PARA_VOCE: "Ticket",
+  TICKET_NOVO_RESPONSAVEL: "Ticket",
 };
 
 export const MAILBOX_KIND_OPTIONS: {
@@ -85,6 +105,51 @@ export const MAILBOX_KIND_OPTIONS: {
     kind: "INVENTORY_EXPIRY",
     label: "Inventário (vencimento)",
     description: "Ativos vencidos ou com vencimento nos próximos 30 dias.",
+  },
+  {
+    kind: "TICKET_ABERTO_PARA_VOCE",
+    label: "Chamado aberto para você",
+    description: "Alguém abriu um chamado em que você é o solicitante.",
+  },
+  {
+    kind: "TICKET_NOVO_RESPONSAVEL",
+    label: "Você virou responsável",
+    description: "Alguém colocou você como responsável por um chamado.",
+  },
+  {
+    kind: "MURAL_NOTE_RECEIVED",
+    label: "Bilhete no Somos Alle",
+    description: "Alguém deixou um recado para você.",
+  },
+  {
+    kind: "OPORTUNIDADE_NOVA",
+    label: "Oportunidade nova",
+    description: "Card novo no quadro de Oportunidades.",
+  },
+  {
+    kind: "OPORTUNIDADE_ESTAGIO",
+    label: "Oportunidade mudou de etapa",
+    description: "Uma oportunidade sua mudou de coluna.",
+  },
+  {
+    kind: "OPORTUNIDADE_ALERTA",
+    label: "Oportunidade parada",
+    description: "Card parado ou sem movimentação há muito tempo.",
+  },
+  {
+    kind: "OPORTUNIDADE_RETORNO",
+    label: "Oportunidade aguardando o cliente",
+    description: "Card aguardando o cliente desde a data combinada.",
+  },
+  {
+    kind: "NPS_DETRATOR",
+    label: "NPS: nota baixa",
+    description: "Cliente deu nota de detrator na pesquisa.",
+  },
+  {
+    kind: "CONTRATO_CONSUMO",
+    label: "Contrato: consumo de horas",
+    description: "Aviso de consumo das horas contratadas.",
   },
 ];
 

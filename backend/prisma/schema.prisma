@@ -72,6 +72,10 @@ enum MailboxNotificationKind {
   OPORTUNIDADE_RETORNO
   NPS_DETRATOR
   CONTRATO_CONSUMO
+  /// Alguém abriu um chamado em que você é o solicitante.
+  TICKET_ABERTO_PARA_VOCE
+  /// Alguém colocou você como responsável por um chamado.
+  TICKET_NOVO_RESPONSAVEL
 }
 
 enum ContractFileType {

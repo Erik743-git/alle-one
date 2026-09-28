@@ -284,6 +284,7 @@ export class TicketsController {
     // outra recebe aviso. A rotina automática chama o serviço sem isto.
     return this.ticketsService.createTicket(actor, dto, files ?? [], {
       avisarNovoResponsavel: true,
+      avisarSolicitante: true,
     });
   }
 

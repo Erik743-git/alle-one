@@ -11,6 +11,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import {
+  MailboxNotificationKind,
   PortalTicketOrigin,
   PortalTifluxOutboxKind,
   PortalTifluxOutboxStatus,
@@ -41,6 +42,12 @@ import { TicketsPortalStoreService } from './tickets-portal-store.service';
 import { assertPjAccessToTicketNumber } from './tickets-pj-scope';
 import { portalResponsibleSyntheticId } from './portal-responsible.helper';
 import { deveAvisarNovoResponsavel } from './ticket-responsavel-aviso';
+import {
+  avisarNoCorreio,
+  deveAvisarSolicitante,
+  textoChamadoAberto,
+  textoNovoResponsavel,
+} from './ticket-correio';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import {
@@ -465,6 +472,11 @@ export class TicketsService {
        * responsável, e não é uma pessoa escolhendo ninguém.
        */
       avisarNovoResponsavel?: boolean;
+      /**
+       * Aviso no Correio para o solicitante. Mesma lógica: desligado por
+       * padrão, só a tela liga — a rotina abre chamado por aqui e nunca avisa.
+       */
+      avisarSolicitante?: boolean;
     } = {},
   ) {
     await assertTicketCreateClientScope(this.tenantScope, actor, dto.clientId);
@@ -811,6 +823,21 @@ export class TicketsService {
           para: responsibleMeta,
           title: dto.title.trim(),
           clientName,
+        });
+      }
+
+      if (
+        deveAvisarSolicitante({
+          ligado: options.avisarSolicitante,
+          emailSolicitante: requestorEmail,
+          emailAtor: actor.email,
+        })
+      ) {
+        void this.avisarSolicitanteNoCorreio({
+          actor,
+          ticketNumber,
+          email: requestorEmail,
+          title: dto.title.trim(),
         });
       }
 
@@ -1648,6 +1675,21 @@ export class TicketsService {
       // Mesmo nome que aparece no histórico do chamado.
       const actorName = await actorDisplayName(this.prisma, params.actor);
 
+      // Correio junto com o e-mail, pelas mesmas regras (quem chama este
+      // método já passou por deveAvisarNovoResponsavel).
+      await avisarNoCorreio(this.prisma, this.logger, {
+        email,
+        kind: MailboxNotificationKind.TICKET_NOVO_RESPONSAVEL,
+        texto: textoNovoResponsavel(
+          params.ticketNumber,
+          params.title,
+          actorName,
+        ),
+        ticketNumber: params.ticketNumber,
+        // Cada atribuição avisa: a mesma pessoa pode voltar a ser responsável.
+        dedupeKey: `ticket-responsavel:${params.ticketNumber}:${Date.now()}`,
+      });
+
       await this.emailTemplates.sendTicketResponsibleAssigned({
         to: email,
         replyTo: params.actor.email ?? null,
@@ -1660,6 +1702,31 @@ export class TicketsService {
     } catch (err) {
       this.logger.warn(
         `Aviso de novo responsável não enviado (#${params.ticketNumber}): ${
+          err instanceof Error ? err.message : err
+        }`,
+      );
+    }
+  }
+
+  /** Aviso no Correio para o solicitante de um chamado que outra pessoa abriu. */
+  private async avisarSolicitanteNoCorreio(params: {
+    actor: AuthenticatedRequestUser;
+    ticketNumber: number;
+    email: string | null;
+    title: string | null;
+  }) {
+    try {
+      const actorName = await actorDisplayName(this.prisma, params.actor);
+      await avisarNoCorreio(this.prisma, this.logger, {
+        email: params.email,
+        kind: MailboxNotificationKind.TICKET_ABERTO_PARA_VOCE,
+        texto: textoChamadoAberto(params.ticketNumber, params.title, actorName),
+        ticketNumber: params.ticketNumber,
+        dedupeKey: `ticket-aberto:${params.ticketNumber}`,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Aviso ao solicitante não gravado (#${params.ticketNumber}): ${
           err instanceof Error ? err.message : err
         }`,
       );

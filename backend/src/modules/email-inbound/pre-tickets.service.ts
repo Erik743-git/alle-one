@@ -7,11 +7,21 @@ import {
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
-import { PortalTicketOrigin, PreTicketStatus, UserRole } from '@prisma/client';
+import {
+  MailboxNotificationKind,
+  PortalTicketOrigin,
+  PreTicketStatus,
+  UserRole,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { TicketsPortalStoreService } from '../tickets/tickets-portal-store.service';
+import {
+  avisarNoCorreio,
+  deveAvisarSolicitante,
+  textoChamadoAberto,
+} from '../tickets/ticket-correio';
 import { PORTAL_STAGE } from '../tickets/portal-ticket-stages';
 import { EmailTemplatesService } from '../mail/email-templates.service';
 import { EmailInboundIngestService } from './email-inbound-ingest.service';
@@ -726,6 +736,29 @@ export class PreTicketsService {
           openedAt: row.receivedAt ?? new Date(),
         })
         .catch(() => undefined);
+    }
+
+    // Quem mandou o e-mail é o solicitante: se tiver login no portal, recebe
+    // aviso no Correio de que o chamado foi aberto (quem abre é sempre outra
+    // pessoa, a da fila; a regra de não avisar a si mesmo continua valendo).
+    if (
+      deveAvisarSolicitante({
+        ligado: true,
+        emailSolicitante: row.fromEmail,
+        emailAtor: actor.email,
+      })
+    ) {
+      void avisarNoCorreio(this.prisma, this.logger, {
+        email: row.fromEmail,
+        kind: MailboxNotificationKind.TICKET_ABERTO_PARA_VOCE,
+        texto: textoChamadoAberto(
+          ticketNumber,
+          title,
+          opener?.name?.trim() || actor.email,
+        ),
+        ticketNumber,
+        dedupeKey: `ticket-aberto:${ticketNumber}`,
+      });
     }
 
     return { ticketNumber, preTicketId: id };

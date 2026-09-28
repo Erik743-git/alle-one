@@ -20,7 +20,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notifyError, notifySuccess } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { MailboxKindFilterModal } from "@/components/correio/mailbox-kind-filter-modal";
-import { loadMailboxKindFilters, saveMailboxKindFilters } from "@/lib/mailbox-filters";
+import {
+  loadMailboxKindFilters,
+  mostrarTipo,
+  saveMailboxKindFilters,
+} from "@/lib/mailbox-filters";
 import {
   ALL_MAILBOX_KINDS,
   mailboxKindLabel,
@@ -81,7 +85,7 @@ function CorreioPageImpl() {
   }, [items]);
 
   const visible = useMemo(() => {
-    let list = items.filter((item) => kindFilters.includes(item.kind));
+    let list = items.filter((item) => mostrarTipo(item.kind, kindFilters));
     if (filter === "unread") list = list.filter((item) => !item.readAt);
     return list;
   }, [filter, items, kindFilters]);
@@ -188,7 +192,7 @@ function CorreioPageImpl() {
                 variant={filter === "all" ? "default" : "outline"}
                 onClick={() => setFilter("all")}
               >
-                Todas ({items.filter((i) => kindFilters.includes(i.kind)).length})
+                Todas ({items.filter((i) => mostrarTipo(i.kind, kindFilters)).length})
               </Button>
               <Button
                 type="button"
@@ -198,7 +202,7 @@ function CorreioPageImpl() {
               >
                 Não lidas (
                 {
-                  items.filter((i) => kindFilters.includes(i.kind) && !i.readAt)
+                  items.filter((i) => mostrarTipo(i.kind, kindFilters) && !i.readAt)
                     .length
                 }
                 )
