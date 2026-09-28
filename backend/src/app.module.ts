@@ -42,6 +42,7 @@ import { PlantaoModule } from './modules/plantao/plantao.module';
 import { AcessoModule } from './modules/acesso/acesso.module';
 import { NpsModule } from './modules/nps/nps.module';
 import { ContratoAvisoModule } from './modules/contrato-aviso/contrato-aviso.module';
+import { PainelChamadosModule } from './modules/painel-chamados/painel-chamados.module';
 import { AcessoModuloGuard } from './modules/acesso/acesso-modulo.guard';
 
 @Module({
@@ -89,6 +90,7 @@ import { AcessoModuloGuard } from './modules/acesso/acesso-modulo.guard';
     PlantaoModule,
     NpsModule,
     ContratoAvisoModule,
+    PainelChamadosModule,
   ],
   controllers: [AppController],
   providers: [

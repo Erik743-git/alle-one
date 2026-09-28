@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { CalendarDays, Search, Settings2, Ticket, Users } from "lucide-react";
 
 import { ApontamentosAdminHub } from "@/components/apontamentos/apontamentos-admin-hub";
+import { ChamadosParadosAba } from "@/components/apontamentos/chamados-parados-aba";
+import { ChamadosPorResponsavelAba } from "@/components/apontamentos/chamados-por-responsavel-aba";
 import { ApontamentosCollaboratorListSettingsSheet } from "@/components/apontamentos/apontamentos-collaborator-list-settings-sheet";
 import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
@@ -92,7 +94,9 @@ function ApontamentosPageImpl() {
     }
   });
   const periodoInicial = useRef(periodo);
-  const [aba, setAba] = useState<"colaboradores">("colaboradores");
+  const [aba, setAba] = useState<
+    "colaboradores" | "parados" | "porResponsavel"
+  >("colaboradores");
 
   async function trocarPeriodo(novo: "mes" | "folha") {
     if (novo === periodo) return;
@@ -381,6 +385,13 @@ function ApontamentosPageImpl() {
               {(
                 [
                   ["colaboradores", "Colaboradores"],
+                  // Só admin: a API também recusa quem não é.
+                  ...(isAdmin
+                    ? ([
+                        ["parados", "Chamados parados"],
+                        ["porResponsavel", "Chamados por responsável"],
+                      ] as const)
+                    : []),
                 ] as const
               ).map(([id, rotulo]) => (
                 <button
@@ -400,6 +411,11 @@ function ApontamentosPageImpl() {
                 </button>
               ))}
             </div>
+
+            {isAdmin && aba === "parados" ? <ChamadosParadosAba /> : null}
+            {isAdmin && aba === "porResponsavel" ? (
+              <ChamadosPorResponsavelAba />
+            ) : null}
 
             <div hidden={aba !== "colaboradores"} className="space-y-8">
             <ApontamentosCollaboratorListSettingsSheet
