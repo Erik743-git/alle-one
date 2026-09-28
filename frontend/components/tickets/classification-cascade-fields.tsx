@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
@@ -52,6 +52,11 @@ export function ClassificationCascadeFields({
   const [level1Id, setLevel1Id] = useState("");
   const [level2Id, setLevel2Id] = useState("");
   const [level3Id, setLevel3Id] = useState("");
+  // Último valor que este componente emitiu. Quando o pai devolve esse mesmo
+  // valor (ex.: null ao trocar a Área), os níveis locais já estão certos —
+  // sincronizar aqui zerava tudo e obrigava a escolher o Catálogo de novo.
+  const lastEmitted = useRef<string | null | undefined>(undefined);
+  const treeAtEmit = useRef<ClassificationNode[] | null>(null);
 
   useEffect(() => {
     if (treeProp != null) {
@@ -87,6 +92,14 @@ export function ClassificationCascadeFields({
   }, [serviceDeskId, treeProp]);
 
   useEffect(() => {
+    if (
+      lastEmitted.current !== undefined &&
+      value === lastEmitted.current &&
+      tree === treeAtEmit.current
+    ) {
+      return;
+    }
+    lastEmitted.current = undefined;
     if (!value || tree.length === 0) {
       if (!value) {
         setLevel1Id("");
@@ -128,23 +141,29 @@ export function ClassificationCascadeFields({
     }));
   }, [tree, level2Id]);
 
+  function emit(next: string | null) {
+    lastEmitted.current = next;
+    treeAtEmit.current = tree;
+    onChange(next);
+  }
+
   function emitSelection(l1: string, l2: string, l3: string) {
     // Só emite folha: se ainda há subnível visível, fica incompleto (null).
     if (l1 && !l2) {
       const parent = findNodeById(tree, l1);
       if (parent && activeNodes(parent.children).length > 0) {
-        onChange(null);
+        emit(null);
         return;
       }
     }
     if (l2 && !l3) {
       const parent = findNodeById(tree, l2);
       if (parent && activeNodes(parent.children).length > 0) {
-        onChange(null);
+        emit(null);
         return;
       }
     }
-    onChange(l3 || l2 || l1 || null);
+    emit(l3 || l2 || l1 || null);
   }
 
   function handleLevel1Change(next: string) {

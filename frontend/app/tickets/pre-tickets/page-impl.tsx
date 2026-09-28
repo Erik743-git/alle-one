@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePortalTabs } from "@/components/layout/portal-tabs-provider";
 import Link from "next/link";
 import ProtectedPage from "@/components/auth/protected-page";
 import AppShell from "@/components/layout/app-shell";
@@ -22,7 +23,8 @@ import {
   PreTicketCompanyDialog,
   type PreTicketOpenChoice,
 } from "@/components/tickets/pre-ticket-company-dialog";
-import { Check, Lock, Trash2 } from "lucide-react";
+import { Check, Lock, RefreshCw, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { getStoredUser } from "@/lib/session";
 import { useRouter } from "next/navigation";
 
@@ -83,6 +85,28 @@ function PreTicketsPageImpl() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Voltar para esta guia recarrega a fila: o pré-ticket pode ter sido
+  // efetivado em outra guia (tela de detalhe) ou por outra pessoa.
+  const { tabs, activeId } = usePortalTabs();
+  const guiaAtiva =
+    tabs.find((tab) => tab.id === activeId)?.href.split("?")[0] ===
+    "/tickets/pre-tickets";
+  const estavaAtiva = useRef(guiaAtiva);
+  useEffect(() => {
+    if (guiaAtiva && !estavaAtiva.current) void load();
+    estavaAtiva.current = guiaAtiva;
+  }, [guiaAtiva, load]);
+
+  const [atualizando, setAtualizando] = useState(false);
+  async function atualizar() {
+    setAtualizando(true);
+    try {
+      await load();
+    } finally {
+      setAtualizando(false);
+    }
+  }
 
   async function remove(id: string) {
     setBusy(true);
@@ -184,9 +208,14 @@ function PreTicketsPageImpl() {
         choice && (choice.companyId || choice.specialtyId) ? choice : undefined,
       );
       setCompanyAskId(null);
+      // O ticket abre em outra aba; a lista desta já sai sem o pré-ticket
+      // efetivado (antes ele ficava e dava erro ao tentar abrir de novo).
+      void load();
       router.push(`/tickets/${r.ticketNumber}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Falha ao abrir ticket");
+      // Se outra pessoa já abriu, a lista atualizada tira o item.
+      void load();
     } finally {
       setBusy(false);
     }
@@ -229,6 +258,17 @@ function PreTicketsPageImpl() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={atualizando}
+                onClick={() => void atualizar()}
+              >
+                <RefreshCw
+                  className={cn("mr-2 size-4", atualizando && "animate-spin")}
+                />
+                Atualizar
+              </Button>
               <Button variant="outline" asChild>
                 <Link href="/tickets">Voltar aos tickets</Link>
               </Button>
