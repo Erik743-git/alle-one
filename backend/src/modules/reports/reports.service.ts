@@ -75,6 +75,7 @@ import {
   billingRowsToXlsx,
   buildBillingReportRowsForCompanies,
 } from './reports-billing';
+import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
 
 const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5', '6']);
 
@@ -1951,7 +1952,9 @@ export class ReportsService {
   }
 
   private formatReportDescription(value?: string | null): string {
-    return toExcelText(value);
+    // Apontamento editado pela tela é salvo como doc (__ALLEONE_DOC_V1__:{...});
+    // no Excel sai só o texto.
+    return toExcelText(appointmentDescriptionToPlainText(value ?? ''));
   }
 
   private formatMonthShort(dateOnly: string): string {
@@ -2737,7 +2740,10 @@ export class ReportsService {
     startDateOnly: string;
     endDateOnly: string;
   }): Promise<Map<string, TotaisEsteira & { justifications: number }>> {
-    const result = new Map<string, TotaisEsteira & { justifications: number }>();
+    const result = new Map<
+      string,
+      TotaisEsteira & { justifications: number }
+    >();
     const userIds = [...new Set(params.userIds.filter(Boolean))];
     if (userIds.length === 0) return result;
 
@@ -3338,7 +3344,9 @@ export class ReportsService {
         linha,
         total: [...linha.values()].reduce((acc, v) => acc + v, 0),
       }))
-      .sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+      .sort(
+        (a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'),
+      );
 
     const colCount = especialidades.length + 2;
     sheet.getColumn(1).width = 36;

@@ -3916,7 +3916,9 @@ export class RendimentoService {
           co.name AS company_name,
           j.status,
           approver.name AS approved_by_name,
-          j.approved_at::text AS approved_at
+          -- Coluna sem fuso guardando UTC (padrão do Prisma): sai em ISO com Z,
+          -- senão o navegador lê como hora local e mostra +3h.
+          to_char(j.approved_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS approved_at
         FROM rendimento_gap_justifications j
         INNER JOIN users u ON u.id = j.user_id AND u.deleted_at IS NULL
         LEFT JOIN companies co ON co.id = u.company_id
@@ -4082,7 +4084,7 @@ export class RendimentoService {
           COALESCE(co_ticket.name, ptk.client_name, ta.client_name, co_user.name) AS company_name,
           e.status,
           approver.name AS approved_by_name,
-          e.approved_at::text AS approved_at
+          to_char(e.approved_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS approved_at
         FROM rendimento_day_events e
         INNER JOIN users u ON u.id = e.user_id AND u.deleted_at IS NULL
         LEFT JOIN companies co_user ON co_user.id = u.company_id
