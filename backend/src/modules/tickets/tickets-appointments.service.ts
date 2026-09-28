@@ -613,12 +613,22 @@ export class TicketsAppointmentsService {
     };
   }
 
+  /**
+   * Ticket fechado, resolvido ou cancelado não aceita apontamento novo nem
+   * alteração/exclusão dos que já existem: as horas dele já foram fechadas.
+   * Para corrigir, reabra o ticket.
+   */
   private async assertCanAddAppointmentToTicket(
     ticket: NonNullable<Awaited<ReturnType<typeof this.getTicketContext>>>,
+    acao: 'criar' | 'alterar' = 'criar',
   ) {
+    const reabrir =
+      acao === 'alterar'
+        ? ' Reabra o ticket para alterar ou excluir apontamentos.'
+        : '';
     if (ticket.is_closed) {
       throw new BadRequestException(
-        'Não é possível apontar em ticket fechado ou cancelado.',
+        `Não é possível apontar em ticket fechado ou cancelado.${reabrir}`,
       );
     }
     const portal = await this.prisma.portalTicket.findUnique({
@@ -627,12 +637,12 @@ export class TicketsAppointmentsService {
     });
     if (portal?.isClosed) {
       throw new BadRequestException(
-        'Não é possível apontar em ticket fechado ou cancelado.',
+        `Não é possível apontar em ticket fechado ou cancelado.${reabrir}`,
       );
     }
     if (isDonePortalStage(portal?.stageName ?? ticket.stage_name)) {
       throw new BadRequestException(
-        'Não é possível apontar em ticket resolvido, encerrado ou cancelado.',
+        `Não é possível apontar em ticket resolvido, encerrado ou cancelado.${reabrir}`,
       );
     }
   }
@@ -1339,6 +1349,7 @@ export class TicketsAppointmentsService {
     if (!ticket) {
       throw new NotFoundException('Ticket não encontrado.');
     }
+    await this.assertCanAddAppointmentToTicket(ticket, 'alterar');
 
     await this.assertNoOverlappingAppointmentForUser({
       userId: row.createdBy,
@@ -1523,6 +1534,11 @@ export class TicketsAppointmentsService {
     );
     assertCanManagePortalAppointment(actor, row.createdBy);
     await this.periodoFechado.assertAberto([row.appointmentDate]);
+    const ticket = await this.getTicketContext(ticketNumber);
+    if (!ticket) {
+      throw new NotFoundException('Ticket não encontrado.');
+    }
+    await this.assertCanAddAppointmentToTicket(ticket, 'alterar');
 
     if (row.outboxId) {
       const outbox = await this.prisma.portalTifluxOutbox.findUnique({

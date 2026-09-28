@@ -792,7 +792,13 @@ export function TicketAppointmentModal({
             <Button
               type="submit"
               className="h-11 min-w-[120px]"
-              disabled={saving}
+              // Ticket fechado: o servidor recusa alterar apontamento.
+              disabled={saving || (isEdit && ticketClosed)}
+              title={
+                isEdit && ticketClosed
+                  ? "Ticket fechado. Reabra o ticket para alterar o apontamento."
+                  : undefined
+              }
               onClick={() => {
                 saveModeRef.current = "save";
               }}

@@ -424,6 +424,14 @@ function TicketDetailPageImpl() {
   }, [data?.externalGmudRef]);
 
   const ticket = data?.ticket;
+  // Mesma regra do servidor: fechado, resolvido ou cancelado não altera apontamento.
+  const ticketFechado =
+    Boolean(ticket) &&
+    (Boolean(stagesData?.isClosed) ||
+      !canAddAppointmentToTicket({
+        isClosed: ticket!.isClosed,
+        stageName: ticket!.stageName,
+      }));
   usePortalTabTitle(
     ticket
       ? `#${ticketNumber}${ticket.title ? ` - ${ticket.title}` : ""}`
@@ -1008,12 +1016,17 @@ function TicketDetailPageImpl() {
     });
   }
 
-  async function handleDeleteAppointment(portalAppointmentId: string) {
+  async function handleDeleteAppointment(
+    portalAppointmentId: string,
+    resumo?: string,
+  ) {
     await preparePortalAppointmentAction(portalAppointmentId, async () => {
       const ok = await confirm({
         title: "Excluir apontamento",
-        description:
-          TICKET_DELETE_APPOINTMENT_CONFIRM,
+        // Mostra qual apontamento sai, para não confirmar o errado.
+        description: resumo
+          ? `${resumo}. ${TICKET_DELETE_APPOINTMENT_CONFIRM}`
+          : TICKET_DELETE_APPOINTMENT_CONFIRM,
         confirmText: "Excluir",
         variant: "error",
       });
@@ -1480,8 +1493,11 @@ function TicketDetailPageImpl() {
                           </tr>
                         ) : (
                           data?.appointments.map((row) => {
+                            // Ticket fechado/cancelado: apontamentos só leitura
+                            // (o servidor também recusa).
                             const rowEditable =
                               Boolean(row.portalAppointmentId) &&
+                              !ticketFechado &&
                               canManageTicketAppointment(
                                 row.createdByUserId,
                                 row.canManage,
@@ -1617,7 +1633,14 @@ function TicketDetailPageImpl() {
                                         sideOffset={6}
                                         className="min-w-[9.5rem] w-auto"
                                       >
+                                        {ticketFechado ? (
+                                          <p className="max-w-[14rem] px-2 py-1.5 text-xs text-muted-foreground">
+                                            Ticket fechado. Reabra o ticket para
+                                            alterar ou excluir apontamentos.
+                                          </p>
+                                        ) : null}
                                         <DropdownMenuItem
+                                          disabled={ticketFechado}
                                           onClick={() =>
                                             void handleEditAppointment(
                                               row.portalAppointmentId!,
@@ -1629,9 +1652,22 @@ function TicketDetailPageImpl() {
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
                                           variant="destructive"
+                                          disabled={ticketFechado}
                                           onClick={() =>
                                             void handleDeleteAppointment(
                                               row.portalAppointmentId!,
+                                              [
+                                                formatAppointmentDateCell(
+                                                  row.appointmentDate,
+                                                  row.initTime,
+                                                  row.endTime,
+                                                ),
+                                                `${row.initTime ?? "—"}–${row.endTime ?? "—"}`,
+                                                formatMinutes(row.minutes),
+                                                row.valorizationLabel,
+                                              ]
+                                                .filter(Boolean)
+                                                .join(" · "),
                                             )
                                           }
                                         >
