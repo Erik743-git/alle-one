@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CalendarDays, Search, Settings2, Ticket, Users } from "lucide-react";
@@ -11,7 +11,7 @@ import AppShell from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import ProtectedPage from "@/components/auth/protected-page";
 import PermissionGate from "@/components/auth/permission-gate";
-import { payrollPeriodRangeFor } from "@/lib/date-ranges";
+import { monthRangeFor, payrollPeriodRangeFor } from "@/lib/date-ranges";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -49,6 +49,16 @@ type CompanyEmployee = {
   status: string;
 };
 
+const PERIODO_KEY = "alleone.apontamentos.periodo";
+
+/** Texto do período corrente (mesma regra da API). */
+function rotuloPeriodo(periodo: "mes" | "folha"): string {
+  const hoje = new Date();
+  const r = periodo === "folha" ? payrollPeriodRangeFor(hoje) : monthRangeFor(hoje);
+  const br = (ymd: string) => ymd.split("-").reverse().join("/");
+  return `${periodo === "folha" ? "Folha" : "Mês civil"}: ${br(r.start)} a ${br(r.end)}`;
+}
+
 function ApontamentosPageImpl() {
   const router = useRouter();
   const authUser = getStoredUser();
@@ -75,9 +85,38 @@ function ApontamentosPageImpl() {
     RendimentoCollaboratorListPreference[] | null
   >(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Período das horas da lista; lembrado neste navegador (só conveniência).
+  const [periodo, setPeriodo] = useState<"mes" | "folha">(() => {
+    try {
+      return localStorage.getItem(PERIODO_KEY) === "folha" ? "folha" : "mes";
+    } catch {
+      return "mes";
+    }
+  });
+  const periodoInicial = useRef(periodo);
   const [aba, setAba] = useState<"colaboradores" | "fechamento" | "carga">(
     "colaboradores",
   );
+
+  async function trocarPeriodo(novo: "mes" | "folha") {
+    if (novo === periodo) return;
+    setPeriodo(novo);
+    try {
+      localStorage.setItem(PERIODO_KEY, novo);
+    } catch {
+      /* navegador sem armazenamento: só não lembra */
+    }
+    try {
+      setLoading(true);
+      setCollaborators(ensureArray(await rendimentoService.listCollaborators(novo)));
+    } catch (err) {
+      notifyError(
+        err instanceof Error ? err.message : "Não foi possível carregar os colaboradores.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     void (async () => {
@@ -114,7 +153,7 @@ function ApontamentosPageImpl() {
         }
         setLoading(true);
         const [data, preferences] = await Promise.all([
-          rendimentoService.listCollaborators(),
+          rendimentoService.listCollaborators(periodoInicial.current),
           rendimentoService
             .listCollaboratorListPreferences()
             .catch((): RendimentoCollaboratorListPreference[] => []),
@@ -388,10 +427,38 @@ function ApontamentosPageImpl() {
 
             <Card>
               <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+                <div className="space-y-2">
                   <CardTitle className="text-lg">Colaboradores</CardTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {APONTAMENTOS_MONTH_HOURS_NOTE}
+                  <div
+                    role="radiogroup"
+                    aria-label="Período das horas"
+                    className="inline-flex rounded-lg border border-border p-0.5"
+                  >
+                    {(
+                      [
+                        ["mes", "Mês civil"],
+                        ["folha", "Folha 26–25"],
+                      ] as const
+                    ).map(([id, rotulo]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={periodo === id}
+                        onClick={() => void trocarPeriodo(id)}
+                        className={cn(
+                          "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                          periodo === id
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {rotulo}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {rotuloPeriodo(periodo)} · {APONTAMENTOS_MONTH_HOURS_NOTE}
                   </p>
                 </div>
                 <div className="relative w-full sm:max-w-xs">
@@ -426,7 +493,7 @@ function ApontamentosPageImpl() {
                             Perfil
                           </th>
                           <th className="px-4 py-3 text-xs font-semibold uppercase">
-                            Horas no mês
+                            {periodo === "folha" ? "Horas na folha" : "Horas no mês"}
                           </th>
                           <th className="px-4 py-3 text-xs font-semibold uppercase">
                             Horas extra

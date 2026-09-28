@@ -34,6 +34,7 @@ import {
   ListPendingOvertimeQueryDto,
   ListCompanyQuestionsQueryDto,
   RendimentoCompanyAgendaQueryDto,
+  RendimentoCollaboratorsQueryDto,
   RendimentoTimesheetQueryDto,
   UpdateCollaboratorListPreferenceDto,
 } from './rendimento.dto';
@@ -147,8 +148,8 @@ export class RendimentoController {
   @Get('collaborators')
   @RequirePermission(PermissionModule.RENDIMENTO, 'canView')
   @Roles('ADMIN')
-  listCollaborators() {
-    return this.rendimentoService.listCollaborators();
+  listCollaborators(@Query() query: RendimentoCollaboratorsQueryDto) {
+    return this.rendimentoService.listCollaborators(query.periodo ?? 'mes');
   }
 
   @Get('company-employees')
@@ -212,6 +213,7 @@ export class RendimentoController {
         actor: req.user,
         userId,
         date: query.date,
+        periodo: query.periodo ?? 'mes',
       });
     res.setHeader(
       'Content-Type',

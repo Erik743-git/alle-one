@@ -1,6 +1,7 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { useState } from "react";
+import { Eye, EyeOff, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -53,6 +54,8 @@ export function UsuarioEditDialog({
   salvando = false,
   onSave,
 }: UsuarioEditDialogProps) {
+  // Mostra só o que foi digitado: a senha já salva é hash e não volta.
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   return (
     <Dialog
       open={open}
@@ -206,14 +209,25 @@ export function UsuarioEditDialog({
                     <span className="text-destructive"> *</span>
                   ) : null}
                 </Label>
-                <Input
-                  type="password"
-                  value={senhaProvisoria}
-                  onChange={(e) => onSenhaProvisoriaChange(e.target.value)}
-                  placeholder="Mín. 8 caracteres (A a, 0-9, especial)"
-                  autoComplete="new-password"
-                  className="h-11"
-                />
+                <div className="relative">
+                  <Input
+                    type={mostrarSenha ? "text" : "password"}
+                    value={senhaProvisoria}
+                    onChange={(e) => onSenhaProvisoriaChange(e.target.value)}
+                    placeholder="Mín. 8 caracteres (A a, 0-9, especial)"
+                    autoComplete="new-password"
+                    className="h-11 pr-11"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSenha((v) => !v)}
+                    aria-label={mostrarSenha ? "Esconder senha" : "Mostrar senha"}
+                    aria-pressed={mostrarSenha}
+                    className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {mostrarSenha ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
                 <p className="text-xs text-muted-foreground">
                   {firstAccessInicial
                     ? "Deixe em branco para manter a senha atual. Preencha apenas se quiser gerar uma nova senha provisória."

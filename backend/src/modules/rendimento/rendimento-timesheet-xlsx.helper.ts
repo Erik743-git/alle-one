@@ -203,5 +203,5 @@ export function rendimentoTimesheetXlsxFilename(
     .replace(/[^a-zA-Z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase();
-  return `apontamentos-${safeName || 'colaborador'}-${timesheet.rangeStart}.xlsx`;
+  return `apontamentos-${safeName || 'colaborador'}-${timesheet.rangeStart}-a-${timesheet.rangeEnd}.xlsx`;
 }

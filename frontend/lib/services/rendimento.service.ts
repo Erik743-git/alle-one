@@ -292,8 +292,11 @@ export const rendimentoService = {
     );
   },
 
-  listCollaborators() {
-    return apiRequest<RendimentoCollaborator[]>("/rendimento/collaborators");
+  /** "Horas no mês/Horas extra": mês civil atual ou folha 26→25 atual. */
+  listCollaborators(periodo: "mes" | "folha" = "mes") {
+    return apiRequest<RendimentoCollaborator[]>(
+      `/rendimento/collaborators?periodo=${periodo}`,
+    );
   },
 
   listCompanyEmployees() {
@@ -347,7 +350,11 @@ export const rendimentoService = {
   },
 
   /** Baixa o XLSX do mês exibido na tela (mesmos totais do timesheet). */
-  async exportTimesheetXlsx(params: { userId: string; date?: string }) {
+  async exportTimesheetXlsx(params: {
+    userId: string;
+    date?: string;
+    periodo?: "mes" | "folha";
+  }) {
     if (!isValidUuid(params.userId)) {
       return Promise.reject(new Error("Colaborador inválido."));
     }
@@ -356,6 +363,7 @@ export const rendimentoService = {
     if (params.date) {
       search.set("date", params.date);
     }
+    search.set("periodo", params.periodo ?? "mes");
     const res = await authFetch(
       `${API_URL}/rendimento/users/${params.userId}/timesheet/export?${search.toString()}`,
       { method: "GET" },

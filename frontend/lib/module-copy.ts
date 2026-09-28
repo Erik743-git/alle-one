@@ -31,7 +31,7 @@ export const APONTAMENTOS_PJ_SUBTITLE =
   "Visão resumida dos seus apontamentos e horas extras.";
 
 export const APONTAMENTOS_MONTH_HOURS_NOTE =
-  "Total do mês calculado sem contar horas sobrepostas no mesmo dia.";
+  "Total calculado sem contar horas sobrepostas no mesmo dia.";
 
 export const APONTAMENTOS_LIST_SETTINGS_TITLE =
   "Lista de colaboradores";

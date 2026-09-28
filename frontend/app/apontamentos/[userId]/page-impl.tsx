@@ -333,13 +333,14 @@ function RendimentoAgendaPageImpl() {
     }
   }
 
-  async function exportMonthToExcel() {
+  async function exportMonthToExcel(periodo: "mes" | "folha") {
     if (!userId || exportingMonth) return;
     try {
       setExportingMonth(true);
       const { blob, filename } = await rendimentoService.exportTimesheetXlsx({
         userId,
         date: toDateInputValue(referenceDate),
+        periodo,
       });
       triggerBrowserDownload(blob, filename);
     } catch (err) {

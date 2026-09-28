@@ -25,6 +25,18 @@ export class RendimentoTimesheetQueryDto {
   @IsOptional()
   @IsDateString()
   date?: string;
+
+  /** Excel: mês civil ou folha 26→25. Padrão: mês civil. */
+  @IsOptional()
+  @IsIn(['mes', 'folha'])
+  periodo?: 'mes' | 'folha';
+}
+
+export class RendimentoCollaboratorsQueryDto {
+  /** Período de "Horas no mês" e "Horas extra". Padrão: mês civil. */
+  @IsOptional()
+  @IsIn(['mes', 'folha'])
+  periodo?: 'mes' | 'folha';
 }
 
 export class RendimentoUserIdParamDto {

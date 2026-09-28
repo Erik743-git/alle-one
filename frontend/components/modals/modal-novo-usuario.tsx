@@ -445,6 +445,8 @@ export default function ModalNovoUsuario({ open, onOpenChange }: Props) {
   <button
     type="button"
     onClick={() => setShowPassword(!showPassword)}
+    aria-label={showPassword ? "Esconder senha" : "Mostrar senha"}
+    aria-pressed={showPassword}
     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
   >
     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}

@@ -1,4 +1,9 @@
 import {
+  intervaloAtual,
+  intervaloDoMesExibido,
+  type PeriodoHoras,
+} from './periodo-horas';
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -2515,16 +2520,6 @@ export class RendimentoService {
     return computeCategorizedMinutes(rows).extra;
   }
 
-  private currentMonthRange(): { start: Date; end: Date } {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-    const start = new Date(now);
-    start.setDate(1);
-    const end = new Date(start);
-    end.setMonth(end.getMonth() + 1, 0);
-    return { start, end };
-  }
-
   /** Lista rápida para selects (relatórios) — sem totais do mês. */
   async listCollaboratorsForSelect(options?: {
     includePj?: boolean;
@@ -2564,7 +2559,13 @@ export class RendimentoService {
     });
   }
 
-  async listCollaborators(): Promise<RendimentoCollaboratorDto[]> {
+  /**
+   * Lista de Apontamentos. "Horas no mês" e "Horas extra" seguem o período
+   * escolhido na tela: mês civil atual (padrão) ou folha 26→25 atual.
+   */
+  async listCollaborators(
+    periodo: PeriodoHoras = 'mes',
+  ): Promise<RendimentoCollaboratorDto[]> {
     const users = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
@@ -2576,7 +2577,7 @@ export class RendimentoService {
       orderBy: { name: 'asc' },
     });
 
-    const { start, end } = this.currentMonthRange();
+    const { start, end } = intervaloAtual(periodo, new Date());
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const rowsByUserId = await this.fetchAppointmentsGroupedByUser({
       users: users.map((user) => {
@@ -2892,6 +2893,8 @@ export class RendimentoService {
     userId: string;
     view: RendimentoCalendarView;
     date?: string;
+    /** Período fechado (Excel: mês civil ou folha) no lugar da grade da tela. */
+    intervalo?: { start: Date; end: Date };
   }): Promise<RendimentoTimesheetDto> {
     this.assertCanManageTargetUser(params.actor, params.userId);
     const user = await this.prisma.user.findFirst({
@@ -2907,7 +2910,8 @@ export class RendimentoService {
     }
 
     const reference = this.parseDateOnly(params.date);
-    const { start, end } = this.resolveRange(params.view, reference);
+    const { start, end } =
+      params.intervalo ?? this.resolveRange(params.view, reference);
     const tifluxUserByEmail = await this.ensureTifluxUserEmailMap();
     const tifluxUser = this.lookupTifluxUser(user.email, tifluxUserByEmail);
 
@@ -3008,7 +3012,8 @@ export class RendimentoService {
 
     let scopedRows = rows;
     if (params.view === 'month') {
-      const cal = this.resolveCalendarMonthBounds(reference);
+      const cal =
+        params.intervalo ?? this.resolveCalendarMonthBounds(reference);
       const calStart = this.toDateOnlyString(cal.start);
       const calEnd = this.toDateOnlyString(cal.end);
       scopedRows = rows.filter((row) => {
@@ -3067,16 +3072,26 @@ export class RendimentoService {
    * XLSX do período (tipicamente um mês) do colaborador — reusa exatamente
    * o mesmo cálculo de {@link getTimesheet} para a planilha bater com a tela.
    */
+  /**
+   * Excel da agenda. Antes saía a grade do calendário (domingo antes do dia 1
+   * até o sábado depois do último), misturando dias de outros meses. Agora é
+   * o período escolhido na tela: mês civil do mês exibido, ou a folha 26→25
+   * que termina nele.
+   */
   async exportTimesheetXlsx(params: {
     actor: AuthenticatedRequestUser;
     userId: string;
     date?: string;
+    periodo?: PeriodoHoras;
   }): Promise<{ buffer: Buffer; filename: string }> {
+    const reference = this.parseDateOnly(params.date);
+    const intervalo = intervaloDoMesExibido(params.periodo ?? 'mes', reference);
     const timesheet = await this.getTimesheet({
       actor: params.actor,
       userId: params.userId,
       view: 'month',
       date: params.date,
+      intervalo: { start: intervalo.start, end: intervalo.end },
     });
     const buffer = await buildRendimentoTimesheetXlsx(timesheet);
     return { buffer, filename: rendimentoTimesheetXlsxFilename(timesheet) };

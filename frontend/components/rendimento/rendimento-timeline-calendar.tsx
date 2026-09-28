@@ -23,7 +23,24 @@ import {
   subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ChevronLeft, ChevronRight, FileDown, Loader2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  FileDown,
+  Loader2,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  monthRangeFor,
+  payrollPeriodRangeForCalendarMonthOf,
+} from "@/lib/date-ranges";
 import { useRouter } from "next/navigation";
 
 import {
@@ -102,7 +119,8 @@ export type RendimentoTimelineCalendarProps = {
   onViewChange: (view: RendimentoCalendarView) => void;
   onReferenceDateChange: (date: Date) => void;
   /** Exporta o mês exibido para Excel. Omitido esconde o botão. */
-  onExportMonth?: () => void;
+  /** Excel do mês na tela, no período escolhido (mês civil ou folha 26–25). */
+  onExportMonth?: (periodo: "mes" | "folha") => void;
   exportingMonth?: boolean;
 };
 
@@ -512,21 +530,55 @@ export function RendimentoTimelineCalendar({
             </Button>
           ))}
           {onExportMonth && view === "month" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={exportingMonth}
-              onClick={onExportMonth}
-              className="gap-1.5"
-            >
-              {exportingMonth ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <FileDown className="size-4" />
-              )}
-              Exportar Excel
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={exportingMonth}
+                  className="gap-1.5"
+                >
+                  {exportingMonth ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <FileDown className="size-4" />
+                  )}
+                  Exportar Excel
+                  <ChevronDown className="size-3.5 opacity-70" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-64">
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  Período do Excel
+                </DropdownMenuLabel>
+                {(() => {
+                  const mes = monthRangeFor(referenceDate);
+                  const folha = payrollPeriodRangeForCalendarMonthOf(referenceDate);
+                  const br = (ymd: string) => ymd.split("-").reverse().slice(0, 2).join("/");
+                  return (
+                    <>
+                      <DropdownMenuItem onSelect={() => onExportMonth("mes")}>
+                        <span className="flex flex-col">
+                          <span>Mês civil</span>
+                          <span className="text-xs text-muted-foreground">
+                            {br(mes.start)} a {br(mes.end)}
+                          </span>
+                        </span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => onExportMonth("folha")}>
+                        <span className="flex flex-col">
+                          <span>Folha 26–25</span>
+                          <span className="text-xs text-muted-foreground">
+                            {br(folha.start)} a {br(folha.end)}
+                          </span>
+                        </span>
+                      </DropdownMenuItem>
+                    </>
+                  );
+                })()}
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
         </div>
 
