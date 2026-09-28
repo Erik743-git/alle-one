@@ -1,6 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
-  ContractStatus,
   MailboxNotificationKind,
   Prisma,
   UserRole,
@@ -12,10 +11,6 @@ import { DashboardService } from '../dashboard/dashboard.service';
 import { RendimentoService } from '../rendimento/rendimento.service';
 import { InventarioService } from '../inventario/inventario.service';
 import type { MailboxDraft } from './mailbox.types';
-import {
-  CONTRACT_USAGE_HIGH_PCT,
-  CONTRACT_USAGE_LOW_PCT,
-} from './mailbox.types';
 import { isTicketsPortalCanonical } from '../tickets/tickets-portal.config';
 
 type TifluxUserMap = Map<string, { id: number; userId: string }>;
@@ -130,10 +125,10 @@ export class MailboxService {
     kindsToPrune.push(MailboxNotificationKind.GMUD_PENDING_APPROVAL);
     drafts.push(...(await this.buildGmudPendingForUser(user.id)));
 
-    if (this.isAdminActor(actor) || this.hasFinancialView(actor)) {
-      kindsToPrune.push(MailboxNotificationKind.CONTRACT_USAGE);
-      drafts.push(...(await this.buildContractUsageAlerts(actor)));
-    }
+    // O alerta de contrato de 30%–70% saiu em 28/09: o aviso de consumo agora
+    // é por linha de contrato, no módulo contrato-aviso. O tipo continua na
+    // limpeza para os avisos antigos sumirem do Correio de quem os tinha.
+    kindsToPrune.push(MailboxNotificationKind.CONTRACT_USAGE);
 
     const tifluxMap = await this.loadTifluxUserPortalMap();
     const ticketKinds: MailboxNotificationKind[] = [
@@ -182,36 +177,6 @@ export class MailboxService {
         );
       }
     }
-  }
-
-  /** Contratos: executar no dia 15 (e quando admin abre o correio). */
-  async refreshContractAlertsForAdmins(reference = new Date()): Promise<void> {
-    const admins = await this.prisma.user.findMany({
-      where: {
-        deletedAt: null,
-        status: UserStatus.ACTIVE,
-        role: UserRole.ADMIN,
-      },
-      select: { id: true, email: true, role: true, companyId: true },
-    });
-
-    for (const admin of admins) {
-      const actor: AuthenticatedRequestUser = {
-        userId: admin.id,
-        email: admin.email,
-        role: admin.role,
-        companyId: admin.companyId,
-        permissions: [],
-      };
-      const contracts = await this.buildContractUsageAlerts(actor);
-      await this.syncDrafts(admin.id, contracts, [
-        MailboxNotificationKind.CONTRACT_USAGE,
-      ]);
-    }
-
-    this.logger.log(
-      `Alertas de contrato (dia ${reference.getDate()}) processados para ${admins.length} administrador(es).`,
-    );
   }
 
   private async syncDrafts(
@@ -402,81 +367,6 @@ export class MailboxService {
       dedupeKey: `gmud:approval:${row.gmud.id}`,
       payload: { gmudId: row.gmud.id, code: row.gmud.code },
     }));
-  }
-
-  private async buildContractUsageAlerts(
-    actor: AuthenticatedRequestUser,
-  ): Promise<MailboxDraft[]> {
-    const companies = await this.prisma.company.findMany({
-      where: { deletedAt: null, tifluxClientId: { not: null } },
-      select: { id: true, name: true, tifluxClientId: true },
-      orderBy: { name: 'asc' },
-    });
-
-    const now = new Date();
-    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endMonth = new Date(
-      now.getFullYear(),
-      now.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
-    const monthLabel = startMonth.toLocaleDateString('pt-BR', {
-      month: 'long',
-      year: 'numeric',
-    });
-
-    const drafts: MailboxDraft[] = [];
-
-    for (const company of companies) {
-      const contractedHours = await this.getContractedHours(company.id);
-      if (!contractedHours || contractedHours <= 0) continue;
-
-      const hours = await this.dashboard.getDashboardHours(actor, {
-        group: 'financeiro',
-        companyId: company.id,
-        start: startMonth.toISOString(),
-        end: endMonth.toISOString(),
-      });
-
-      const used = Number(hours?.summary?.totalHoras ?? 0);
-      const pct = Math.round((used / contractedHours) * 1000) / 10;
-
-      if (pct >= CONTRACT_USAGE_LOW_PCT && pct <= CONTRACT_USAGE_HIGH_PCT) {
-        continue;
-      }
-
-      const below = pct < CONTRACT_USAGE_LOW_PCT;
-      drafts.push({
-        kind: MailboxNotificationKind.CONTRACT_USAGE,
-        title: below
-          ? 'Contrato — consumo abaixo do esperado'
-          : 'Contrato — consumo acima do esperado',
-        body: `${company.name}: ${pct}% das horas contratadas em ${monthLabel} (${used}h de ${contractedHours}h). Faixa sem alerta: ${CONTRACT_USAGE_LOW_PCT}%–${CONTRACT_USAGE_HIGH_PCT}%.`,
-        href: `/financeiro?companyId=${company.id}`,
-        dedupeKey: `contract:usage:${company.id}:${now.getFullYear()}-${now.getMonth() + 1}`,
-        payload: {
-          companyId: company.id,
-          pct,
-          used,
-          contractedHours,
-          monthLabel,
-        },
-      });
-    }
-
-    return drafts;
-  }
-
-  private async getContractedHours(companyId: string): Promise<number> {
-    const contracts = await this.prisma.contract.findMany({
-      where: { companyId, deletedAt: null, status: ContractStatus.ACTIVE },
-      select: { monthlyHours: true },
-    });
-    return contracts.reduce((acc, c) => acc + (c.monthlyHours ?? 0), 0);
   }
 
   private async buildTicketAlerts(

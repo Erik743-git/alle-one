@@ -5,14 +5,17 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { getFrontendBaseUrl } from '../auth/password-reset.helper';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { DashboardService } from '../dashboard/dashboard.service';
-import { contractedHoursFromContract } from '../financial/financial-overview.util';
 import { MailService } from '../mail/mail.service';
 import { OportunidadesService } from '../oportunidades/oportunidades.service';
 import {
+  FAIXAS,
+  FAIXA_DIA15,
+  deveAvisarDia15,
+  ehJanelaDia15,
   faixasParaAvisar,
+  horasDaEspecialidade,
   mesBrasilia,
   percentual,
-  type Faixa,
 } from './contrato-aviso-regras';
 
 function escapeHtml(v: string): string {
@@ -39,11 +42,31 @@ const SISTEMA: AuthenticatedRequestUser = {
 
 export const TITULO_RENOVACAO = 'Renovação/ampliação de contrato';
 
+type Linha = {
+  id: string;
+  monthlyHours: number;
+  especialidade: string;
+  contratoTitulo: string;
+  empresa: { id: string; name: string };
+};
+
+type Consumo = { usadas: number; contratadas: number; pct: number };
+
 /**
- * Aviso de consumo do contrato: ao passar de 80% e de 100% das horas
- * contratadas no mês, e-mail e Correio para os admins e para a mesa
- * Comercial. O gestor do cliente não recebe. Em 100%, abre sozinho uma
- * oportunidade "Renovação/ampliação de contrato" em Pendente.
+ * Aviso de consumo de contrato, por LINHA (contrato + especialidade).
+ *
+ * - Qualquer dia: ao passar de 50%, 80% e 100% das horas da linha no mês,
+ *   uma vez por mês cada.
+ * - Dia 15, a partir das 8h de Brasília: linha em 50% ou menos.
+ * - Horas da linha: as apontadas no mês em chamados da empresa na mesa com o
+ *   nome da especialidade, na mesma soma por mesa do Financeiro. Linha
+ *   ilimitada fica fora.
+ * - E-mail e Correio para os admins e a mesa Comercial; o cliente não recebe.
+ * - Em 100%, abre a oportunidade "Renovação/ampliação de contrato" (uma por
+ *   empresa: se já houver uma aberta, não abre outra).
+ *
+ * Combinado em docs/desenho/APONTAMENTOS-TELAS-ADMIN.md (parte 5). Substitui
+ * a conta por empresa (80% e 100%) de 24/09.
  */
 @Injectable()
 export class ContratoAvisoService {
@@ -56,122 +79,132 @@ export class ContratoAvisoService {
     private readonly oportunidades: OportunidadesService,
   ) {}
 
-  /** Horas contratadas no mês, igual ao Financeiro (linha ilimitada fica fora). */
-  async horasContratadas(companyId: string, agora: Date): Promise<number> {
-    const contratos = await this.prisma.contract.findMany({
+  /** Linhas com horas, de contratos ativos e não vencidos, de empresas ativas. */
+  private async linhasAtivas(agora: Date): Promise<Linha[]> {
+    const rows = await this.prisma.contractSpecialty.findMany({
       where: {
-        companyId,
-        deletedAt: null,
-        status: ContractStatus.ACTIVE,
-        OR: [{ endDate: null }, { endDate: { gte: agora } }],
+        unlimited: false,
+        monthlyHours: { gt: 0 },
+        contract: {
+          deletedAt: null,
+          status: ContractStatus.ACTIVE,
+          OR: [{ endDate: null }, { endDate: { gte: agora } }],
+          company: {
+            deletedAt: null,
+            status: true,
+            tifluxClientId: { not: null },
+          },
+        },
       },
       select: {
-        status: true,
+        id: true,
         monthlyHours: true,
-        specialties: { select: { monthlyHours: true, unlimited: true } },
+        specialty: { select: { name: true } },
+        contract: {
+          select: {
+            title: true,
+            company: { select: { id: true, name: true } },
+          },
+        },
       },
     });
-    return contratos.reduce(
-      (soma, c) =>
-        soma +
-        contractedHoursFromContract({
-          status: c.status,
-          monthlyHours: c.monthlyHours,
-          specialties: c.specialties,
-        }),
-      0,
-    );
+    return rows.map((r) => ({
+      id: r.id,
+      monthlyHours: r.monthlyHours,
+      especialidade: r.specialty.name,
+      contratoTitulo: r.contract.title,
+      empresa: r.contract.company,
+    }));
   }
 
   async verificar(
     agora = new Date(),
   ): Promise<{ avisos: number; oportunidades: number }> {
     const { mes, inicio, fim } = mesBrasilia(agora);
-    const empresas = await this.prisma.company.findMany({
-      where: {
-        deletedAt: null,
-        status: true,
-        tifluxClientId: { not: null },
-        contracts: { some: { deletedAt: null, status: ContractStatus.ACTIVE } },
-      },
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
+    const linhas = await this.linhasAtivas(agora);
+    if (!linhas.length) return { avisos: 0, oportunidades: 0 };
+
+    const ja = await this.prisma.contratoAvisoLinha.findMany({
+      where: { mes, contractSpecialtyId: { in: linhas.map((l) => l.id) } },
+      select: { contractSpecialtyId: true, faixa: true },
     });
+    const avisadas = new Map<string, number[]>();
+    for (const a of ja) {
+      avisadas.set(a.contractSpecialtyId, [
+        ...(avisadas.get(a.contractSpecialtyId) ?? []),
+        a.faixa,
+      ]);
+    }
+
+    const janelaDia15 = ehJanelaDia15(agora);
+
+    // Uma conta do painel por empresa, e só se alguma linha dela ainda pode avisar.
+    const porEmpresa = new Map<string, Linha[]>();
+    for (const l of linhas) {
+      porEmpresa.set(l.empresa.id, [
+        ...(porEmpresa.get(l.empresa.id) ?? []),
+        l,
+      ]);
+    }
+
     let avisos = 0;
     let oportunidades = 0;
-    for (const emp of empresas) {
+    for (const [, dasEmpresa] of porEmpresa) {
+      const empresa = dasEmpresa[0].empresa;
+      const podeAvisar = dasEmpresa.some((l) => {
+        const feitas = avisadas.get(l.id) ?? [];
+        return (
+          FAIXAS.some((f) => !feitas.includes(f)) ||
+          (janelaDia15 && !feitas.includes(FAIXA_DIA15))
+        );
+      });
+      if (!podeAvisar) continue;
+
       try {
-        const contratadas = await this.horasContratadas(emp.id, agora);
-        if (!(contratadas > 0)) continue;
-        const ja = await this.prisma.contratoAviso.findMany({
-          where: { companyId: emp.id, mes },
-          select: { faixa: true },
-        });
-        // Nada a avisar neste mês: não calcula as horas (poupa o painel).
-        if (ja.length >= 2) continue;
         const r = await this.dashboard.getDashboardHours(SISTEMA, {
           group: 'financeiro',
-          companyId: emp.id,
+          companyId: empresa.id,
           start: inicio.toISOString(),
           end: fim.toISOString(),
         } as never);
-        const usadas = Number(r?.summary?.totalHoras ?? 0);
-        const pct = percentual(usadas, contratadas);
-        const { registrar, avisar } = faixasParaAvisar(
-          pct,
-          ja.map((j) => j.faixa),
-        );
-        if (!avisar || pct == null) continue;
+        const horasPorMesa = (r as { horasPorMesa?: unknown } | null)
+          ?.horasPorMesa as
+          | Array<{ deskName: string; totalMinutes: number }>
+          | undefined;
 
-        // Registra antes de avisar: duas instâncias ao mesmo tempo não
-        // mandam duas vezes (a chave primária barra a segunda).
-        const gravou = await this.prisma.contratoAviso
-          .createMany({
-            data: registrar.map((faixa) => ({
-              companyId: emp.id,
-              mes,
-              faixa,
-              percentual: pct,
-              horasUsadas: usadas,
-              horasContratadas: contratadas,
-            })),
-            skipDuplicates: true,
-          })
-          .then((x) => x.count);
-        if (!gravou) continue;
-
-        let oportunidadeId: string | null = null;
-        if (avisar === 100) {
-          oportunidadeId = await this.abrirOportunidade(
-            emp,
-            mes,
-            pct,
-            usadas,
-            contratadas,
+        for (const linha of dasEmpresa) {
+          const usadas = horasDaEspecialidade(
+            horasPorMesa,
+            linha.especialidade,
           );
-          if (oportunidadeId) {
-            oportunidades += 1;
-            await this.prisma.contratoAviso.update({
-              where: {
-                companyId_mes_faixa: { companyId: emp.id, mes, faixa: 100 },
-              },
-              data: { oportunidadeId },
-            });
+          const contratadas = linha.monthlyHours;
+          const pct = percentual(usadas, contratadas);
+          if (pct == null) continue;
+          const feitas = avisadas.get(linha.id) ?? [];
+          const consumo = { usadas, contratadas, pct };
+
+          const { registrar, avisar } = faixasParaAvisar(pct, feitas);
+          if (avisar) {
+            const r1 = await this.avisarFaixa(
+              linha,
+              mes,
+              registrar,
+              avisar,
+              consumo,
+            );
+            avisos += r1.avisos;
+            oportunidades += r1.oportunidades;
+          }
+          if (deveAvisarDia15({ agora, pct, jaAvisadas: feitas })) {
+            if (await this.registrar(linha, mes, [FAIXA_DIA15], consumo)) {
+              await this.avisar(linha, mes, FAIXA_DIA15, consumo, null);
+              avisos += 1;
+            }
           }
         }
-        await this.avisar(
-          emp,
-          mes,
-          avisar,
-          pct,
-          usadas,
-          contratadas,
-          oportunidadeId,
-        );
-        avisos += 1;
       } catch (err) {
         this.logger.warn(
-          `Aviso de contrato de ${emp.name} falhou: ${err instanceof Error ? err.message : String(err)}`,
+          `Aviso de contrato de ${empresa.name} falhou: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
@@ -183,17 +216,71 @@ export class ContratoAvisoService {
   }
 
   /**
+   * Registra antes de avisar: duas instâncias ao mesmo tempo não mandam duas
+   * vezes (a chave primária barra a segunda). Devolve se gravou.
+   */
+  private async registrar(
+    linha: Linha,
+    mes: string,
+    faixas: number[],
+    c: Consumo,
+  ): Promise<boolean> {
+    const gravou = await this.prisma.contratoAvisoLinha.createMany({
+      data: faixas.map((faixa) => ({
+        contractSpecialtyId: linha.id,
+        mes,
+        faixa,
+        companyId: linha.empresa.id,
+        percentual: c.pct,
+        horasUsadas: c.usadas,
+        horasContratadas: c.contratadas,
+      })),
+      skipDuplicates: true,
+    });
+    return gravou.count > 0;
+  }
+
+  private async avisarFaixa(
+    linha: Linha,
+    mes: string,
+    registrar: number[],
+    faixa: number,
+    c: Consumo,
+  ): Promise<{ avisos: number; oportunidades: number }> {
+    if (!(await this.registrar(linha, mes, registrar, c))) {
+      return { avisos: 0, oportunidades: 0 };
+    }
+    let oportunidadeId: string | null = null;
+    if (faixa === 100) {
+      oportunidadeId = await this.abrirOportunidade(linha, mes, c);
+      if (oportunidadeId) {
+        await this.prisma.contratoAvisoLinha.update({
+          where: {
+            contractSpecialtyId_mes_faixa: {
+              contractSpecialtyId: linha.id,
+              mes,
+              faixa: 100,
+            },
+          },
+          data: { oportunidadeId },
+        });
+      }
+    }
+    await this.avisar(linha, mes, faixa, c, oportunidadeId);
+    return { avisos: 1, oportunidades: oportunidadeId ? 1 : 0 };
+  }
+
+  /**
    * Oportunidade de renovação. Se já existe uma aberta para a empresa (de
-   * um mês anterior, ainda em andamento), não abre outra: o comercial já
-   * está tratando.
+   * outra linha ou de um mês anterior, ainda em andamento), não abre outra: o
+   * comercial já está tratando.
    */
   private async abrirOportunidade(
-    emp: { id: string; name: string },
+    linha: Linha,
     mes: string,
-    pct: number,
-    usadas: number,
-    contratadas: number,
+    c: Consumo,
   ): Promise<string | null> {
+    const emp = linha.empresa;
     const aberta = await this.prisma.oportunidade.findFirst({
       where: {
         companyId: emp.id,
@@ -208,7 +295,7 @@ export class ContratoAvisoService {
     const card = await this.oportunidades.criarAutomatica({
       titulo: `${TITULO_RENOVACAO} — ${emp.name}`,
       descricao: [
-        `O contrato da ${emp.name} chegou a ${pct}% das horas de ${m}/${ano}: ${horas(usadas)} usadas de ${horas(contratadas)} contratadas.`,
+        `A linha ${linha.especialidade} do contrato "${linha.contratoTitulo}" da ${emp.name} chegou a ${c.pct}% das horas de ${m}/${ano}: ${horas(c.usadas)} usadas de ${horas(c.contratadas)} contratadas.`,
         '',
         'Card aberto automaticamente pelo aviso de consumo de contrato.',
       ].join('\n'),
@@ -220,13 +307,54 @@ export class ContratoAvisoService {
     return card.id;
   }
 
-  private async avisar(
-    emp: { id: string; name: string },
+  private textos(
+    linha: Linha,
     mes: string,
-    faixa: Faixa,
-    pct: number,
-    usadas: number,
-    contratadas: number,
+    faixa: number,
+    c: Consumo,
+    oportunidadeId: string | null,
+  ): { assunto: string; titulo: string; linhas: string[] } {
+    const [ano, m] = mes.split('-');
+    const quem = `${linha.empresa.name} — ${linha.especialidade}`;
+    const detalhe = [
+      `Cliente: ${linha.empresa.name}`,
+      `Contrato: ${linha.contratoTitulo}`,
+      `Especialidade: ${linha.especialidade}`,
+      `Horas em ${m}/${ano}: ${horas(c.usadas)} usadas de ${horas(c.contratadas)} contratadas (${c.pct}%).`,
+    ];
+    if (faixa === FAIXA_DIA15) {
+      return {
+        assunto: `[Contrato no dia 15: ${c.pct}%] ${quem}`,
+        titulo: `Contrato em ${c.pct}% no dia 15: ${quem}`,
+        linhas: [
+          ...detalhe,
+          'Chegou o dia 15 e a linha está em 50% ou menos das horas do mês.',
+        ],
+      };
+    }
+    const fecho =
+      faixa === 100
+        ? oportunidadeId
+          ? 'Foi aberta uma oportunidade "Renovação/ampliação de contrato" em Pendente para o comercial.'
+          : 'Já existe uma oportunidade de renovação aberta para esta empresa.'
+        : faixa === 80
+          ? 'Vale falar com o cliente antes de estourar.'
+          : 'Metade das horas do mês desta linha já foi usada.';
+    return {
+      assunto: `[Contrato ${faixa}%] ${quem}`,
+      titulo:
+        faixa === 100
+          ? `Contrato estourado: ${quem} passou de 100% das horas`
+          : `Contrato em ${faixa}%: ${quem}`,
+      linhas: [...detalhe, fecho],
+    };
+  }
+
+  private async avisar(
+    linha: Linha,
+    mes: string,
+    faixa: number,
+    c: Consumo,
     oportunidadeId: string | null,
   ) {
     const [admins, comercial] = await Promise.all([
@@ -241,31 +369,27 @@ export class ContratoAvisoService {
       { id: string; email: string; admin: boolean }
     >();
     for (const a of admins) pessoas.set(a.id, { ...a, admin: true });
-    for (const c of comercial) {
-      if (!pessoas.has(c.id))
-        pessoas.set(c.id, { id: c.id, email: c.email, admin: false });
+    for (const p of comercial) {
+      if (!pessoas.has(p.id))
+        pessoas.set(p.id, { id: p.id, email: p.email, admin: false });
     }
     if (!pessoas.size) return;
-    const [ano, m] = mes.split('-');
-    const titulo =
-      faixa === 100
-        ? `Contrato estourado: ${emp.name} passou de 100% das horas`
-        : `Contrato em 80%: ${emp.name}`;
-    const linhas = [
-      `A ${emp.name} já usou ${pct}% das horas contratadas em ${m}/${ano}: ${horas(usadas)} de ${horas(contratadas)}.`,
-      faixa === 100
-        ? oportunidadeId
-          ? 'Foi aberta uma oportunidade "Renovação/ampliação de contrato" em Pendente para o comercial.'
-          : 'Já existe uma oportunidade de renovação aberta para esta empresa.'
-        : 'Vale falar com o cliente antes de estourar.',
-    ];
+
+    const emp = linha.empresa;
+    const { assunto, titulo, linhas } = this.textos(
+      linha,
+      mes,
+      faixa,
+      c,
+      oportunidadeId,
+    );
     const base = getFrontendBaseUrl();
     const linkFin = `${base}/financeiro?companyId=${emp.id}`;
     const linkOp = `${base}/oportunidades${oportunidadeId ? `?card=${oportunidadeId}` : ''}`;
     await this.mail
       .sendMail({
         to: [...pessoas.values()].map((p) => p.email),
-        subject: `[Contrato ${faixa}%] ${emp.name} — ${pct}% das horas de ${m}/${ano}`,
+        subject: assunto,
         text: `${linhas.join('\n')}\n\nFinanceiro: ${linkFin}\nOportunidades: ${linkOp}\n\nAlle One`,
         html: `${linhas.map((l) => `<p>${escapeHtml(l)}</p>`).join('')}<p><a href="${escapeHtml(linkFin)}">Ver no Financeiro</a> · <a href="${escapeHtml(linkOp)}">Ver em Oportunidades</a></p>`,
       })
@@ -282,7 +406,7 @@ export class ContratoAvisoService {
         body: linhas.join(' ').slice(0, 500),
         // Comercial sem Financeiro cai na oportunidade.
         href: p.admin ? `/financeiro?companyId=${emp.id}` : '/oportunidades',
-        dedupeKey: `contrato-consumo:${emp.id}:${mes}:${faixa}`,
+        dedupeKey: `contrato-consumo:${linha.id}:${mes}:${faixa}`,
       })),
       skipDuplicates: true,
     });

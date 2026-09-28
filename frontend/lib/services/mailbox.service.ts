@@ -77,11 +77,6 @@ export const MAILBOX_KIND_OPTIONS: {
     description: MAILBOX_RENDIMENTO_APPROVAL_FILTER_DESC,
   },
   {
-    kind: "CONTRACT_USAGE",
-    label: "Contratos (consumo de horas)",
-    description: "Uso abaixo de 30% ou acima de 70% das horas contratadas.",
-  },
-  {
     kind: "GMUD_PENDING_APPROVAL",
     label: "GMUD para aprovar",
     description: "Mudanças aguardando sua decisão.",
@@ -149,7 +144,8 @@ export const MAILBOX_KIND_OPTIONS: {
   {
     kind: "CONTRATO_CONSUMO",
     label: "Contrato: consumo de horas",
-    description: "Aviso de consumo das horas contratadas.",
+    description:
+      "Linha de contrato passou de 50%, 80% ou 100% das horas do mês, ou está em 50% ou menos no dia 15.",
   },
 ];
 

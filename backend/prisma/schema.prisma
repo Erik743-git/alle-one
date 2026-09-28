@@ -511,6 +511,7 @@ model ContractSpecialty {
 
   contract  Contract   @relation(fields: [contractId], references: [id], onDelete: Cascade)
   specialty Specialty @relation(fields: [specialtyId], references: [id], onDelete: Restrict)
+  avisos    ContratoAvisoLinha[]
 
   @@unique([contractId, specialtyId])
   @@index([specialtyId])
@@ -2125,6 +2126,30 @@ model ContratoAviso {
 
   @@id([companyId, mes, faixa])
   @@map("contrato_avisos")
+}
+
+/// Aviso de consumo já enviado, por LINHA de contrato (contrato + especialidade).
+/// Substitui o controle por empresa (contrato_avisos, que fica como histórico).
+/// Faixas 50, 80 e 100, em qualquer dia; faixa 0 = aviso do dia 15 (50% ou menos).
+/// Um por linha, mês e faixa: a rotina roda de hora em hora sem repetir.
+model ContratoAvisoLinha {
+  contractSpecialtyId String   @map("contract_specialty_id")
+  /// AAAA-MM (Brasília).
+  mes                 String   @db.VarChar(7)
+  faixa               Int      @db.SmallInt
+  companyId           String   @map("company_id")
+  percentual          Decimal  @db.Decimal(6, 1)
+  horasUsadas         Decimal  @map("horas_usadas") @db.Decimal(10, 2)
+  horasContratadas    Decimal  @map("horas_contratadas") @db.Decimal(10, 2)
+  /// Oportunidade de renovação criada no aviso de 100%.
+  oportunidadeId      String?  @map("oportunidade_id")
+  enviadoEm           DateTime @default(now()) @map("enviado_em")
+
+  linha ContractSpecialty @relation(fields: [contractSpecialtyId], references: [id], onDelete: Cascade)
+
+  @@id([contractSpecialtyId, mes, faixa])
+  @@index([companyId, mes])
+  @@map("contrato_aviso_linhas")
 }
 
 /// Menu lateral de cada pessoa: ordem e itens escondidos (Personalizar menu).

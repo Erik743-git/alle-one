@@ -17,14 +17,4 @@ export class MailboxJob {
     await this.mailbox.refreshAllActiveUsers();
     this.logger.log('Correio diário concluído.');
   }
-
-  /** Dia 15: alertas de consumo de contrato para administradores. */
-  @Cron('0 0 9 15 * *')
-  async runMonthlyContractAlerts(): Promise<void> {
-    if (!shouldRunScheduledJobs()) return;
-    this.logger.log('Verificação mensal de contratos (dia 15)...');
-    await this.mailbox.refreshContractAlertsForAdmins();
-    await this.mailbox.refreshAllActiveUsers();
-    this.logger.log('Alertas de contrato e correio atualizados.');
-  }
 }
