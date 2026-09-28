@@ -2149,11 +2149,13 @@ export class RendimentoService {
 
   /**
    * Grava na esteira os eventos dos dias. Com `intervalo`, também apaga (soft
-   * delete) a hora extra/plantão PENDENTE do período que não tem mais
-   * apontamento de HE/plantão por trás — apontamento que trocou de serviço,
-   * mudou de dia ou foi apagado. Sem isso o pendente ficava para sempre e
-   * aparecia como "HE não aprovada" no relatório. Aprovado e negado não são
-   * tocados; se o apontamento voltar a ser HE, o upsert reativa o evento.
+   * delete) a hora extra/plantão do período que não tem mais apontamento de
+   * HE/plantão por trás — apontamento que trocou de serviço, mudou de dia ou
+   * foi apagado. Vale para pendente, aprovado e negado: sem apontamento de HE
+   * não há HE a pagar (caso Marcio: HE aprovada de um apontamento que virou
+   * hora normal continuava somando). A linha fica no banco com quem aprovou;
+   * se o apontamento voltar a ser HE, o upsert reativa o mesmo evento, com a
+   * mesma decisão.
    */
   private async syncDayEventsForDays(
     userId: string,
@@ -2223,7 +2225,6 @@ export class RendimentoService {
       SET deleted_at = NOW(), updated_at = NOW()
       WHERE user_id = ${userId}
         AND event_type IN ('OVERTIME', 'PLANTAO')
-        AND status = 'PENDING'
         AND deleted_at IS NULL
         AND date_ref BETWEEN ${this.toDateOnlyString(intervalo.start)}::date
                          AND ${this.toDateOnlyString(intervalo.end)}::date
@@ -2231,7 +2232,7 @@ export class RendimentoService {
     `;
     if (apagados) {
       this.logger.log(
-        `Esteira: ${apagados} hora(s) extra/plantão pendente(s) sem apontamento removida(s) (user=${userId}).`,
+        `Esteira: ${apagados} hora(s) extra/plantão sem apontamento de HE removida(s) das contas (user=${userId}).`,
       );
     }
     return apagados;
@@ -4115,6 +4116,7 @@ export class RendimentoService {
                 AND decided.event_type = e.event_type
                 AND decided.appointment_external_id = e.appointment_external_id
                 AND decided.status IN ('APPROVED', 'REJECTED')
+                AND decided.deleted_at IS NULL
                 AND decided.id <> e.id
             )
           )

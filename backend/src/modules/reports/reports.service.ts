@@ -2519,6 +2519,8 @@ export class ReportsService {
     Array<{
       attendant: string;
       nonOverlapMinutes: number;
+      /** Hora normal: total sem sobreposição menos HE e plantão. */
+      normalMinutes: number;
       rawMinutes: number;
       extraMinutes: number;
       plantaoMinutes: number;
@@ -2696,6 +2698,7 @@ export class ReportsService {
         return {
           attendant: name,
           nonOverlapMinutes: cat.total,
+          normalMinutes: cat.normal,
           rawMinutes: cat.bruto,
           extraMinutes: cat.extra,
           plantaoMinutes: cat.plantao,
@@ -2910,7 +2913,8 @@ export class ReportsService {
 
     const summaryHeader = [
       'atendente',
-      'horas_nao_sobrepostas',
+      'horas_nao_sobrepostas_total',
+      'horas_normais',
       'horas_apontadas_sobrepostas',
       'hora_extra',
       'plantao',
@@ -2929,6 +2933,7 @@ export class ReportsService {
       [
         escapeCsv(s.attendant),
         this.formatMinutesHHMM(s.nonOverlapMinutes),
+        this.formatMinutesHHMM(s.normalMinutes),
         this.formatMinutesHHMM(s.rawMinutes),
         this.formatMinutesHHMM(s.extraMinutes),
         this.formatMinutesHHMM(s.plantaoMinutes),
@@ -3159,21 +3164,23 @@ export class ReportsService {
     // fazendo os números aparecerem sob as colunas erradas).
     const summarySheet = workbook.addWorksheet('Resumo por Atendente');
     summarySheet.getColumn(1).width = 28;
-    summarySheet.getColumn(2).width = 24;
-    summarySheet.getColumn(3).width = 30;
-    summarySheet.getColumn(4).width = 14;
-    summarySheet.getColumn(5).width = 12;
-    summarySheet.getColumn(6).width = 10;
-    // 7 a 12 mais largas: os rótulos ganharam "(todas as empresas)".
-    for (const col of [7, 8, 9, 10, 11, 12]) {
+    summarySheet.getColumn(2).width = 28;
+    summarySheet.getColumn(3).width = 16;
+    summarySheet.getColumn(4).width = 30;
+    summarySheet.getColumn(5).width = 14;
+    summarySheet.getColumn(6).width = 12;
+    summarySheet.getColumn(7).width = 10;
+    // 8 a 13 mais largas: os rótulos ganharam "(todas as empresas)".
+    for (const col of [8, 9, 10, 11, 12, 13]) {
       summarySheet.getColumn(col).width = 30;
     }
-    summarySheet.getColumn(13).width = 16;
+    summarySheet.getColumn(14).width = 16;
 
     const summaryHeaderRow = summarySheet.getRow(1);
     summaryHeaderRow.values = [
       'Atendente',
-      'Horas não sobrepostas',
+      'Horas não sobrepostas (total)',
+      'Horas normais',
       'Horas apontadas (sobrepostas)',
       'Hora extra',
       'Plantão',
@@ -3206,6 +3213,7 @@ export class ReportsService {
       row.values = [
         s.attendant,
         toExcelDuration(s.nonOverlapMinutes),
+        toExcelDuration(s.normalMinutes),
         toExcelDuration(s.rawMinutes),
         toExcelDuration(s.extraMinutes),
         toExcelDuration(s.plantaoMinutes),
@@ -3218,7 +3226,8 @@ export class ReportsService {
         toExcelDuration(s.plantaoRejectedMinutes),
         s.justifications,
       ];
-      [2, 3, 4, 5, 7, 8, 9, 10, 11, 12].forEach((col) => {
+      // 7 = alertas e 14 = justificativas são contagens, não horas.
+      [2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13].forEach((col) => {
         row.getCell(col).numFmt = EXCEL_DURATION_FMT;
       });
       summaryRowIndex += 1;
@@ -3228,24 +3237,24 @@ export class ReportsService {
     if (summaryLastRow >= 1) {
       summarySheet.autoFilter = {
         from: { row: 1, column: 1 },
-        to: { row: summaryLastRow, column: 13 },
+        to: { row: summaryLastRow, column: 14 },
       };
     }
 
     if (summaryLastRow >= 2) {
       const totalRow = summarySheet.getRow(summaryLastRow + 1);
       totalRow.getCell(1).value = 'Total';
-      [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].forEach((col) => {
+      [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].forEach((col) => {
         const letra = String.fromCharCode(64 + col);
         totalRow.getCell(col).value = {
           formula: `SUBTOTAL(109,${letra}2:${letra}${summaryLastRow})`,
         };
-        if (col !== 6 && col !== 13) {
+        if (col !== 7 && col !== 14) {
           totalRow.getCell(col).numFmt = EXCEL_DURATION_FMT;
         }
       });
       totalRow.font = { bold: true };
-      for (let col = 1; col <= 13; col += 1) {
+      for (let col = 1; col <= 14; col += 1) {
         totalRow.getCell(col).border = { top: { style: 'thin' } };
       }
       summaryRowIndex += 1;
@@ -3256,12 +3265,12 @@ export class ReportsService {
     // com "Hora extra"/"Plantao" e nem se limitam a empresa do relatorio.
     const noteRow = summarySheet.getRow(summaryRowIndex + 1);
     noteRow.getCell(1).value =
-      'Aprovada / pendente / negada: vêm da tela de aprovação, que é por colaborador e dia — não tem empresa. Por isso somam a hora extra e o plantão do atendente em TODAS as empresas no período. Horário sobreposto no mesmo dia conta uma vez só. "Aprovada — a pagar" é o valor da folha. "Hora extra" e "Plantão" (à esquerda) são o que foi lançado nas empresas deste relatório, inclusive o que ainda está pendente ou foi negado.';
+      'Aprovada / pendente / negada: vêm da tela de aprovação, que é por colaborador e dia — não tem empresa. Por isso somam a hora extra e o plantão do atendente em TODAS as empresas no período. Horário sobreposto no mesmo dia conta uma vez só. Só conta HE/plantão com apontamento de HE/plantão por trás (apontamento que virou hora normal ou foi apagado sai, mesmo aprovado). "Aprovada — a pagar" é o valor da folha; "Horas normais" é o total sem HE e plantão. "Hora extra" e "Plantão" (à esquerda) são o que foi lançado nas empresas deste relatório, inclusive o que ainda está pendente ou foi negado.';
     noteRow.getCell(1).font = { italic: true, size: 9 };
     // Sem wrapText a nota fica cortada na borda da célula mesclada.
     noteRow.getCell(1).alignment = { wrapText: true, vertical: 'top' };
     noteRow.height = 46;
-    summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 13);
+    summarySheet.mergeCells(summaryRowIndex + 1, 1, summaryRowIndex + 1, 14);
 
     this.addHorasPorEspecialidadeSheet(workbook, rows);
 
