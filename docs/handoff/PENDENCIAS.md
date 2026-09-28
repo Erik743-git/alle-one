@@ -79,6 +79,12 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
       ela a mesma permissão de leitura da caixa de chamados no Azure; depois,
       no quadro, ⚙ → preencher a caixa e ligar a leitura.
 
+## Para o futuro (combinado deixar depois)
+
+- [ ] Apontamentos → Colaboradores: setas ‹ › para navegar entre períodos
+      (hoje fica no mês/ciclo atual; em 28/09 não dá para ver pela lista a
+      folha 26/08–25/09). Pedido em 28/09, adiado pelo Erik.
+
 ## Fora do sistema
 
 - [ ] Compartilhar os três calendários do Outlook (dona: natalia.silva) com
