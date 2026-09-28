@@ -154,6 +154,11 @@ export type RendimentoTimesheetDto = {
   totalRegularHoursFormatted: string;
   totalRawMinutes: number;
   totalRawHoursFormatted: string;
+  /** HE e plantão do mesmo período dos totais (mês civil ou folha escolhida). */
+  totalOvertimeMinutes: number;
+  totalOvertimeFormatted: string;
+  totalPlantaoMinutes: number;
+  totalPlantaoFormatted: string;
   periodOvertimeMinutes: number;
   periodOvertimeFormatted: string;
   periodOvertimeRangeLabel: string;
@@ -2933,6 +2938,10 @@ export class RendimentoService {
         totalRegularHoursFormatted: this.formatMinutes(0),
         totalRawMinutes: 0,
         totalRawHoursFormatted: this.formatMinutes(0),
+        totalOvertimeMinutes: 0,
+        totalOvertimeFormatted: this.formatMinutes(0),
+        totalPlantaoMinutes: 0,
+        totalPlantaoFormatted: this.formatMinutes(0),
         periodOvertimeMinutes: 0,
         periodOvertimeFormatted: this.formatMinutes(0),
         periodOvertimeRangeLabel: resolvePayrollPeriodRangeForTimesheet(
@@ -3056,6 +3065,10 @@ export class RendimentoService {
       totalRegularHoursFormatted: this.formatMinutes(totalRegularMinutes),
       totalRawMinutes,
       totalRawHoursFormatted: this.formatMinutes(totalRawMinutes),
+      totalOvertimeMinutes: monthCat.extra,
+      totalOvertimeFormatted: this.formatMinutes(monthCat.extra),
+      totalPlantaoMinutes: monthCat.plantao,
+      totalPlantaoFormatted: this.formatMinutes(monthCat.plantao),
       periodOvertimeMinutes,
       periodOvertimeFormatted: this.formatMinutes(periodOvertimeMinutes),
       periodOvertimeRangeLabel: payrollPeriod.label,

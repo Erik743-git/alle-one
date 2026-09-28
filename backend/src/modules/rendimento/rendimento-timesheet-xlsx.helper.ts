@@ -65,11 +65,12 @@ export async function buildRendimentoTimesheetXlsx(
     { key: 'type', width: 12 },
     { key: 'ticket', width: 11 },
     { key: 'client', width: 26 },
+    { key: 'ticketTitle', width: 36 },
     { key: 'description', width: 48 },
   ];
 
   // Faixa de título.
-  sheet.mergeCells('A1:I1');
+  sheet.mergeCells('A1:J1');
   sheet.getCell('A1').value =
     `Apontamentos — ${timesheet.userName} (${formatDateBr(timesheet.rangeStart)} a ${formatDateBr(timesheet.rangeEnd)})`;
   sheet.getCell('A1').font = { bold: true, size: 16 };
@@ -81,16 +82,18 @@ export async function buildRendimentoTimesheetXlsx(
   sheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'left' };
   sheet.getRow(1).height = 30;
 
-  // Resumo do período.
+  // Resumo do período — tudo no mesmo intervalo da planilha (mês civil ou
+  // folha, o que foi escolhido), para bater com a lista de Apontamentos.
+  const periodo = `${formatDateBr(timesheet.rangeStart)} a ${formatDateBr(timesheet.rangeEnd)}`;
   const summaryRows: Array<[string, string]> = [
-    ['Total do mês (civil)', timesheet.totalHoursFormatted],
-    ['Total normal', timesheet.totalRegularHoursFormatted],
+    [`Total do período (${periodo})`, timesheet.totalHoursFormatted],
+    ['Horas normais', timesheet.totalRegularHoursFormatted],
+    ['Horas extras', timesheet.totalOvertimeFormatted],
+    ['Plantão', timesheet.totalPlantaoFormatted],
     [
-      `Horas extras (${timesheet.periodOvertimeRangeLabel})`,
-      timesheet.periodOvertimeFormatted,
+      `Saldo de horas extras (folha ${timesheet.periodOvertimeRangeLabel})`,
+      timesheet.overtimeBalanceFormatted,
     ],
-    ['Plantão (mesmo ciclo)', timesheet.periodPlantaoFormatted],
-    ['Saldo de horas extras', timesheet.overtimeBalanceFormatted],
   ];
   summaryRows.forEach(([label, value], index) => {
     const rowIndex = 3 + index;
@@ -111,7 +114,8 @@ export async function buildRendimentoTimesheetXlsx(
     'Tipo',
     'Ticket',
     'Cliente',
-    'Descrição',
+    'Título do chamado',
+    'Descrição do apontamento',
   ];
   headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   headerRow.fill = {
@@ -148,6 +152,7 @@ export async function buildRendimentoTimesheetXlsx(
         entry.ticketNumber,
         entry.clientName ?? '',
         entry.ticketTitle ?? '',
+        entry.description ?? '',
       ];
       row.alignment = { vertical: 'middle' };
       if (dayStripe) {
@@ -157,7 +162,7 @@ export async function buildRendimentoTimesheetXlsx(
           fgColor: { argb: ROW_ALT_FILL },
         };
       }
-      for (let col = 1; col <= 9; col += 1) {
+      for (let col = 1; col <= 10; col += 1) {
         row.getCell(col).border = {
           top: THIN_BORDER,
           bottom: THIN_BORDER,
