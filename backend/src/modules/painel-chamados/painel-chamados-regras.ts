@@ -111,11 +111,13 @@ export function montarChamadoParado(
         ? String(row.client_external_id)
         : CHAVE_SEM,
     empresa: row.client_name?.trim() || SEM_EMPRESA,
+    // Pelo nome primeiro: a mesma pessoa pode ter dois ids de responsável
+    // (ex.: TiFlux e portal) e aparecia em duas linhas.
     responsavelChave: semResponsavel
       ? CHAVE_SEM
-      : row.responsible_external_id != null
-        ? String(row.responsible_external_id)
-        : `nome:${nomeResp.toLowerCase()}`,
+      : nomeResp
+        ? `nome:${nomeResp.toLowerCase()}`
+        : String(row.responsible_external_id),
     responsavel: semResponsavel ? SEM_RESPONSAVEL : nomeResp || SEM_RESPONSAVEL,
     abertoEm: row.aberto_em.toISOString(),
     horasParado: horas,

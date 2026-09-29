@@ -97,6 +97,18 @@ describe('sem responsável', () => {
     expect(l.semResponsavel).toBe(false);
     expect(l.responsavelChave).toBe('nome:breno');
   });
+
+  it('mesma pessoa com dois ids fica numa linha só (chave pelo nome)', () => {
+    const a = linha({
+      responsible_external_id: 10,
+      responsible_name: 'Mirella',
+    });
+    const b = linha({
+      responsible_external_id: 99,
+      responsible_name: 'mirella ',
+    });
+    expect(a.responsavelChave).toBe(b.responsavelChave);
+  });
 });
 
 describe('filtros e totais', () => {

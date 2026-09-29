@@ -42,6 +42,7 @@ type LinhaChamadoSql = {
   responsible_name: string | null;
   stage_name: string | null;
   is_closed: boolean;
+  aberto: boolean;
   aberto_em: Date;
   ultima_atividade: Date;
 };
@@ -170,9 +171,9 @@ export class PainelChamadosService {
     return visao === 'empresa'
       ? Prisma.sql`COALESCE(t.client_external_id::text, ${CHAVE_SEM})`
       : Prisma.sql`CASE
-          WHEN t.responsible_external_id IS NOT NULL THEN t.responsible_external_id::text
           WHEN COALESCE(btrim(t.responsible_name), '') <> ''
             THEN 'nome:' || lower(btrim(t.responsible_name))
+          WHEN t.responsible_external_id IS NOT NULL THEN t.responsible_external_id::text
           ELSE ${CHAVE_SEM}
         END`;
   }
@@ -191,12 +192,22 @@ export class PainelChamadosService {
     )`;
   }
 
+  /**
+   * Aberto = mesma regra da lista de chamados: não fechado e fora dos estágios
+   * finais (Resolvido/Encerrado/Cancelado). Antes "Resolvido" contava aqui e
+   * não na lista, e os números não batiam.
+   */
+  private abertoSql(): Prisma.Sql {
+    return Prisma.sql`(t.is_closed = false AND (t.stage_name IS NULL OR
+      lower(btrim(t.stage_name)) NOT IN ('resolvido', 'encerrado', 'cancelado')))`;
+  }
+
   /** Recorte: abertos; com incluirFechados, também os fechados no mês civil. */
   private recorteSql(incluirFechados: boolean, agora: Date): Prisma.Sql {
-    if (!incluirFechados) return Prisma.sql`t.is_closed = false`;
+    if (!incluirFechados) return this.abertoSql();
     const { inicio, fim } = mesBrasilia(agora);
-    return Prisma.sql`(t.is_closed = false OR (
-      t.is_closed = true AND ${this.fechadoEmSql()} BETWEEN ${inicio} AND ${fim}
+    return Prisma.sql`(${this.abertoSql()} OR (
+      NOT ${this.abertoSql()} AND ${this.fechadoEmSql()} BETWEEN ${inicio} AND ${fim}
     ))`;
   }
 
@@ -218,8 +229,8 @@ export class PainelChamadosService {
         }>
       >`
         SELECT ${chave} AS chave, ${nome} AS nome,
-               count(*) FILTER (WHERE t.is_closed = false) AS abertos,
-               count(*) FILTER (WHERE t.is_closed = true) AS fechados
+               count(*) FILTER (WHERE ${this.abertoSql()}) AS abertos,
+               count(*) FILTER (WHERE NOT ${this.abertoSql()}) AS fechados
         FROM portal_tickets t
         WHERE ${this.recorteSql(incluirFechados, agora)}
         GROUP BY 1
@@ -271,7 +282,7 @@ export class PainelChamadosService {
     const rows = await this.prisma.$queryRaw<LinhaChamadoSql[]>`
       SELECT t.ticket_number, t.title, t.client_external_id, t.client_name,
              t.responsible_external_id, t.responsible_name, t.stage_name,
-             t.is_closed,
+             t.is_closed, ${this.abertoSql()} AS aberto,
              COALESCE(t.created_at_source, t.created_at) AS aberto_em,
              GREATEST(
                COALESCE(t.created_at_source, t.created_at) AT TIME ZONE 'UTC',
@@ -291,7 +302,7 @@ export class PainelChamadosService {
       empresa: r.client_name?.trim() || SEM_EMPRESA,
       responsavel: r.responsible_name?.trim() || SEM_RESPONSAVEL,
       estagio: r.stage_name,
-      fechado: r.is_closed,
+      fechado: !r.aberto,
       abertoEm: r.aberto_em.toISOString(),
       ultimaAtividade: r.ultima_atividade.toISOString(),
     }));
