@@ -122,7 +122,7 @@ export function ChamadosPorResponsavelAba() {
                 onCheckedChange={setIncluirFechados}
                 aria-label="Incluir fechados"
               />
-              Incluir fechados (mês atual)
+              Incluir fechados e resolvidos (mês atual)
             </label>
             {totais ? (
               <p className="text-sm text-muted-foreground">
