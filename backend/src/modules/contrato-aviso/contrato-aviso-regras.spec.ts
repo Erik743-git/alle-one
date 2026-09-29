@@ -93,5 +93,20 @@ describe('horas da linha', () => {
   it('especialidade sem apontamento no mês: zero', () => {
     expect(horasDaEspecialidade(porMesa, 'NOC')).toBe(0);
     expect(horasDaEspecialidade(undefined, 'NOC')).toBe(0);
+    // 1h10 de 2h: 58,3% (antes arredondava as horas e dava 58,5%).
+    const h = horasDaEspecialidade(
+      [{ deskName: 'Sistemas', totalMinutes: 70 }],
+      'sistemas',
+    );
+    expect(percentual(h, 2)).toBe(58.3);
+    expect(
+      percentual(
+        horasDaEspecialidade(
+          [{ deskName: 'Sistemas', totalMinutes: 125 }],
+          'sistemas',
+        ),
+        2,
+      ),
+    ).toBe(104.2);
   });
 });

@@ -232,7 +232,7 @@ export class ContratoAvisoService {
         faixa,
         companyId: linha.empresa.id,
         percentual: c.pct,
-        horasUsadas: c.usadas,
+        horasUsadas: Math.round(c.usadas * 100) / 100,
         horasContratadas: c.contratadas,
       })),
       skipDuplicates: true,

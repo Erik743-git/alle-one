@@ -98,5 +98,7 @@ export function horasDaEspecialidade(
   const minutos = (horasPorMesa ?? [])
     .filter((m) => chaveNome(m.deskName) === alvo)
     .reduce((s, m) => s + (Number(m.totalMinutes) || 0), 0);
-  return Math.round((minutos / 60) * 100) / 100;
+  // Sem arredondar: o percentual sai destas horas (1h10 de 2h = 58,3%, e não
+  // 58,5% de 1,17h). Arredonda só na hora de mostrar.
+  return minutos / 60;
 }
