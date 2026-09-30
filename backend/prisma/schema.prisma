@@ -625,6 +625,7 @@ enum ReportType {
   ESTATISTICA_GERAL @map("4")
   INVENTARIO        @map("5")
   COBRANCA          @map("6")
+  CHAMADOS_ATENDIDOS @map("7")
 }
 
 enum ReportStatus {

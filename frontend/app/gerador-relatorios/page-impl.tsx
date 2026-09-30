@@ -36,7 +36,7 @@ import {
   reportTypeSupportsBillingFilters,
   reportTypeSupportsCollaborator,
   reportTypeSupportsMultiCompany,
-  REPORT_TYPES,
+  reportTypesForRole,
   type ReportFormatOption,
 } from "@/lib/report-types";
 import { reportsService } from "@/lib/services/reports.service";
@@ -168,7 +168,18 @@ function GeradorRelatoriosPageImpl() {
         : undefined
     : effectiveCompanyId;
   const canSelectAllCompanies =
-    isRendimento && user?.role !== "CLIENT";
+    isRendimento && !isClientPortalRole(user?.role);
+  // O cliente gestor só tem "Chamados atendidos"; o membro, nenhum.
+  const tiposDoPerfil = useMemo(
+    () => reportTypesForRole(user?.role),
+    [user?.role],
+  );
+  const semRelatorio = Boolean(user) && tiposDoPerfil.length === 0;
+  useEffect(() => {
+    if (tiposDoPerfil.length && !tiposDoPerfil.some((t) => t.value === type)) {
+      setType(tiposDoPerfil[0].value);
+    }
+  }, [tiposDoPerfil, type]);
   const companyOptions = useMemo(() => {
     const items = companies.map((c) => ({ value: c.id, label: c.name }));
     if (canSelectAllCompanies) {
@@ -180,8 +191,8 @@ function GeradorRelatoriosPageImpl() {
     return items;
   }, [companies, canSelectAllCompanies]);
   const typeOptions = useMemo(
-    () => REPORT_TYPES.map((t) => ({ value: t.value, label: t.label })),
-    [],
+    () => tiposDoPerfil.map((t) => ({ value: t.value, label: t.label })),
+    [tiposDoPerfil],
   );
   const formatSelectOptions = useMemo(
     () => formatOptions.map((item) => ({ value: item, label: item })),
@@ -365,8 +376,15 @@ function GeradorRelatoriosPageImpl() {
 
       const alleId =
         comps.find((c) => c.name.trim().toLowerCase() === "alle")?.id ?? "";
+      // Na primeira carga o tipo ainda pode não ser um que o perfil tem
+      // (o cliente gestor abre direto em "Chamados atendidos").
+      const permitidos = reportTypesForRole(user?.role);
+      const tipoInicial = permitidos.some((t) => t.value === type)
+        ? type
+        : (permitidos[0]?.value ?? type);
+      if (tipoInicial !== type) setType(tipoInicial);
       const canAll =
-        (type || "1") === "1" && user?.role !== "CLIENT";
+        (tipoInicial || "1") === "1" && !isClientPortalRole(user?.role);
       const defaultCompanyId = canAll
         ? ALL_COMPANIES_REPORT_VALUE
         : pickCompanyIdFromList(comps, {
@@ -383,11 +401,11 @@ function GeradorRelatoriosPageImpl() {
       const [items, last] = await Promise.all([
         reportsService.list({
           companyId: defaultCompanyId || undefined,
-          type: type || undefined,
+          type: tipoInicial || undefined,
         }),
         reportsService.last({
           companyId: defaultCompanyId || undefined,
-          type: type || undefined,
+          type: tipoInicial || undefined,
         }),
       ]);
 
@@ -554,6 +572,22 @@ function GeradorRelatoriosPageImpl() {
       return "";
     });
     setPreviewId(null);
+  }
+
+  if (semRelatorio) {
+    return (
+      <ProtectedPage>
+        <AppShell>
+          <div className="font-sans w-full space-y-2">
+            <h1 className="text-3xl font-bold text-foreground">Relatórios</h1>
+            <p className="text-muted-foreground">
+              Nenhum relatório disponível para o seu perfil. O gestor da sua
+              empresa gera o relatório de chamados atendidos.
+            </p>
+          </div>
+        </AppShell>
+      </ProtectedPage>
+    );
   }
 
   return (

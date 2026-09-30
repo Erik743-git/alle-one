@@ -1,3 +1,5 @@
+import { isClientGestorRole, isClientPortalRole } from "@/lib/app-roles";
+
 export type ReportFormatOption = "CSV" | "XLSX";
 
 /** Valor enviado ao backend para relatório de apontamentos de todas as empresas. */
@@ -24,7 +26,25 @@ export const REPORT_TYPES = [
     label: "Fechamento / cobrança",
     formats: ["CSV", "XLSX"] as const,
   },
+  {
+    value: "7",
+    label: "Chamados atendidos",
+    formats: ["XLSX"] as const,
+  },
 ] as const;
+
+/**
+ * Relatórios que o perfil pode gerar — a mesma regra do servidor
+ * (tiposDeRelatorioDoPerfil). O cliente gestor só tem "Chamados atendidos";
+ * o cliente membro, nenhum; a equipe, todos.
+ */
+export function reportTypesForRole(role?: string | null) {
+  if (isClientGestorRole(role)) {
+    return REPORT_TYPES.filter((t) => t.value === "7");
+  }
+  if (isClientPortalRole(role)) return [];
+  return [...REPORT_TYPES];
+}
 
 export type ReportTypeValue = (typeof REPORT_TYPES)[number]["value"];
 

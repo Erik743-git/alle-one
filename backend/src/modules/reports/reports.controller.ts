@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -15,6 +16,7 @@ import { RequirePermission } from '../auth/decorators/require-permission.decorat
 import { PermissionModule } from '@prisma/client';
 import type { Response } from 'express';
 import { ReportsService } from './reports.service';
+import { tiposDeRelatorioDoPerfil } from './reports-chamados-atendidos';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedRequestUser } from '../auth/auth-request-user';
 import { ModuloPortal } from '../acesso/modulo-portal.decorator';
@@ -158,6 +160,13 @@ export class ReportsController {
     @Res({ passthrough: true }) res: Response,
     @Query('month') month?: string, // legado (YYYY-MM)
   ) {
+    // São os mesmos dados do relatório de Apontamentos (tipo 1), que o cliente
+    // não gera: a rota antiga não pode ser o atalho.
+    if (!tiposDeRelatorioDoPerfil(user.role).includes('1')) {
+      throw new ForbiddenException(
+        'Este relatório não está disponível para o seu perfil.',
+      );
+    }
     // Converte month -> range aproximado: mês atual quando ausente.
     const now = new Date();
     const [y, m] =

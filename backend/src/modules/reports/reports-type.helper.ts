@@ -6,8 +6,9 @@ export function toReportType(value: string): ReportType {
   if (value === '5') return ReportType.INVENTARIO;
   if (value === '6') return ReportType.COBRANCA;
   if (value === '1') return ReportType.RENDIMENTO;
+  if (value === '7') return ReportType.CHAMADOS_ATENDIDOS;
   throw new BadRequestException(
-    'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4), Inventário (5) ou Cobrança (6).',
+    'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4), Inventário (5), Cobrança (6) ou Chamados atendidos (7).',
   );
 }
 

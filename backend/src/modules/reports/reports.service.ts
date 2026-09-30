@@ -76,14 +76,25 @@ import {
   buildBillingReportRowsForCompanies,
 } from './reports-billing';
 import { appointmentDescriptionToPlainText } from '../tickets/appointment-doc.util';
+import {
+  TIPO_CHAMADOS_ATENDIDOS,
+  TODOS_OS_TIPOS,
+  apontamentosComHoras,
+  chamadosAtendidosXlsx,
+  limitesBrasilia,
+  tiposDeRelatorioDoPerfil,
+  type ApontamentoAtendidoSql,
+  type ChamadoAtendidoSql,
+} from './reports-chamados-atendidos';
 
-const ALLOWED_REPORT_TYPES = new Set(['1', '4', '5', '6']);
+const ALLOWED_REPORT_TYPES = new Set(TODOS_OS_TIPOS);
 
 const REPORT_TYPE_SLUGS: Record<string, string> = {
   '1': 'rendimento',
   '4': 'estatistica-geral',
   '5': 'inventario',
   '6': 'fechamento-cobranca',
+  '7': 'chamados-atendidos',
 };
 
 function stripHtmlForReport(value: string): string {
@@ -3415,6 +3426,29 @@ export class ReportsService {
     sheet.mergeCells(rowIndex + 2, 1, rowIndex + 2, colCount);
   }
 
+  /**
+   * Filtro de tipo da lista e do "último relatório": o pedido (`type`) e o
+   * que o perfil pode ver. O cliente gestor só enxerga "Chamados atendidos" —
+   * sem isto ele listava e baixava o relatório de apontamentos que um admin
+   * gerou para a empresa dele, com hora extra e plantão. `null` = nada a
+   * mostrar.
+   */
+  private filtroTiposDoPerfil(
+    user: AuthenticatedRequestUser,
+    tipoPedido: string | undefined,
+  ): { type?: ReportType | { in: ReportType[] } } | null {
+    const permitidos = tiposDeRelatorioDoPerfil(user.role);
+    const pedido = tipoPedido?.trim();
+    if (pedido) {
+      return permitidos.includes(pedido)
+        ? { type: toReportType(pedido) }
+        : null;
+    }
+    if (!permitidos.length) return null;
+    if (permitidos.length === TODOS_OS_TIPOS.length) return {};
+    return { type: { in: permitidos.map(toReportType) } };
+  }
+
   async listReports(
     user: AuthenticatedRequestUser,
     query: {
@@ -3437,6 +3471,9 @@ export class ReportsService {
     const end = query.end ? parseDateOrThrow(query.end, 'Data final') : null;
     const normalized = start && end ? normalizeRange(start, end) : null;
 
+    const tipos = this.filtroTiposDoPerfil(user, query.type);
+    if (!tipos) return [];
+
     return this.attachGeneratedByUsers(
       await this.prisma.report.findMany({
         where: {
@@ -3450,9 +3487,7 @@ export class ReportsService {
             : companyId
               ? { companyId }
               : { companyId: { in: scopeCompanyIds } }),
-          ...(query.type?.trim()
-            ? { type: toReportType(query.type.trim()) }
-            : {}),
+          ...tipos,
           ...(normalized
             ? {
                 periodStart: { gte: normalized.start },
@@ -3488,6 +3523,9 @@ export class ReportsService {
       this.ensureCompanyInScope(companyId, scopeCompanyIds);
     }
 
+    const tipos = this.filtroTiposDoPerfil(user, query.type);
+    if (!tipos) return null;
+
     const report = await this.prisma.report.findFirst({
       where: {
         ...(companyId === ALL_COMPANIES_REPORT_ID
@@ -3500,9 +3538,7 @@ export class ReportsService {
           : companyId
             ? { companyId }
             : { companyId: { in: scopeCompanyIds } }),
-        ...(query.type?.trim()
-          ? { type: toReportType(query.type.trim()) }
-          : {}),
+        ...tipos,
       },
       include: {
         company: { select: { id: true, name: true } },
@@ -3521,6 +3557,83 @@ export class ReportsService {
     if (!report) return null;
     const [enriched] = await this.attachGeneratedByUsers([report]);
     return enriched ?? null;
+  }
+
+  /**
+   * Relatório "Chamados atendidos" (tipo 7): chamados da empresa abertos OU
+   * fechados no período, e os apontamentos de horas feitos no período. Regras
+   * em reports-chamados-atendidos.ts.
+   */
+  private async gerarChamadosAtendidos(params: {
+    companyId: string;
+    empresa: string;
+    start: Date;
+    end: Date;
+    generatedAt: Date;
+  }): Promise<Buffer> {
+    const company = await this.requireCompanyTifluxClientId(params.companyId);
+    const diaInicio = toDateOnlyISO(params.start);
+    const diaFim = toDateOnlyISO(params.end);
+    const { inicio, fim } = limitesBrasilia(diaInicio, diaFim);
+    // Data de fechamento: o último fechamento no histórico; sem ele (chamado
+    // que veio fechado do TiFlux), a última atualização da origem. As colunas
+    // são gravadas em UTC sem fuso.
+    const fechadoEm = Prisma.sql`CASE WHEN t.is_closed THEN COALESCE(
+      (SELECT max(h.occurred_at) FROM ticket_history h
+        WHERE h.ticket_number = t.ticket_number
+          AND h.event_type = 'TICKET_CLOSED'),
+      t.updated_at_source,
+      t.updated_at
+    ) END`;
+    const chamados = await this.prisma.$queryRaw<ChamadoAtendidoSql[]>`
+      SELECT * FROM (
+        SELECT t.ticket_number, t.title, t.requestor_name, t.responsible_name,
+               t.desk_name, t.stage_name,
+               COALESCE(t.created_at_source, t.created_at) AS aberto_em,
+               ${fechadoEm} AS fechado_em
+        FROM portal_tickets t
+        WHERE t.client_external_id = ${company.tifluxClientId}
+      ) c
+      WHERE (c.aberto_em AT TIME ZONE 'UTC')
+              BETWEEN ${inicio}::timestamptz AND ${fim}::timestamptz
+         OR (c.fechado_em AT TIME ZONE 'UTC')
+              BETWEEN ${inicio}::timestamptz AND ${fim}::timestamptz
+      ORDER BY c.aberto_em ASC, c.ticket_number ASC
+    `;
+
+    const numeros = chamados.map((c) => Number(c.ticket_number));
+    const linhas = numeros.length
+      ? await this.prisma.$queryRaw<ApontamentoAtendidoSql[]>`
+          SELECT a.ticket_number,
+                 a.appointment_date::date::text AS appointment_date,
+                 a.init_time, a.end_time,
+                 coalesce(nullif(trim(u.name), ''), 'Não mapeado') AS executor,
+                 a.description AS descricao
+          FROM portal_ticket_appointments a
+          LEFT JOIN users u ON u.id = a.created_by
+          WHERE a.ticket_number = ANY(${numeros}::int[])
+            AND a.appointment_date BETWEEN ${diaInicio}::date AND ${diaFim}::date
+            ${SEM_USUARIO_DE_CLIENTE}
+          ORDER BY a.appointment_date ASC, a.init_time ASC, a.ticket_number ASC
+        `
+      : [];
+
+    const apontamentos = apontamentosComHoras(linhas).map((a) => ({
+      ...a,
+      descricao: this.formatReportDescription(a.descricao),
+    }));
+
+    return chamadosAtendidosXlsx({
+      empresa: params.empresa,
+      diaInicio,
+      diaFim,
+      geradoEm: formatGeneratedAtBR(params.generatedAt),
+      chamados: chamados.map((c) => ({
+        ...c,
+        title: toExcelText(c.title) === '-' ? '' : toExcelText(c.title),
+      })),
+      apontamentos,
+    });
   }
 
   async generateReport(
@@ -3546,11 +3659,33 @@ export class ReportsService {
     if (!type) throw new BadRequestException('type é obrigatório');
     if (!ALLOWED_REPORT_TYPES.has(type)) {
       throw new BadRequestException(
-        'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4), Inventário (5) ou Cobrança (6).',
+        'Tipo de relatório inválido. Use Rendimento (1), Estatística Geral (4), Inventário (5), Cobrança (6) ou Chamados atendidos (7).',
+      );
+    }
+    if (!tiposDeRelatorioDoPerfil(user.role).includes(type)) {
+      throw new ForbiddenException(
+        'Este relatório não está disponível para o seu perfil.',
       );
     }
 
+    const isChamadosAtendidos = type === TIPO_CHAMADOS_ATENDIDOS;
+    if (isChamadosAtendidos) {
+      if (companyId === ALL_COMPANIES_REPORT_ID) {
+        throw new BadRequestException(
+          'Este relatório exige uma empresa específica.',
+        );
+      }
+      if ((payload.format?.trim().toUpperCase() || 'XLSX') !== 'XLSX') {
+        throw new BadRequestException(
+          'O relatório de chamados atendidos só sai em Excel (XLSX).',
+        );
+      }
+    }
+
     const scopeCompanyIds = await this.getAccessibleCompanyIds(user);
+    if (isChamadosAtendidos) {
+      this.ensureCompanyInScope(companyId, scopeCompanyIds);
+    }
     const isInventario = type === '5';
     const isCobranca = type === '6';
     const multiCompanyScope =
@@ -3607,7 +3742,10 @@ export class ReportsService {
     const reportType = toReportType(type);
 
     const userId = payload.userId?.trim() || null;
-    if ((type === '4' || isInventario || isCobranca) && userId) {
+    if (
+      (type === '4' || isInventario || isCobranca || isChamadosAtendidos) &&
+      userId
+    ) {
       throw new BadRequestException(
         'Este tipo de relatório não utiliza filtro por colaborador.',
       );
@@ -3700,6 +3838,19 @@ export class ReportsService {
             companyName: companyLabel,
             start: range.start,
             end: range.end,
+          }),
+        };
+      } else if (isChamadosAtendidos) {
+        built = {
+          filename: `${baseName}.xlsx`,
+          mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          buffer: await this.gerarChamadosAtendidos({
+            companyId,
+            empresa: company.name,
+            start: range.start,
+            end: range.end,
+            generatedAt,
           }),
         };
       } else if (type === '4') {
@@ -3873,6 +4024,17 @@ export class ReportsService {
 
     if (!report) throw new NotFoundException('Relatório não encontrado');
     this.ensureCompanyInScope(report.companyId, scopeCompanyIds);
+    // O download e a visualização em PDF passam por aqui: o cliente só abre
+    // o tipo que o perfil dele pode gerar (ver filtroTiposDoPerfil).
+    if (
+      !tiposDeRelatorioDoPerfil(user.role)
+        .map(toReportType)
+        .includes(report.type)
+    ) {
+      throw new ForbiddenException(
+        'Este relatório não está disponível para o seu perfil.',
+      );
+    }
 
     if (!report.file) throw new NotFoundException('Arquivo não encontrado');
     if (!existsSync(report.file.path)) {
