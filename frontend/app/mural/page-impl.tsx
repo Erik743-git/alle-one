@@ -83,8 +83,17 @@ function MuralPageImpl() {
     id: string;
     dx: number;
     dy: number;
+    /** Onde o botão desceu: só vira arrasto depois de alguns pixels. */
+    x0: number;
+    y0: number;
     moveu: boolean;
   } | null>(null);
+  /**
+   * O pointerup (janela) chega antes do click (papel) e zera `arrasto`; por
+   * isso o "acabou de arrastar" fica num ref próprio, lido e limpo no click.
+   * Sem isso, soltar o papel depois de arrastar abria a leitura.
+   */
+  const acabouDeArrastar = useRef(false);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
@@ -145,6 +154,13 @@ function MuralPageImpl() {
       const pos = fracaoDoPonteiro(event);
       const estado = arrasto.current;
       if (!pos || !estado) return;
+      // Tremida de mão no clique não é arrasto.
+      if (
+        !estado.moveu &&
+        Math.hypot(event.clientX - estado.x0, event.clientY - estado.y0) < 5
+      ) {
+        return;
+      }
       estado.moveu = true;
       setNotes((prev) =>
         prev.map((note) =>
@@ -158,6 +174,11 @@ function MuralPageImpl() {
       arrasto.current = null;
       setArrastandoId(null);
       if (!estado?.moveu) return;
+      acabouDeArrastar.current = true;
+      // Se o click não vier (soltou fora do papel), não pode prender o próximo.
+      window.setTimeout(() => {
+        acabouDeArrastar.current = false;
+      }, 0);
       // Só grava ao soltar: arrastar não pode virar uma chamada por pixel.
       const atual = notes.find((note) => note.id === estado.id);
       if (!atual) return;
@@ -191,13 +212,15 @@ function MuralPageImpl() {
     event: React.PointerEvent<HTMLDivElement>,
     note: MuralNote,
   ) {
-    // Só o dono move o próprio bilhete; o dos outros abre para leitura.
-    if (!note.mine || event.button !== 0) return;
+    // Move quem escreveu, ou o admin arrumando o quadro; os outros só leem.
+    if (!note.canMove || event.button !== 0) return;
     const alvo = event.currentTarget.getBoundingClientRect();
     arrasto.current = {
       id: note.id,
       dx: event.clientX - alvo.left,
       dy: event.clientY - alvo.top,
+      x0: event.clientX,
+      y0: event.clientY,
       moveu: false,
     };
     setArrastandoId(note.id);
@@ -364,7 +387,10 @@ function MuralPageImpl() {
                     onReagir={(emoji) => void reagir(note.id, emoji)}
                     onClick={() => {
                       // Soltar depois de arrastar não conta como clique.
-                      if (arrasto.current?.moveu) return;
+                      if (acabouDeArrastar.current) {
+                        acabouDeArrastar.current = false;
+                        return;
+                      }
                       setAberto(note);
                       setEditando(false);
                       setTextoEditado(note.message);

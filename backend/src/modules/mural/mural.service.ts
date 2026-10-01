@@ -44,6 +44,7 @@ export type MuralNoteDto = {
   mine: boolean;
   /** Quem está vendo pode tirar o bilhete do mural. */
   canDelete: boolean;
+  canMove: boolean;
   /** Quantas pessoas deram cada reação, só as que têm pelo menos uma. */
   reactions: Array<{ emoji: string; count: number; mine: boolean }>;
   /** Chegou depois da última vez que esta pessoa abriu o mural. */
@@ -138,6 +139,8 @@ export class MuralService {
       createdAt: note.createdAt.toISOString(),
       mine,
       canDelete: mine || actor.role === UserRole.ADMIN,
+      // Admin arruma o quadro: move qualquer bilhete (só o lugar, não o texto).
+      canMove: mine || actor.role === UserRole.ADMIN,
       reactions: contarReacoes(note.reactions ?? [], actor.userId),
       // Sem visita registrada nada é novidade: a primeira abertura não pode
       // acender o mural inteiro.
@@ -360,7 +363,18 @@ export class MuralService {
     });
     if (!atual) throw new NotFoundException('Bilhete não encontrado.');
     if (atual.authorUserId !== actor.userId) {
-      throw new ForbiddenException('Só quem escreveu pode alterar o bilhete.');
+      // Admin pode reposicionar o bilhete de qualquer um; o conteúdo continua
+      // sendo só de quem escreveu.
+      const soLugar =
+        data.message == null &&
+        data.color == null &&
+        data.toUserId === undefined &&
+        data.anonymous == null;
+      if (!(actor.role === UserRole.ADMIN && soLugar)) {
+        throw new ForbiddenException(
+          'Só quem escreveu pode alterar o bilhete.',
+        );
+      }
     }
 
     const note = await this.prisma.muralNote.update({
