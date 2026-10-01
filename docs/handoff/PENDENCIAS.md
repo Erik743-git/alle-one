@@ -15,43 +15,36 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 - [ ] Reboot da VM (kernel novo instalado). Precisa de janela, porque a
       máquina roda produção.
 
-## Colocar a teste no ar (nada de hoje está lá ainda)
+## Produção (3482d4c no ar desde 01/10) — conferir
 
-- [ ] Deploy da teste (**onze** migrations novas, todas só criam tabela,
-      tipo ou linha nova — `20260924120000_manutencao_janelas`,
-      `20260925090000_oportunidades`, que também cria a mesa **Comercial**,
-      `20260925150000_acesso_por_perfil`, que grava o acesso de hoje,
-      `20260926090000_nps`, `20260926120000_fechamento_ciclo`,
-      `20260926130000_acesso_carga_equipe`,
-      `20260926150000_contrato_aviso` e `20260927090000_preferencia_menu`):
-      ```bash
-      sudo -u alleone -i env ALLEONE_BRANCH=teste/integracao-20260923 bash /home/alleone/teste/deploy/scripts/pos-deploy-alleone-teste.sh
-      ```
-- [ ] Depois do deploy: abrir **Administração → Acesso por perfil** e
-      conferir. Financeiro, Inventário, Projetos e o bloco de horas chegam
-      **em construção** (igual à produção). Na teste, para ver como antes,
-      desligue "Em construção" deles. A variável
-      `NEXT_PUBLIC_MODULOS_DESABILITADOS` pode sair do .env depois.
-- [ ] NPS: em Administração → Empresas, ligar "Participa do NPS" e escolher
-      quem recebe. Nada é enviado até alguém ligar.
-- [ ] Tarja de teste: aparece sozinha se o endereço da teste tiver "teste"
-      no nome; senão, pôr `NEXT_PUBLIC_AMBIENTE=teste` no `.env` do frontend
-      da teste **antes** do build. Na produção, deixar vazia ou `producao`.
-- [ ] Relatório completo desta rodada: `docs/auditoria/RELATORIO-FINAL-20260924.md`.
-- [ ] Nginx: `grep -rn "frame-src" /etc/nginx/`, copiar
-      `deploy/nginx-alleone-csp-html.snippet.conf` para lá, `sudo nginx -t`,
-      `sudo systemctl reload nginx`. Sem isso o PDF continua bloqueado.
+- [ ] Tarja "AMBIENTE DE TESTE" **não** aparece em produção.
+- [ ] Natália gera de novo o rendimento do ciclo 26/08–25/09 (HE corrigida).
+- [ ] Acesso por perfil: Financeiro, Inventário, Projetos e o bloco de horas
+      chegam "em construção" — conferir em Administração → Acesso por perfil.
+- [ ] NPS: ligar "Participa do NPS" por empresa quando for usar (nada sai antes).
+- [ ] Nginx: `grep -rn "frame-src" /etc/nginx/` — sem o snippet
+      `deploy/nginx-alleone-csp-html.snippet.conf` o PDF fica bloqueado.
+- [ ] LibreOffice Calc na VM (`dpkg -l libreoffice-calc`) para o "olho" do PDF.
 - [ ] Modelo do e-mail de comunicação:
-      `cd /home/alleone/teste/backend && npx ts-node --transpile-only prisma/scripts/atualizar-template-comunicacao.ts`
-      (sem `--aplicar` só mostra; com `--aplicar` grava).
-- [ ] Na VM, conferir se o **LibreOffice Calc** está instalado:
-      `dpkg -l libreoffice-calc`. Só o `libreoffice-core` não basta: o botão
-      do olho aparece e a visualização dá erro 503. Se faltar:
-      `sudo apt install --no-install-recommends libreoffice-calc`.
-- [ ] Conferência rápida na teste. Os itens 3.1 a 3.8 já passaram numa cópia
-      isolada (ver `TESTE-20260923.md`); na teste falta só o que depende da
-      VM: o PDF atrás do nginx de verdade, o e-mail saindo pelo SMTP de
-      verdade e a resposta desse e-mail voltando ao chamado.
+      `npx ts-node --transpile-only prisma/scripts/atualizar-template-comunicacao.ts`
+      (sem `--aplicar` só mostra).
+- [ ] E-mail de verdade: comunicação saindo pelo SMTP e a resposta voltando ao chamado.
+
+## Próximo deploy de produção (na teste, falta ir para produção)
+
+Commits depois de 3482d4c: relatório "Chamados atendidos" (9bfbfdb, migração
+`report_type_chamados_atendidos`), mural (tarracha, arrastar, admin move,
+data/hora, quem reagiu), licenciamento (3d4af68, migração
+`usuario_licenciado`) e trava de contrato (cab7afb, migração `contrato_trava`).
+
+- [ ] Conferir na teste: Chamados atendidos (admin e cliente gestor),
+      licenciamento (cliente sem licença no 3º apontamento), trava de contrato
+      e o mural.
+- [ ] Backup antes; depois do deploy acrescentar as 3 migrações em
+      `backend/prisma/migracoes-em-producao.txt`.
+- [ ] **Logo depois do deploy:** `docs/handoff/LICENCIAR-CLIENTES.sql` em
+      produção (ver seção Licenciamento) — senão a Fluidra trava em 2
+      apontamentos por chamado.
 
 ## Decisões em aberto
 
