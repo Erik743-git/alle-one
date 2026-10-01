@@ -79,6 +79,24 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
       ela a mesma permissão de leitura da caixa de chamados no Azure; depois,
       no quadro, ⚙ → preencher a caixa e ligar a leitura.
 
+## Licenciamento — antes / logo depois do deploy de produção
+
+- [ ] Logo depois do deploy: rodar `docs/handoff/LICENCIAR-CLIENTES.sql` em
+      produção (1ª vez com ROLLBACK para conferir, depois COMMIT). Licencia os
+      clientes **responsáveis** da Fluidra: Anderson Catarina, Anderson Gadelha,
+      Dielson Gomes, Evandro Stoppa e Michel Lima Monteiro (consulta de 01/10).
+      Até rodar, eles ficam com o limite de 2 apontamentos por chamado.
+- [ ] **Vinicius Angelo Alves (Wetzel)**: não é responsável e chegou a 3
+      apontamentos num chamado. Marcar como Responsável + Licenciado pela tela,
+      ou deixar o limite valer? (decisão do Erik)
+- [ ] Clientes sem licença que apontam pouco (Fluidra: Amabile, Carolina, Ruti;
+      Magius: Guilherme; Ypioca: Wladimir) ficam com o limite — confirmar.
+- [ ] Se um dia for preciso licenciar cliente **não** responsável (ex.: os 104
+      da Fluidra), mudar a tela para a licença não depender de "Responsável"
+      (hoje a edição desmarca a licença de quem não é responsável).
+- [ ] Terceiro (PJ): o texto de "Empresas atendidas" em Admin → Usuários
+      descreve outra regra (com mesa, a empresa não limita). Trocar o texto?
+
 ## Para o futuro (combinado deixar depois)
 
 - [ ] Apontamentos → Colaboradores: setas ‹ › para navegar entre períodos
