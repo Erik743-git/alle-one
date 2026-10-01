@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { DatePickerField } from "@/components/ui/date-picker-field";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
-import { FileText, Plus, Pencil, Trash2, Upload } from "lucide-react";
+import { FileText, Lock, Plus, Pencil, Trash2, Upload } from "lucide-react";
 import { AppAlert } from "@/components/ui/app-alert";
 import {
   companyContractsService,
@@ -116,12 +116,14 @@ export default function ModalContratosEmpresa({
     status: ContractStatus;
     startDate: string;
     endDate: string;
+    lockOnExhausted: boolean;
   }>({
     title: "",
     description: "",
     status: "ACTIVE",
     startDate: "",
     endDate: "",
+    lockOnExhausted: false,
   });
 
   const activeCount = useMemo(
@@ -173,6 +175,7 @@ export default function ModalContratosEmpresa({
       status: "ACTIVE",
       startDate: "",
       endDate: "",
+      lockOnExhausted: false,
     });
   }
 
@@ -186,6 +189,7 @@ export default function ModalContratosEmpresa({
       status: c.status,
       startDate: toInputDate(c.startDate),
       endDate: toInputDate(c.endDate),
+      lockOnExhausted: Boolean(c.lockOnExhausted),
     });
   }
 
@@ -248,6 +252,7 @@ export default function ModalContratosEmpresa({
         status: form.status,
         startDate: form.startDate,
         endDate: form.endDate ? form.endDate : null,
+        lockOnExhausted: form.lockOnExhausted,
         specialties: specialtiesPayload,
         monthlyHours: first.monthlyHours,
         extraHourPrice: first.excessHourPrice,
@@ -526,6 +531,32 @@ export default function ModalContratosEmpresa({
                   </div>
 
                   <div className="space-y-1 md:col-span-2">
+                    <label className="flex items-start gap-2 text-sm text-foreground">
+                      <FlipCheckbox
+                        className="mt-0.5"
+                        checked={form.lockOnExhausted}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            lockOnExhausted: e.target.checked,
+                          }))
+                        }
+                      />
+                      <span>
+                        <span className="font-semibold">
+                          Travar apontamentos ao esgotar as horas
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          Cada especialidade do contrato trava quando as horas do
+                          mês dela acabam: só o admin continua apontando nos
+                          chamados da empresa com aquela especialidade.
+                          Comunicação não é bloqueada. Linha ilimitada não trava.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="space-y-1 md:col-span-2">
                     <label className="text-xs font-semibold text-muted-foreground">
                       Arquivo do contrato (opcional)
                     </label>
@@ -758,6 +789,12 @@ export default function ModalContratosEmpresa({
                             <span className="rounded-full border border-border bg-background/40 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
                               {c.status}
                             </span>
+                            {c.lockOnExhausted ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                                <Lock className="size-3" aria-hidden />
+                                Trava ao esgotar
+                              </span>
+                            ) : null}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             Vigência: {formatDateDisplay(c.startDate)}{" "}

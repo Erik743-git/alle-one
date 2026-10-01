@@ -44,6 +44,8 @@ export type CompanyContract = {
   title: string;
   description: string | null;
   status: ContractStatus;
+  /** Trava: esgotadas as horas do mês de uma linha, só o admin aponta. */
+  lockOnExhausted?: boolean;
   /** @deprecated Prefer specialties[].monthlyHours */
   monthlyHours: number;
   /** @deprecated Prefer specialties[].excessHourPrice */
@@ -74,6 +76,7 @@ export type CreateCompanyContractPayload = {
   title: string;
   description?: string;
   status: ContractStatus;
+  lockOnExhausted?: boolean;
   startDate: string;
   endDate?: string | null;
   specialties: ContractSpecialtyLinePayload[];

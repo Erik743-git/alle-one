@@ -15,6 +15,7 @@ import {
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
+import { ContratoTravaService } from '../contrato-trava/contrato-trava.service';
 import {
   bloqueiaApontamentoSemLicenca,
   contaNoLimite,
@@ -167,6 +168,7 @@ export class TicketsAppointmentsService {
     private readonly tenantScope: TenantScopeService,
     private readonly emailTemplates: EmailTemplatesService,
     private readonly satisfaction: TicketSatisfactionService,
+    private readonly contratoTrava: ContratoTravaService,
   ) {}
 
   private formatTime(value: Date | null): string | null {
@@ -1649,6 +1651,14 @@ export class TicketsAppointmentsService {
     }
 
     this.validateAppointmentDto(dto);
+    // Trava do contrato (horas do mês da linha esgotadas). Comunicação passa.
+    const empresaTravavel = contaNoLimite(dto.initTime, dto.endTime)
+      ? await this.contratoTrava.assertPodeApontar({
+          actor,
+          ticketNumber,
+          dataYmd: dto.date,
+        })
+      : null;
     await this.assertNoOverlappingAppointmentForUser({
       userId: actor.userId,
       ticketNumber,
@@ -1681,6 +1691,7 @@ export class TicketsAppointmentsService {
         createdBy: actor.userId,
       },
     });
+    if (empresaTravavel) this.contratoTrava.esquecer(empresaTravavel);
 
     let outboxId: string | null = null;
     if (syncToTiflux) {

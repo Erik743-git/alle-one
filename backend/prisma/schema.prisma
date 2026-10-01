@@ -550,6 +550,9 @@ model Contract {
   monthlyHours     Int              @map("monthly_hours")
   /// @deprecated Preferir excess_hour_price em contract_specialties.
   extraHourPrice   Decimal          @db.Decimal(10, 2) @map("extra_hour_price")
+  /// Trava: ao esgotar as horas do mês de uma linha (especialidade), ninguém
+  /// além do admin aponta mais em chamado da empresa com aquela especialidade.
+  lockOnExhausted  Boolean          @default(false) @map("lock_on_exhausted")
   startDate        DateTime         @map("start_date")
   endDate          DateTime?        @map("end_date")
   createdAt        DateTime         @default(now()) @map("created_at")

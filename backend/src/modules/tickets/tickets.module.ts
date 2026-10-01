@@ -26,6 +26,7 @@ import { TicketListStateService } from './ticket-list-state.service';
 import { TicketAutomationService } from './ticket-automation.service';
 import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
 
+import { ContratoTravaModule } from '../contrato-trava/contrato-trava.module';
 @Module({
   imports: [
     PrismaModule,
@@ -35,6 +36,7 @@ import { TicketAutomationIdleJob } from './ticket-automation-idle.job';
     AuditModule,
     MailModule,
     PermissionsModule,
+    ContratoTravaModule,
   ],
   controllers: [
     TicketsController,

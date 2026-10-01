@@ -47,6 +47,11 @@ export class CreateCompanyContractDto {
   @IsEnum(ContractStatus)
   status: ContractStatus;
 
+  /** Trava: esgotadas as horas do mês de uma linha, só o admin aponta. */
+  @IsOptional()
+  @IsBoolean()
+  lockOnExhausted?: boolean;
+
   /** @deprecated Prefer specialties[].monthlyHours */
   @IsOptional()
   @IsInt()
@@ -89,6 +94,11 @@ export class UpdateCompanyContractDto {
   @IsOptional()
   @IsEnum(ContractStatus)
   status?: ContractStatus;
+
+  /** Trava: esgotadas as horas do mês de uma linha, só o admin aponta. */
+  @IsOptional()
+  @IsBoolean()
+  lockOnExhausted?: boolean;
 
   /** @deprecated Prefer specialties[].monthlyHours */
   @IsOptional()

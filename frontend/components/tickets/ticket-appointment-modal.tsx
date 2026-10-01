@@ -471,14 +471,19 @@ export function TicketAppointmentModal({
       onOpenChange(false);
       onCreated?.();
     } catch (err) {
-      // Cliente sem licença no 3º apontamento: aviso em destaque, não toast.
-      if (getApiErrorPayload(err)?.code === "LICENCA_NECESSARIA") {
+      // Licença (cliente, 3º apontamento) ou horas do contrato esgotadas:
+      // aviso em destaque, não toast.
+      const codigo = getApiErrorPayload(err)?.code;
+      if (codigo === "LICENCA_NECESSARIA" || codigo === "CONTRATO_ESGOTADO") {
         void confirm({
-          title: "Licenciamento necessário",
+          title:
+            codigo === "CONTRATO_ESGOTADO"
+              ? "Horas do contrato esgotadas"
+              : "Licenciamento necessário",
           description:
             err instanceof Error
               ? err.message
-              : "Para continuar apontando, comunique o financeiro ou um administrador para adquirir o licenciamento.",
+              : "Não foi possível criar o apontamento.",
           confirmText: "Entendi",
           cancelText: "Fechar",
           variant: "warning",

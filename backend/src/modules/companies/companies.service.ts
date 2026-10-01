@@ -622,6 +622,7 @@ export class CompaniesService {
         title,
         description: dto.description?.trim() || null,
         status: dto.status ?? ContractStatus.ACTIVE,
+        lockOnExhausted: dto.lockOnExhausted ?? false,
         monthlyHours: legacy.monthlyHours,
         extraHourPrice: legacy.extraHourPrice,
         startDate,
@@ -712,6 +713,9 @@ export class CompaniesService {
           ? { description: dto.description?.trim() || null }
           : {}),
         ...(dto.status !== undefined ? { status: dto.status } : {}),
+        ...(dto.lockOnExhausted !== undefined
+          ? { lockOnExhausted: dto.lockOnExhausted }
+          : {}),
         ...(legacyPatch
           ? {
               monthlyHours: legacyPatch.monthlyHours,
