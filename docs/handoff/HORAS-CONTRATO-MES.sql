@@ -21,7 +21,7 @@ WITH params AS (
 linhas AS (
   SELECT c.id AS contrato_id, c.title AS contrato, co.name AS empresa,
          co.tiflux_client_id, cs.specialty_id, s.name AS especialidade,
-         cs.monthly_hours, cs.unlimited, c.lock_on_exhausted AS trava
+         cs.monthly_hours, cs.unlimited
     FROM contracts c
     JOIN companies co ON co.id = c.company_id
     JOIN contract_specialties cs ON cs.contract_id = c.id
@@ -54,8 +54,7 @@ SELECT l.empresa, l.contrato, l.especialidade,
        CASE WHEN l.unlimited OR l.monthly_hours = 0 THEN NULL
             ELSE round(coalesce(m.min, 0) / 60.0 / l.monthly_hours * 100, 1) END AS pct,
        coalesce(m.apontamentos, 0) AS apontamentos,
-       coalesce(m.chamados, 0)     AS chamados,
-       l.trava
+       coalesce(m.chamados, 0)     AS chamados
   FROM linhas l
   LEFT JOIN minutos m ON m.contrato_id = l.contrato_id AND m.specialty_id = l.specialty_id
  ORDER BY l.empresa, l.contrato, l.especialidade;
