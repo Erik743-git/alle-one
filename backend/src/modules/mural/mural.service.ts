@@ -287,7 +287,9 @@ export class MuralService {
     ranking: Array<{ name: string; total: number }>;
     total: number;
   }> {
-    const base = /^d{4}-d{2}$/.test(mes ?? '')
+    // Antes estava sem a barra (^d{4}-d{2}$): nunca casava e o mês pedido
+    // era ignorado — sempre saía o mês atual.
+    const base = /^\d{4}-\d{2}$/.test(mes ?? '')
       ? new Date(`${mes}-01T12:00:00.000Z`)
       : new Date();
     const inicio = new Date(base.getFullYear(), base.getMonth(), 1);
