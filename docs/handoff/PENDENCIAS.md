@@ -7,7 +7,7 @@ Atualizado em 23/09/2026, depois do teste isolado (`TESTE-20260923.md`).
 
 ## Segurança (primeiro)
 
-- [ ] **Rotacionar `GRAPH_CLIENT_SECRET`** no Azure. Ele apareceu numa saída
+- [x] **Rotacionar `GRAPH_CLIENT_SECRET`** no Azure (feito pelo Erik, 01/10). Ele apareceu numa saída
       de terminal em 23/09 e ainda vale. Depois de gerar o novo: trocar no
       `.env` da teste **e** no da produção (são separados), reiniciar as APIs
       (`pm2 delete` + `pm2 start` em produção, nunca `pm2 restart`) e apagar o
@@ -57,11 +57,11 @@ data/hora, quem reagiu), licenciamento (3d4af68, migração
       2. A GMUD é comparada com **todas** as janelas da empresa, seja a
          alteração da Alle ou do cliente. Se a ideia era comparar só com as
          janelas "da Alle", é uma linha para mudar.
-- [ ] Guias: fechar sozinha em **10s** ou **30s** depois de fechar o chamado?
+- [x] Guias: fechar sozinha em **10s** (decidido 01/10; já é o padrão).
       (Hoje é 10s, e vale também para Resolver, Cancelar e Agrupar.)
-- [ ] Relatório de Rendimento (planilha/PDF): tirar a comunicação de 0 min
+- [x] (Feito 01/10, commit 52273f0) Relatório de Rendimento (planilha/PDF): tirar a comunicação de 0 min
       como na tela de Apontamentos, ou manter?
-- [ ] Três `COLLABORATOR` com empresa "Outros" (Rogério Carvalho, Rodrigo
+- [x] (Não mexer — 01/10) Três `COLLABORATOR` com empresa "Outros" (Rogério Carvalho, Rodrigo
       Colpani, Rangel Werner Lemos): são da Alle ou de fora?
 - [ ] "Só admin tira relatório mas está confundindo do adm": o que isso quer
       dizer?
@@ -79,7 +79,7 @@ data/hora, quem reagiu), licenciamento (3d4af68, migração
       clientes **responsáveis** da Fluidra: Anderson Catarina, Anderson Gadelha,
       Dielson Gomes, Evandro Stoppa e Michel Lima Monteiro (consulta de 01/10).
       Até rodar, eles ficam com o limite de 2 apontamentos por chamado.
-- [ ] **Vinicius Angelo Alves (Wetzel)**: não é responsável e chegou a 3
+- [x] **Vinicius Angelo Alves (Wetzel)** — decidido: licenciar (já no script): não é responsável e chegou a 3
       apontamentos num chamado. Marcar como Responsável + Licenciado pela tela,
       ou deixar o limite valer? (decisão do Erik)
 - [ ] Clientes sem licença que apontam pouco (Fluidra: Amabile, Carolina, Ruti;
@@ -87,8 +87,20 @@ data/hora, quem reagiu), licenciamento (3d4af68, migração
 - [ ] Se um dia for preciso licenciar cliente **não** responsável (ex.: os 104
       da Fluidra), mudar a tela para a licença não depender de "Responsável"
       (hoje a edição desmarca a licença de quem não é responsável).
-- [ ] Terceiro (PJ): o texto de "Empresas atendidas" em Admin → Usuários
+- [x] (Não mexer — 01/10) Terceiro (PJ): o texto de "Empresas atendidas" em Admin → Usuários
       descreve outra regra (com mesa, a empresa não limita). Trocar o texto?
+
+## Decididos em 01/10 (não mexer)
+
+- "Comunicação com cliente" continua marcada por padrão no apontamento.
+- Título do chamado continua pré-preenchido com o nome da empresa.
+- Trava de contrato: editar apontamento não passa pela trava (só criar).
+
+## Pendentes de outras sessões
+
+- [ ] Janela de apontamento do Santana que fecha ao clicar no aviso de erro
+      (aguardando o Erik confirmar com ele).
+- [ ] Oportunidades: pessoal do comercial na mesa Comercial e caixa de e-mail.
 
 ## Para o futuro (combinado deixar depois)
 

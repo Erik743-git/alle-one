@@ -73,4 +73,17 @@ UPDATE users u
    AND u.role IN ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
    AND c.deleted_at IS NULL
    AND (c.name ILIKE 'fluidra%' OR lower(btrim(c.name)) = 'alle');
+-- Vinicius Angelo Alves (Wetzel): não era responsável e chega a 3
+-- apontamentos por chamado. Decisão do Erik (01/10): licenciar. Marca também
+-- como responsável, porque a tela só mantém a licença de responsável.
+UPDATE users u
+   SET licensed = true,
+       responsible = true,
+       updated_at = now()
+  FROM companies c
+ WHERE c.id = u.company_id
+   AND u.deleted_at IS NULL
+   AND u.role IN ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
+   AND c.name ILIKE 'wetzel%'
+   AND u.name ILIKE 'vinicius angelo alves%';
 ROLLBACK;  -- troque por COMMIT para gravar
