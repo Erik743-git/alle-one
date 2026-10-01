@@ -42,33 +42,34 @@ SELECT c.name                                   AS empresa,
  ORDER BY (u.role IN ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')) DESC,
           empresa, usuario;
 
--- 2) Quem vai ser licenciado: usuários de CLIENTE ativos da Fluidra e da Alle.
---    (Equipe interna — admin, colaborador, terceiro — não tem limite e não
---    precisa de licença.)
+-- 2) Quem vai ser licenciado: usuários de CLIENTE ativos e RESPONSÁVEIS da
+--    Fluidra e da Alle. Em produção (consulta de 01/10) quem aponta de verdade
+--    na Fluidra já é responsável: Anderson Catarina, Anderson Gadelha, Dielson
+--    Gomes, Evandro Stoppa e Michel Lima Monteiro. Os demais quase não apontam
+--    (no máximo 2 por chamado) e ficam com o limite. Não muda o "Responsável"
+--    de ninguém, para não encher a lista de responsáveis dos chamados.
 SELECT c.name AS empresa, u.name AS usuario, u.email, u.role AS perfil,
        u.responsible AS responsavel, u.licensed AS licenciado
   FROM users u
   JOIN companies c ON c.id = u.company_id
  WHERE u.deleted_at IS NULL
    AND u.status = 'ACTIVE'
+   AND u.responsible = true
    AND u.role IN ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
    AND c.deleted_at IS NULL
    AND (c.name ILIKE 'fluidra%' OR lower(btrim(c.name)) = 'alle')
  ORDER BY empresa, usuario;
 
--- 3) Licencia. Também marca como responsável, porque a tela só mantém a
---    licença de quem é responsável (sem isso, a próxima edição do usuário
---    desmarcaria a licença). Efeito colateral: eles passam a aparecer na
---    lista de responsáveis dos chamados.
+-- 3) Licencia (termina em ROLLBACK; troque por COMMIT para gravar).
 BEGIN;
 UPDATE users u
    SET licensed = true,
-       responsible = true,
        updated_at = now()
   FROM companies c
  WHERE c.id = u.company_id
    AND u.deleted_at IS NULL
    AND u.status = 'ACTIVE'
+   AND u.responsible = true
    AND u.role IN ('CLIENT', 'CLIENT_GESTOR', 'CLIENT_MEMBER')
    AND c.deleted_at IS NULL
    AND (c.name ILIKE 'fluidra%' OR lower(btrim(c.name)) = 'alle');
