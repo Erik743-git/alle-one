@@ -97,7 +97,10 @@ export function MuralNoteCard({
       }}
       style={style}
       className={cn(
-        "flex w-56 flex-col gap-2 rounded-sm px-4 pb-3 pt-5 shadow-[0_6px_14px_rgba(0,0,0,0.28)]",
+        // relative: a tarracha e o selo "novo" se posicionam no próprio papel.
+        // Sem isso, no modal (fora do quadro) ela subia para o topo da janela
+        // e só voltava ao lugar no hover, quando o transform criava a base.
+        "relative flex w-56 flex-col gap-2 rounded-sm px-4 pb-3 pt-5 shadow-[0_6px_14px_rgba(0,0,0,0.28)]",
         "font-[var(--font-handwriting,inherit)] select-none",
         // A transição some enquanto arrasta: com ela o papel "nada" atrás do
         // mouse em vez de acompanhar.
