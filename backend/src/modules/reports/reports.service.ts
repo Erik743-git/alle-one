@@ -2202,7 +2202,17 @@ export class ReportsService {
       }
     }
 
-    return rows.map((r) => {
+    // Comunicação com o cliente é gravada como apontamento de 0 minuto (início
+    // = fim): não é hora trabalhada e sai do relatório (decisão de 01/10).
+    const deHoras = rows.filter(
+      (r) =>
+        this.getAppointmentMinutes({
+          init_time: r.init_time || undefined,
+          end_time: r.end_time || undefined,
+        }) > 0,
+    );
+
+    return deHoras.map((r) => {
       const attendant = String(r.user_name || '').trim();
       const dateLabel = new Date(
         `${r.appointment_date}T12:00:00`,
