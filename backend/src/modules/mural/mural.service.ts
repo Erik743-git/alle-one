@@ -46,7 +46,13 @@ export type MuralNoteDto = {
   canDelete: boolean;
   canMove: boolean;
   /** Quantas pessoas deram cada reação, só as que têm pelo menos uma. */
-  reactions: Array<{ emoji: string; count: number; mine: boolean }>;
+  reactions: Array<{
+    emoji: string;
+    count: number;
+    mine: boolean;
+    /** Quem reagiu com este emoji. */
+    names: string[];
+  }>;
   /** Chegou depois da última vez que esta pessoa abriu o mural. */
   isNew: boolean;
 };
@@ -70,15 +76,21 @@ function normalizarCor(cor: string | undefined): string {
  * marca quais a própria pessoa deu. Emoji sem ninguém não aparece.
  */
 function contarReacoes(
-  reactions: Array<{ emoji: string; userId: string }>,
+  reactions: Array<{
+    emoji: string;
+    userId: string;
+    user?: { name: string } | null;
+  }>,
   userId: string,
-): Array<{ emoji: string; count: number; mine: boolean }> {
+): Array<{ emoji: string; count: number; mine: boolean; names: string[] }> {
   return MURAL_REACOES.map((emoji) => {
     const doEmoji = reactions.filter((r) => r.emoji === emoji);
     return {
       emoji: emoji as string,
       count: doEmoji.length,
       mine: doEmoji.some((r) => r.userId === userId),
+      // Quem reagiu, na ordem em que reagiu (reação não é anônima).
+      names: doEmoji.map((r) => r.user?.name?.trim() || 'Alguém'),
     };
   }).filter((item) => item.count > 0);
 }
@@ -177,7 +189,10 @@ export class MuralService {
       include: {
         author: { select: { name: true } },
         recipient: { select: { name: true } },
-        reactions: { select: { emoji: true, userId: true } },
+        reactions: {
+          select: { emoji: true, userId: true, user: { select: { name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -216,7 +231,10 @@ export class MuralService {
       include: {
         author: { select: { name: true } },
         recipient: { select: { name: true } },
-        reactions: { select: { emoji: true, userId: true } },
+        reactions: {
+          select: { emoji: true, userId: true, user: { select: { name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     await this.avisarDestinatario(note.id, note.toUserId, actor.userId);
@@ -335,7 +353,10 @@ export class MuralService {
       include: {
         author: { select: { name: true } },
         recipient: { select: { name: true } },
-        reactions: { select: { emoji: true, userId: true } },
+        reactions: {
+          select: { emoji: true, userId: true, user: { select: { name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     return this.mapear(atualizada, actor);
@@ -393,7 +414,10 @@ export class MuralService {
       include: {
         author: { select: { name: true } },
         recipient: { select: { name: true } },
-        reactions: { select: { emoji: true, userId: true } },
+        reactions: {
+          select: { emoji: true, userId: true, user: { select: { name: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     return this.mapear(note, actor);

@@ -69,6 +69,18 @@ type Props = {
   className?: string;
 };
 
+/** "28/09/2026 às 15:16", no horário de quem está vendo. */
+function quandoPregado(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const data = d.toLocaleDateString("pt-BR");
+  const hora = d.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${data} às ${hora}`;
+}
+
 export function MuralNoteCard({
   note,
   aberto = false,
@@ -153,12 +165,19 @@ export function MuralNoteCard({
                 reacao.mine && "ring-1 ring-black/40",
                 !onReagir && "cursor-default hover:bg-black/10",
               )}
+              // Passar o mouse mostra quem reagiu.
+              title={reacao.names?.length ? reacao.names.join(", ") : undefined}
             >
               {reacao.emoji} {reacao.count}
             </button>
           ))}
         </div>
-        <p className="text-right text-xs italic opacity-75">— {assinatura}</p>
+        <div className="text-right">
+          <p className="text-xs italic opacity-75">— {assinatura}</p>
+          {aberto ? (
+            <p className="text-[10px] opacity-60">{quandoPregado(note.createdAt)}</p>
+          ) : null}
+        </div>
       </div>
     </div>
   );

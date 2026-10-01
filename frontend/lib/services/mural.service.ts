@@ -31,7 +31,13 @@ export type MuralNote = {
   canDelete: boolean;
   /** Pode arrastar: o autor, ou o admin arrumando o quadro. */
   canMove: boolean;
-  reactions: Array<{ emoji: string; count: number; mine: boolean }>;
+  /** names: quem reagiu, na ordem em que reagiu. */
+  reactions: Array<{
+    emoji: string;
+    count: number;
+    mine: boolean;
+    names?: string[];
+  }>;
   /** Chegou depois da última vez que você abriu o mural. */
   isNew: boolean;
 };

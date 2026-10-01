@@ -618,6 +618,21 @@ function MuralPageImpl() {
                         );
                       })}
                     </div>
+                    {/* Quem reagiu, por emoji. */}
+                    {aberto.reactions.length > 0 ? (
+                      <ul className="w-full max-w-sm space-y-1 text-sm">
+                        {aberto.reactions.map((r) => (
+                          <li key={r.emoji} className="flex gap-2">
+                            <span aria-hidden>{r.emoji}</span>
+                            <span className="text-muted-foreground">
+                              {r.names?.length
+                                ? r.names.join(", ")
+                                : `${r.count} pessoa${r.count > 1 ? "s" : ""}`}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                 )}
               </div>

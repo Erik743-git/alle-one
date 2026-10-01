@@ -202,16 +202,17 @@ describe('MuralService — novidades, reações e mural do mês', () => {
     const prisma = prismaComNotas([
       bilhete({
         reactions: [
-          { emoji: '👏', userId: OUTRO.userId },
-          { emoji: '👏', userId: AUTOR.userId },
-          { emoji: '❤️', userId: AUTOR.userId },
+          { emoji: '👏', userId: OUTRO.userId, user: { name: 'Bruno' } },
+          { emoji: '👏', userId: AUTOR.userId, user: { name: 'Ana' } },
+          { emoji: '❤️', userId: AUTOR.userId, user: { name: 'Ana' } },
         ],
       }),
     ]);
     const [dto] = await servico(prisma).listar(OUTRO);
+    // Reação não é anônima: o mural mostra quem reagiu.
     expect(dto.reactions).toEqual([
-      { emoji: '👏', count: 2, mine: true },
-      { emoji: '❤️', count: 1, mine: false },
+      { emoji: '👏', count: 2, mine: true, names: ['Bruno', 'Ana'] },
+      { emoji: '❤️', count: 1, mine: false, names: ['Ana'] },
     ]);
   });
 
