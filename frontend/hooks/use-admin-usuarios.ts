@@ -322,6 +322,7 @@ export function useAdminUsuarios() {
         companyId: formEdicao.companyId || null,
         firstAccess: formEdicao.firstAccess,
         responsible: formEdicao.responsible,
+        licensed: formEdicao.licensed,
         specialtyIds: formEdicao.specialtyIds,
         specialtyId: formEdicao.specialtyIds[0] ?? null,
       };

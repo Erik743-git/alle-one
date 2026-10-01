@@ -17,6 +17,8 @@ export type AuthUser = {
   companyId: string | null;
   companyName: string | null;
   firstAccess: boolean;
+  /** Cliente licenciado: selo no menu e sem limite de apontamentos. */
+  licensed?: boolean;
   /** Empresas do portal cliente (multi-tenant). */
   companies?: AuthCompanyMembership[];
   /** Efetivo (papéis + linhas em `permissions`). Ausente em sessões antigas até refresh. */

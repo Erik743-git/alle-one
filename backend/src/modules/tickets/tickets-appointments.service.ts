@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -14,6 +15,11 @@ import {
   PortalTifluxOutboxStatus,
 } from '@prisma/client';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
+import {
+  bloqueiaApontamentoSemLicenca,
+  contaNoLimite,
+  MENSAGEM_SEM_LICENCA,
+} from '../licenca/licenca-regras';
 import { FileStorageService } from '../../common/storage/file-storage.service';
 import { TenantScopeService } from '../../common/security/tenant-scope.service';
 import {
@@ -1580,6 +1586,44 @@ export class TicketsAppointmentsService {
     };
   }
 
+  /**
+   * Cliente sem licença: no máximo 2 apontamentos de horas por chamado
+   * (comunicação não conta). O terceiro é recusado com o pedido de licença.
+   */
+  private async assertLicencaParaApontar(
+    actor: AuthenticatedRequestUser,
+    ticketNumber: number,
+    dto: { initTime: string; endTime: string },
+  ): Promise<void> {
+    if (!contaNoLimite(dto.initTime, dto.endTime)) return;
+    const user = await this.prisma.user.findUnique({
+      where: { id: actor.userId },
+      select: { licensed: true },
+    });
+    if (user?.licensed) return;
+    const rows = await this.prisma.$queryRaw<Array<{ n: bigint }>>`
+      SELECT count(*) AS n FROM portal_ticket_appointments
+      WHERE ticket_number = ${ticketNumber}
+        AND created_by = ${actor.userId}
+        AND btrim(init_time) <> btrim(end_time)
+    `;
+    const jaFeitos = Number(rows[0]?.n ?? 0);
+    if (
+      bloqueiaApontamentoSemLicenca({
+        role: actor.role,
+        licenciado: false,
+        initTime: dto.initTime,
+        endTime: dto.endTime,
+        jaFeitos,
+      })
+    ) {
+      throw new ForbiddenException({
+        message: MENSAGEM_SEM_LICENCA,
+        code: 'LICENCA_NECESSARIA',
+      });
+    }
+  }
+
   async createAppointment(
     actor: AuthenticatedRequestUser,
     ticketNumber: number,
@@ -1599,6 +1643,7 @@ export class TicketsAppointmentsService {
       // equipe: chamado aberto pelo cliente nasce em Novo.
       await this.assertActorCanAccessTicket(actor, ticketNumber);
       dto.projectActivityId = undefined;
+      await this.assertLicencaParaApontar(actor, ticketNumber, dto);
     } else {
       await this.assertCanCreateAppointment(actor, ticket.stage_name);
     }

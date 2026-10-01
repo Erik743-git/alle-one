@@ -50,6 +50,11 @@ export class CreateUserDto {
   @IsBoolean()
   responsible?: boolean;
 
+  /** Cliente licenciado: aponta sem o limite de 2 por chamado. */
+  @IsOptional()
+  @IsBoolean()
+  licensed?: boolean;
+
   @IsOptional()
   @IsUUID()
   specialtyId?: string | null;

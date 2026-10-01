@@ -11,6 +11,8 @@ export type ApiUser = {
   status: "ACTIVE" | "INACTIVE";
   firstAccess: boolean;
   responsible: boolean;
+  /** Cliente licenciado (sem limite de 2 apontamentos por chamado). */
+  licensed?: boolean;
   companyId: string | null;
   isOnline?: boolean;
   specialtyId?: string | null;
@@ -74,6 +76,7 @@ export type FormEdicao = {
   companyId: string;
   firstAccess: boolean;
   responsible: boolean;
+  licensed: boolean;
   specialtyIds: string[];
   /** Terceiro (PJ): empresas que ele atende. */
   servedCompanyIds: string[];
@@ -96,6 +99,7 @@ export function createEmptyFormEdicao(): FormEdicao {
     companyId: "",
     firstAccess: false,
     responsible: false,
+    licensed: false,
     specialtyIds: [],
     servedCompanyIds: [],
     rendimentoSchedule: normalizeUserRendimentoSchedule({}),
@@ -232,6 +236,7 @@ export function formEdicaoFromUser(usuario: ApiUser): FormEdicao {
     companyId: usuario.companyId ?? "",
     firstAccess: usuario.firstAccess,
     responsible: usuario.responsible,
+    licensed: Boolean(usuario.licensed),
     specialtyIds: resolveUserSpecialtyIds(usuario),
     servedCompanyIds: (usuario.companyMemberships ?? []).map((m) => m.companyId),
     rendimentoSchedule: normalizeUserRendimentoSchedule(usuario),

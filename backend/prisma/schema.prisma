@@ -127,6 +127,9 @@ model User {
   /// Enquanto no futuro, o login e recusado mesmo com a senha certa.
   lockedUntil         DateTime?            @map("locked_until")
   responsible         Boolean              @default(false)
+  /// Licenciamento (só usuário de cliente responsável): sem licença, no máximo
+  /// 2 apontamentos de horas por chamado.
+  licensed            Boolean              @default(false)
   companyId           String?              @map("company_id")
   googleId            String?              @unique @map("google_id")
   microsoftId         String?              @unique @map("microsoft_id")

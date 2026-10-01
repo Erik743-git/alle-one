@@ -39,6 +39,7 @@ export type User = {
   status: UserStatus;
   firstAccess: boolean;
   responsible: boolean;
+  licensed?: boolean;
   companyId: string | null;
   specialtyId?: string | null;
   specialty?: Specialty | null;
@@ -66,6 +67,7 @@ export type CreateUserPayload = {
   companyId?: string | null;
   firstAccess?: boolean;
   responsible?: boolean;
+  licensed?: boolean;
   specialtyId?: string | null;
   specialtyIds?: string[];
   /** @deprecated Prefer specialtyIds */
@@ -84,6 +86,7 @@ export type UpdateUserPayload = {
   companyId?: string | null;
   firstAccess?: boolean;
   responsible?: boolean;
+  licensed?: boolean;
   specialtyId?: string | null;
   specialtyIds?: string[];
   /** @deprecated Prefer specialtyIds */

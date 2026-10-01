@@ -24,6 +24,8 @@ import {
 } from "@/components/tickets/appointment-description-composer";
 import { canChangeTicketStage } from "@/lib/access-control";
 import { notifyError, notifySuccess } from "@/lib/notify";
+import { getApiErrorPayload } from "@/lib/api";
+import { useConfirm } from "@/lib/confirm";
 import {
   canAppointmentOnTicketStage,
   findExecutionStageOption,
@@ -124,6 +126,7 @@ export function TicketAppointmentModal({
   const isCommunication = variant === "communication";
   const isEdit = Boolean(editingAppointment?.portalAppointmentId) && !isCommunication;
   const { user } = useAuth();
+  const confirm = useConfirm();
   // Cliente sempre aponta em hora normal (o servidor também força).
   const clientActor = isClientPortalRole(user?.role);
   const [loadingMeta, setLoadingMeta] = useState(false);
@@ -468,6 +471,20 @@ export function TicketAppointmentModal({
       onOpenChange(false);
       onCreated?.();
     } catch (err) {
+      // Cliente sem licença no 3º apontamento: aviso em destaque, não toast.
+      if (getApiErrorPayload(err)?.code === "LICENCA_NECESSARIA") {
+        void confirm({
+          title: "Licenciamento necessário",
+          description:
+            err instanceof Error
+              ? err.message
+              : "Para continuar apontando, comunique o financeiro ou um administrador para adquirir o licenciamento.",
+          confirmText: "Entendi",
+          cancelText: "Fechar",
+          variant: "warning",
+        });
+        return;
+      }
       notifyError(
         err instanceof Error ? err.message : "Não foi possível criar o apontamento.",
       );

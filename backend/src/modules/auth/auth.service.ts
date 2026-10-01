@@ -304,6 +304,7 @@ export class AuthService {
     firstAccess: boolean;
     tokenVersion?: number;
     totpEnabledAt?: Date | null;
+    licensed?: boolean;
     company?: { name: string } | null;
     specialtyId?: string | null;
     specialty?: { name: string } | null;
@@ -356,6 +357,8 @@ export class AuthService {
         companyId: requestUser.companyId,
         companyName: activeName,
         firstAccess: user.firstAccess,
+        // Selo "Licenciado Alle" no menu do usuário (só cliente).
+        licensed: Boolean(user.licensed),
         permissions: requestUser.permissions,
         modulosDesligados: await this.acesso.desligadosPara(requestUser.role),
         modulosEmConstrucao: await this.acesso.emConstrucao(),
@@ -439,6 +442,8 @@ export class AuthService {
         companyId: requestUser.companyId,
         companyName: activeName,
         firstAccess: user.firstAccess,
+        // Selo "Licenciado Alle" no menu do usuário (só cliente).
+        licensed: Boolean(user.licensed),
         permissions: requestUser.permissions,
         modulosDesligados: await this.acesso.desligadosPara(requestUser.role),
         modulosEmConstrucao: await this.acesso.emConstrucao(),

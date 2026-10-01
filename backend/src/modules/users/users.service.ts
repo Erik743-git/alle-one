@@ -14,6 +14,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { resolveRendimentoSchedule } from './user-rendimento-schedule.helper';
 import { isClientPortalRole } from '../../common/security/client-portal-role';
+import { licencaValida } from '../licenca/licenca-regras';
 
 function toClientCompanyRole(role: UserRole): ClientCompanyRole {
   return role === UserRole.CLIENT_MEMBER
@@ -309,6 +310,11 @@ export class UsersService {
         companyId: data.companyId ?? null,
         firstAccess,
         responsible: data.responsible ?? false,
+        licensed: licencaValida(
+          data.role,
+          data.responsible ?? false,
+          data.licensed ?? false,
+        ),
         specialtyId,
         ...schedule,
       },
@@ -510,6 +516,11 @@ export class UsersService {
         companyId: data.companyId,
         firstAccess: data.firstAccess,
         responsible: nextResponsible,
+        licensed: licencaValida(
+          data.role ?? existingUser.role,
+          nextResponsible,
+          data.licensed ?? existingUser.licensed,
+        ),
         ...(specialtyId !== undefined ? { specialtyId } : {}),
         ...(schedule ?? {}),
       },
@@ -589,6 +600,7 @@ export class UsersService {
           companyId: existingUser.companyId,
           firstAccess: existingUser.firstAccess,
           responsible: existingUser.responsible,
+          licensed: existingUser.licensed,
           specialtyId: existingUser.specialtyId,
         },
         after: {
@@ -600,6 +612,7 @@ export class UsersService {
           companyId: updated.companyId,
           firstAccess: updated.firstAccess,
           responsible: updated.responsible,
+          licensed: updated.licensed,
           specialtyId: updated.specialtyId,
         },
       },

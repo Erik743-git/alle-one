@@ -13,6 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FlipCheckbox } from "@/components/ui/flip-checkbox";
+import { isClientPortalRole } from "@/lib/app-roles";
+import { cn } from "@/lib/utils";
 import { SearchableSelectField } from "@/components/ui/searchable-select-field";
 import { UserRendimentoScheduleFields } from "@/components/admin/user-rendimento-schedule-fields";
 import type {
@@ -400,6 +402,37 @@ export function UsuarioEditDialog({
                 automações (qualquer perfil).
               </p>
             </div>
+
+            {isClientPortalRole(form.role) ? (
+              <div className="space-y-2 sm:col-span-2">
+                <Label className="text-sm font-semibold text-foreground">
+                  Licenciamento
+                </Label>
+                <label
+                  className={cn(
+                    "flex items-center gap-2 text-sm text-foreground",
+                    !form.responsible && "opacity-60",
+                  )}
+                >
+                  <FlipCheckbox
+                    checked={form.responsible && form.licensed}
+                    disabled={!form.responsible}
+                    onChange={(e) =>
+                      onFormChange((prev) => ({
+                        ...prev,
+                        licensed: e.target.checked,
+                      }))
+                    }
+                  />
+                  Usuário licenciado
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  {form.responsible
+                    ? "Licenciado aponta sem limite. Sem licença, são no máximo 2 apontamentos de horas por chamado (comunicação não conta)."
+                    : "Marque o usuário como responsável para liberar o licenciamento."}
+                </p>
+              </div>
+            ) : null}
 
             <UserRendimentoScheduleFields
               role={form.role}

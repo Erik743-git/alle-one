@@ -98,6 +98,7 @@ export function UsuariosCompanyList({
                             ? `Especialidade: ${specialtyName}`
                             : "Sem especialidade"}
                           {full.responsible ? " • Responsável" : ""}
+                          {full.licensed ? " • Licenciado" : ""}
                         </p>
                         {usesRendimentoScheduleRole(full.role) ? (
                           <p className="text-xs text-muted-foreground">

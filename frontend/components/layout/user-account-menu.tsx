@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Security2faDialog } from "@/components/auth/security-2fa-dialog";
 import { Button } from "@/components/ui/button";
+import { SeloLicenciado } from "@/components/layout/selo-licenciado";
 import {
   Popover,
   PopoverContent,
@@ -149,6 +150,9 @@ export function UserAccountMenu({ collapsed = false }: Props) {
                   <Shield className="size-3" />
                   {roleDisplayLabel(user.role)}
                 </p>
+                {user.licensed ? (
+                  <SeloLicenciado className="mt-1.5" />
+                ) : null}
               </div>
             </div>
           </div>
