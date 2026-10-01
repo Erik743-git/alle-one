@@ -97,3 +97,23 @@
 20260917150000_ticket_list_user_state
 20260917180000_rendimento_list_pref_por_admin
 20260918200000_auto_open_retry_at
+
+# Deploy em produção do commit 3482d4c (confirmado em 01/10/2026: 107 migrações,
+# "Database schema is up to date").
+20260823120100_report_type_cobranca_ensure
+20260919100000_pesquisa_satisfacao
+20260921160000_grafana_por_empresa
+20260923190000_mural_reconhecimento
+20260923200000_mural_reacoes_visitas
+20260924090000_escala_plantao
+20260924120000_manutencao_janelas
+20260925090000_oportunidades
+20260925150000_acesso_por_perfil
+20260926090000_nps
+20260926120000_fechamento_ciclo
+20260926130000_acesso_carga_equipe
+20260926150000_contrato_aviso
+20260927090000_preferencia_menu
+20260928200000_remove_fechamento_carga
+20260928210000_correio_chamado
+20260928220000_contrato_aviso_por_linha
